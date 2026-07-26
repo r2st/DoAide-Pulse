@@ -1,0 +1,217 @@
+# Herald
+
+**You ship the projects. Herald writes and publishes the posts.**
+
+Herald is marketing automation for developers who ship more than they write
+about. It watches your project repos, drafts blog posts and social copy when
+something meaningful lands, runs them past you, publishes to Dev.to and Medium
+on a schedule, and tracks which pieces actually got read.
+
+---
+
+## What it does
+
+| | |
+|---|---|
+| **Project registry** | Register what you ship — description, stack, audience, tone, repo. Herald reads the repo for what's changed since it last looked. |
+| **Content engine** | Five content types (tutorial, announcement, feature spotlight, comparison, how-to) × three tones, generated from the project record plus real commit and release data. |
+| **SEO** | Meta description, keywords, tags and a heading-outline audit, applied deterministically rather than spent as a second model call. |
+| **Publishing** | Adapters per platform. Dev.to and Medium publish today; four more are scaffolded (see [Platform support](#platform-support)). |
+| **Calendar** | Month grid with drag-to-reschedule, plus per-platform cadence guidance. |
+| **Analytics** | Views and engagement per post, per platform, per content type, per project. |
+| **Autopilot** | Watch repos, write when something ships, publish without review only when the model is confident and you've said it may. |
+
+## Stack
+
+- **Backend** — Python 3.12, FastAPI, SQLAlchemy 2.0, Alembic, PostgreSQL
+- **Queue** — Celery + Redis (worker and beat as separate processes)
+- **AI** — OpenRouter free models (`openai/gpt-oss-20b:free`, `openai/gpt-oss-120b:free`),
+  with Gemini / Groq / Cerebras as fallbacks
+- **Frontend** — React 18, Vite, Tailwind CSS, React Router
+
+---
+
+## Quick start
+
+### With Docker (everything)
+
+```bash
+cp .env.example .env          # fill in OPENROUTER_API_KEY at minimum
+docker compose up --build
+```
+
+The API migrates on boot and serves at <http://localhost:8000>
+(<http://localhost:8000/docs> for the OpenAPI browser).
+
+Seed an account and Herald's own project record:
+
+```bash
+docker compose exec api python -m app.seed
+```
+
+Then the frontend:
+
+```bash
+cd frontend && npm install && npm run dev     # http://localhost:5173
+```
+
+### Backend on its own
+
+```bash
+cd backend
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pip install -e . --no-deps
+
+# Postgres via compose, or point DATABASE_URL at any Postgres you have
+docker compose up -d db redis
+
+.venv/bin/alembic upgrade head
+.venv/bin/python -m app.seed
+.venv/bin/uvicorn app.main:app --reload
+```
+
+Workers, if you want scheduling and the autopilot to actually run:
+
+```bash
+.venv/bin/celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+.venv/bin/celery -A app.tasks.celery_app.celery_app beat   --loglevel=info
+```
+
+Without them, publishing still works — the API falls back to running it inline
+(see `CELERY_ENABLED`).
+
+### Tests
+
+```bash
+cd backend  && .venv/bin/python -m pytest && .venv/bin/ruff check app tests
+cd frontend && npm test && npm run build
+```
+
+78 backend tests and 16 frontend tests, no external services required.
+
+---
+
+## How it hangs together
+
+```
+GitHub ──▶ autopilot_tasks ──▶ content_generator ──▶ Content (draft/review)
+                │                     │
+                │                     └── llm_router: OpenRouter → Gemini → Groq
+                │                         → Cerebras → deterministic template
+                │
+                └── ContentIdea (banked for the calendar)
+
+Content ──▶ publishing_service.queue ──▶ Publication (one per platform)
+                                              │
+                        publish_tasks ────────┘
+                                              │
+                                    publishers/{devto,medium,…}
+                                              │
+                                    metrics_tasks ──▶ ContentMetric
+```
+
+Three design decisions worth knowing before you read the code:
+
+**The AI chain never hard-fails.** Four providers are tried in order, each
+skipped for five minutes after three consecutive failures. When all of them are
+down, generation returns a deterministic template built from the project record,
+marked `confidence=0.0` so the autopilot can never publish it unreviewed. A
+background job that 500s loses the trigger entirely; a mediocre draft a human
+can fix does not.
+
+**A publication is per-platform.** "Published to Dev.to, rejected by LinkedIn"
+is the normal case, not an error. One success marks the piece published; only
+every platform failing marks it failed.
+
+**Metrics are append-only.** Each poll writes a new row rather than updating
+one, so "400 views in two days and nothing since" is answerable. A metric a
+platform doesn't report stays `NULL` rather than becoming a zero that drags
+averages down.
+
+---
+
+## Platform support
+
+| Platform | Status | Notes |
+|---|---|---|
+| **Dev.to** | ✅ Publishes, reports metrics | One API key. The reference adapter — read this one first. |
+| **Medium** | ✅ Publishes | ⚠️ Medium stopped issuing new integration tokens in 2023. Works with a token created before then; a new account cannot get one. No stats API. |
+| Hashnode | 🔨 Scaffolded | Payload building is done and tested; the GraphQL call is not wired up. |
+| LinkedIn | 🔨 Scaffolded | Needs a registered app and 3-legged OAuth (`w_member_social`) — an auth flow, not an adapter. |
+| Twitter/X | 🔨 Scaffolded | Thread splitting is done and tested. Needs OAuth 1.0a signing and a paid tier for writes. |
+| WordPress | 🔨 Scaffolded | Closest to done — application passwords are Basic auth, no OAuth. Untested against a live site. |
+
+Scaffolded adapters have their formatting layer implemented and under test;
+`publish()` raises a clear `NotImplementedAdapter` rather than pretending. The
+API refuses to queue content for them, so nothing silently disappears.
+
+Adding a platform: write the adapter against
+`app/services/publishers/base.py:Adapter`, register it in
+`app/services/publishers/__init__.py`, add the enum member. Nothing else needs
+to know it exists.
+
+---
+
+## Configuration
+
+Every setting is in `.env.example` with a comment explaining what it does and
+what happens if you leave it blank. The ones that matter:
+
+| Variable | Why |
+|---|---|
+| `OPENROUTER_API_KEY` | Without it, all generated content is the static template. |
+| `GITHUB_TOKEN` | Without it, repo scans run at 60 req/hour on public repos only. |
+| `TOKEN_ENCRYPTION_KEY` | Encrypts platform tokens at rest. **Production refuses to store a credential without it.** |
+| `JWT_SECRET` | Change it. |
+| `AUTOPILOT_AUTO_PUBLISH_CONFIDENCE` | The bar for publishing without review. Default 0.8. |
+
+`GET /api/v1/health` reports which of these are set, and the Settings page shows
+the same thing in English.
+
+## Deployment
+
+Built for a single Hetzner box, like the sibling projects: `docker compose up -d`
+behind nginx with TLS, `frontend/` built to static files and served by nginx,
+`/api` proxied to the API container. The compose file already separates worker
+from beat, so scaling workers doesn't duplicate the schedule.
+
+Before going live:
+
+1. `ENVIRONMENT=production` and `DEBUG=false`
+2. Set `TOKEN_ENCRYPTION_KEY` (production won't store credentials without it)
+3. A real `JWT_SECRET`
+4. `BACKEND_CORS_ORIGINS` set to your actual frontend origin
+
+## Layout
+
+```
+backend/
+  app/
+    config.py            settings (pydantic-settings)
+    database.py          engine, session, Base
+    security.py deps.py  JWT, password hashing, current-user
+    models/              user, project, content, publication, connection, metrics
+    routers/             auth, projects, content, calendar, analytics, settings
+    schemas/             pydantic request/response models
+    services/
+      llm_router.py      provider chain + circuit breaker
+      ai.py              the single entry point every AI feature calls
+      content_generator.py
+      github_client.py   repo activity since a watermark
+      seo.py             deterministic SEO hygiene + audit
+      cadence.py         per-platform posting rhythm
+      publishing_service.py
+      analytics_service.py
+      publishers/        base, registry, formatting, one module per platform
+    tasks/               celery app, publish, autopilot, metrics
+    seed.py
+  alembic/               migrations
+  tests/                 78 tests, no external services
+frontend/
+  src/
+    pages/               Dashboard, Projects, ContentList, ContentEditor,
+                         Calendar, Publish, Settings, Login
+    components/          Shell + ui bits
+    hooks/               useAuth, useApi
+    lib/                 api client, formatters, markdown renderer
+```

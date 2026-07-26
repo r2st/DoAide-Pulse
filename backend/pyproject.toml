@@ -1,0 +1,42 @@
+# Packaging + tool configuration. Runtime dependencies live in
+# requirements.txt (the Dockerfile installs from there); this file exists so
+# `pip install -e .` puts `app` on the path and so ruff/pytest have a home.
+[project]
+name = "herald-backend"
+version = "0.1.0"
+description = "Herald — AI marketing automation for developer projects (FastAPI backend)"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "ruff>=0.5"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Pinned explicitly: ruff's default rule set has widened across releases, so
+# relying on the default would make lint results depend on the install date.
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    # `x: Type = Depends(...)` is the FastAPI idiom for dependency injection —
+    # the whole API surface would need noqa without this.
+    "B008",
+    # `class X(str, Enum)` is deliberate: members must compare equal to their
+    # stored string for SQLAlchemy's non-native Enum columns and for Pydantic
+    # serialization. StrEnum is not a drop-in replacement here.
+    "UP042",
+]

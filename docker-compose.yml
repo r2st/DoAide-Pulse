@@ -1,0 +1,90 @@
+# Herald — local/prod-ish stack: Postgres + Redis + API + Celery worker + beat.
+#
+# The worker and beat are separate services on purpose. Beat only decides *when*
+# something should run and publishes a message; running it inside a worker means
+# that scaling to two workers schedules everything twice.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: herald
+      POSTGRES_PASSWORD: herald
+      POSTGRES_DB: herald
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U herald"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    # Migrate before serving: a fresh volume otherwise starts an API against an
+    # empty schema, and every request 500s until someone runs alembic by hand.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://herald:herald@db:5432/herald
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./keys:/app/keys
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://herald:herald@db:5432/herald
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - ./backend:/app
+      - ./keys:/app/keys
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build: ./backend
+    command: celery -A app.tasks.celery_app.celery_app beat --loglevel=info
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://herald:herald@db:5432/herald
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    volumes:
+      - ./backend:/app
+      - ./keys:/app/keys
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

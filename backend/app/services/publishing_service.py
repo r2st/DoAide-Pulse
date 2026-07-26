@@ -1,0 +1,291 @@
+"""Orchestration around the adapters: queueing, executing, recording.
+
+The adapters know how to talk to a platform and nothing else. This module owns
+everything stateful — which publications exist, what happened to them, when to
+retry, and how a content row's status follows from its publications'.
+
+The split matters for one reason above all: a piece of content going to three
+platforms is three independent outcomes. Dev.to accepting and LinkedIn failing
+is the ordinary case, and the piece is still "published". Only *every* platform
+failing makes the content itself a failure.
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.models.content import Content, ContentStatus
+from app.models.metrics import ContentMetric
+from app.models.mixins import utcnow
+from app.models.platform_connection import ConnectionStatus, PlatformConnection
+from app.models.publication import Platform, Publication, PublicationStatus
+from app.services import publishers
+from app.services.crypto import CredentialEncryptionError, decrypt_credentials
+from app.services.publishers.base import (
+    CredentialError,
+    NotImplementedAdapter,
+    PublishError,
+    PublishRequest,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class NotConnected(PublishError):
+    """The user has no live credentials for that platform."""
+
+
+def queue(
+    db: Session,
+    content: Content,
+    platforms: list[Platform | str],
+    *,
+    scheduled_for: datetime | None = None,
+) -> list[Publication]:
+    """Create (or re-arm) a publication per platform. Does not publish.
+
+    Re-queueing a platform that previously failed resets it rather than adding a
+    second row — the unique constraint on (content, platform) makes that the
+    only correct behaviour, and "retry this one" is the common case.
+    """
+    existing = {p.platform: p for p in content.publications}
+    out: list[Publication] = []
+
+    for raw in platforms:
+        platform = raw if isinstance(raw, Platform) else Platform(raw)
+        publication = existing.get(platform)
+
+        if publication is None:
+            publication = Publication(content_id=content.id, platform=platform)
+            db.add(publication)
+            content.publications.append(publication)
+        elif publication.status == PublicationStatus.PUBLISHED:
+            # Already live. Re-queueing would double-post.
+            out.append(publication)
+            continue
+
+        publication.status = (
+            PublicationStatus.SCHEDULED if scheduled_for else PublicationStatus.PENDING
+        )
+        publication.scheduled_for = scheduled_for
+        publication.error = None
+        publication.attempts = 0
+        out.append(publication)
+
+    db.flush()
+    return out
+
+
+def _credentials_for(db: Session, user_id: int, platform: Platform) -> dict:
+    connection = db.scalar(
+        select(PlatformConnection).where(
+            PlatformConnection.user_id == user_id,
+            PlatformConnection.platform == platform,
+        )
+    )
+    if connection is None or connection.status != ConnectionStatus.CONNECTED:
+        raise NotConnected(
+            f"No live {platform.value} connection — add one in Settings."
+        )
+    try:
+        return decrypt_credentials(connection.encrypted_credentials)
+    except CredentialEncryptionError as exc:
+        # A key change is a credential problem, not a transient one.
+        raise CredentialError(str(exc)) from exc
+
+
+def _mark_connection_invalid(
+    db: Session, user_id: int, platform: Platform, error: str
+) -> None:
+    connection = db.scalar(
+        select(PlatformConnection).where(
+            PlatformConnection.user_id == user_id,
+            PlatformConnection.platform == platform,
+        )
+    )
+    if connection is not None:
+        connection.status = ConnectionStatus.INVALID
+        connection.last_error = error
+
+
+def build_request(content: Content, *, as_draft: bool = False) -> PublishRequest:
+    """The flat value object adapters take, built from a content row.
+
+    Called while the session is open so the ``project`` relationship is loaded
+    before the worker touches it.
+    """
+    project = content.project
+    return PublishRequest(
+        title=content.title,
+        body_markdown=content.body_markdown,
+        excerpt=content.excerpt,
+        meta_description=content.meta_description,
+        tags=list(content.tags or []),
+        canonical_url=content.canonical_url,
+        project_url=project.live_url if project else None,
+        project_name=project.name if project else "",
+        as_draft=as_draft,
+    )
+
+
+def execute(db: Session, publication: Publication) -> Publication:
+    """Attempt one publication, recording the outcome. Never raises.
+
+    Retryable failures leave the row ``pending`` until ``publish_max_retries``
+    is spent; credential failures and unfinished adapters go straight to
+    ``failed``, because retrying either is guaranteed to fail the same way.
+    """
+    content = publication.content
+    user_id = content.project.user_id
+    adapter = publishers.get_adapter(publication.platform)
+
+    publication.status = PublicationStatus.PUBLISHING
+    publication.attempts += 1
+    db.flush()
+
+    try:
+        credentials = _credentials_for(db, user_id, publication.platform)
+        result = adapter.publish(build_request(content), credentials)
+    except (NotConnected, NotImplementedAdapter) as exc:
+        # Neither is transient: no amount of retrying connects an account or
+        # finishes an adapter.
+        _fail(db, publication, str(exc), terminal=True)
+        return publication
+    except CredentialError as exc:
+        _mark_connection_invalid(db, user_id, publication.platform, str(exc))
+        _fail(db, publication, str(exc), terminal=True)
+        return publication
+    except PublishError as exc:
+        _fail(
+            db,
+            publication,
+            str(exc),
+            terminal=publication.attempts >= settings.publish_max_retries,
+        )
+        return publication
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("unexpected error publishing %s", publication.id)
+        _fail(db, publication, f"Unexpected error: {exc}", terminal=True)
+        return publication
+
+    publication.status = PublicationStatus.PUBLISHED
+    publication.published_at = utcnow()
+    publication.external_id = result.external_id
+    publication.external_url = result.external_url
+    publication.error = None
+
+    _sync_content_status(content)
+    db.commit()
+    logger.info(
+        "published content %s to %s: %s",
+        content.id,
+        publication.platform.value,
+        result.external_url,
+    )
+    return publication
+
+
+def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) -> None:
+    publication.error = error
+    publication.status = (
+        PublicationStatus.FAILED if terminal else PublicationStatus.PENDING
+    )
+    if terminal:
+        _sync_content_status(publication.content)
+    db.commit()
+    logger.warning(
+        "publication %s to %s failed (%s): %s",
+        publication.id,
+        publication.platform.value,
+        "terminal" if terminal else f"attempt {publication.attempts}",
+        error,
+    )
+
+
+def _sync_content_status(content: Content) -> None:
+    """Derive the content's status from its publications.
+
+    One success is enough to call the piece published — see the module
+    docstring. It only becomes ``failed`` when every platform is terminal and
+    none succeeded.
+    """
+    publications = content.publications
+    if not publications:
+        return
+
+    if any(p.status == PublicationStatus.PUBLISHED for p in publications):
+        content.status = ContentStatus.PUBLISHED
+        if content.published_at is None:
+            content.published_at = utcnow()
+    elif all(p.is_terminal for p in publications):
+        content.status = ContentStatus.FAILED
+
+
+def due_publications(db: Session, *, now: datetime | None = None) -> list[Publication]:
+    """Publications a worker should pick up right now.
+
+    Covers both "publish immediately" (``pending``) and "scheduled, and the time
+    has come". Rows that have burned their retries are excluded by status.
+    """
+    moment = now or utcnow()
+    return list(
+        db.scalars(
+            select(Publication).where(
+                Publication.status.in_(
+                    [PublicationStatus.PENDING, PublicationStatus.SCHEDULED]
+                ),
+                (Publication.scheduled_for.is_(None))
+                | (Publication.scheduled_for <= moment),
+            )
+        )
+    )
+
+
+def collect_metrics(db: Session, publication: Publication) -> ContentMetric | None:
+    """Poll one published post for engagement. Returns the new row, or ``None``.
+
+    Quiet about failure on purpose: metrics are a nice-to-have, and a platform
+    having a bad day should not fill the log with errors or mark anything
+    invalid.
+    """
+    if publication.status != PublicationStatus.PUBLISHED or not publication.external_id:
+        return None
+
+    adapter = publishers.get_adapter(publication.platform)
+    if not adapter.supports_metrics:
+        return None
+
+    try:
+        credentials = _credentials_for(
+            db, publication.content.project.user_id, publication.platform
+        )
+        snapshot = adapter.fetch_metrics(publication.external_id, credentials)
+    except (PublishError, NotConnected) as exc:
+        logger.info("metrics poll for publication %s skipped: %s", publication.id, exc)
+        return None
+
+    metric = ContentMetric(
+        publication_id=publication.id,
+        views=snapshot.views,
+        reads=snapshot.reads,
+        clicks=snapshot.clicks,
+        reactions=snapshot.reactions,
+        comments=snapshot.comments,
+    )
+    db.add(metric)
+    db.commit()
+    return metric
+
+
+__all__ = [
+    "NotConnected",
+    "build_request",
+    "collect_metrics",
+    "due_publications",
+    "execute",
+    "queue",
+]

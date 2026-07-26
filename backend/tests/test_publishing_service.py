@@ -1,0 +1,215 @@
+"""Queueing, executing and status derivation — without touching a platform."""
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+from app.models.content import Content, ContentStatus, ContentType
+from app.models.platform_connection import ConnectionStatus, PlatformConnection
+from app.models.publication import Platform, Publication, PublicationStatus
+from app.services import publishing_service
+from app.services.crypto import encrypt_credentials
+from app.services.publishers.base import (
+    CredentialError,
+    PublishError,
+    PublishResult,
+)
+
+
+@pytest.fixture
+def content(db, project) -> Content:
+    row = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Herald 1.0",
+        slug="herald-1-0",
+        body_markdown="## It's out\n\n" + ("word " * 200),
+        excerpt="Herald 1.0 is out.",
+        meta_description="Herald 1.0 is out.",
+        tags=["python"],
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@pytest.fixture
+def connected(db, user):
+    row = PlatformConnection(
+        user_id=user.id,
+        platform=Platform.DEVTO,
+        status=ConnectionStatus.CONNECTED,
+        encrypted_credentials=encrypt_credentials({"api_key": "k"}),
+        display_name="@r2st",
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_queue_creates_one_row_per_platform(db, content):
+    publications = publishing_service.queue(db, content, ["devto", "medium"])
+    assert {p.platform for p in publications} == {Platform.DEVTO, Platform.MEDIUM}
+    assert all(p.status == PublicationStatus.PENDING for p in publications)
+
+
+def test_requeue_rearms_rather_than_duplicating(db, content):
+    first = publishing_service.queue(db, content, ["devto"])[0]
+    first.status = PublicationStatus.FAILED
+    first.attempts = 3
+    first.error = "boom"
+    db.commit()
+
+    again = publishing_service.queue(db, content, ["devto"])[0]
+
+    assert again.id == first.id
+    assert again.status == PublicationStatus.PENDING
+    assert again.attempts == 0
+    assert again.error is None
+    assert db.query(Publication).count() == 1
+
+
+def test_requeue_will_not_repost_something_live(db, content):
+    first = publishing_service.queue(db, content, ["devto"])[0]
+    first.status = PublicationStatus.PUBLISHED
+    db.commit()
+
+    again = publishing_service.queue(db, content, ["devto"])[0]
+    assert again.status == PublicationStatus.PUBLISHED
+
+
+def test_scheduled_queue_marks_scheduled(db, content):
+    when = datetime.now(UTC) + timedelta(days=1)
+    publication = publishing_service.queue(db, content, ["devto"], scheduled_for=when)[0]
+    assert publication.status == PublicationStatus.SCHEDULED
+    assert publication.scheduled_for == when
+
+
+def test_execute_without_a_connection_fails_terminally(db, content):
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+
+    publishing_service.execute(db, publication)
+
+    assert publication.status == PublicationStatus.FAILED
+    assert "Not connected" in publication.error or "connection" in publication.error
+
+
+def test_successful_publish_updates_both_rows(db, content, connected, monkeypatch):
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: PublishResult(
+            external_id="42", external_url="https://dev.to/r2st/herald-1-0"
+        ),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    publishing_service.execute(db, publication)
+
+    assert publication.status == PublicationStatus.PUBLISHED
+    assert publication.external_url == "https://dev.to/r2st/herald-1-0"
+    assert publication.published_at is not None
+    # One success is enough to call the piece published.
+    assert content.status == ContentStatus.PUBLISHED
+
+
+def test_one_platform_succeeding_is_enough(db, user, content, connected, monkeypatch):
+    from app.services.publishers.devto import DevToAdapter
+    from app.services.publishers.medium import MediumAdapter
+
+    # Both platforms connected: the point of this test is that a *publish*
+    # failure on one is survivable, not that a missing connection is.
+    db.add(
+        PlatformConnection(
+            user_id=user.id,
+            platform=Platform.MEDIUM,
+            status=ConnectionStatus.CONNECTED,
+            encrypted_credentials=encrypt_credentials({"integration_token": "t"}),
+        )
+    )
+    db.commit()
+
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: PublishResult(external_id="1", external_url="u"),
+    )
+    monkeypatch.setattr(
+        MediumAdapter,
+        "publish",
+        lambda self, req, creds: (_ for _ in ()).throw(PublishError("medium is down")),
+    )
+
+    devto, medium = publishing_service.queue(db, content, ["devto", "medium"])
+    db.commit()
+    publishing_service.execute(db, devto)
+    publishing_service.execute(db, medium)
+
+    assert content.status == ContentStatus.PUBLISHED
+    assert medium.status == PublicationStatus.PENDING  # retryable, not terminal
+
+
+def test_every_platform_failing_fails_the_content(db, content, connected, monkeypatch):
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: (_ for _ in ()).throw(CredentialError("bad key")),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    publishing_service.execute(db, publication)
+
+    assert publication.status == PublicationStatus.FAILED
+    assert content.status == ContentStatus.FAILED
+    # A rejected credential invalidates the connection so the UI can say so.
+    db.refresh(connected)
+    assert connected.status == ConnectionStatus.INVALID
+
+
+def test_retryable_failure_becomes_terminal_after_the_cap(
+    db, content, connected, monkeypatch
+):
+    from app.config import settings
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: (_ for _ in ()).throw(PublishError("timeout")),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+
+    for _ in range(settings.publish_max_retries - 1):
+        publishing_service.execute(db, publication)
+        assert publication.status == PublicationStatus.PENDING
+
+    publishing_service.execute(db, publication)
+    assert publication.status == PublicationStatus.FAILED
+    assert publication.attempts == settings.publish_max_retries
+
+
+def test_due_publications_respects_the_schedule(db, content):
+    now = datetime.now(UTC)
+    immediate = publishing_service.queue(db, content, ["devto"])[0]
+    future = publishing_service.queue(
+        db, content, ["medium"], scheduled_for=now + timedelta(days=1)
+    )[0]
+    db.commit()
+
+    due = publishing_service.due_publications(db, now=now)
+    assert immediate in due
+    assert future not in due
+
+    due_later = publishing_service.due_publications(db, now=now + timedelta(days=2))
+    assert future in due_later

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- A herald's trumpet: bell to the right, three sound arcs leaving it. -->
+  <rect width="32" height="32" rx="7" fill="#16181d" />
+  <path
+    d="M7 16 L19 10 L19 22 Z"
+    fill="#3b5bdb"
+  />
+  <path
+    d="M22 12.5a5 5 0 0 1 0 7M25.5 10a9 9 0 0 1 0 12"
+    stroke="#a3bcff"
+    stroke-width="1.8"
+    stroke-linecap="round"
+    fill="none"
+  />
+</svg>

@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Herald UI — clean editorial.
+
+  Off-white paper, near-black ink, hairline rules instead of heavy cards, and
+  one blue accent reserved for the thing you should do next. Data is monospace
+  so a list of statuses lines up; prose is not.
+*/
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-[15px] text-ink-700 antialiased;
+  }
+
+  ::selection {
+    @apply bg-brand-100 text-ink-900;
+  }
+
+  /* Slim scrollbars — the content tables are dense enough already. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full border-4 border-transparent bg-ink-400/40 bg-clip-padding;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-ink-400/70;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500/50 ring-offset-2 ring-offset-canvas;
+  }
+}
+
+@layer components {
+  /* ---- Surfaces ---- */
+  .panel {
+    @apply rounded-xl border border-line bg-paper shadow-card;
+  }
+
+  /* ---- Type ---- */
+  .eyebrow {
+    @apply font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400;
+  }
+  .stat-figure {
+    @apply font-display text-4xl leading-none text-ink-900;
+    font-variant-numeric: tabular-nums;
+  }
+  .page-title {
+    @apply font-display text-3xl leading-tight text-ink-900;
+  }
+
+  /* ---- Controls ---- */
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-4
+           py-2.5 text-sm font-medium transition-all duration-150
+           disabled:pointer-events-none disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply btn bg-brand-500 text-white hover:bg-brand-600 active:scale-[0.985];
+  }
+  .btn-ghost {
+    @apply btn border border-line-strong bg-paper text-ink-700 hover:border-ink-400
+           hover:bg-canvas active:scale-[0.985];
+  }
+  .btn-quiet {
+    @apply btn px-2.5 py-1.5 text-xs text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900;
+  }
+  .btn-danger {
+    @apply btn bg-bad text-white hover:bg-bad/90 active:scale-[0.985];
+  }
+
+  .input {
+    @apply w-full rounded-lg border border-line-strong bg-paper px-3.5 py-2.5 text-sm
+           text-ink-900 placeholder:text-ink-400 focus:border-brand-500
+           focus:outline-none focus:ring-0;
+  }
+  .label {
+    @apply mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400;
+  }
+
+  /* ---- Data ---- */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas
+           px-2 py-1 font-mono text-[11px] text-ink-700;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5
+           py-0.5 font-mono text-[10px] uppercase tracking-wider;
+  }
+  .cell {
+    @apply px-4 py-3 align-middle;
+  }
+
+  /* Rendered Markdown in the content preview. Deliberately narrow measure —
+     a full-width blog post is unreadable on a desktop monitor. */
+  .prose-herald {
+    @apply max-w-[68ch] text-[15px] leading-[1.7] text-ink-700;
+  }
+  .prose-herald h1,
+  .prose-herald h2,
+  .prose-herald h3 {
+    @apply mb-3 mt-8 font-semibold text-ink-900;
+  }
+  .prose-herald h1 {
+    @apply text-2xl;
+  }
+  .prose-herald h2 {
+    @apply text-xl;
+  }
+  .prose-herald h3 {
+    @apply text-base;
+  }
+  .prose-herald p,
+  .prose-herald ul,
+  .prose-herald ol {
+    @apply mb-4;
+  }
+  .prose-herald ul {
+    @apply list-disc pl-5;
+  }
+  .prose-herald ol {
+    @apply list-decimal pl-5;
+  }
+  .prose-herald li {
+    @apply mb-1;
+  }
+  .prose-herald code {
+    @apply rounded bg-canvas px-1.5 py-0.5 font-mono text-[13px] text-ink-900;
+  }
+  .prose-herald pre {
+    @apply mb-4 overflow-x-auto rounded-lg border border-line bg-canvas p-4;
+  }
+  .prose-herald pre code {
+    @apply bg-transparent p-0;
+  }
+  .prose-herald a {
+    @apply text-brand-500 underline underline-offset-2;
+  }
+  .prose-herald blockquote {
+    @apply mb-4 border-l-2 border-line-strong pl-4 italic;
+  }
+}
+
+@layer utilities {
+  .stagger > * {
+    animation: fade-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .stagger > *:nth-child(1) { animation-delay: 0.02s; }
+  .stagger > *:nth-child(2) { animation-delay: 0.07s; }
+  .stagger > *:nth-child(3) { animation-delay: 0.12s; }
+  .stagger > *:nth-child(4) { animation-delay: 0.17s; }
+  .stagger > *:nth-child(5) { animation-delay: 0.22s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

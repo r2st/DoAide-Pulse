@@ -1,0 +1,52 @@
+import { describe, expect, it, vi } from "vitest";
+import { formatCount, formatWhen, localDayKey, statusTone, titleize } from "./format";
+
+describe("formatWhen", () => {
+  it("handles both directions and empty values", () => {
+    expect(formatWhen(null)).toBe("—");
+    expect(formatWhen(new Date(Date.now() - 2 * 3600_000))).toBe("2h ago");
+    expect(formatWhen(new Date(Date.now() + 3 * 86_400_000))).toBe("in 3d");
+  });
+
+  it("falls back to a calendar date past a week", () => {
+    const old = new Date(Date.now() - 60 * 86_400_000);
+    expect(formatWhen(old)).not.toContain("ago");
+  });
+});
+
+describe("titleize", () => {
+  it("turns an enum value into a label", () => {
+    expect(titleize("feature_spotlight")).toBe("Feature Spotlight");
+    expect(titleize("devto")).toBe("Devto");
+    expect(titleize("")).toBe("");
+  });
+});
+
+describe("formatCount", () => {
+  it("distinguishes zero from missing", () => {
+    expect(formatCount(0)).toBe("0");
+    expect(formatCount(null)).toBe("—");
+    expect(formatCount(undefined)).toBe("—");
+  });
+});
+
+describe("statusTone", () => {
+  it("gives published and failed distinct tones", () => {
+    expect(statusTone("published")).not.toBe(statusTone("failed"));
+    expect(statusTone("anything-else")).toContain("ink");
+  });
+});
+
+describe("localDayKey", () => {
+  it("buckets by the local day, not the UTC one", () => {
+    // 23:30 UTC on the 21st is still the 21st for a UTC+0 test runner, but the
+    // point is that the key comes from local getters, not toISOString().
+    const spy = vi.spyOn(Date.prototype, "getDate").mockReturnValue(22);
+    expect(localDayKey("2026-07-21T23:30:00Z")).toMatch(/-22$/);
+    spy.mockRestore();
+  });
+
+  it("zero-pads month and day", () => {
+    expect(localDayKey(new Date(2026, 0, 5))).toBe("2026-01-05");
+  });
+});
