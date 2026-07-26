@@ -1,0 +1,46 @@
+# Herald — vhost block for the shared Caddy instance on the Hetzner box
+# (container `knol-caddy`, config at /opt/knol/Caddyfile). Append this block
+# there and `docker exec knol-caddy caddy reload --config /etc/caddy/Caddyfile`.
+#
+# One origin, not two: the SPA calls the API at the relative path /api/v1
+# (frontend/src/lib/api.js), so the API must be same-origin. A separate
+# api.herald.aiknol.com would need CORS plus a rebuild to bake in the absolute
+# URL — this way neither is required.
+#
+# 172.18.0.1 is the knol_knol bridge gateway, i.e. the host as seen from inside
+# the Caddy container. Herald's services bind that address only, so they are
+# unreachable from the public internet.
+
+herald.aiknol.com {
+	@api path /api/*
+	handle @api {
+		reverse_proxy 172.18.0.1:3006 {
+			health_uri /api/v1/health
+			health_interval 30s
+		}
+	}
+
+	# FastAPI's own docs/openapi live outside /api.
+	@docs path /docs /docs/* /redoc /redoc/* /openapi.json
+	handle @docs {
+		reverse_proxy 172.18.0.1:3006
+	}
+
+	handle {
+		reverse_proxy 172.18.0.1:3007
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		X-XSS-Protection "1; mode=block"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+}

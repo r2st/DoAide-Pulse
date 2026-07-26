@@ -1,0 +1,28 @@
+[Unit]
+Description=Herald Web (static SPA server)
+Documentation=https://github.com/r2st/Herald
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=herald
+Group=herald
+WorkingDirectory=/opt/Herald
+ExecStart=/usr/bin/node /opt/Herald/deploy/static-server.mjs --root /opt/Herald/frontend/dist --host 172.18.0.1 --port 3007
+Restart=always
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/Herald
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=herald-web
+
+[Install]
+WantedBy=multi-user.target

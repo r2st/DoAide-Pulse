@@ -25,7 +25,9 @@ from app.security import hash_password
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("seed")
 
-DEFAULT_EMAIL = "dev@herald.local"
+# Not a `.local` address: that TLD is special-use, and `EmailStr` rejects it —
+# the account would seed fine and then 500 the moment /auth/me serialized it.
+DEFAULT_EMAIL = "dev@herald.example.com"
 
 HERALD_DESCRIPTION = (
     "Herald is an AI-powered marketing automation tool for developers who ship "

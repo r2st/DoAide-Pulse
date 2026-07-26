@@ -1,0 +1,31 @@
+[Unit]
+Description=Herald Celery beat (autopilot scan, publish sweep, metrics poll)
+Documentation=https://github.com/r2st/Herald
+After=network.target redis-server.service herald-worker.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=herald
+Group=herald
+WorkingDirectory=/opt/Herald/backend
+EnvironmentFile=/opt/Herald/.env
+# The schedule file must live under ReadWritePaths; beat's default is the CWD,
+# which ProtectSystem=strict makes read-only.
+ExecStart=/opt/Herald/.venv/bin/celery -A app.tasks.celery_app:celery_app beat --loglevel=info --schedule /opt/Herald/backend/celerybeat-schedule
+Restart=always
+RestartSec=10
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/Herald
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=herald-beat
+
+[Install]
+WantedBy=multi-user.target
