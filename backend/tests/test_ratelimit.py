@@ -116,6 +116,13 @@ def test_register_accepted_with_the_right_invite_token(client, monkeypatch):
     assert resp.json()["email"] == "invitee@example.com"
 
 
+def test_a_non_ascii_invite_token_is_a_403_not_a_500(client, monkeypatch):
+    """secrets.compare_digest raises TypeError on non-ASCII str input."""
+    monkeypatch.setattr(settings, "registration_invite_token", "s3cret-invite-token")
+    resp = client.post(REGISTER, json=_payload(invite_token="pásswörd-with-accents"))
+    assert resp.status_code == 403
+
+
 def test_register_refused_in_production_without_an_invite_token(client, monkeypatch):
     """Fail closed: "enabled but tokenless" in production is a misconfiguration."""
     monkeypatch.setattr(settings, "environment", "production")

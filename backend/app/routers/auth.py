@@ -63,8 +63,12 @@ def _assert_registration_allowed(invite_token: str | None) -> None:
         return
 
     # compare_digest over ==: the comparison is against a secret, and a short
-    # constant-time check costs nothing.
-    if not invite_token or not secrets.compare_digest(invite_token, required):
+    # constant-time check costs nothing. Encoded first — compare_digest raises
+    # TypeError on a non-ASCII *str*, so a token with an accent in it would be a
+    # 500 rather than a 403.
+    if not invite_token or not secrets.compare_digest(
+        invite_token.encode("utf-8"), required.encode("utf-8")
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Invalid invite token."
         )
