@@ -143,8 +143,10 @@ rather than attempted and failed. Whichever one serves a piece is recorded on it
 (`generated_by_provider`), and `GET /api/v1/health` lists the configured chain
 in the order it will be tried.
 
-**Set at least one fallback key on the box** — without one, a day when the
-shared OpenRouter quota is already spent is a day of template output:
+**No fallback key is set on the box yet** — `GEMINI_API_KEY` and `GROQ_API_KEY`
+are present in `/opt/Herald/.env` but empty, so the live chain is
+`["openrouter"]` and a day when the shared quota is already spent is a day of
+template output. Fixing that needs a key, which has to be created by hand:
 
 ```bash
 # /opt/Herald/.env, then: systemctl restart herald-api herald-worker herald-beat
@@ -214,10 +216,15 @@ the only part that is rate limited (`app/ratelimit.py`, slowapi).
   /auth/register` answers 403. The account is the seeded one. Opening it in
   production additionally requires `REGISTRATION_INVITE_TOKEN`; enabled without
   a token is refused rather than served open.
-- **Limits** default to 10/minute login, 5/hour register, 5/hour password reset,
-  60/minute `/auth/me`. Counters live in process memory, so with two uvicorn
-  workers the real budget is double the number. Set
-  `RATE_LIMIT_STORAGE_URI=redis://localhost:6379/3` to make it exact.
+- **Limits** are 10/minute login, 5/hour register, 5/hour password reset,
+  60/minute `/auth/me`. Counters are in **Redis DB 3** on this box
+  (`RATE_LIMIT_STORAGE_URI=redis://localhost:6379/3`, set in `/opt/Herald/.env`),
+  so the numbers are exact. Left blank they live in process memory, which with
+  `--workers 2` means each worker keeps its own and the real budget is double —
+  and, because a caller's consecutive requests land on either worker, the limit
+  is not observable from outside. Redis being unreachable degrades to allowing
+  requests (`swallow_errors`), not to blocking them; the health check catches the
+  outage separately.
 - **The client address comes from Caddy**, which appends the peer it saw to
   `X-Forwarded-For`. Herald reads the **rightmost** entry, so a caller cannot
   prepend a value and reset its own budget. `RATE_LIMIT_TRUST_FORWARDED_FOR=false`

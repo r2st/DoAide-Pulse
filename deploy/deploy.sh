@@ -54,7 +54,21 @@ systemctl start herald-worker herald-beat
 
 systemctl --no-pager --lines=0 status herald-api herald-web herald-worker herald-beat \
   | grep -E 'herald-|Active:'
-curl -fsS http://172.18.0.1:3006/api/v1/health && echo
+
+# Retry: this runs milliseconds after `systemctl restart`, so a single curl
+# raced uvicorn's bind and failed an otherwise good deploy. The endpoint probes
+# Postgres and Redis and answers 503 if either is down, so -f still turns a
+# broken dependency into a failed deploy — which is the point of checking.
+for attempt in $(seq 1 15); do
+  if curl -fsS --max-time 5 http://172.18.0.1:3006/api/v1/health; then
+    echo
+    echo "health ok after ${attempt} attempt(s)"
+    exit 0
+  fi
+  sleep 1
+done
+echo "health check never came up — journalctl -u herald-api -n 50" >&2
+exit 1
 REMOTE_SCRIPT
 
 echo "==> done: https://herald.aiknol.com"
