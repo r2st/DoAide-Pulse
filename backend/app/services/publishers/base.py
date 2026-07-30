@@ -142,6 +142,9 @@ class MetricsSnapshot:
     clicks: int | None = None
     reactions: int | None = None
     comments: int | None = None
+    #: Boosts, reposts, retweets. Distinct from a reaction: it is the one signal
+    #: that extends a post's reach rather than describing it.
+    shares: int | None = None
 
 
 class Adapter(ABC):

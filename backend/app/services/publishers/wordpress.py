@@ -1,14 +1,22 @@
-"""WordPress adapter — scaffolded.
+"""WordPress adapter.
 
-:meth:`build_payload` is real: it produces the ``/wp/v2/posts`` body, with the
-Markdown already rendered to the HTML the block editor stores.
+Self-hosted WordPress over the REST API, authenticated with an *application
+password* — Basic auth, issued per application, revocable on its own, and not
+the account password. No OAuth, which is what makes the largest publishing
+platform in the world one of the cheapest destinations to support.
 
-Of the four scaffolded platforms this is the closest to done — WordPress
-application passwords are Basic auth, so there is no OAuth to build. It sits
-behind Medium and Dev.to only because it needs a self-hosted site to test
-against, and an adapter nobody has run once is not something to call finished.
-Wiring it up is a ``_request`` with an ``Authorization: Basic`` header built
-from ``username:application_password``.
+Two site-shaped things this has to tolerate, because they vary per install
+rather than per account:
+
+* **The REST root moves.** ``/wp-json`` is the default, but a site on plain
+  permalinks serves it at ``/?rest_route=``. Only the default is supported; a
+  site on the other gets a clear 404 rather than silent nonsense.
+* **Basic auth is sometimes stripped.** Apache in CGI mode drops the
+  ``Authorization`` header before PHP sees it, and the symptom is a 401 with
+  perfectly good credentials. :attr:`caveat` says so, because the generic
+  "reconnect the account" advice is wrong for that one cause.
+
+API: https://developer.wordpress.org/rest-api/reference/posts/
 """
 from __future__ import annotations
 
@@ -19,8 +27,9 @@ from app.models.publication import Platform
 from app.services.publishers import formatting
 from app.services.publishers.base import (
     Adapter,
+    CredentialError,
     CredentialField,
-    NotImplementedAdapter,
+    PublishError,
     PublishRequest,
     PublishResult,
 )
@@ -29,12 +38,16 @@ from app.services.publishers.base import (
 class WordPressAdapter(Adapter):
     platform = Platform.WORDPRESS
     display_name = "WordPress"
-    implemented = False
+    implemented = True
     utm_medium = "syndication"
+    # The REST API reports no view counts — those live in Jetpack Stats or
+    # whatever analytics the site runs, neither of which is core.
     supports_metrics = False
     caveat = (
-        "Uses application passwords (Basic auth) — no OAuth needed. The publish "
-        "call is written but untested against a live site."
+        "Self-hosted WordPress with the REST API at /wp-json. Uses an "
+        "application password (Users → Profile → Application Passwords), not "
+        "your login password. If a correct password gets a 401, the host is "
+        "stripping the Authorization header."
     )
     credential_fields = (
         CredentialField(
@@ -87,11 +100,55 @@ class WordPressAdapter(Adapter):
             payload["tags_input"] = tags
         return payload
 
+    def _headers(self, username: str, application_password: str) -> dict[str, str]:
+        return {
+            "Authorization": self.auth_header(username, application_password),
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+    def verify(self, credentials: dict[str, Any]) -> str:
+        site_url, username, password = self._require(
+            credentials, "site_url", "username", "application_password"
+        )
+        resp = self._request(
+            "GET",
+            f"{self.api_root(site_url)}/users/me",
+            headers=self._headers(username, password),
+        )
+        data = resp.json() or {}
+        if not data.get("id"):
+            raise CredentialError(
+                "WordPress accepted the request but returned no user — check "
+                "that the REST API is reachable at /wp-json."
+            )
+        return data.get("name") or data.get("slug") or username
+
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
-        raise NotImplementedAdapter(
-            "The WordPress adapter is not finished — its publish call has not been "
-            "tested against a live site. Content queued for WordPress will stay "
-            "pending."
+        site_url, username, password = self._require(
+            credentials, "site_url", "username", "application_password"
+        )
+
+        resp = self._request(
+            "POST",
+            f"{self.api_root(site_url)}/posts",
+            headers=self._headers(username, password),
+            json_body=self.build_payload(request),
+        )
+        data = resp.json() or {}
+
+        post_id = data.get("id")
+        if not post_id:
+            raise PublishError(f"WordPress returned no post id: {data}")
+
+        # `link` is the permalink; a draft has none, so fall back to the editor.
+        url = data.get("link") or (
+            f"{site_url.rstrip('/')}/wp-admin/post.php?post={post_id}&action=edit"
+        )
+        return PublishResult(
+            external_id=str(post_id),
+            external_url=url,
+            extra={"status": data.get("status"), "slug": data.get("slug")},
         )
 
 

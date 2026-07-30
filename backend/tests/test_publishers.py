@@ -5,15 +5,25 @@ is where the platform-specific bugs actually live.
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from app.models.publication import Platform
 from app.services import publishers
-from app.services.publishers import formatting
-from app.services.publishers.base import NotImplementedAdapter, PublishRequest
+from app.services.publishers import bluesky, formatting
+from app.services.publishers.base import (
+    CredentialError,
+    NotImplementedAdapter,
+    PublishRequest,
+    UnsupportedOption,
+)
+from app.services.publishers.bluesky import BlueskyAdapter
 from app.services.publishers.devto import DevToAdapter
+from app.services.publishers.git import GitAdapter
 from app.services.publishers.hashnode import HashnodeAdapter
 from app.services.publishers.linkedin import LinkedInAdapter
+from app.services.publishers.mastodon import MastodonAdapter
 from app.services.publishers.twitter import TwitterAdapter
 from app.services.publishers.wordpress import WordPressAdapter
 
@@ -39,7 +49,9 @@ def request_() -> PublishRequest:
 
 def test_registry_reports_what_actually_works():
     implemented = set(publishers.implemented_platforms())
-    assert implemented == {Platform.DEVTO, Platform.MEDIUM}
+    # The two that need an auth flow nobody can complete on a free tier are the
+    # only ones left: LinkedIn wants a registered app, Twitter a paid plan.
+    assert implemented == set(Platform) - {Platform.LINKEDIN, Platform.TWITTER}
     # Every enum member has an adapter, finished or not.
     assert len(publishers.all_adapters()) == len(list(Platform))
     # Working adapters sort first for the settings page.
@@ -58,10 +70,140 @@ def test_unknown_platform_raises():
 
 
 def test_unfinished_adapters_refuse_clearly(request_):
-    for adapter in (HashnodeAdapter(), LinkedInAdapter(), TwitterAdapter(), WordPressAdapter()):
+    for adapter in (LinkedInAdapter(), TwitterAdapter()):
         with pytest.raises(NotImplementedAdapter) as exc:
             adapter.publish(request_, {})
         assert "not finished" in str(exc.value)
+
+
+def test_finished_adapters_ask_for_credentials_rather_than_refusing(request_):
+    # The distinction the API answers "why can't I publish here?" with: an
+    # unfinished adapter is a Herald problem, a missing credential is the
+    # user's, and they must not look the same.
+    for adapter in (
+        HashnodeAdapter(),
+        WordPressAdapter(),
+        MastodonAdapter(),
+        BlueskyAdapter(),
+        GitAdapter(),
+    ):
+        with pytest.raises(CredentialError):
+            adapter.publish(request_, {})
+
+
+def test_platforms_without_drafts_refuse_rather_than_going_live(request_):
+    # The one outcome that must never happen: somebody ticks "draft" to stay
+    # unpublished and the post goes out anyway.
+    draft = replace(request_, as_draft=True)
+    for adapter in (MastodonAdapter(), BlueskyAdapter()):
+        with pytest.raises(UnsupportedOption) as exc:
+            adapter.publish(draft, {"instance_url": "https://x.social",
+                                    "access_token": "t", "handle": "h",
+                                    "app_password": "p"})
+        assert "draft" in str(exc.value)
+
+
+# -- Mastodon -------------------------------------------------------------- #
+
+
+def test_mastodon_status_fits_the_limit_and_keeps_the_link(request_):
+    status = MastodonAdapter().build_status(request_)
+    assert request_.canonical_url in status
+    assert "#python" in status
+    # Links cost a flat 23 wherever they really point.
+    charged = len(status) - len(request_.canonical_url) + formatting.MASTODON_LINK_COST
+    assert charged <= formatting.MASTODON_LIMIT
+
+
+def test_mastodon_status_still_fits_with_an_enormous_excerpt(request_):
+    long = replace(request_, excerpt="word " * 400)
+    status = MastodonAdapter().build_status(long)
+    charged = len(status) - len(long.canonical_url) + formatting.MASTODON_LINK_COST
+    assert charged <= formatting.MASTODON_LIMIT
+    assert long.canonical_url in status
+
+
+@pytest.mark.parametrize(
+    "pasted", ["fosstodon.org", "https://fosstodon.org", "https://fosstodon.org/@me"]
+)
+def test_mastodon_accepts_any_shape_of_instance_url(pasted):
+    assert MastodonAdapter()._api(pasted) == "https://fosstodon.org/api/v1"
+
+
+def test_mastodon_rejects_an_unknown_visibility():
+    with pytest.raises(CredentialError):
+        MastodonAdapter()._visibility({"visibility": "shouty"})
+
+
+# -- Bluesky --------------------------------------------------------------- #
+
+
+def test_bluesky_post_fits_the_limit_counting_the_link_in_full(request_):
+    text = BlueskyAdapter().build_text(request_)
+    assert len(text) <= formatting.BLUESKY_LIMIT
+    assert request_.canonical_url in text
+
+
+def test_bluesky_facets_are_byte_offsets_not_character_offsets():
+    # An em dash is one character and three bytes. Counting characters here is
+    # the bug this test exists for: the link would highlight the wrong span.
+    url = "https://herald.example.com/post"
+    text = f"Shipped — read it: {url}"
+    (facet,) = bluesky.link_facets(text, url)
+
+    start, end = facet["index"]["byteStart"], facet["index"]["byteEnd"]
+    assert text.encode("utf-8")[start:end].decode("utf-8") == url
+    assert start != text.index(url)  # i.e. the naive version would be wrong
+
+
+def test_bluesky_facets_are_empty_when_the_link_did_not_survive():
+    assert bluesky.link_facets("no link here", "https://example.com") == []
+
+
+# -- Git ------------------------------------------------------------------- #
+
+
+def test_git_file_has_front_matter_and_body(request_):
+    contents = GitAdapter().build_file(request_)
+    assert contents.startswith("---\n")
+    assert 'title: "Automating developer marketing"' in contents
+    assert "## Why" in contents
+    assert "draft:" not in contents
+
+
+def test_git_draft_is_a_front_matter_flag_not_a_refusal(request_):
+    contents = GitAdapter().build_file(replace(request_, as_draft=True))
+    assert "draft: true" in contents
+
+
+def test_git_path_template_takes_the_slug_and_the_date(request_):
+    piece = replace(request_, slug="automating-developer-marketing")
+    path = GitAdapter().path_for(piece, {"path_template": "_posts/{year}-{month}-{day}-{slug}.md"})
+    assert path.endswith("-automating-developer-marketing.md")
+    assert path.startswith("_posts/")
+
+
+def test_git_refuses_a_path_that_escapes_the_repository(request_):
+    with pytest.raises(CredentialError):
+        GitAdapter().path_for(request_, {"path_template": "../../etc/{slug}.md"})
+
+
+def test_git_refuses_an_unknown_placeholder(request_):
+    with pytest.raises(CredentialError):
+        GitAdapter().path_for(request_, {"path_template": "posts/{author}.md"})
+
+
+@pytest.mark.parametrize(
+    "pasted",
+    ["r2st/Herald", "https://github.com/r2st/Herald", "git@github.com:r2st/Herald.git"],
+)
+def test_git_accepts_any_shape_of_repo(pasted):
+    assert GitAdapter()._repo({"repo": pasted}) == "r2st/Herald"
+
+
+def test_git_rejects_something_that_is_not_a_repo():
+    with pytest.raises(CredentialError):
+        GitAdapter()._repo({"repo": "just-a-name"})
 
 
 def test_markdown_to_html_keeps_code_fences(request_):

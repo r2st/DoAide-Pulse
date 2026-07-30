@@ -40,13 +40,23 @@ class ContentMetric(Base):
     clicks: Mapped[int | None] = mapped_column(Integer)
     reactions: Mapped[int | None] = mapped_column(Integer)
     comments: Mapped[int | None] = mapped_column(Integer)
+    #: Boosts, reposts, retweets — someone putting the post in front of their
+    #: own audience. Kept apart from ``reactions`` because it is the only
+    #: engagement signal that grows the reach rather than measuring it, and on
+    #: the social platforms it is the number worth optimising for.
+    shares: Mapped[int | None] = mapped_column(Integer)
 
     publication: Mapped[Publication] = relationship(back_populates="metrics")
 
     @property
     def engagement(self) -> int:
-        """Reactions + comments + clicks, treating missing as zero."""
-        return (self.reactions or 0) + (self.comments or 0) + (self.clicks or 0)
+        """Every interaction the platform reported, treating missing as zero."""
+        return (
+            (self.reactions or 0)
+            + (self.comments or 0)
+            + (self.clicks or 0)
+            + (self.shares or 0)
+        )
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<ContentMetric pub={self.publication_id} views={self.views}>"

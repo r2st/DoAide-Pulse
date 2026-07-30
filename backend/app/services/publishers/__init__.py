@@ -20,9 +20,12 @@ from app.services.publishers.base import (
     PublishRequest,
     PublishResult,
 )
+from app.services.publishers.bluesky import BlueskyAdapter
 from app.services.publishers.devto import DevToAdapter
+from app.services.publishers.git import GitAdapter
 from app.services.publishers.hashnode import HashnodeAdapter
 from app.services.publishers.linkedin import LinkedInAdapter
+from app.services.publishers.mastodon import MastodonAdapter
 from app.services.publishers.medium import MediumAdapter
 from app.services.publishers.twitter import TwitterAdapter
 from app.services.publishers.wordpress import WordPressAdapter
@@ -34,6 +37,9 @@ _ADAPTERS: dict[Platform, Adapter] = {
     Platform.LINKEDIN: LinkedInAdapter(),
     Platform.TWITTER: TwitterAdapter(),
     Platform.WORDPRESS: WordPressAdapter(),
+    Platform.MASTODON: MastodonAdapter(),
+    Platform.BLUESKY: BlueskyAdapter(),
+    Platform.GIT: GitAdapter(),
 }
 
 

@@ -48,6 +48,12 @@ class Platform(str, Enum):
     LINKEDIN = "linkedin"
     TWITTER = "twitter"
     WORDPRESS = "wordpress"
+    MASTODON = "mastodon"
+    BLUESKY = "bluesky"
+    #: Not a platform so much as a destination: a commit to the repo a blog is
+    #: built from. Usually the one that should own the canonical URL, since it
+    #: is the only copy on a domain the user controls.
+    GIT = "git"
 
 
 class PublicationStatus(str, Enum):

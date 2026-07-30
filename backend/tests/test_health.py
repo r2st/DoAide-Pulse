@@ -111,5 +111,13 @@ def test_health_still_reports_capabilities(client, redis_up):
     body = client.get(HEALTH).json()
     # conftest blanks every key, so the chain is empty in tests.
     assert body["llm_providers"] == []
-    assert set(body["implemented_platforms"]) == {"devto", "medium"}
+    assert set(body["implemented_platforms"]) == {
+        "devto",
+        "medium",
+        "hashnode",
+        "wordpress",
+        "mastodon",
+        "bluesky",
+        "git",
+    }
     assert body["github_configured"] is False

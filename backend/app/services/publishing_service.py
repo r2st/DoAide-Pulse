@@ -440,6 +440,7 @@ def collect_metrics(db: Session, publication: Publication) -> ContentMetric | No
         clicks=snapshot.clicks,
         reactions=snapshot.reactions,
         comments=snapshot.comments,
+        shares=snapshot.shares,
     )
     db.add(metric)
     db.commit()
