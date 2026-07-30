@@ -33,6 +33,7 @@ class TwitterAdapter(Adapter):
     platform = Platform.TWITTER
     display_name = "Twitter / X"
     implemented = False
+    utm_medium = "social"
     supports_metrics = False
     caveat = (
         "Needs OAuth 1.0a signing (or 3-legged OAuth 2.0) and a paid API tier "
@@ -53,7 +54,7 @@ class TwitterAdapter(Adapter):
         reader landing mid-thread knows there is more, and the hashtags go last
         where they cost no space in the hook.
         """
-        link = request.canonical_url or request.project_url
+        link = request.link
         hook = formatting.truncate_for_tweet(
             request.excerpt or request.title, url=link
         )

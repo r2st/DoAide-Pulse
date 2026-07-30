@@ -23,7 +23,7 @@ from app.models.metrics import ContentMetric
 from app.models.mixins import utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform, Publication, PublicationStatus
-from app.services import publishers
+from app.services import publishers, utm
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
 from app.services.publishers.base import (
     CredentialError,
@@ -171,25 +171,79 @@ def _mark_connection_invalid(
         connection.last_error = error
 
 
-def build_request(content: Content, *, as_draft: bool = False) -> PublishRequest:
+def build_request(
+    content: Content, *, platform: Platform | None = None, as_draft: bool = False
+) -> PublishRequest:
     """The flat value object adapters take, built from a content row.
 
     Called while the session is open so the ``project`` relationship is loaded
     before the worker touches it.
+
+    *platform* is what makes the request platform-specific without making the
+    adapters stateful: it supplies the campaign source for the outbound links
+    and the idempotency key. It is optional so that callers who only want to
+    preview the shared parts — the SEO panel, tests — need not name one.
     """
     project = content.project
+    tagged = _Campaign(content, platform)
+
     return PublishRequest(
         title=content.title,
-        body_markdown=content.body_markdown,
+        body_markdown=tagged.markdown(content.body_markdown),
         excerpt=content.excerpt,
         meta_description=content.meta_description,
         tags=list(content.tags or []),
+        slug=content.slug,
         canonical_url=content.canonical_url,
+        share_url=tagged.url(
+            content.canonical_url or (project.live_url if project else None)
+        ),
         cover_image_url=content.cover_image_url,
-        project_url=project.live_url if project else None,
+        project_url=tagged.url(project.live_url if project else None),
         project_name=project.name if project else "",
         as_draft=as_draft,
+        idempotency_key=(
+            f"herald-{content.id}-{platform.value}" if platform and content.id else None
+        ),
     )
+
+
+class _Campaign:
+    """Applies one project's UTM parameters, for one platform.
+
+    Built once per request so the parameters cannot drift between the share
+    link and the links inside the body — an article whose byline link is
+    attributed to Dev.to and whose body links are attributed to nothing is
+    worse than either alone.
+    """
+
+    def __init__(self, content: Content, platform: Platform | None) -> None:
+        project = content.project
+        # No platform means no honest ``utm_source``, and inventing one would be
+        # worse than not tagging: it looks like data.
+        self.active = bool(
+            platform is not None and project is not None and project.utm_enabled
+        )
+        self.host = utm.host_of(project.live_url) if project else ""
+        self.params = (
+            {
+                "source": platform.value,
+                "medium": publishers.get_adapter(platform).utm_medium,
+                "campaign": project.campaign,
+                "content": content.slug,
+            }
+            if self.active and platform and project
+            else {}
+        )
+
+    def url(self, url: str | None) -> str | None:
+        return utm.tag(url, **self.params) if self.active else url
+
+    def markdown(self, body: str) -> str:
+        """Tag the body's links to the project's own site, and nothing else."""
+        if not self.active:
+            return body
+        return utm.tag_markdown_links(body, host=self.host, **self.params)
 
 
 def execute(db: Session, publication: Publication) -> Publication:
@@ -210,7 +264,12 @@ def execute(db: Session, publication: Publication) -> Publication:
     try:
         credentials = _credentials_for(db, user_id, publication.platform)
         result = adapter.publish(
-            build_request(content, as_draft=publication.as_draft), credentials
+            build_request(
+                content,
+                platform=publication.platform,
+                as_draft=publication.as_draft,
+            ),
+            credentials,
         )
     except (NotConnected, NotImplementedAdapter, UnsupportedOption) as exc:
         # None of these is transient: no amount of retrying connects an account,

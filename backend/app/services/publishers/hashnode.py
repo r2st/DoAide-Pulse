@@ -32,6 +32,7 @@ class HashnodeAdapter(Adapter):
     platform = Platform.HASHNODE
     display_name = "Hashnode"
     implemented = False
+    utm_medium = "syndication"
     supports_metrics = False
     caveat = "Formatting is implemented; the GraphQL publish call is not wired up yet."
     credential_fields = (

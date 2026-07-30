@@ -34,6 +34,7 @@ class DevToAdapter(Adapter):
     platform = Platform.DEVTO
     display_name = "Dev.to"
     implemented = True
+    utm_medium = "syndication"
     supports_metrics = True
     credential_fields = (
         CredentialField(

@@ -106,6 +106,15 @@ class Project(Base, TimestampMixin):
         SAEnum(Platform, native_enum=False, length=30)
     )
 
+    # ---- Attribution ----
+    #: Append UTM parameters to the links published posts point at, so the
+    #: project's own analytics can tell which platform sent the visit. Never
+    #: applied to ``rel=canonical`` — see ``app.services.utm``.
+    utm_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: ``utm_campaign`` for this project's links. Blank means the project slug,
+    #: which is the answer almost everybody wants and nobody wants to type.
+    utm_campaign: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+
     # ---- Autopilot ----
     autopilot_mode: Mapped[AutopilotMode] = mapped_column(
         SAEnum(AutopilotMode, native_enum=False, length=20),
@@ -127,6 +136,11 @@ class Project(Base, TimestampMixin):
     content: Mapped[list[Content]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+
+    @property
+    def campaign(self) -> str:
+        """The ``utm_campaign`` value for this project's outbound links."""
+        return (self.utm_campaign or "").strip() or self.slug
 
     @property
     def repo_full_name(self) -> str | None:

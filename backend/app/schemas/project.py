@@ -25,6 +25,10 @@ class ProjectBase(BaseModel):
     auto_canonical: bool = True
     #: Which destination counts as the original. ``None`` = first to publish wins.
     canonical_platform: Platform | None = None
+    #: Tag outbound links so the project's analytics can attribute the visit.
+    utm_enabled: bool = True
+    #: ``utm_campaign``. Blank falls back to the project slug.
+    utm_campaign: str = Field(default="", max_length=120)
 
     @field_validator("tech_stack", "keywords")
     @classmethod
@@ -62,6 +66,8 @@ class ProjectUpdate(BaseModel):
     autopilot_platforms: list[Platform] | None = None
     auto_canonical: bool | None = None
     canonical_platform: Platform | None = None
+    utm_enabled: bool | None = None
+    utm_campaign: str | None = Field(default=None, max_length=120)
 
 
 class ProjectOut(ProjectBase):

@@ -30,6 +30,7 @@ class WordPressAdapter(Adapter):
     platform = Platform.WORDPRESS
     display_name = "WordPress"
     implemented = False
+    utm_medium = "syndication"
     supports_metrics = False
     caveat = (
         "Uses application passwords (Basic auth) — no OAuth needed. The publish "

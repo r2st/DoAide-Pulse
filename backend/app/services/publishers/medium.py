@@ -48,6 +48,7 @@ class MediumAdapter(Adapter):
     implemented = True
     # Medium's API exposes no read/clap counts for a post. The stats live behind
     # the web UI only, so the metrics poller skips this platform.
+    utm_medium = "syndication"
     supports_metrics = False
     caveat = (
         "Medium stopped issuing new integration tokens in 2023. This works with "

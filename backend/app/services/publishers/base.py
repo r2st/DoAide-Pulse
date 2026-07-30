@@ -81,8 +81,16 @@ class PublishRequest:
     excerpt: str
     meta_description: str
     tags: list[str] = field(default_factory=list)
-    #: The URL of the original, when this is a syndicated copy.
+    #: URL-safe identifier for this piece — the filename a Git destination
+    #: writes to, and the ``utm_content`` value on its share link.
+    slug: str = ""
+    #: The URL of the original, when this is a syndicated copy. Sent verbatim as
+    #: ``rel=canonical`` and therefore **never** campaign-tagged: a canonical
+    #: that differs from the original's real address is worse than none.
     canonical_url: str | None = None
+    #: The campaign-tagged link a social post should point at. Built from the
+    #: canonical (or the project URL) by ``app.services.utm``; see :attr:`link`.
+    share_url: str | None = None
     #: Absolute URL of the feed/preview image. Every platform that supports one
     #: fetches it itself, so this stays a URL all the way down.
     cover_image_url: str | None = None
@@ -97,6 +105,17 @@ class PublishRequest:
     #: out on the way back is indistinguishable from one that failed, and without
     #: a key the retry posts a second copy.
     idempotency_key: str | None = None
+
+    @property
+    def link(self) -> str | None:
+        """The single URL a post should point a reader at.
+
+        The tagged share link when there is one, then the canonical, then the
+        project's own page. Adapters use this rather than picking among the
+        three themselves, so attribution cannot be lost by one adapter reaching
+        for ``canonical_url`` directly.
+        """
+        return self.share_url or self.canonical_url or self.project_url
 
 
 @dataclass(frozen=True)
@@ -142,6 +161,12 @@ class Adapter(ABC):
     #: surfaced verbatim in the UI. Used for platforms whose API access is
     #: restricted or deprecated.
     caveat: str = ""
+    #: ``utm_medium`` for links published here. Declared per adapter because the
+    #: distinction that matters downstream is what *kind* of channel this is —
+    #: a full article syndicated to another blog behaves nothing like a 300
+    #: character post with a link on it, and lumping both under "referral"
+    #: throws away the only free segmentation available.
+    utm_medium: str = "referral"
 
     @abstractmethod
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:

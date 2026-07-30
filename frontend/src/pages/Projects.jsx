@@ -29,6 +29,8 @@ const EMPTY_FORM = {
   autopilot_mode: "off",
   auto_canonical: true,
   canonical_platform: "",
+  utm_enabled: true,
+  utm_campaign: "",
 };
 
 /** The project registry: what Herald is allowed to write about. */
@@ -214,6 +216,8 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
           autopilot_mode: project.autopilot_mode,
           auto_canonical: project.auto_canonical ?? true,
           canonical_platform: project.canonical_platform ?? "",
+          utm_enabled: project.utm_enabled ?? true,
+          utm_campaign: project.utm_campaign ?? "",
         }
       : EMPTY_FORM,
   );
@@ -447,6 +451,49 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
               {form.canonical_platform
                 ? "Only this destination can claim the canonical URL. Copies queued alongside it wait until it has published."
                 : "No destination is privileged — the first one to publish owns the canonical URL."}
+            </p>
+          </div>
+        </fieldset>
+
+        <fieldset className="space-y-3 rounded-lg border border-line px-4 py-3">
+          <legend className="label px-1">Attribution</legend>
+
+          <label className="flex items-start gap-2.5 text-sm text-ink-700">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={form.utm_enabled}
+              onChange={(e) =>
+                setForm((current) => ({ ...current, utm_enabled: e.target.checked }))
+              }
+            />
+            <span>
+              Tag published links with UTM parameters
+              <span className="mt-0.5 block text-xs text-ink-400">
+                Links pointing at this project&rsquo;s own site carry the
+                platform they were published on, so your analytics can tell you
+                which destination actually sent the visit. The canonical URL is
+                never tagged.
+              </span>
+            </span>
+          </label>
+
+          <div>
+            <label className="label" htmlFor="p-utm-campaign">
+              Campaign name
+            </label>
+            <input
+              id="p-utm-campaign"
+              className="input"
+              value={form.utm_campaign}
+              disabled={!form.utm_enabled}
+              placeholder={project?.slug || "the project slug"}
+              onChange={set("utm_campaign")}
+              maxLength={120}
+            />
+            <p className="mt-1.5 text-xs text-ink-400">
+              The <code>utm_campaign</code> value. Leave blank to use the
+              project slug.
             </p>
           </div>
         </fieldset>

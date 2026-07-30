@@ -29,6 +29,7 @@ class LinkedInAdapter(Adapter):
     platform = Platform.LINKEDIN
     display_name = "LinkedIn"
     implemented = False
+    utm_medium = "social"
     supports_metrics = False
     caveat = (
         "Needs a registered LinkedIn app and a three-legged OAuth token "
@@ -59,7 +60,7 @@ class LinkedInAdapter(Adapter):
         tags = formatting.hashtagify(request.tags, limit=3)
         if tags:
             lead = f"{lead}\n\n{tags}"
-        link = request.canonical_url or request.project_url
+        link = request.link
         return formatting.truncate_for_linkedin(lead, url=link)
 
     def build_payload(self, request: PublishRequest, author_urn: str) -> dict[str, Any]:
