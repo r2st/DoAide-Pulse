@@ -132,10 +132,38 @@ LLM calls go to **OpenRouter free models** (`openai/gpt-oss-20b:free`,
 `openai/gpt-oss-120b:free`), using the same key Documedic uses. That key is on
 OpenRouter's free tier: **50 free-model requests per day, shared across every
 app using it**, after which calls return HTTP 429 and Herald falls through its
-provider chain to a static template. Fixes, in order of preference: give Herald
-its own key, add $10 of credit to unlock 1000/day, or configure one of the
-already-supported fallbacks (`GROQ_API_KEY`, `GEMINI_API_KEY`,
-`CEREBRAS_API_KEY`) — all have free tiers and all speak the same dialect.
+provider chain to a static template.
+
+### The fallback chain
+
+`OpenRouter → Gemini → Groq → Cerebras → static template`
+(`app/services/llm_router.py`). One dialect for all four, so a provider is just
+a base URL, a key and a model name; a provider with a blank key is skipped
+rather than attempted and failed. Whichever one serves a piece is recorded on it
+(`generated_by_provider`), and `GET /api/v1/health` lists the configured chain
+in the order it will be tried.
+
+**Set at least one fallback key on the box** — without one, a day when the
+shared OpenRouter quota is already spent is a day of template output:
+
+```bash
+# /opt/Herald/.env, then: systemctl restart herald-api herald-worker herald-beat
+GEMINI_API_KEY=…    # https://aistudio.google.com/apikey
+GROQ_API_KEY=…      # https://console.groq.com/keys
+```
+
+Both are free tiers with limits an order of magnitude above 50/day, and neither
+is shared with the other apps on this box. Giving Herald its own OpenRouter key
+(or $10 of credit, which unlocks 1000/day) is still the better fix for the
+primary provider; the fallbacks are what stop a bad afternoon from silently
+degrading every generated post.
+
+Verify what took effect:
+
+```bash
+curl -s https://herald.aiknol.com/api/v1/health | python3 -m json.tool
+# → "llm_providers": ["openrouter", "gemini", "groq"]
+```
 
 ## Health check
 

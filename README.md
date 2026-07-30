@@ -161,7 +161,8 @@ what happens if you leave it blank. The ones that matter:
 
 | Variable | Why |
 |---|---|
-| `OPENROUTER_API_KEY` | Without it, all generated content is the static template. |
+| `OPENROUTER_API_KEY` | Without it, all generated content is the static template. Free tier is 50 requests/**day**, and the quota belongs to the key — a key shared with another project can already be spent. |
+| `GEMINI_API_KEY` / `GROQ_API_KEY` | Fallbacks, tried in that order when OpenRouter fails or is out of quota. Same dialect, own free tiers: [aistudio.google.com/apikey](https://aistudio.google.com/apikey), [console.groq.com/keys](https://console.groq.com/keys). Configure at least one, or a spent OpenRouter quota means template output until it resets. |
 | `GITHUB_TOKEN` | Without it, repo scans run at 60 req/hour on public repos only. |
 | `TOKEN_ENCRYPTION_KEY` | Encrypts platform tokens at rest. **Production refuses to store a credential without it.** |
 | `JWT_SECRET` | Change it. |
