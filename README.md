@@ -169,6 +169,7 @@ what happens if you leave it blank. The ones that matter:
 | `REGISTRATION_ENABLED` | Off by default. `POST /auth/register` answers 403 — Herald is single-user and the account comes from `python -m app.seed`. |
 | `REGISTRATION_INVITE_TOKEN` | Required alongside the flag in production. Enabled-but-tokenless registration is refused there rather than served open. |
 | `RATE_LIMIT_STORAGE_URI` | Blank counts per uvicorn worker. Point it at Redis for one shared budget. |
+| `SMTP_HOST` | Blank means the password reset link is written to the log instead of emailed. Fine for a single-user install; it does put the link in the logs. |
 | `AUTOPILOT_AUTO_PUBLISH_CONFIDENCE` | The bar for publishing without review. Default 0.8. |
 
 `GET /api/v1/health` reports which of these are set, and the Settings page shows
@@ -200,10 +201,13 @@ backend/
     database.py          engine, session, Base
     security.py deps.py  JWT, password hashing, current-user
     models/              user, project, content, publication, connection, metrics
+    ratelimit.py         slowapi limiter for /auth/*
     routers/             auth, projects, content, calendar, analytics, settings
     schemas/             pydantic request/response models
     services/
       llm_router.py      provider chain + circuit breaker
+      password_reset.py  single-use reset tokens (hashed at rest)
+      mailer.py          SMTP; logs the link when unconfigured
       ai.py              the single entry point every AI feature calls
       content_generator.py
       github_client.py   repo activity since a watermark

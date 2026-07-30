@@ -224,6 +224,40 @@ the only part that is rate limited (`app/ratelimit.py`, slowapi).
   falls back to `request.client.host`, which behind this proxy is one bucket for
   the entire internet — only correct if the app is ever exposed directly.
 
+### Password reset
+
+`POST /auth/password-reset` (always 202, whatever the address) emails a
+single-use link; `POST /auth/password-reset/confirm` spends it. Only a SHA-256
+hash of the token is stored, the TTL is 60 minutes, and requesting a new link
+invalidates the one before it.
+
+**No SMTP is configured on the box**, so the link is written to the log instead
+of sent — which is a workable way to reset your own password on a single-user
+install:
+
+```bash
+journalctl -u herald-api --since '2 min ago' | grep reset-password
+```
+
+To send it properly, set `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD` in
+`/opt/Herald/.env` (Gmail wants an app password) and restart `herald-api`.
+
+Two things this flow does **not** do:
+
+- **It does not log anyone out.** Herald's JWTs are stateless with no revocation
+  list, so tokens issued before a reset keep working until they expire —
+  `ACCESS_TOKEN_EXPIRE_MINUTES`, 24 h by default. Resetting a password because
+  a token leaked needs a `JWT_SECRET` rotation, which invalidates every session.
+- **There is no frontend page for it yet.** The link points at
+  `$FRONTEND_URL/reset-password?token=…` and the SPA has no such route, so the
+  token has to be posted to the confirm endpoint by hand for now:
+
+  ```bash
+  curl -X POST https://herald.aiknol.com/api/v1/auth/password-reset/confirm \
+    -H 'Content-Type: application/json' \
+    -d '{"token":"…","new_password":"…"}'
+  ```
+
 ## Migrations
 
 ```bash

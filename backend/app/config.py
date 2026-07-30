@@ -48,6 +48,26 @@ class Settings(BaseSettings):
     # tokenless is refused rather than served wide open.
     registration_invite_token: str = ""
 
+    # ---- Password reset ----
+    # Long enough to survive a slow mail hop and a coffee, short enough that a
+    # link sitting in an inbox is not a standing key to the account.
+    password_reset_token_ttl_minutes: int = 60
+
+    # ---- SMTP (password reset mail — the only mail Herald sends) ----
+    # With SMTP_HOST blank the reset link is written to the log instead of sent.
+    # That is a deliberate fallback for a self-hosted single-user install, not a
+    # stub: `journalctl -u herald-api` is a workable way to collect your own
+    # link. It does put the link in the logs.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_starttls: bool = True
+    #: Implicit TLS (port 465). Mutually exclusive with STARTTLS.
+    smtp_use_ssl: bool = False
+    smtp_timeout_seconds: float = 15.0
+
     # ---- Rate limiting ----
     rate_limit_enabled: bool = True
     # Blank means in-process memory, which counts per uvicorn worker (2 in
@@ -150,6 +170,7 @@ class Settings(BaseSettings):
     @field_validator(
         "access_token_expire_minutes",
         "autopilot_daily_content_limit",
+        "password_reset_token_ttl_minutes",
         "publish_max_retries",
     )
     @classmethod

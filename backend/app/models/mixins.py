@@ -12,6 +12,18 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def as_aware(value: datetime) -> datetime:
+    """Treat a naive datetime as UTC.
+
+    Timestamp columns are ``DateTime(timezone=True)`` and everything written to
+    them goes through :func:`utcnow`, so a value that comes back naive did so
+    because the backend dropped the offset — SQLite does, Postgres does not.
+    Comparing one against an aware "now" raises ``TypeError``, which means the
+    comparison would work in production and fail in the tests, or the reverse.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
 class TimestampMixin:
     """Adds ``created_at`` / ``updated_at`` columns."""
 

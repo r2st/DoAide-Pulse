@@ -18,6 +18,22 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=16, max_length=256)
+    #: Same floor as registration — a reset must not be a way around it.
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class MessageOut(BaseModel):
+    """A human-readable result for endpoints with nothing else to return."""
+
+    detail: str
+
+
 class UserOut(BaseModel):
     id: int
     email: EmailStr

@@ -11,6 +11,7 @@ from app.models.content import (
     ContentType,
 )
 from app.models.metrics import ContentMetric
+from app.models.password_reset import PasswordResetToken
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.publication import Platform, Publication, PublicationStatus
@@ -25,6 +26,7 @@ __all__ = [
     "ContentMetric",
     "ContentStatus",
     "ContentType",
+    "PasswordResetToken",
     "Platform",
     "PlatformConnection",
     "Project",

@@ -18,8 +18,16 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
 from app.ratelimit import limiter
-from app.schemas.auth import Token, UserCreate, UserOut
+from app.schemas.auth import (
+    MessageOut,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    Token,
+    UserCreate,
+    UserOut,
+)
 from app.security import create_access_token, hash_password, verify_password
+from app.services import mailer, password_reset
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -107,6 +115,72 @@ def login(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
     return Token(access_token=create_access_token(user.id))
+
+
+# --------------------------------------------------------------------------- #
+# Password reset                                                               #
+# --------------------------------------------------------------------------- #
+
+#: Returned whatever happened: address unknown, account deactivated, SMTP down.
+#: Anything more specific turns this endpoint into a way to ask "does this person
+#: have an account here", and the requester cannot act on the difference anyway.
+_RESET_REQUESTED = (
+    "If that address has an account, a reset link is on its way. "
+    "The link works once and expires shortly."
+)
+
+
+@router.post(
+    "/password-reset",
+    response_model=MessageOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit(settings.rate_limit_password_reset)
+def request_password_reset(
+    request: Request,
+    response: Response,
+    payload: PasswordResetRequest,
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """Email a single-use reset link.
+
+    Always 202. Sending happens inline rather than on a worker: it is one SMTP
+    round trip, and a reset that silently waits on a broker being up is worse
+    than one that takes a second. When SMTP is unconfigured the link goes to the
+    log instead — see :mod:`app.services.mailer`.
+    """
+    user = db.scalar(select(User).where(User.email == payload.email))
+    if user is not None and user.is_active:
+        raw_token = password_reset.issue(db, user)
+        subject, body = password_reset.build_email(raw_token)
+        mailer.send(to=user.email, subject=subject, body=body)
+
+    return MessageOut(detail=_RESET_REQUESTED)
+
+
+@router.post("/password-reset/confirm", response_model=MessageOut)
+@limiter.limit(settings.rate_limit_password_reset)
+def confirm_password_reset(
+    request: Request,
+    response: Response,
+    payload: PasswordResetConfirm,
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """Spend a reset token and set the new password.
+
+    Note what this does *not* do: existing access tokens keep working until they
+    expire. Herald's JWTs are stateless and there is no revocation list, so
+    "reset the password to lock someone out" is not something this endpoint can
+    honestly promise. ACCESS_TOKEN_EXPIRE_MINUTES is the bound.
+    """
+    user = password_reset.consume(db, payload.token, payload.new_password)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This reset link is invalid, already used, or expired. "
+            "Request a new one.",
+        )
+    return MessageOut(detail="Password updated. You can sign in with it now.")
 
 
 @router.get("/me", response_model=UserOut)
