@@ -74,6 +74,10 @@ class DevToAdapter(Adapter):
             article["canonical_url"] = request.canonical_url
         if request.meta_description:
             article["description"] = request.meta_description
+        # Forem's name for the cover image. Same rule as canonical_url — an empty
+        # string is a validation error, not "no image".
+        if request.cover_image_url:
+            article["main_image"] = request.cover_image_url
 
         resp = self._request(
             "POST",

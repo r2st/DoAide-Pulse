@@ -3,10 +3,30 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.content import ContentStatus, ContentType
 from app.models.publication import Platform, PublicationStatus
+
+
+def _absolute_image_url(value: str | None) -> str | None:
+    """Accept an absolute http(s) URL, or nothing.
+
+    Relative paths are refused rather than resolved: the platforms fetch this
+    themselves from their own servers, so "/static/cover.png" is a broken image
+    on every one of them and there is no base URL here that would fix it.
+    """
+    if value is None:
+        return None
+    url = value.strip()
+    if not url:
+        return None
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError(
+            "must be an absolute http(s) URL — the platforms fetch this image "
+            "from their own servers"
+        )
+    return url
 
 
 class GenerateRequest(BaseModel):
@@ -33,6 +53,9 @@ class ContentCreate(BaseModel):
     keywords: list[str] = []
     tags: list[str] = []
     canonical_url: str | None = None
+    cover_image_url: str | None = Field(default=None, max_length=700)
+
+    _check_cover = field_validator("cover_image_url")(_absolute_image_url)
 
 
 class ContentUpdate(BaseModel):
@@ -43,9 +66,12 @@ class ContentUpdate(BaseModel):
     keywords: list[str] | None = None
     tags: list[str] | None = None
     canonical_url: str | None = None
+    cover_image_url: str | None = Field(default=None, max_length=700)
     content_type: ContentType | None = None
     status: ContentStatus | None = None
     scheduled_for: datetime | None = None
+
+    _check_cover = field_validator("cover_image_url")(_absolute_image_url)
 
 
 class PublicationOut(BaseModel):
@@ -100,6 +126,7 @@ class ContentOut(BaseModel):
     keywords: list[str] = []
     tags: list[str] = []
     canonical_url: str | None = None
+    cover_image_url: str | None = None
     confidence: float | None = None
     generated_by_provider: str | None = None
     generated_by_model: str | None = None

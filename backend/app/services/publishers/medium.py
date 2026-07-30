@@ -96,8 +96,13 @@ class MediumAdapter(Adapter):
             "title": request.title,
             "contentFormat": "html",
             # Medium does not render a title from the payload — it has to be in
-            # the body as an H1, or the post opens with no headline.
-            "content": f"<h1>{_escape(request.title)}</h1>"
+            # the body as an H1, or the post opens with no headline. The cover
+            # goes *above* it: Medium has no cover parameter and takes the first
+            # image in the body as the post's preview image.
+            "content": formatting.lead_image_html(
+                request.cover_image_url or "", alt=request.title
+            )
+            + f"<h1>{_escape(request.title)}</h1>"
             + formatting.to_html(request.body_markdown),
             "tags": formatting.normalize_tags(
                 request.tags, limit=_TAG_LIMIT, allow_spaces=True

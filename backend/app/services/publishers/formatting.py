@@ -54,6 +54,34 @@ def to_plain_text(body_markdown: str) -> str:
     return text.strip()
 
 
+def lead_image_html(url: str, *, alt: str = "") -> str:
+    """A cover image as the post's first block of HTML.
+
+    For the platforms with no cover-image field of their own. Medium and
+    WordPress both take the *first image in the body* as the preview, so putting
+    one there is the only way to set it — Medium's API exposes no cover
+    parameter at all, and WordPress's featured image is a media **id**, which
+    means uploading the bytes first rather than handing over a URL.
+
+    The alt text is the title, which is a genuine description of a cover image
+    and better than the empty string a decorative-image argument would justify.
+    """
+    if not url:
+        return ""
+    return f'<figure><img src="{escape_attribute(url)}" alt="{escape_attribute(alt)}" /></figure>'
+
+
+def escape_attribute(value: str) -> str:
+    """Escape a string for use inside a double-quoted HTML attribute."""
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
 def front_matter(fields: dict[str, object]) -> str:
     """A YAML front-matter block, for platforms that take one (Dev.to).
 
@@ -147,8 +175,10 @@ __all__ = [
     "LINKEDIN_SOFT_LIMIT",
     "TCO_LENGTH",
     "TWEET_LIMIT",
+    "escape_attribute",
     "front_matter",
     "hashtagify",
+    "lead_image_html",
     "normalize_tags",
     "to_html",
     "to_plain_text",

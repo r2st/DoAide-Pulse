@@ -111,6 +111,14 @@ class Content(Base, TimestampMixin):
     #: the adapters send it as rel=canonical so the copies don't compete.
     canonical_url: Mapped[str | None] = mapped_column(String(500))
 
+    # ---- Media ----
+    #: The image the platform shows beside this post in its feed, and the one
+    #: LinkedIn and Twitter use for the link preview. An absolute URL rather than
+    #: an upload: every destination Herald publishes to takes a URL and fetches
+    #: it itself, so hosting the bytes would add a storage story to the deploy
+    #: for no gain on the platform side.
+    cover_image_url: Mapped[str | None] = mapped_column(String(700))
+
     # ---- Provenance ----
     #: Which provider/model actually wrote it, for the "what works" analysis.
     generated_by_provider: Mapped[str | None] = mapped_column(String(40))

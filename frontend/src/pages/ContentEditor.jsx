@@ -39,6 +39,7 @@ export default function ContentEditor() {
         meta_description: data.meta_description,
         keywords: (data.keywords ?? []).join(", "),
         tags: (data.tags ?? []).join(", "),
+        cover_image_url: data.cover_image_url ?? "",
       });
     }
   }, [data]);
@@ -51,7 +52,8 @@ export default function ContentEditor() {
       draft.excerpt !== data.excerpt ||
       draft.meta_description !== data.meta_description ||
       draft.keywords !== (data.keywords ?? []).join(", ") ||
-      draft.tags !== (data.tags ?? []).join(", ")
+      draft.tags !== (data.tags ?? []).join(", ") ||
+      draft.cover_image_url !== (data.cover_image_url ?? "")
     );
   }, [data, draft]);
 
@@ -79,6 +81,8 @@ export default function ContentEditor() {
         ...draft,
         keywords: splitList(draft.keywords),
         tags: splitList(draft.tags),
+        // The API rejects a relative path and reads "" as "no image".
+        cover_image_url: draft.cover_image_url.trim() || null,
       });
       setData(updated);
       toast.success("Saved");
@@ -257,9 +261,50 @@ function escapeText(text) {
 }
 
 function SeoPanel({ issues, draft, onChange, locked }) {
+  const [coverBroken, setCoverBroken] = useState(false);
+  const cover = draft.cover_image_url.trim();
+
   return (
     <div className="panel space-y-4 p-5">
       <h2 className="text-sm font-semibold text-ink-900">SEO</h2>
+
+      <div>
+        <label className="label" htmlFor="c-cover">
+          Cover image
+        </label>
+        <input
+          id="c-cover"
+          className="input font-mono text-[11px]"
+          placeholder="https://cdn.example.com/cover.png"
+          value={draft.cover_image_url}
+          onChange={(event) => {
+            setCoverBroken(false);
+            onChange("cover_image_url")(event);
+          }}
+          disabled={locked}
+        />
+        {cover ? (
+          coverBroken ? (
+            <p className="mt-1.5 rounded bg-bad-wash px-2 py-1 text-xs text-bad">
+              That URL did not load an image.
+            </p>
+          ) : (
+            // A live thumbnail is the only honest check: it is the same fetch the
+            // platforms will make.
+            <img
+              src={cover}
+              alt=""
+              className="mt-2 aspect-[16/9] w-full rounded-lg border border-line object-cover"
+              onError={() => setCoverBroken(true)}
+            />
+          )
+        ) : (
+          <p className="mt-1 text-xs text-ink-400">
+            Shown in the Dev.to, Medium and Hashnode feeds, and used for the
+            LinkedIn and Twitter link preview. Must be an absolute URL.
+          </p>
+        )}
+      </div>
 
       <div>
         <label className="label" htmlFor="c-meta">

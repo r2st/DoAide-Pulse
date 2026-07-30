@@ -70,6 +70,8 @@ class HashnodeAdapter(Adapter):
             }
         if request.canonical_url:
             payload["originalArticleURL"] = request.canonical_url
+        if request.cover_image_url:
+            payload["coverImageOptions"] = {"coverImageURL": request.cover_image_url}
         return payload
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:

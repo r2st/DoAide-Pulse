@@ -72,6 +72,9 @@ class PublishRequest:
     tags: list[str] = field(default_factory=list)
     #: The URL of the original, when this is a syndicated copy.
     canonical_url: str | None = None
+    #: Absolute URL of the feed/preview image. Every platform that supports one
+    #: fetches it itself, so this stays a URL all the way down.
+    cover_image_url: str | None = None
     #: The project's live URL — the link social posts point at.
     project_url: str | None = None
     project_name: str = ""

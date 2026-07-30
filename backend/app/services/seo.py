@@ -118,6 +118,7 @@ def audit(
     body_markdown: str,
     meta_description: str,
     keywords: list[str],
+    cover_image_url: str | None = None,
 ) -> list[SeoIssue]:
     """Everything wrong with this piece's SEO, worst first.
 
@@ -194,6 +195,18 @@ def audit(
                 )
                 break
             previous = level
+
+    if not (cover_image_url or "").strip():
+        issues.append(
+            SeoIssue(
+                "warn",
+                "cover_image_url",
+                "No cover image. Dev.to, Medium and Hashnode all show one in "
+                "their feeds, and it is what LinkedIn and Twitter use for the "
+                "link preview — a post without one is a wall of text in every "
+                "list it appears in.",
+            )
+        )
 
     words = len(strip_markdown(body_markdown).split())
     if words < 300:

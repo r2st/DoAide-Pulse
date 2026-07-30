@@ -56,6 +56,7 @@ def _to_out(content: Content) -> ContentOut:
             for key in (
                 "id", "project_id", "content_type", "status", "title", "slug",
                 "excerpt", "meta_description", "keywords", "tags", "canonical_url",
+                "cover_image_url",
                 "confidence", "generated_by_provider", "generated_by_model",
                 "source", "scheduled_for", "published_at", "created_at", "updated_at",
             )
@@ -73,6 +74,7 @@ def _to_detail(content: Content) -> ContentDetail:
         body_markdown=content.body_markdown,
         meta_description=content.meta_description,
         keywords=list(content.keywords or []),
+        cover_image_url=content.cover_image_url,
     )
     return ContentDetail(
         **_to_out(content).model_dump(),
@@ -193,8 +195,19 @@ def check_links(
     requests. Kept separate so reading a draft stays free.
     """
     content = _owned_content(content_id, db, user)
-    statuses = link_check.check_body(content.body_markdown)
-    return _to_link_check(statuses)
+    return _to_link_check(_check_content_links(content))
+
+
+def _check_content_links(content: Content) -> list[link_check.LinkStatus]:
+    """Every URL this piece would publish, cover image included.
+
+    The cover is the one URL a reader never clicks and always sees, so a dead one
+    is a visibly broken card in every feed rather than a 404 nobody reaches.
+    """
+    return link_check.check_body(
+        content.body_markdown,
+        extra_urls=[content.cover_image_url] if content.cover_image_url else None,
+    )
 
 
 def _to_link_check(statuses: list[link_check.LinkStatus]) -> LinkCheckOut:
@@ -296,6 +309,7 @@ def create_content(
         keywords=seo.normalize_keywords(payload.keywords),
         tags=payload.tags,
         canonical_url=payload.canonical_url,
+        cover_image_url=payload.cover_image_url,
         source={"kind": "manual", "user_id": user.id},
     )
     db.add(content)
@@ -414,7 +428,7 @@ def publish_content(
     # or 410 stops the publish — see app.services.link_check on why a timeout
     # must not.
     if settings.link_check_enabled and not payload.allow_broken_links:
-        dead = link_check.broken(link_check.check_body(content.body_markdown))
+        dead = link_check.broken(_check_content_links(content))
         if dead:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

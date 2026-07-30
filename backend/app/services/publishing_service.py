@@ -184,6 +184,7 @@ def build_request(content: Content, *, as_draft: bool = False) -> PublishRequest
         meta_description=content.meta_description,
         tags=list(content.tags or []),
         canonical_url=content.canonical_url,
+        cover_image_url=content.cover_image_url,
         project_url=project.live_url if project else None,
         project_name=project.name if project else "",
         as_draft=as_draft,

@@ -75,5 +75,6 @@ def test_audit_is_clean_for_a_good_post():
         meta_description="A description of exactly the right sort of length for a "
         "search engine result page to show in full.",
         keywords=["marketing automation"],
+        cover_image_url="https://cdn.example.com/cover.png",
     )
     assert issues == []
