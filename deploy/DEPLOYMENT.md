@@ -165,6 +165,19 @@ curl -s https://herald.aiknol.com/api/v1/health | python3 -m json.tool
 # → "llm_providers": ["openrouter", "gemini", "groq"]
 ```
 
+## API docs
+
+`/docs`, `/redoc` and `/openapi.json` are **404 in production**. The gate is
+`ENVIRONMENT != production or DEBUG == true` (`app.main.docs_enabled`), and the
+routes are removed rather than protected — an auth prompt would confirm the
+schema is there, and there is nothing in it worth authenticating for.
+
+The schema is a full inventory of every route and field, served on the same
+origin as the SPA, which is what makes it worth withholding from anonymous
+visitors. To read it against the live box, `DEBUG=true` in `/opt/Herald/.env`
+plus `systemctl restart herald-api` — no Caddy edit, the vhost still routes
+those paths.
+
 ## Health check
 
 `GET /api/v1/health` probes its dependencies rather than returning a bare 200:

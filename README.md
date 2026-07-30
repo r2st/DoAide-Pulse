@@ -185,7 +185,8 @@ from beat, so scaling workers doesn't duplicate the schedule.
 
 Before going live:
 
-1. `ENVIRONMENT=production` and `DEBUG=false`
+1. `ENVIRONMENT=production` and `DEBUG=false` — this is also what hides `/docs`,
+   `/redoc` and `/openapi.json` (404, not 401)
 2. Set `TOKEN_ENCRYPTION_KEY` (production won't store credentials without it)
 3. A real `JWT_SECRET`
 4. `BACKEND_CORS_ORIGINS` set to your actual frontend origin
