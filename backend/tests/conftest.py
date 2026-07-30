@@ -20,6 +20,12 @@ os.environ.setdefault("REGISTRATION_INVITE_TOKEN", "")
 # No provider keys: the chain is empty, so generation takes the template path.
 for key in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
     os.environ[key] = ""
+# Assigned, not `setdefault`: pydantic-settings falls through to the repo's own
+# ``.env`` for anything the environment leaves unset, so on a developer machine
+# with real SMTP credentials on disk the mailer tests would find themselves
+# configured and assert against the wrong branch.
+for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"):
+    os.environ[key] = ""
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
