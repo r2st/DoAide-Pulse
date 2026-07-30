@@ -28,7 +28,12 @@ from app.database import SessionLocal
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType
 from app.models.mixins import utcnow
 from app.models.project import AutopilotMode, Project, slugify
-from app.services import content_generator, github_client, publishing_service
+from app.services import (
+    content_generator,
+    github_client,
+    link_check,
+    publishing_service,
+)
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -168,6 +173,28 @@ def _act_on(
     content_type = _pick_content_type(activity)
     generated = content_generator.generate(project, content_type, activity=activity)
 
+    confident = generated.confidence >= settings.autopilot_auto_publish_confidence
+    auto = bool(mode == AutopilotMode.AUTO and confident and project.autopilot_platforms)
+
+    # An unreviewed publish is the one place a fabricated URL reaches an audience
+    # unchallenged, so it is the one place worth spending the requests. A dead
+    # link is not a failed generation — the piece is fine and one link is wrong —
+    # so it goes to review rather than being discarded.
+    dead_links: list[str] = []
+    if auto and settings.link_check_enabled:
+        dead_links = [
+            s.url
+            for s in link_check.broken(link_check.check_body(generated.body_markdown))
+        ]
+        if dead_links:
+            auto = False
+            logger.info(
+                "autopilot held %r back from auto-publish: %d dead link(s): %s",
+                generated.title,
+                len(dead_links),
+                ", ".join(dead_links),
+            )
+
     content = Content(
         project_id=project.id,
         content_type=content_type,
@@ -187,11 +214,11 @@ def _act_on(
             "release_tag": activity.new_release.tag if activity.new_release else None,
             "commit_count": len(activity.new_commits),
             "fallback": generated.is_fallback,
+            # Recorded so the review queue can say *why* a confident piece is
+            # sitting there instead of having gone out.
+            "dead_links": dead_links,
         },
     )
-
-    confident = generated.confidence >= settings.autopilot_auto_publish_confidence
-    auto = mode == AutopilotMode.AUTO and confident and project.autopilot_platforms
 
     content.status = ContentStatus.APPROVED if auto else ContentStatus.REVIEW
     db.add(content)
@@ -203,6 +230,7 @@ def _act_on(
             "status": "queued_for_review",
             "content_id": content.id,
             "confidence": generated.confidence,
+            "dead_links": dead_links,
         }
 
     publications = publishing_service.queue(db, content, list(project.autopilot_platforms))

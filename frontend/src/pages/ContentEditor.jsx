@@ -222,6 +222,7 @@ export default function ContentEditor() {
             onChange={set}
             locked={locked}
           />
+          <LinksPanel contentId={data.id} />
           <PublicationsPanel content={data} onChanged={reload} />
           {!locked && (
             <button className="btn-quiet w-full text-bad" onClick={remove}>
@@ -344,6 +345,94 @@ function SeoPanel({ issues, draft, onChange, locked }) {
   );
 }
 
+/** HEAD-check the links in the body, on demand.
+ *
+ *  Not loaded with the editor: it makes real outbound requests, and a draft you
+ *  are still writing has links you have not finished typing. Three verdicts, and
+ *  the distinction is the point — only "broken" (a 404 or 410) is a fact. */
+function LinksPanel({ contentId }) {
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      setResult(await api.checkLinks(contentId));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const TONE = {
+    broken: "bg-bad-wash text-bad",
+    unknown: "bg-warn-wash text-warn",
+    ok: "bg-good-wash text-good",
+  };
+
+  return (
+    <div className="panel space-y-3 p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ink-900">Links</h2>
+        <button className="btn-quiet -mr-2.5" onClick={run} disabled={busy}>
+          {busy ? "Checking…" : result ? "Re-check" : "Check"}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-bad">{error}</p>}
+
+      {!result && !error && (
+        <p className="text-xs text-ink-400">
+          Free models invent plausible documentation URLs. A dead link blocks
+          publishing until you fix it or override.
+        </p>
+      )}
+
+      {result && result.checked === 0 && (
+        <p className="text-xs text-ink-400">No links in the body.</p>
+      )}
+
+      {result && result.checked > 0 && (
+        <>
+          <p className="text-xs text-ink-500">
+            {result.broken_count === 0
+              ? `${result.checked} link${result.checked === 1 ? "" : "s"}, none dead.`
+              : `${result.broken_count} of ${result.checked} dead.`}
+          </p>
+          <ul className="space-y-1.5">
+            {result.links
+              // Dead first, then unresolved, then the ones that are fine.
+              .slice()
+              .sort(
+                (a, b) =>
+                  ["broken", "unknown", "ok"].indexOf(a.status) -
+                  ["broken", "unknown", "ok"].indexOf(b.status),
+              )
+              .map((link) => (
+                <li
+                  key={link.url}
+                  className={`rounded-lg px-3 py-2 text-xs ${TONE[link.status]}`}
+                >
+                  <span className="block break-all font-mono text-[10px]">
+                    {link.url}
+                  </span>
+                  <span className="mt-0.5 block">
+                    {link.status === "ok"
+                      ? `OK (${link.http_status})`
+                      : link.detail}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 function PublicationsPanel({ content, onChanged }) {
   const toast = useToast();
 
@@ -417,6 +506,10 @@ function PublishDialog({ content, platforms, onClose, onDone, onError }) {
   const [when, setWhen] = useState("");
   const [asDraft, setAsDraft] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Set when the server refuses over a dead link. Shown here rather than as a
+  // toast because the override that answers it lives in this form.
+  const [deadLinks, setDeadLinks] = useState(null);
+  const [allowBroken, setAllowBroken] = useState(false);
 
   const alreadyLive = new Set(
     content.publications
@@ -442,10 +535,15 @@ function PublishDialog({ content, platforms, onClose, onDone, onError }) {
         // right interpretation of what the user typed.
         scheduled_for: when ? new Date(when).toISOString() : null,
         as_draft: asDraft,
+        allow_broken_links: allowBroken,
       });
       onDone();
     } catch (err) {
-      onError(err.message);
+      if (err.message.includes("allow_broken_links")) {
+        setDeadLinks(err.message);
+      } else {
+        onError(err.message);
+      }
       setBusy(false);
     }
   }
@@ -530,6 +628,30 @@ function PublishDialog({ content, platforms, onClose, onDone, onError }) {
             </span>
           </span>
         </label>
+
+        {deadLinks && (
+          <div className="space-y-2.5 rounded-lg bg-bad-wash px-3 py-2.5">
+            <p className="break-words text-xs text-bad">
+              {/* The server's list, minus the hint about the flag this
+                  checkbox now provides. */}
+              {deadLinks.split(". Fix them,")[0]}.
+            </p>
+            <label className="flex items-start gap-2.5 text-sm text-ink-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={allowBroken}
+                onChange={(e) => setAllowBroken(e.target.checked)}
+              />
+              <span>
+                Publish anyway
+                <span className="mt-0.5 block text-xs text-ink-400">
+                  Sometimes the page is about to exist.
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>

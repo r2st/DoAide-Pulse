@@ -69,6 +69,24 @@ class SeoIssueOut(BaseModel):
     message: str
 
 
+class LinkStatusOut(BaseModel):
+    """One URL from the body, and whether it goes anywhere."""
+
+    url: str
+    #: "ok", "broken" or "unknown" — see app.services.link_check for why the
+    #: third exists and why only "broken" blocks a publish.
+    status: str
+    http_status: int | None = None
+    detail: str = ""
+
+
+class LinkCheckOut(BaseModel):
+    links: list[LinkStatusOut] = []
+    #: Denormalized so the UI does not have to re-derive the headline number.
+    broken_count: int = 0
+    checked: int = 0
+
+
 class ContentOut(BaseModel):
     id: int
     project_id: int
@@ -115,6 +133,10 @@ class PublishRequestIn(BaseModel):
     scheduled_for: datetime | None = None
     #: Create it as a draft on the platform rather than going live.
     as_draft: bool = False
+    #: Publish even though a link in the body is definitively dead. The gate
+    #: exists because a 404 in a published post is embarrassing, not because it
+    #: is unthinkable — sometimes the page is about to exist.
+    allow_broken_links: bool = False
 
 
 class ScheduleUpdate(BaseModel):

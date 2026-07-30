@@ -167,6 +167,16 @@ class Settings(BaseSettings):
     # is parked as `failed` for a human to look at.
     publish_max_retries: int = 3
 
+    # ---- Link validation ----
+    # HEAD-check every URL in a body before it goes out. Only a definitive 404 or
+    # 410 blocks a publish; a timeout or a 403 is reported and ignored (see
+    # app.services.link_check). Off means the pre-publish gate is skipped
+    # entirely — the /content/{id}/links endpoint still works on demand.
+    link_check_enabled: bool = True
+    link_check_timeout_seconds: float = 10.0
+    # Latency guard on a single publish request, not a policy about post length.
+    link_check_max_urls: int = 25
+
     # ---- Syndication ----
     # How long the copies wait after the project's canonical platform when both
     # are queued in one go. Two jobs: it lets the original's URL land on the

@@ -1,0 +1,246 @@
+"""Does every link in this post actually go anywhere?
+
+Free models invent plausible documentation URLs. Not malformed ones — well-formed
+links to pages that have never existed, `https://fastapi.tiangolo.com/advanced/
+custom-middleware/`, the sort of thing you only catch by clicking. A 404 in a
+published post is the most visible failure mode Herald has, and it costs a few
+HTTP requests to rule out.
+
+The verdict space is deliberately three-valued, and that is the whole design:
+
+``ok``
+    The server answered 2xx or 3xx. The page is there.
+``broken``
+    The server said, definitively, that it is not: 404 or 410. Or the URL points
+    somewhere no reader can follow — a loopback or private address.
+``unknown``
+    Everything else. A timeout, a DNS failure, a 403 from a bot-blocker, a 401
+    behind a paywall, a 429, a 500. None of these is evidence about whether the
+    page exists.
+
+Only ``broken`` is allowed to stop a publish. Treating ``unknown`` as broken
+would mean a flaky network, an aggressive Cloudflare rule, or a publish from a
+host with no outbound access blocks the post — and the failure would look
+identical to a genuinely dead link, which is the worst of both. A checker that
+cries wolf gets switched off, and then it catches nothing at all.
+"""
+from __future__ import annotations
+
+import ipaddress
+import logging
+import re
+import socket
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from urllib.parse import urlsplit
+
+import httpx
+
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+OK = "ok"
+BROKEN = "broken"
+UNKNOWN = "unknown"
+
+#: A server saying the resource is gone. The only statuses we treat as proof.
+_DEFINITELY_GONE = {404, 410}
+
+_CODE_FENCE = re.compile(r"```.*?```|~~~.*?~~~", re.S)
+_INLINE_CODE = re.compile(r"`[^`\n]*`")
+#: ``[label](url "title")`` and its image form. The URL is everything up to
+#: whitespace or the closing paren, so a title never lands in the URL.
+_MD_LINK = re.compile(r"!?\[[^\]]*\]\(\s*<?([^)\s>]+)>?[^)]*\)")
+_AUTOLINK = re.compile(r"<(https?://[^>\s]+)>")
+_BARE_URL = re.compile(r"https?://[^\s<>\]\)\"'`]+")
+
+#: Punctuation that is far more likely to be the sentence's than the URL's.
+_TRAILING_JUNK = ".,;:!?'\"”’)]}>"
+
+
+@dataclass(frozen=True)
+class LinkStatus:
+    """One URL and what we found out about it."""
+
+    url: str
+    #: :data:`OK`, :data:`BROKEN` or :data:`UNKNOWN`.
+    status: str
+    http_status: int | None = None
+    #: Reader-facing explanation. Always says what to do about it.
+    detail: str = ""
+
+    @property
+    def is_broken(self) -> bool:
+        return self.status == BROKEN
+
+
+def extract_urls(body_markdown: str, *, limit: int | None = None) -> list[str]:
+    """Every http(s) URL a reader could click, in the order they appear.
+
+    Code is stripped first. A URL inside a fence or backticks is usually
+    illustrative — ``curl https://api.example.com/v1/things`` — and HEAD-checking
+    a sample endpoint proves nothing while making the check slower and noisier.
+
+    Relative links, anchors and ``mailto:`` are out of scope: there is no request
+    that would settle them.
+    """
+    text = _INLINE_CODE.sub(" ", _CODE_FENCE.sub(" ", body_markdown or ""))
+
+    found: list[str] = []
+    seen: set[str] = set()
+    for pattern in (_MD_LINK, _AUTOLINK, _BARE_URL):
+        for match in pattern.finditer(text):
+            url = (match.group(1) if pattern is not _BARE_URL else match.group(0)).strip()
+            url = url.rstrip(_TRAILING_JUNK)
+            if not url.lower().startswith(("http://", "https://")):
+                continue
+            if url in seen:
+                continue
+            seen.add(url)
+            found.append(url)
+
+    return found[:limit] if limit else found
+
+
+def _unreachable_for_a_reader(url: str) -> str | None:
+    """Why a reader could never follow this URL, or ``None`` if they could.
+
+    Also the reason nothing below resolves a hostname twice: the check runs on
+    the server, so a link to ``localhost`` or ``10.0.0.5`` would otherwise turn
+    the checker into a probe of Herald's own network. Refusing those is both the
+    correct editorial verdict — the link is broken for everyone who is not on
+    this box — and the right thing to do with a URL a language model wrote.
+    """
+    host = (urlsplit(url).hostname or "").strip()
+    if not host:
+        return "No hostname — this link cannot resolve."
+
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except socket.gaierror:
+        # DNS failure is not proof: a transient resolver problem looks the same
+        # as a domain that does not exist. Left for the request to settle.
+        return None
+
+    if addresses and all(_is_private(address) for address in addresses):
+        return (
+            f"Resolves to a private or loopback address ({host}) — nobody outside "
+            "this machine can open it."
+        )
+    return None
+
+
+def _is_private(address: str) -> bool:
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:  # pragma: no cover - getaddrinfo returns valid addresses
+        return False
+    return (
+        parsed.is_private
+        or parsed.is_loopback
+        or parsed.is_link_local
+        or parsed.is_reserved
+        or parsed.is_unspecified
+    )
+
+
+def check_url(url: str, *, client: httpx.Client) -> LinkStatus:
+    """Resolve one URL to a verdict. Never raises."""
+    unreachable = _unreachable_for_a_reader(url)
+    if unreachable:
+        return LinkStatus(url, BROKEN, detail=unreachable)
+
+    try:
+        response = client.head(url)
+        # A great many servers do not implement HEAD, and answer 405 or 403 to
+        # it while serving GET perfectly well. Retrying with GET is the
+        # difference between a useful checker and one that flags half the web.
+        if response.status_code in (403, 405, 501):
+            response = client.get(url)
+    except httpx.HTTPError as exc:
+        return LinkStatus(
+            url,
+            UNKNOWN,
+            detail=f"Could not be reached ({type(exc).__name__}) — check it by hand.",
+        )
+
+    code = response.status_code
+    if code < 400:
+        return LinkStatus(url, OK, http_status=code)
+    if code in _DEFINITELY_GONE:
+        return LinkStatus(
+            url,
+            BROKEN,
+            http_status=code,
+            detail=f"Returns {code} — this page does not exist. Fix or remove the link.",
+        )
+    return LinkStatus(
+        url,
+        UNKNOWN,
+        http_status=code,
+        detail=(
+            f"Returned {code}, which is not proof either way (a bot block, a "
+            "paywall or a bad day). Check it by hand."
+        ),
+    )
+
+
+def check(urls: list[str], *, timeout: float | None = None) -> list[LinkStatus]:
+    """Verdicts for *urls*, in the order given.
+
+    Concurrent because this runs inside a publish request: 25 links checked one
+    after another at a 10-second timeout is four minutes of somebody waiting,
+    and the requests are entirely independent.
+    """
+    if not urls:
+        return []
+
+    budget = timeout if timeout is not None else settings.link_check_timeout_seconds
+    with (
+        httpx.Client(
+            timeout=budget,
+            follow_redirects=True,
+            headers={
+                # Some hosts 403 an unidentified client outright. Saying who we
+                # are turns a pile of `unknown` verdicts into real answers.
+                "User-Agent": "Herald/0.1 link-checker (+https://github.com/r2st/Herald)",
+                "Accept": "*/*",
+            },
+        ) as client,
+        ThreadPoolExecutor(max_workers=min(8, len(urls))) as pool,
+    ):
+        return list(pool.map(lambda url: check_url(url, client=client), urls))
+
+
+def check_body(
+    body_markdown: str, *, extra_urls: list[str] | None = None
+) -> list[LinkStatus]:
+    """Check every link in a post body, plus any *extra_urls* (a cover image).
+
+    Capped at ``link_check_max_urls``. The cap is a latency guard, not a policy:
+    a link-farm of a post is unusual, and 25 requests is already a second or two.
+    """
+    urls = extract_urls(body_markdown)
+    for extra in extra_urls or []:
+        if extra and extra not in urls:
+            urls.append(extra)
+    return check(urls[: settings.link_check_max_urls])
+
+
+def broken(statuses: list[LinkStatus]) -> list[LinkStatus]:
+    """Just the ones that are definitively dead."""
+    return [s for s in statuses if s.is_broken]
+
+
+__all__ = [
+    "BROKEN",
+    "OK",
+    "UNKNOWN",
+    "LinkStatus",
+    "broken",
+    "check",
+    "check_body",
+    "check_url",
+    "extract_urls",
+]

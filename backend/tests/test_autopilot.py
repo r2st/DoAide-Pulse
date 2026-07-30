@@ -150,6 +150,80 @@ def test_autopilot_off_banks_ideas_but_writes_nothing(db, project, stub_github):
     assert db.query(ContentIdea).count() > 0
 
 
+def _confident_generation(monkeypatch, body: str):
+    """Make generation return a confident piece, so the auto gate is reachable.
+
+    Without this every autopilot test sits at confidence 0.0 — no provider is
+    configured — and never gets as far as the checks that follow it.
+    """
+    from app.services.content_generator import GeneratedContent
+
+    monkeypatch.setattr(
+        autopilot_tasks.content_generator,
+        "generate",
+        lambda project, content_type, **kw: GeneratedContent(
+            title="Herald 1.2.0 is out",
+            body_markdown=body,
+            excerpt="Herald 1.2.0 is out.",
+            meta_description="Herald 1.2.0 is out, with a faster publish sweep.",
+            keywords=["herald"],
+            tags=["python"],
+            confidence=0.95,
+            provider="openrouter",
+            model="openai/gpt-oss-20b:free",
+        ),
+    )
+
+
+def test_a_confident_piece_with_a_dead_link_goes_to_review(
+    db, project, stub_github, monkeypatch
+):
+    """An unreviewed publish is the one place a fabricated URL reaches readers."""
+    from app.services import link_check
+
+    project.autopilot_mode = AutopilotMode.AUTO
+    project.autopilot_platforms = ["devto"]
+    project.last_seen_commit_sha = "old"
+    db.commit()
+    stub_github["set"](make_activity(commits=1, release=True))
+    _confident_generation(monkeypatch, "See the [docs](https://example.com/invented).")
+    monkeypatch.setattr(
+        autopilot_tasks.link_check,
+        "check_body",
+        lambda body, **kw: [
+            link_check.LinkStatus("https://example.com/invented", link_check.BROKEN, 404)
+        ],
+    )
+
+    result = autopilot_tasks.scan_project(project.id)
+
+    assert result["status"] == "queued_for_review"
+    assert result["dead_links"] == ["https://example.com/invented"]
+    content = db.query(Content).one()
+    assert content.status == ContentStatus.REVIEW
+    # Recorded, so the review queue can say why a confident piece is waiting.
+    assert content.source["dead_links"] == ["https://example.com/invented"]
+
+
+def test_a_confident_piece_with_live_links_publishes(
+    db, project, stub_github, monkeypatch
+):
+    project.autopilot_mode = AutopilotMode.AUTO
+    project.autopilot_platforms = ["devto"]
+    project.last_seen_commit_sha = "old"
+    db.commit()
+    stub_github["set"](make_activity(commits=1, release=True))
+    _confident_generation(monkeypatch, "See the [docs](https://example.com/real).")
+    monkeypatch.setattr(autopilot_tasks.link_check, "check_body", lambda body, **kw: [])
+    # The publish itself is not what this test is about.
+    monkeypatch.setattr(autopilot_tasks, "_publish_now", lambda publication_id: None)
+
+    result = autopilot_tasks.scan_project(project.id)
+
+    assert result["status"] == "auto_published"
+    assert db.query(Content).one().source["dead_links"] == []
+
+
 def test_auto_mode_still_reviews_a_low_confidence_draft(db, project, stub_github):
     """No provider is configured, so generation falls back at confidence 0.0."""
     project.autopilot_mode = AutopilotMode.AUTO

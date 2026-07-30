@@ -85,6 +85,9 @@ export const api = {
   // ---- content ----
   listContent: (params = {}) => request(`/content${qs(params)}`),
   getContent: (id) => request(`/content/${id}`),
+  // Makes outbound HTTP requests, so it is called on demand rather than with
+  // every editor load.
+  checkLinks: (id) => request(`/content/${id}/links`),
   generateContent: (payload) =>
     request("/content/generate", { method: "POST", body: payload }),
   createContent: (payload) => request("/content", { method: "POST", body: payload }),

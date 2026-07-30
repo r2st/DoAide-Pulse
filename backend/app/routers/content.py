@@ -20,6 +20,8 @@ from app.schemas.content import (
     ContentOut,
     ContentUpdate,
     GenerateRequest,
+    LinkCheckOut,
+    LinkStatusOut,
     PublicationOut,
     PublishRequestIn,
     SeoIssueOut,
@@ -27,6 +29,7 @@ from app.schemas.content import (
 from app.services import (
     content_generator,
     github_client,
+    link_check,
     publishers,
     publishing_service,
     seo,
@@ -175,6 +178,36 @@ def get_content(
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
     return _to_detail(_owned_content(content_id, db, user))
+
+
+@router.get("/{content_id}/links", response_model=LinkCheckOut)
+def check_links(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> LinkCheckOut:
+    """HEAD-check every URL in the body, on demand.
+
+    Not folded into ``GET /{content_id}``: that endpoint is loaded every time the
+    editor opens and this one makes up to ``link_check_max_urls`` outbound
+    requests. Kept separate so reading a draft stays free.
+    """
+    content = _owned_content(content_id, db, user)
+    statuses = link_check.check_body(content.body_markdown)
+    return _to_link_check(statuses)
+
+
+def _to_link_check(statuses: list[link_check.LinkStatus]) -> LinkCheckOut:
+    return LinkCheckOut(
+        links=[
+            LinkStatusOut(
+                url=s.url, status=s.status, http_status=s.http_status, detail=s.detail
+            )
+            for s in statuses
+        ],
+        broken_count=len(link_check.broken(statuses)),
+        checked=len(statuses),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -376,6 +409,21 @@ def publish_content(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Not connected to: {', '.join(missing)}. Add credentials in Settings.",
         )
+
+    # Last cheap chance to catch a URL the model invented. Only a definitive 404
+    # or 410 stops the publish — see app.services.link_check on why a timeout
+    # must not.
+    if settings.link_check_enabled and not payload.allow_broken_links:
+        dead = link_check.broken(link_check.check_body(content.body_markdown))
+        if dead:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"{len(dead)} link(s) in this post are dead: "
+                    + "; ".join(f"{s.url} ({s.http_status or 'unreachable'})" for s in dead)
+                    + ". Fix them, or publish anyway with allow_broken_links."
+                ),
+            )
 
     publications = publishing_service.queue(
         db,
