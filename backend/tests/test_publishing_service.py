@@ -80,6 +80,53 @@ def test_requeue_will_not_repost_something_live(db, content):
     assert again.status == PublicationStatus.PUBLISHED
 
 
+def test_as_draft_reaches_the_adapter(db, content, connected, monkeypatch):
+    """The flag has to survive the trip from the request to the adapter.
+
+    It used to be read off the payload and dropped, so "stage it on the
+    platform" published live — the one failure mode this option exists to
+    prevent.
+    """
+    from app.services.publishers.devto import DevToAdapter
+
+    seen: list[bool] = []
+
+    def _capture(self, request, credentials):
+        seen.append(request.as_draft)
+        return PublishResult(external_id="1", external_url="u")
+
+    monkeypatch.setattr(DevToAdapter, "publish", _capture)
+
+    publication = publishing_service.queue(db, content, ["devto"], as_draft=True)[0]
+    db.commit()
+    assert publication.as_draft is True
+
+    publishing_service.execute(db, publication)
+    assert seen == [True]
+
+
+def test_as_draft_survives_a_scheduled_publish(db, content):
+    """A beat sweep executing this row hours later has only the row to go on."""
+    when = datetime.now(UTC) + timedelta(days=1)
+    publication = publishing_service.queue(
+        db, content, ["devto"], scheduled_for=when, as_draft=True
+    )[0]
+    db.commit()
+
+    db.expire_all()
+    reloaded = publishing_service.due_publications(db, now=when + timedelta(minutes=1))
+    assert [p.as_draft for p in reloaded] == [True]
+    assert reloaded[0].id == publication.id
+
+
+def test_requeue_resets_as_draft_to_the_new_choice(db, content):
+    first = publishing_service.queue(db, content, ["devto"], as_draft=True)[0]
+    db.commit()
+    again = publishing_service.queue(db, content, ["devto"])[0]
+    assert again.id == first.id
+    assert again.as_draft is False
+
+
 def test_scheduled_queue_marks_scheduled(db, content):
     when = datetime.now(UTC) + timedelta(days=1)
     publication = publishing_service.queue(db, content, ["devto"], scheduled_for=when)[0]

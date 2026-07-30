@@ -56,6 +56,7 @@ class PublicationOut(BaseModel):
     scheduled_for: datetime | None = None
     published_at: datetime | None = None
     external_url: str | None = None
+    as_draft: bool = False
     attempts: int = 0
     error: str | None = None
 

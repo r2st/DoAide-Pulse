@@ -45,6 +45,7 @@ def queue(
     platforms: list[Platform | str],
     *,
     scheduled_for: datetime | None = None,
+    as_draft: bool = False,
 ) -> list[Publication]:
     """Create (or re-arm) a publication per platform. Does not publish.
 
@@ -72,6 +73,7 @@ def queue(
             PublicationStatus.SCHEDULED if scheduled_for else PublicationStatus.PENDING
         )
         publication.scheduled_for = scheduled_for
+        publication.as_draft = as_draft
         publication.error = None
         publication.attempts = 0
         out.append(publication)
@@ -149,7 +151,9 @@ def execute(db: Session, publication: Publication) -> Publication:
 
     try:
         credentials = _credentials_for(db, user_id, publication.platform)
-        result = adapter.publish(build_request(content), credentials)
+        result = adapter.publish(
+            build_request(content, as_draft=publication.as_draft), credentials
+        )
     except (NotConnected, NotImplementedAdapter) as exc:
         # Neither is transient: no amount of retrying connects an account or
         # finishes an adapter.

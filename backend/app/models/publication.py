@@ -13,6 +13,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Integer,
@@ -84,6 +85,13 @@ class Publication(Base, TimestampMixin):
         index=True,
         nullable=False,
     )
+
+    #: Stage the post on the platform instead of publishing it. Stored per
+    #: publication rather than passed at dispatch time because the worker that
+    #: eventually runs this row is not the caller that chose it — a scheduled
+    #: publish is picked up by a beat sweep hours later, with nothing but the
+    #: row to go on.
+    as_draft: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     #: When this should go out. ``None`` means as soon as a worker picks it up.
     scheduled_for: Mapped[datetime | None] = mapped_column(

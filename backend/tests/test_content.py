@@ -154,6 +154,43 @@ def test_publish_requires_a_connection(client, auth, project, db):
     assert "Not connected" in resp.json()["detail"]
 
 
+def test_publish_records_as_draft_on_the_publication(client, auth, project, db, user):
+    """The editor's "create as a draft" checkbox has to reach the row."""
+    from app.models.platform_connection import ConnectionStatus, PlatformConnection
+    from app.models.publication import Platform
+    from app.services.crypto import encrypt_credentials
+
+    db.add(
+        PlatformConnection(
+            user_id=user.id,
+            platform=Platform.DEVTO,
+            status=ConnectionStatus.CONNECTED,
+            encrypted_credentials=encrypt_credentials({"api_key": "k"}),
+        )
+    )
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Stage it",
+        slug="stage-it",
+    )
+    db.add(content)
+    db.commit()
+
+    # Scheduled, so nothing tries to reach Dev.to during the test.
+    resp = client.post(
+        f"/api/v1/content/{content.id}/publish",
+        headers=auth,
+        json={
+            "platforms": ["devto"],
+            "as_draft": True,
+            "scheduled_for": "2099-01-01T09:00:00Z",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()[0]["as_draft"] is True
+
+
 def test_publish_to_an_unfinished_adapter_is_refused(client, auth, project, db):
     content = Content(
         project_id=project.id,

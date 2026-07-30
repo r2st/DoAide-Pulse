@@ -378,7 +378,11 @@ def publish_content(
         )
 
     publications = publishing_service.queue(
-        db, content, list(payload.platforms), scheduled_for=payload.scheduled_for
+        db,
+        content,
+        list(payload.platforms),
+        scheduled_for=payload.scheduled_for,
+        as_draft=payload.as_draft,
     )
 
     if content.status in (ContentStatus.DRAFT, ContentStatus.REVIEW):
