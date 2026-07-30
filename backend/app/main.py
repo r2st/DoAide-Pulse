@@ -43,10 +43,15 @@ def create_app() -> FastAPI:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
+    # No allow_credentials: Herald authenticates with a bearer token the SPA
+    # holds and sends explicitly, never with a cookie. Allowing credentialed
+    # cross-origin requests would ask browsers to attach ambient credentials to
+    # them — the precondition for CSRF — and buy nothing, since there are none
+    # to attach. It also stops any origin in the list from ever reading a
+    # response with the caller's session implicitly along for the ride.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
