@@ -5,7 +5,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.database import get_db
@@ -110,6 +110,11 @@ def list_content(
     query = (
         select(Content)
         .join(Project, Project.id == Content.project_id)
+        # ``_to_out`` reads ``content.project.name`` for every row. The join
+        # above only filters — it does not populate the relationship — so
+        # without this the default lazy load fires one SELECT per row, and this
+        # endpoint returns up to 500 of them.
+        .options(joinedload(Content.project))
         .where(Project.user_id == user.id)
         .order_by(Content.created_at.desc())
         .limit(limit)
@@ -138,6 +143,7 @@ def review_queue(
     rows = db.scalars(
         select(Content)
         .join(Project, Project.id == Content.project_id)
+        .options(joinedload(Content.project))
         .where(Project.user_id == user.id, Content.status == ContentStatus.REVIEW)
         .order_by(Content.created_at.desc())
     )

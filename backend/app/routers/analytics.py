@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.deps import get_current_user
@@ -58,6 +58,9 @@ def dashboard(
             select(Publication)
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
+            # The response reads ``p.content.title``; joining for the filter
+            # does not load the relationship.
+            .options(joinedload(Publication.content))
             .where(
                 Project.user_id == user.id,
                 Publication.status == PublicationStatus.SCHEDULED,
@@ -70,6 +73,8 @@ def dashboard(
         db.scalars(
             select(Content)
             .join(Project, Project.id == Content.project_id)
+            # Same as the content list: ``c.project.name`` per row.
+            .options(joinedload(Content.project))
             .where(Project.user_id == user.id)
             .order_by(Content.created_at.desc())
             .limit(8)
