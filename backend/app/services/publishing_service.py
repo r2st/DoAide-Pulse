@@ -31,6 +31,7 @@ from app.services.publishers.base import (
     PublishError,
     PublishRequest,
     PublishResult,
+    UnsupportedOption,
 )
 
 logger = logging.getLogger(__name__)
@@ -211,9 +212,9 @@ def execute(db: Session, publication: Publication) -> Publication:
         result = adapter.publish(
             build_request(content, as_draft=publication.as_draft), credentials
         )
-    except (NotConnected, NotImplementedAdapter) as exc:
-        # Neither is transient: no amount of retrying connects an account or
-        # finishes an adapter.
+    except (NotConnected, NotImplementedAdapter, UnsupportedOption) as exc:
+        # None of these is transient: no amount of retrying connects an account,
+        # finishes an adapter, or gives a platform a feature it does not have.
         _fail(db, publication, str(exc), terminal=True)
         return publication
     except CredentialError as exc:

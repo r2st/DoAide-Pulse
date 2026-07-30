@@ -45,6 +45,17 @@ class NotImplementedAdapter(PublishError):
     """
 
 
+class UnsupportedOption(PublishError):
+    """The adapter works, but this platform cannot do what was asked.
+
+    Terminal, like :class:`CredentialError`: retrying does not give a platform a
+    feature it does not have. The case that motivates it is ``as_draft`` on the
+    social platforms — Mastodon and Bluesky have no draft state, and the only
+    honest answers are "refuse" or "publish it live anyway". Refusing is the one
+    that cannot surprise somebody who ticked a box to *avoid* going live.
+    """
+
+
 @dataclass(frozen=True)
 class CredentialField:
     """One thing the user has to paste into the settings page."""
@@ -81,6 +92,11 @@ class PublishRequest:
     #: Publish as a draft on the platform rather than going live. Used by the
     #: "stage everything, publish by hand" workflow.
     as_draft: bool = False
+    #: A stable key for this (content, platform) pair, for the platforms that
+    #: accept one. Retries are the reason: a request that succeeds and then times
+    #: out on the way back is indistinguishable from one that failed, and without
+    #: a key the retry posts a second copy.
+    idempotency_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -223,4 +239,5 @@ __all__ = [
     "PublishError",
     "PublishRequest",
     "PublishResult",
+    "UnsupportedOption",
 ]
