@@ -22,6 +22,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.mixins import TimestampMixin
 
+# Imported at runtime for the same reason as ``datetime`` above: it appears in a
+# ``Mapped[...]`` annotation. Safe despite the apparent cycle — ``publication``
+# imports ``project`` only under TYPE_CHECKING.
+from app.models.publication import Platform
+
 if TYPE_CHECKING:
     from app.models.content import Content
     from app.models.user import User
@@ -86,6 +91,20 @@ class Project(Base, TimestampMixin):
         SAEnum(Tone, native_enum=False, length=20), default=Tone.TECHNICAL, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # ---- Syndication ----
+    #: When true, the first public URL a piece gets becomes its
+    #: ``canonical_url``, and every platform published to afterwards is told
+    #: about it. Off means the field stays whatever a human typed.
+    auto_canonical: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: The destination that *owns* the canonical URL for this project — the
+    #: original, of which everything else is a syndicated copy. ``None`` means
+    #: no destination is privileged and whichever publishes first wins, which is
+    #: right for a project with one real home and wrong for a project whose blog
+    #: is a slow-to-build static site.
+    canonical_platform: Mapped[Platform | None] = mapped_column(
+        SAEnum(Platform, native_enum=False, length=30)
+    )
 
     # ---- Autopilot ----
     autopilot_mode: Mapped[AutopilotMode] = mapped_column(

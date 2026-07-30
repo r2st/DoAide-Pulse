@@ -167,6 +167,16 @@ class Settings(BaseSettings):
     # is parked as `failed` for a human to look at.
     publish_max_retries: int = 3
 
+    # ---- Syndication ----
+    # How long the copies wait after the project's canonical platform when both
+    # are queued in one go. Two jobs: it lets the original's URL land on the
+    # content row so the copies can carry rel=canonical, and it gives crawlers a
+    # window to see the original first. Nothing here is a barrier — the delay is
+    # a `scheduled_for`, picked up by the same beat sweep as any other scheduled
+    # publication, so it should comfortably exceed
+    # `publish_scan_interval_seconds`. Set to 0 to publish everything at once.
+    syndication_delay_seconds: int = 900
+
     @field_validator(
         "access_token_expire_minutes",
         "autopilot_daily_content_limit",

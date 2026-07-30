@@ -62,7 +62,8 @@ def _to_out(db: Session, project: Project) -> ProjectOut:
                 for key in (
                     "id", "name", "slug", "description", "repo_url", "live_url",
                     "tech_stack", "target_audience", "keywords", "tone", "is_active",
-                    "autopilot_mode", "autopilot_platforms", "last_seen_commit_sha",
+                    "autopilot_mode", "autopilot_platforms", "auto_canonical",
+                    "canonical_platform", "last_seen_commit_sha",
                     "last_seen_release_tag", "last_scanned_at", "created_at",
                 )
             },

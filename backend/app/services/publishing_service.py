@@ -12,7 +12,7 @@ failing makes the content itself a failure.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,6 +30,7 @@ from app.services.publishers.base import (
     NotImplementedAdapter,
     PublishError,
     PublishRequest,
+    PublishResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,9 +53,14 @@ def queue(
     Re-queueing a platform that previously failed resets it rather than adding a
     second row — the unique constraint on (content, platform) makes that the
     only correct behaviour, and "retry this one" is the common case.
+
+    When the project names a canonical platform and this batch contains both it
+    and somewhere else to syndicate to, the copies are held back — see
+    :func:`_syndication_schedule`.
     """
     existing = {p.platform: p for p in content.publications}
     out: list[Publication] = []
+    schedule = _syndication_schedule(content, platforms, base=scheduled_for)
 
     for raw in platforms:
         platform = raw if isinstance(raw, Platform) else Platform(raw)
@@ -69,17 +75,67 @@ def queue(
             out.append(publication)
             continue
 
+        when = schedule.get(platform, scheduled_for)
         publication.status = (
-            PublicationStatus.SCHEDULED if scheduled_for else PublicationStatus.PENDING
+            PublicationStatus.SCHEDULED if when else PublicationStatus.PENDING
         )
-        publication.scheduled_for = scheduled_for
+        publication.scheduled_for = when
         publication.as_draft = as_draft
         publication.error = None
         publication.attempts = 0
         out.append(publication)
 
     db.flush()
+    # Canonical first, so a caller that dispatches in order gives the original a
+    # head start even when the delay is switched off.
+    canonical = _canonical_platform(content)
+    out.sort(key=lambda p: (p.platform != canonical, p.platform.value))
     return out
+
+
+def _canonical_platform(content: Content) -> Platform | None:
+    """The platform whose URL this project treats as the original, if any."""
+    project = content.project
+    if project is None or not project.auto_canonical:
+        return None
+    return project.canonical_platform
+
+
+def _syndication_schedule(
+    content: Content,
+    platforms: list[Platform | str],
+    *,
+    base: datetime | None,
+) -> dict[Platform, datetime | None]:
+    """When each platform in this batch should go out.
+
+    Publishing the original and its copies in the same instant loses the point
+    of a canonical URL twice over: the copies are dispatched before the original
+    has an ``external_url`` to be canonical *to*, and a crawler has no reason to
+    believe the original came first. So when the project designates a canonical
+    platform and this batch also contains somewhere else, the rest wait
+    ``syndication_delay_seconds`` behind it.
+
+    Returns a mapping for the platforms whose time differs from *base*; anything
+    absent keeps the caller's own schedule. An empty dict means "nothing to
+    stagger", which covers the ordinary single-platform publish.
+    """
+    canonical = _canonical_platform(content)
+    delay = settings.syndication_delay_seconds
+    if canonical is None or delay <= 0:
+        return {}
+
+    wanted = {p if isinstance(p, Platform) else Platform(p) for p in platforms}
+    # Nothing to order: the original is not in this batch (so its URL either
+    # already exists or is not coming), or there is nothing to syndicate.
+    if canonical not in wanted or len(wanted) < 2:
+        return {}
+    # The original already has its URL — the copies can go out immediately.
+    if content.canonical_url:
+        return {}
+
+    later = (base or utcnow()) + timedelta(seconds=delay)
+    return {platform: later for platform in wanted if platform != canonical}
 
 
 def _credentials_for(db: Session, user_id: int, platform: Platform) -> dict:
@@ -182,6 +238,7 @@ def execute(db: Session, publication: Publication) -> Publication:
     publication.external_url = result.external_url
     publication.error = None
 
+    _adopt_canonical(content, publication, result)
     _sync_content_status(content)
     db.commit()
     logger.info(
@@ -191,6 +248,49 @@ def execute(db: Session, publication: Publication) -> Publication:
         result.external_url,
     )
     return publication
+
+
+def _adopt_canonical(
+    content: Content, publication: Publication, result: PublishResult
+) -> None:
+    """Adopt this publication's URL as the piece's canonical, when it should be.
+
+    Herald's syndication model has always depended on ``canonical_url`` — every
+    adapter sends it — but nothing set it, so in practice each copy was published
+    with no original and the search ranking was split between them. This closes
+    that: publish somewhere, and everywhere afterwards is told where the real one
+    lives.
+
+    Four things stop it firing, and each is a case where guessing would be worse
+    than leaving the field empty:
+
+    * the project opted out, or a human already typed a canonical URL — an
+      explicit answer beats an inferred one;
+    * the project names a canonical platform and this is not it, so this URL is
+      itself a copy;
+    * the post was staged as a draft, whose URL is a private editor link that
+      would 404 for a crawler;
+    * the platform did not return an absolute ``http(s)`` URL to use.
+    """
+    project = content.project
+    if project is None or not project.auto_canonical or content.canonical_url:
+        return
+    if project.canonical_platform and publication.platform != project.canonical_platform:
+        return
+    if publication.as_draft:
+        return
+
+    url = (result.external_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return
+
+    content.canonical_url = url
+    logger.info(
+        "content %s adopted %s as its canonical URL: %s",
+        content.id,
+        publication.platform.value,
+        url,
+    )
 
 
 def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) -> None:

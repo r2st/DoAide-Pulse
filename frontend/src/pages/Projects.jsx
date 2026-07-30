@@ -27,6 +27,8 @@ const EMPTY_FORM = {
   keywords: "",
   tone: "technical",
   autopilot_mode: "off",
+  auto_canonical: true,
+  canonical_platform: "",
 };
 
 /** The project registry: what Herald is allowed to write about. */
@@ -210,10 +212,16 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
           keywords: (project.keywords ?? []).join(", "),
           tone: project.tone,
           autopilot_mode: project.autopilot_mode,
+          auto_canonical: project.auto_canonical ?? true,
+          canonical_platform: project.canonical_platform ?? "",
         }
       : EMPTY_FORM,
   );
   const [busy, setBusy] = useState(false);
+  // Only the platforms that can actually publish are worth offering as the
+  // canonical home — naming an unfinished adapter would designate an original
+  // that never appears, and every copy would wait behind it for nothing.
+  const { data: platforms } = useApi(() => api.platforms(), []);
 
   const set = (key) => (event) =>
     setForm((current) => ({ ...current, [key]: event.target.value }));
@@ -233,6 +241,9 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
       keywords: splitList(form.keywords),
       repo_url: form.repo_url || null,
       live_url: form.live_url || null,
+      // "" is the select's way of saying "no platform is privileged", which the
+      // API spells as null.
+      canonical_platform: form.canonical_platform || null,
     };
     try {
       if (project) await api.updateProject(project.id, payload);
@@ -389,6 +400,56 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
             </p>
           </div>
         </div>
+
+        <fieldset className="space-y-3 rounded-lg border border-line px-4 py-3">
+          <legend className="label px-1">Syndication</legend>
+
+          <label className="flex items-start gap-2.5 text-sm text-ink-700">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={form.auto_canonical}
+              onChange={(e) =>
+                setForm((current) => ({ ...current, auto_canonical: e.target.checked }))
+              }
+            />
+            <span>
+              Set the canonical URL automatically
+              <span className="mt-0.5 block text-xs text-ink-400">
+                The first public URL a piece gets becomes the original; every
+                platform published to afterwards is told about it, so the copies
+                don&rsquo;t compete with it in search.
+              </span>
+            </span>
+          </label>
+
+          <div>
+            <label className="label" htmlFor="p-canonical">
+              Primary destination
+            </label>
+            <select
+              id="p-canonical"
+              className="input"
+              value={form.canonical_platform}
+              disabled={!form.auto_canonical}
+              onChange={set("canonical_platform")}
+            >
+              <option value="">Whichever publishes first</option>
+              {(platforms ?? [])
+                .filter((p) => p.implemented)
+                .map((p) => (
+                  <option key={p.platform} value={p.platform}>
+                    {p.display_name}
+                  </option>
+                ))}
+            </select>
+            <p className="mt-1.5 text-xs text-ink-400">
+              {form.canonical_platform
+                ? "Only this destination can claim the canonical URL. Copies queued alongside it wait until it has published."
+                : "No destination is privileged — the first one to publish owns the canonical URL."}
+            </p>
+          </div>
+        </fieldset>
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className="btn-ghost" onClick={onClose}>

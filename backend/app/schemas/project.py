@@ -21,6 +21,10 @@ class ProjectBase(BaseModel):
     is_active: bool = True
     autopilot_mode: AutopilotMode = AutopilotMode.OFF
     autopilot_platforms: list[Platform] = []
+    #: Set ``content.canonical_url`` from the first public URL a piece gets.
+    auto_canonical: bool = True
+    #: Which destination counts as the original. ``None`` = first to publish wins.
+    canonical_platform: Platform | None = None
 
     @field_validator("tech_stack", "keywords")
     @classmethod
@@ -56,6 +60,8 @@ class ProjectUpdate(BaseModel):
     is_active: bool | None = None
     autopilot_mode: AutopilotMode | None = None
     autopilot_platforms: list[Platform] | None = None
+    auto_canonical: bool | None = None
+    canonical_platform: Platform | None = None
 
 
 class ProjectOut(ProjectBase):
