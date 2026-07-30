@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
+from app.ratelimit import limiter, rate_limit_exceeded_handler
 from app.routers import analytics, auth, calendar, content, misc, projects
 from app.routers import settings as settings_router
 
@@ -16,6 +18,11 @@ def create_app() -> FastAPI:
         description="AI-powered marketing automation for developer projects.",
         debug=settings.debug,
     )
+
+    # slowapi's decorators read the limiter off application state at request
+    # time, so this assignment is what makes @limiter.limit(...) live.
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     app.add_middleware(
         CORSMiddleware,

@@ -37,6 +37,35 @@ class Settings(BaseSettings):
     # in production (see app.services.crypto).
     token_encryption_key: str = ""
 
+    # ---- Registration ----
+    # Herald is a single-user product: the account is created once by
+    # ``python -m app.seed``. An open /auth/register on a public box lets anyone
+    # sign up and spend the shared free-tier LLM quota, so it is closed unless
+    # explicitly opened.
+    registration_enabled: bool = False
+    # When set, /auth/register additionally requires this exact token in the
+    # request body. Mandatory in production: registration that is enabled but
+    # tokenless is refused rather than served wide open.
+    registration_invite_token: str = ""
+
+    # ---- Rate limiting ----
+    rate_limit_enabled: bool = True
+    # Blank means in-process memory, which counts per uvicorn worker (2 in
+    # production, so the effective limit is doubled). Point it at
+    # ``redis://localhost:6379/3`` to share one counter across workers.
+    rate_limit_storage_uri: str = ""
+    # Herald sits behind Caddy, so ``request.client.host`` is always the proxy.
+    # With this on, the *rightmost* X-Forwarded-For entry is used instead — the
+    # one Caddy appended, i.e. the peer it actually saw. A client-supplied
+    # header lands to the left of it and so cannot be used to dodge a limit.
+    rate_limit_trust_forwarded_for: bool = True
+    # Per-endpoint budgets. Any format `limits` understands, including several
+    # windows separated by ";" ("10/minute;100/hour").
+    rate_limit_login: str = "10/minute;100/hour"
+    rate_limit_register: str = "5/hour"
+    rate_limit_password_reset: str = "5/hour"
+    rate_limit_auth_read: str = "60/minute"
+
     # ---- Database ----
     database_url: str = "postgresql+psycopg://herald:herald@localhost:5432/herald"
 

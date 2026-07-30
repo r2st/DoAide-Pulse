@@ -17,6 +17,8 @@ pydantic-settings>=2.3
 # ---- Auth ----
 python-jose[cryptography]>=3.3
 bcrypt>=4.1
+# Rate limiting for /auth/* (login guessing, signup, reset-mail flooding).
+slowapi>=0.1.9
 # Credential encryption at rest (Fernet).
 cryptography>=42.0
 

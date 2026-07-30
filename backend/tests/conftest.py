@@ -13,6 +13,10 @@ import os
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("JWT_SECRET", "test-secret-not-a-real-one")
 os.environ.setdefault("CELERY_ENABLED", "false")
+# Registration is closed in production; the tests that exercise the happy path
+# open it explicitly (see tests/test_auth.py), so it must be reachable here.
+os.environ.setdefault("REGISTRATION_ENABLED", "true")
+os.environ.setdefault("REGISTRATION_INVITE_TOKEN", "")
 # No provider keys: the chain is empty, so generation takes the template path.
 for key in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
     os.environ[key] = ""
@@ -23,6 +27,7 @@ from sqlalchemy import create_engine  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
+from app import ratelimit  # noqa: E402
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.project import Project, Tone  # noqa: E402
@@ -38,6 +43,19 @@ engine = create_engine(
     future=True,
 )
 TestSession = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """Empty every rate-limit counter around each test.
+
+    The limiter is a module-level singleton with in-process storage, so without
+    this the ``auth`` fixture's one login per test accumulates and the 30th test
+    to ask for a token gets a 429 instead.
+    """
+    ratelimit.reset()
+    yield
+    ratelimit.reset()
 
 
 @pytest.fixture

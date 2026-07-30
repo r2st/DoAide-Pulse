@@ -137,6 +137,25 @@ its own key, add $10 of credit to unlock 1000/day, or configure one of the
 already-supported fallbacks (`GROQ_API_KEY`, `GEMINI_API_KEY`,
 `CEREBRAS_API_KEY`) — all have free tiers and all speak the same dialect.
 
+## Auth surface
+
+`/auth/*` is the only part of the API reachable without a bearer token, so it is
+the only part that is rate limited (`app/ratelimit.py`, slowapi).
+
+- **Registration is closed.** `REGISTRATION_ENABLED=false` — `POST
+  /auth/register` answers 403. The account is the seeded one. Opening it in
+  production additionally requires `REGISTRATION_INVITE_TOKEN`; enabled without
+  a token is refused rather than served open.
+- **Limits** default to 10/minute login, 5/hour register, 5/hour password reset,
+  60/minute `/auth/me`. Counters live in process memory, so with two uvicorn
+  workers the real budget is double the number. Set
+  `RATE_LIMIT_STORAGE_URI=redis://localhost:6379/3` to make it exact.
+- **The client address comes from Caddy**, which appends the peer it saw to
+  `X-Forwarded-For`. Herald reads the **rightmost** entry, so a caller cannot
+  prepend a value and reset its own budget. `RATE_LIMIT_TRUST_FORWARDED_FOR=false`
+  falls back to `request.client.host`, which behind this proxy is one bucket for
+  the entire internet — only correct if the app is ever exposed directly.
+
 ## Migrations
 
 ```bash

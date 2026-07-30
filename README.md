@@ -43,7 +43,9 @@ docker compose up --build
 The API migrates on boot and serves at <http://localhost:8000>
 (<http://localhost:8000/docs> for the OpenAPI browser).
 
-Seed an account and Herald's own project record:
+Seed an account and Herald's own project record — this, not `/auth/register`, is
+how the account is created: registration is closed unless `REGISTRATION_ENABLED`
+says otherwise (see Configuration).
 
 ```bash
 docker compose exec api python -m app.seed
@@ -163,6 +165,9 @@ what happens if you leave it blank. The ones that matter:
 | `GITHUB_TOKEN` | Without it, repo scans run at 60 req/hour on public repos only. |
 | `TOKEN_ENCRYPTION_KEY` | Encrypts platform tokens at rest. **Production refuses to store a credential without it.** |
 | `JWT_SECRET` | Change it. |
+| `REGISTRATION_ENABLED` | Off by default. `POST /auth/register` answers 403 — Herald is single-user and the account comes from `python -m app.seed`. |
+| `REGISTRATION_INVITE_TOKEN` | Required alongside the flag in production. Enabled-but-tokenless registration is refused there rather than served open. |
+| `RATE_LIMIT_STORAGE_URI` | Blank counts per uvicorn worker. Point it at Redis for one shared budget. |
 | `AUTOPILOT_AUTO_PUBLISH_CONFIDENCE` | The bar for publishing without review. Default 0.8. |
 
 `GET /api/v1/health` reports which of these are set, and the Settings page shows
