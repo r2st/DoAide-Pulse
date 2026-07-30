@@ -4,8 +4,8 @@
 
 Herald is marketing automation for developers who ship more than they write
 about. It watches your project repos, drafts blog posts and social copy when
-something meaningful lands, runs them past you, publishes to Dev.to and Medium
-on a schedule, and tracks which pieces actually got read.
+something meaningful lands, runs them past you, publishes them across seven
+destinations on a schedule, and tracks which pieces actually got read.
 
 ---
 
@@ -16,7 +16,7 @@ on a schedule, and tracks which pieces actually got read.
 | **Project registry** | Register what you ship — description, stack, audience, tone, repo. Herald reads the repo for what's changed since it last looked. |
 | **Content engine** | Five content types (tutorial, announcement, feature spotlight, comparison, how-to) × three tones, generated from the project record plus real commit and release data. |
 | **SEO** | Meta description, keywords, tags and a heading-outline audit, applied deterministically rather than spent as a second model call. |
-| **Publishing** | Adapters per platform. Dev.to and Medium publish today; four more are scaffolded (see [Platform support](#platform-support)). |
+| **Publishing** | Adapters per platform. Seven publish today — including a commit to your own blog repo — and two need an auth flow nobody can complete on a free tier (see [Platform support](#platform-support)). |
 | **Calendar** | Month grid with drag-to-reschedule, plus per-platform cadence guidance. |
 | **Analytics** | Views and engagement per post, per platform, per content type, per project. |
 | **Autopilot** | Watch repos, write when something ships, publish without review only when the model is confident and you've said it may. |
@@ -136,16 +136,24 @@ averages down.
 
 | Platform | Status | Notes |
 |---|---|---|
+| **Git repo** | ✅ Publishes | Commits Markdown + front matter to the repo your blog is built from. No OAuth, no rate tier, nobody who can revoke it. Normally the right canonical platform. |
 | **Dev.to** | ✅ Publishes, reports metrics | One API key. The reference adapter — read this one first. |
+| **Mastodon** | ✅ Publishes, reports metrics | Bearer token from any instance. Four clicks to get one. No draft state, so `as_draft` is refused rather than posted live. |
+| **Bluesky** | ✅ Publishes, reports metrics | App password, not the account password. Links need byte-offset facets — see the adapter. No draft state. |
+| **Hashnode** | ✅ Publishes | GraphQL. Needs the publication id of the blog to post to; connecting the account lists the ones your token can see. |
+| **WordPress** | ✅ Publishes | Self-hosted, REST API at `/wp-json`, application password. WordPress.com is a different API. |
 | **Medium** | ✅ Publishes | ⚠️ Medium stopped issuing new integration tokens in 2023. Works with a token created before then; a new account cannot get one. No stats API. |
-| Hashnode | 🔨 Scaffolded | Payload building is done and tested; the GraphQL call is not wired up. |
 | LinkedIn | 🔨 Scaffolded | Needs a registered app and 3-legged OAuth (`w_member_social`) — an auth flow, not an adapter. |
 | Twitter/X | 🔨 Scaffolded | Thread splitting is done and tested. Needs OAuth 1.0a signing and a paid tier for writes. |
-| WordPress | 🔨 Scaffolded | Closest to done — application passwords are Basic auth, no OAuth. Untested against a live site. |
 
 Scaffolded adapters have their formatting layer implemented and under test;
 `publish()` raises a clear `NotImplementedAdapter` rather than pretending. The
 API refuses to queue content for them, so nothing silently disappears.
+
+Links published to any of these carry UTM parameters pointing back at the
+platform they went out on, so the project's own analytics can answer "which
+destination actually sent traffic" — which matters when only Dev.to has a stats
+API. The `rel=canonical` URL is never tagged.
 
 Adding a platform: write the adapter against
 `app/services/publishers/base.py:Adapter`, register it in

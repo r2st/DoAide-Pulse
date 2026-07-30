@@ -1,6 +1,23 @@
 # Herald — feature improvements
 
-Proposals only, nothing implemented. Written against the code as of `7b3879c`.
+Written against the code as of `7b3879c`, as proposals. The **first pass** has
+since been implemented in full — the items marked ✅ below are shipped, and the
+"Where the product is now" section describes the state *before* them. Everything
+unmarked is still a proposal.
+
+| Shipped | Was |
+|---|---|
+| ✅ 5.1 auto-canonical + syndication order | `cb1f8c5` |
+| ✅ 5.2 link and claim validation | `85f9260` |
+| ✅ 1.6 cover images | `73a3fe6` |
+| ✅ 3.1 UTM tagging + click attribution | `6cdc933` |
+| ✅ 2.1 Git-based publishing | `fe618dc` |
+| ✅ 2.2 Mastodon · 2.3 Bluesky | `fe618dc` |
+| ✅ Hashnode + WordPress transports | `fe618dc` |
+
+Two destinations became seven, canonicals are correct, and outbound traffic is
+attributable. The **second pass** — the feedback loop, §3.2–3.4 and §4.1/4.4 —
+is what comes next.
 
 **Effort scale** (one developer, including tests and UI):
 **S** ≤ 1 day · **M** 2–4 days · **L** 1–2 weeks · **XL** 3+ weeks
