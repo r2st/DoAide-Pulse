@@ -171,7 +171,9 @@ what happens if you leave it blank. The ones that matter:
 | `AUTOPILOT_AUTO_PUBLISH_CONFIDENCE` | The bar for publishing without review. Default 0.8. |
 
 `GET /api/v1/health` reports which of these are set, and the Settings page shows
-the same thing in English.
+the same thing in English. It also probes Postgres and Redis and answers **503**
+when a required one is down — the reverse proxy uses it as a health check, so
+the status code is not decorative (`deploy/DEPLOYMENT.md` has the table).
 
 ## Deployment
 

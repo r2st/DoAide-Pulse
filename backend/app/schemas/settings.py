@@ -52,8 +52,23 @@ class PlatformCapability(BaseModel):
     connection: ConnectionOut | None = None
 
 
-class HealthOut(BaseModel):
+class DependencyOut(BaseModel):
+    """One backing service the health check probed."""
+
+    #: "ok" | "unavailable".
     status: str
+    #: Whether ``status != "ok"`` is enough to fail the whole health check.
+    required: bool = True
+    #: Truncated cause when unavailable; empty otherwise.
+    detail: str = ""
+
+
+class HealthOut(BaseModel):
+    #: "ok" when every *required* dependency answered, "degraded" otherwise.
+    #: Degraded is served with HTTP 503 — Caddy reads the status code.
+    status: str
+    database: DependencyOut = DependencyOut(status="unknown")
+    redis: DependencyOut = DependencyOut(status="unknown")
     llm_providers: list[str] = []
     llm_breakers_open: dict = {}
     github_configured: bool = False

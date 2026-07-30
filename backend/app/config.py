@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     # being handed to a worker. Intended for single-process deployments and
     # tests; production runs workers and leaves this on.
     celery_enabled: bool = True
+    # Per-dependency budget for the /health probes. Short on purpose: Caddy polls
+    # this every 30s and a health check that hangs is itself an outage.
+    health_check_timeout_seconds: float = 2.0
 
     # ---- AI (OpenRouter — free models only) ----
     openrouter_api_key: str = ""

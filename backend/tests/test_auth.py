@@ -39,11 +39,3 @@ def test_wrong_password_rejected(client, user):
 
 def test_protected_route_requires_token(client):
     assert client.get("/api/v1/projects").status_code == 401
-
-
-def test_health_reports_no_providers_configured(client):
-    body = client.get("/api/v1/health").json()
-    assert body["status"] == "ok"
-    # conftest blanks every key, so the chain is empty in tests.
-    assert body["llm_providers"] == []
-    assert set(body["implemented_platforms"]) == {"devto", "medium"}

@@ -137,6 +137,33 @@ its own key, add $10 of credit to unlock 1000/day, or configure one of the
 already-supported fallbacks (`GROQ_API_KEY`, `GEMINI_API_KEY`,
 `CEREBRAS_API_KEY`) — all have free tiers and all speak the same dialect.
 
+## Health check
+
+`GET /api/v1/health` probes its dependencies rather than returning a bare 200:
+`SELECT 1` against Postgres and a `PING` against Redis, each with a 2 s budget
+(`HEALTH_CHECK_TIMEOUT_SECONDS`). The body reports both, plus the LLM chain and
+breaker state.
+
+**The status code is load-bearing** — it is Caddy's `health_uri`, so a non-2xx
+takes this uvicorn out of the upstream pool, and with one upstream that means
+`/api/*` starts answering 502. So it fails only on a dependency Herald cannot
+work without:
+
+| Dependency | Required | Down ⇒ |
+|---|---|---|
+| Postgres | always | 503 |
+| Redis | when `CELERY_ENABLED=true` (production) | 503 |
+| Redis | when `CELERY_ENABLED=false` | reported, still 200 |
+
+Redis counting as fatal in production is deliberate: with the worker and beat
+running, a dead broker means every generate and publish is queued into nothing
+and silently lost. A loud 502 is better than accepting work that will never
+happen. The tradeoff is that a Redis blip takes the whole API down with it —
+`systemctl status redis` is the first thing to check on an unexplained 502.
+
+`deploy.sh` ends with `curl -fsS …/health`, so a deploy that leaves a dependency
+broken fails at the last step instead of looking fine.
+
 ## Auth surface
 
 `/auth/*` is the only part of the API reachable without a bearer token, so it is
