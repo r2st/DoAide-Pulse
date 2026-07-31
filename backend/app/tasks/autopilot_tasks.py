@@ -138,6 +138,40 @@ def scan_project(project_id: int) -> dict:
         db.close()
 
 
+def _prune_ideas(db: Session, project_id: int) -> int:
+    """Delete the oldest unused ideas beyond the per-project cap.
+
+    Returns the number of rows pruned (zero when within budget).
+    """
+    cap = settings.autopilot_ideas_cap
+    unused_count = db.scalar(
+        select(func.count(ContentIdea.id)).where(
+            ContentIdea.project_id == project_id,
+            ContentIdea.used_content_id.is_(None),
+        )
+    ) or 0
+    if unused_count <= cap:
+        return 0
+
+    excess = unused_count - cap
+    oldest_ids = list(
+        db.scalars(
+            select(ContentIdea.id)
+            .where(
+                ContentIdea.project_id == project_id,
+                ContentIdea.used_content_id.is_(None),
+            )
+            .order_by(ContentIdea.created_at)
+            .limit(excess)
+        )
+    )
+    if oldest_ids:
+        db.execute(
+            ContentIdea.__table__.delete().where(ContentIdea.id.in_(oldest_ids))
+        )
+    return len(oldest_ids)
+
+
 def _act_on(
     db: Session, project: Project, activity: github_client.RepoActivity, *, first_scan: bool
 ) -> dict:
@@ -159,6 +193,9 @@ def _act_on(
                 source={"kind": "autopilot", "commits": len(activity.new_commits)},
             )
         )
+
+    # Prune oldest unused ideas beyond the cap so the table stays bounded.
+    _prune_ideas(db, project.id)
 
     mode = (
         project.autopilot_mode

@@ -145,6 +145,47 @@ def _is_private(address: str) -> bool:
     )
 
 
+_MAX_REDIRECTS = 10
+
+
+def _follow_safely(
+    url: str, *, client: httpx.Client, method: str = "HEAD"
+) -> httpx.Response:
+    """Follow redirects manually, checking each hop for SSRF.
+
+    httpx's built-in ``follow_redirects`` resolves DNS independently from
+    ``_unreachable_for_a_reader``, so a 302 to ``http://169.254.169.254/``
+    would bypass the pre-flight check. Following by hand lets us validate
+    every Location header before the client connects.
+    """
+    current = url
+    for _ in range(_MAX_REDIRECTS):
+        response = client.request(method, current)
+        if response.is_redirect:
+            location = response.headers.get("location", "")
+            if not location:
+                return response
+            # Resolve relative → absolute via httpx's URL handling.
+            resolved = str(response.next_request.url) if response.next_request else location
+            ssrf = _unreachable_for_a_reader(resolved)
+            if ssrf:
+                raise _SSRFRedirect(resolved, ssrf)
+            current = resolved
+            continue
+        return response
+    # Exceeded redirect budget — treat as unreachable.
+    raise httpx.TooManyRedirects(f"More than {_MAX_REDIRECTS} redirects", request=response.request)
+
+
+class _SSRFRedirect(Exception):
+    """A redirect tried to reach a private address."""
+
+    def __init__(self, target: str, reason: str):
+        self.target = target
+        self.reason = reason
+        super().__init__(f"Redirect to {target}: {reason}")
+
+
 def check_url(url: str, *, client: httpx.Client) -> LinkStatus:
     """Resolve one URL to a verdict. Never raises."""
     unreachable = _unreachable_for_a_reader(url)
@@ -152,12 +193,18 @@ def check_url(url: str, *, client: httpx.Client) -> LinkStatus:
         return LinkStatus(url, BROKEN, detail=unreachable)
 
     try:
-        response = client.head(url)
+        response = _follow_safely(url, client=client, method="HEAD")
         # A great many servers do not implement HEAD, and answer 405 or 403 to
         # it while serving GET perfectly well. Retrying with GET is the
         # difference between a useful checker and one that flags half the web.
         if response.status_code in (403, 405, 501):
-            response = client.get(url)
+            response = _follow_safely(url, client=client, method="GET")
+    except _SSRFRedirect as exc:
+        return LinkStatus(
+            url,
+            BROKEN,
+            detail=f"Redirects to a private address ({exc.target}) — {exc.reason}",
+        )
     except httpx.HTTPError as exc:
         return LinkStatus(
             url,
@@ -200,7 +247,7 @@ def check(urls: list[str], *, timeout: float | None = None) -> list[LinkStatus]:
     with (
         httpx.Client(
             timeout=budget,
-            follow_redirects=True,
+            follow_redirects=False,
             headers={
                 # Some hosts 403 an unidentified client outright. Saying who we
                 # are turns a pile of `unknown` verdicts into real answers.

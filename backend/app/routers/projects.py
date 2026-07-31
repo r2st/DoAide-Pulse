@@ -134,9 +134,10 @@ def create_project(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
+    base_slug = _unique_slug(db, user.id, payload.name)
     project = Project(
         user_id=user.id,
-        slug=_unique_slug(db, user.id, payload.name),
+        slug=base_slug,
         **payload.model_dump(exclude={"autopilot_platforms"}),
         autopilot_platforms=[p.value for p in payload.autopilot_platforms],
     )
@@ -145,7 +146,14 @@ def create_project(
         db.commit()
     except IntegrityError:
         db.rollback()
-        project.slug = f"{project.slug}-{secrets.token_hex(3)}"
+        # The original instance is expunged after rollback — build a fresh
+        # one rather than re-adding a detached object with stale state.
+        project = Project(
+            user_id=user.id,
+            slug=f"{base_slug}-{secrets.token_hex(3)}",
+            **payload.model_dump(exclude={"autopilot_platforms"}),
+            autopilot_platforms=[p.value for p in payload.autopilot_platforms],
+        )
         db.add(project)
         db.commit()
     db.refresh(project)

@@ -63,6 +63,26 @@ def test_is_production_property():
         assert s.is_production is False
 
 
+def test_database_pool_recycle_is_set_for_postgres():
+    """Stale connections must be recycled so a PG restart doesn't break the pool."""
+    from app.database import _make_engine
+
+    pg_engine = _make_engine("postgresql+psycopg://test:test@localhost/test")
+    try:
+        assert pg_engine.pool._recycle >= 0, "pool_recycle should be set, not -1 (never)"
+    finally:
+        pg_engine.dispose()
+
+
+def test_database_pool_skips_tuning_for_sqlite():
+    from app.database import _make_engine
+
+    sqlite_engine = _make_engine("sqlite://")
+    # SQLite uses StaticPool by default which has no _recycle attr, or NullPool.
+    # Just verify it doesn't crash.
+    sqlite_engine.dispose()
+
+
 def test_cors_origins_parsed():
     s = Settings(
         environment="development",

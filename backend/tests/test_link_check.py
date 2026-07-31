@@ -77,7 +77,9 @@ def test_extraction_respects_a_limit():
 
 
 def _client(handler) -> httpx.Client:
-    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=True)
+    # follow_redirects=False mirrors the production client; redirect following
+    # is now handled by _follow_safely with SSRF checks on each hop.
+    return httpx.Client(transport=httpx.MockTransport(handler), follow_redirects=False)
 
 
 @pytest.fixture(autouse=True)
@@ -179,6 +181,51 @@ def test_a_loopback_link_is_broken_without_a_request(monkeypatch):
 
     assert status.status == link_check.BROKEN
     assert "private or loopback" in status.detail
+
+
+def test_redirect_to_private_ip_is_blocked(monkeypatch):
+    """A redirect that targets a private address must be caught (SSRF)."""
+    monkeypatch.undo()  # drop the _no_dns override
+
+    call_count = 0
+
+    def _ssrf_check(url):
+        # First call (the original URL) passes; redirect target is private.
+        nonlocal call_count
+        call_count += 1
+        if "169.254" in url:
+            return "Resolves to a private or loopback address — SSRF blocked."
+        return None
+
+    monkeypatch.setattr(link_check, "_unreachable_for_a_reader", _ssrf_check)
+
+    def _redirect(request):
+        return httpx.Response(
+            302,
+            headers={"location": "http://169.254.169.254/latest/meta-data/"},
+        )
+
+    with _client(_redirect) as client:
+        status = link_check.check_url("https://evil.example.com/redir", client=client)
+
+    assert status.status == link_check.BROKEN
+    assert "private address" in status.detail.lower() or "SSRF" in status.detail
+
+
+def test_redirect_to_public_ip_is_followed(monkeypatch):
+    """A redirect to a normal public URL should be followed and report OK."""
+    monkeypatch.undo()
+    monkeypatch.setattr(link_check, "_unreachable_for_a_reader", lambda url: None)
+
+    def _handler(request):
+        if "redir" in str(request.url):
+            return httpx.Response(302, headers={"location": "https://example.com/dest"})
+        return httpx.Response(200)
+
+    with _client(_handler) as client:
+        status = link_check.check_url("https://example.com/redir", client=client)
+
+    assert status.status == link_check.OK
 
 
 def test_an_unresolvable_host_is_left_to_the_request(monkeypatch):

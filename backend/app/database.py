@@ -19,8 +19,19 @@ class Base(DeclarativeBase):
 
 def _make_engine(url: str):
     # SQLite (tests) needs a special connect arg for multithreaded access.
-    connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
-    return create_engine(url, pool_pre_ping=True, future=True, connect_args=connect_args)
+    is_sqlite = url.startswith("sqlite")
+    connect_args = {"check_same_thread": False} if is_sqlite else {}
+    # Pool tuning for PostgreSQL.  pool_pre_ping catches connections that went
+    # stale mid-flight; pool_recycle rotates them proactively so a PostgreSQL
+    # restart or network blip does not accumulate dead connections in the pool.
+    pool_kwargs = {} if is_sqlite else {
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_recycle": 1800,  # 30 min
+    }
+    return create_engine(
+        url, pool_pre_ping=True, future=True, connect_args=connect_args, **pool_kwargs
+    )
 
 
 engine = _make_engine(settings.database_url)

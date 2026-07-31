@@ -158,6 +158,8 @@ class Settings(BaseSettings):
     # Ceiling on autopilot drafts per project per day, so a busy repo can't
     # turn into a content firehose.
     autopilot_daily_content_limit: int = 2
+    # Maximum unused ideas kept per project. Oldest unused are pruned each scan.
+    autopilot_ideas_cap: int = 50
 
     # ---- Publishing ----
     # Requests to platform APIs. Publishing is a background task, so a generous
