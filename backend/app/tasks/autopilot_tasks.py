@@ -22,6 +22,7 @@ from datetime import timedelta
 
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -78,7 +79,16 @@ def _daily_count(db: Session, project_id: int) -> int:
     )
 
 
-@celery_app.task(name="app.tasks.autopilot_tasks.scan_project", soft_time_limit=180, time_limit=210)
+@celery_app.task(
+    name="app.tasks.autopilot_tasks.scan_project",
+    soft_time_limit=180,
+    time_limit=210,
+    autoretry_for=(OperationalError, ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=3,
+)
 def scan_project(project_id: int) -> dict:
     """Run the autopilot loop for one project. Never raises."""
     db = SessionLocal()
@@ -207,34 +217,22 @@ def _act_on(
             seo.SEO_SCORE_THRESHOLD,
         )
 
-    content = Content(
+    content = content_generator.content_from_generated(
+        db,
         project_id=project.id,
         content_type=content_type,
-        title=generated.title,
-        slug=unique_content_slug(db, project.id, generated.title),
-        body_markdown=generated.body_markdown,
-        excerpt=generated.excerpt,
-        meta_description=generated.meta_description,
-        keywords=generated.keywords,
-        tags=generated.tags,
-        confidence=generated.confidence,
-        generated_by_provider=generated.provider,
-        generated_by_model=generated.model,
+        generated=generated,
+        status=ContentStatus.APPROVED if auto else ContentStatus.REVIEW,
         source={
             "kind": "autopilot",
             "trigger": "release" if activity.new_release else "commits",
             "release_tag": activity.new_release.tag if activity.new_release else None,
             "commit_count": len(activity.new_commits),
             "fallback": generated.is_fallback,
-            # Recorded so the review queue can say *why* a confident piece is
-            # sitting there instead of having gone out.
             "dead_links": dead_links,
             "seo_score": score,
         },
-        focus_keyword=generated.focus_keyword,
     )
-
-    content.status = ContentStatus.APPROVED if auto else ContentStatus.REVIEW
     db.add(content)
     db.flush()
 
@@ -272,7 +270,16 @@ def _publish_now(publication_id: int) -> None:
     publish_tasks.publish_one(publication_id)
 
 
-@celery_app.task(name="app.tasks.autopilot_tasks.scan_all_projects", soft_time_limit=120, time_limit=150)
+@celery_app.task(
+    name="app.tasks.autopilot_tasks.scan_all_projects",
+    soft_time_limit=120,
+    time_limit=150,
+    autoretry_for=(OperationalError, ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=2,
+)
 def scan_all_projects() -> dict:
     """Beat task: scan every active project that has a repo."""
     db = SessionLocal()

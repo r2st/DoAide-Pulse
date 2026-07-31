@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # ---- App ----
     app_name: str = "Herald"
     environment: str = "development"
-    debug: bool = True
+    debug: bool = False
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: str = "http://localhost:5173,http://localhost:3000"
     frontend_url: str = "http://localhost:5173"

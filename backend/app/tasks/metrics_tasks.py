@@ -5,6 +5,7 @@ import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal
 from app.models.publication import Publication, PublicationStatus
@@ -14,7 +15,16 @@ from app.tasks.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="app.tasks.metrics_tasks.collect_all_metrics", soft_time_limit=300, time_limit=360)
+@celery_app.task(
+    name="app.tasks.metrics_tasks.collect_all_metrics",
+    soft_time_limit=300,
+    time_limit=360,
+    autoretry_for=(OperationalError, ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=2,
+)
 def collect_all_metrics() -> dict:
     """Beat task: snapshot engagement for everything published.
 
@@ -65,7 +75,16 @@ def collect_all_metrics() -> dict:
     return {"polled": len(publications), "recorded": recorded}
 
 
-@celery_app.task(name="app.tasks.metrics_tasks.collect_one", soft_time_limit=60, time_limit=90)
+@celery_app.task(
+    name="app.tasks.metrics_tasks.collect_one",
+    soft_time_limit=60,
+    time_limit=90,
+    autoretry_for=(OperationalError, ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=120,
+    retry_jitter=True,
+    max_retries=3,
+)
 def collect_one(publication_id: int) -> dict:
     """Poll a single publication — used by the "refresh" button."""
     db = SessionLocal()

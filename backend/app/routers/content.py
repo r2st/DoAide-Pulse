@@ -312,21 +312,12 @@ def generate_content(
         instructions=payload.instructions,
     )
 
-    content = Content(
+    content = content_generator.content_from_generated(
+        db,
         project_id=project.id,
         content_type=payload.content_type,
+        generated=generated,
         status=ContentStatus.DRAFT,
-        title=generated.title,
-        slug=unique_content_slug(db, project.id, generated.title),
-        body_markdown=generated.body_markdown,
-        excerpt=generated.excerpt,
-        meta_description=generated.meta_description,
-        keywords=generated.keywords,
-        tags=generated.tags,
-        focus_keyword=generated.focus_keyword,
-        confidence=generated.confidence,
-        generated_by_provider=generated.provider,
-        generated_by_model=generated.model,
         source={
             "kind": "manual",
             "user_id": user.id,
@@ -583,21 +574,12 @@ def write_from_idea(
         idea.content_type,
         instructions=f"Work to this angle: {idea.headline}. {idea.rationale}",
     )
-    content = Content(
+    content = content_generator.content_from_generated(
+        db,
         project_id=project.id,
         content_type=idea.content_type,
+        generated=generated,
         status=ContentStatus.DRAFT,
-        title=generated.title,
-        slug=unique_content_slug(db, project.id, generated.title),
-        body_markdown=generated.body_markdown,
-        excerpt=generated.excerpt,
-        meta_description=generated.meta_description,
-        keywords=generated.keywords,
-        tags=generated.tags,
-        focus_keyword=generated.focus_keyword,
-        confidence=generated.confidence,
-        generated_by_provider=generated.provider,
-        generated_by_model=generated.model,
         source={"kind": "idea", "idea_id": idea.id, "headline": idea.headline},
     )
     db.add(content)

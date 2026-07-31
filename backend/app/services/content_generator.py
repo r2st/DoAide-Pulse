@@ -107,6 +107,43 @@ class GeneratedContent:
     is_fallback: bool = False
 
 
+def content_from_generated(
+    db: Any,
+    *,
+    project_id: int,
+    content_type: ContentType,
+    generated: GeneratedContent,
+    status: Any,
+    source: dict,
+    **extra: Any,
+) -> Any:
+    """Build a ``Content`` row from a ``GeneratedContent``.
+
+    Centralises the field mapping that was previously duplicated in the content
+    router (generate, write_from_idea) and in autopilot_tasks.
+    """
+    from app.models.content import Content, unique_content_slug  # avoid circular
+
+    return Content(
+        project_id=project_id,
+        content_type=content_type,
+        status=status,
+        title=generated.title,
+        slug=unique_content_slug(db, project_id, generated.title),
+        body_markdown=generated.body_markdown,
+        excerpt=generated.excerpt,
+        meta_description=generated.meta_description,
+        keywords=generated.keywords,
+        tags=generated.tags,
+        focus_keyword=generated.focus_keyword,
+        confidence=generated.confidence,
+        generated_by_provider=generated.provider,
+        generated_by_model=generated.model,
+        source=source,
+        **extra,
+    )
+
+
 def _activity_digest(activity: RepoActivity | None, *, max_commits: int = 25) -> str:
     """Repo activity as prompt-ready text, or "" when there is none.
 

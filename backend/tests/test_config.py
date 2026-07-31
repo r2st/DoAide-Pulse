@@ -1,0 +1,73 @@
+"""Configuration hardening tests.
+
+These verify that security-sensitive defaults are safe out of the box, so a
+deploy that forgets to set an env var fails closed rather than open.
+"""
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from app.config import Settings
+
+
+def test_debug_defaults_to_false():
+    """Debug must be opt-in, never opt-out."""
+    assert Settings.model_fields["debug"].default is False
+
+
+def test_registration_defaults_to_closed():
+    assert Settings.model_fields["registration_enabled"].default is False
+
+
+def test_jwt_secret_rejected_in_production(monkeypatch):
+    """The placeholder secret must not survive into production."""
+    # Clear env so the default placeholder is used.
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    with pytest.raises(ValidationError, match="JWT_SECRET"):
+        Settings(environment="production", _env_file=None)
+
+
+def test_jwt_secret_accepted_in_development(monkeypatch):
+    monkeypatch.delenv("JWT_SECRET", raising=False)
+    s = Settings(environment="development", _env_file=None)
+    assert s.jwt_secret == "change-me-to-a-long-random-string"
+
+
+def test_positive_validators_reject_zero():
+    with pytest.raises(ValidationError, match="positive"):
+        Settings(
+            environment="development",
+            jwt_secret="test",
+            access_token_expire_minutes=0,
+            _env_file=None,
+        )
+
+
+def test_confidence_rejects_out_of_range():
+    with pytest.raises(ValidationError, match="between 0 and 1"):
+        Settings(
+            environment="development",
+            jwt_secret="test",
+            autopilot_auto_publish_confidence=1.5,
+            _env_file=None,
+        )
+
+
+def test_is_production_property():
+    for env in ("production", "prod", "PRODUCTION", "Prod"):
+        s = Settings(environment=env, jwt_secret="real-secret-here", _env_file=None)
+        assert s.is_production is True
+    for env in ("development", "staging", "test"):
+        s = Settings(environment=env, jwt_secret="test", _env_file=None)
+        assert s.is_production is False
+
+
+def test_cors_origins_parsed():
+    s = Settings(
+        environment="development",
+        jwt_secret="test",
+        backend_cors_origins="http://a.com, http://b.com ,http://c.com",
+        _env_file=None,
+    )
+    assert s.cors_origins == ["http://a.com", "http://b.com", "http://c.com"]
