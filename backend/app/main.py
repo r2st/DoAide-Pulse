@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +38,20 @@ def docs_enabled() -> bool:
     return (not settings.is_production) or settings.debug
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Startup / shutdown hook.
+
+    On shutdown, dispose the SQLAlchemy engine pool so open connections are
+    returned to PostgreSQL rather than orphaned.
+    """
+    yield
+    from app.database import engine
+
+    engine.dispose()
+    logger.info("database pool disposed — shutting down")
+
+
 def create_app() -> FastAPI:
     docs = docs_enabled()
     app = FastAPI(
@@ -43,6 +59,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="AI-powered marketing automation for developer projects.",
         debug=settings.debug,
+        lifespan=_lifespan,
         # None removes the route outright — a 404, not a 401. There is nothing
         # here worth an auth prompt, and a prompt confirms the schema exists.
         # FastAPI derives /docs and /redoc from openapi_url, so all three go.
@@ -55,6 +72,19 @@ def create_app() -> FastAPI:
     # time, so this assignment is what makes @limiter.limit(...) live.
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+    # Catch-all for unhandled exceptions. Without this, FastAPI returns the
+    # exception message (and tracebacks in debug mode) to the caller — an
+    # information leak that also looks unprofessional.
+    async def _unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", "unknown")
+        logger.exception("unhandled exception [request_id=%s]", request_id)
+        return JSONResponse(
+            {"detail": "Internal server error"},
+            status_code=500,
+        )
+
+    app.add_exception_handler(Exception, _unhandled_exception)
 
     # --- Middleware stack (outermost first) ---
 
@@ -108,6 +138,18 @@ def create_app() -> FastAPI:
             response.headers["Permissions-Policy"] = (
                 "camera=(), microphone=(), geolocation=()"
             )
+            # Prevent caches (shared proxies, browsers) from storing
+            # authenticated responses that may carry tokens or user data.
+            response.headers["Cache-Control"] = "no-store"
+            # Basic CSP. 'unsafe-inline' is needed for Swagger UI's scripts
+            # and styles; tightened to 'self' when docs are disabled.
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; "
+                "frame-ancestors 'none'"
+            )
             return response
 
     app.add_middleware(SecurityHeadersMiddleware)
@@ -122,7 +164,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["*"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
         expose_headers=["X-Total-Count", "X-Request-ID"],
     )
 

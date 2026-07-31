@@ -1,4 +1,4 @@
-"""CORS policy.
+"""CORS policy and application-level security middleware.
 
 Herald authenticates with a bearer token the SPA sends explicitly. Nothing is
 carried in a cookie, so credentialed cross-origin requests are neither needed
@@ -122,3 +122,33 @@ def test_negative_content_length_rejected(client):
     )
     assert resp.status_code == 400
     assert "invalid" in resp.json()["detail"].lower()
+
+
+def test_cache_control_no_store(client):
+    """Responses must not be cached by proxies or browsers."""
+    resp = client.get("/api/v1/health")
+    assert resp.headers.get("cache-control") == "no-store"
+
+
+def test_content_security_policy_present(client):
+    """A CSP header must be set to mitigate XSS."""
+    resp = client.get("/api/v1/health")
+    csp = resp.headers.get("content-security-policy", "")
+    assert "default-src" in csp
+    assert "frame-ancestors 'none'" in csp
+
+
+def test_cors_allows_only_needed_headers(client):
+    """Only Authorization, Content-Type, and X-Request-ID should pass preflight."""
+    resp = client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": ALLOWED,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type,x-request-id",
+        },
+    )
+    allowed = resp.headers.get("access-control-allow-headers", "").lower()
+    assert "authorization" in allowed
+    assert "content-type" in allowed
+    assert "x-request-id" in allowed
