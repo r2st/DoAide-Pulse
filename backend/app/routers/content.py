@@ -17,11 +17,16 @@ from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
 from app.schemas.content import (
+    BulkContentIn,
+    BulkFailureOut,
+    BulkPublishIn,
+    BulkResultOut,
     ContentCreate,
     ContentDetail,
     ContentOut,
     ContentUpdate,
     GenerateRequest,
+    InternalLinkSuggestionOut,
     LinkCheckOut,
     LinkStatusOut,
     PublicationOut,
@@ -222,6 +227,130 @@ def publication_queue(
         .limit(limit)
     )
     return [PublicationOut.model_validate(p) for p in rows]
+
+
+@router.post("/bulk/approve", response_model=BulkResultOut)
+def bulk_approve_content(
+    payload: BulkContentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> BulkResultOut:
+    """Approve many review-queue pieces in one call, skipping any that can't be."""
+    succeeded: list[int] = []
+    failed: list[BulkFailureOut] = []
+    for content_id in payload.content_ids:
+        content = db.get(Content, content_id)
+        if content is None or content.project.user_id != user.id:
+            failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
+            continue
+        if content.status == ContentStatus.PUBLISHED:
+            failed.append(
+                BulkFailureOut(content_id=content_id, reason="Already published")
+            )
+            continue
+        content.status = ContentStatus.APPROVED
+        succeeded.append(content_id)
+    db.commit()
+    return BulkResultOut(succeeded=succeeded, failed=failed)
+
+
+@router.post("/bulk/reject", response_model=BulkResultOut)
+def bulk_reject_content(
+    payload: BulkContentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> BulkResultOut:
+    """Archive many review-queue pieces in one call.
+
+    There is no ``rejected`` status — archiving is the same "not going out"
+    outcome a human hits one at a time from the editor, just batched.
+    """
+    succeeded: list[int] = []
+    failed: list[BulkFailureOut] = []
+    for content_id in payload.content_ids:
+        content = db.get(Content, content_id)
+        if content is None or content.project.user_id != user.id:
+            failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
+            continue
+        if content.status == ContentStatus.PUBLISHED:
+            failed.append(
+                BulkFailureOut(content_id=content_id, reason="Already published")
+            )
+            continue
+        content.status = ContentStatus.ARCHIVED
+        succeeded.append(content_id)
+    db.commit()
+    return BulkResultOut(succeeded=succeeded, failed=failed)
+
+
+@router.post("/bulk/publish", response_model=BulkResultOut)
+def bulk_publish_content(
+    payload: BulkPublishIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> BulkResultOut:
+    """Queue many pieces for the same platform(s) in one call.
+
+    Each piece is validated independently through the same checks as the
+    single-item publish (adapter implemented, platform connected, no dead
+    links) — one bad piece in the batch fails on its own and does not block
+    the rest.
+    """
+    succeeded: list[int] = []
+    failed: list[BulkFailureOut] = []
+    single = PublishRequestIn(
+        platforms=payload.platforms,
+        scheduled_for=payload.scheduled_for,
+        as_draft=payload.as_draft,
+        allow_broken_links=payload.allow_broken_links,
+    )
+    for content_id in payload.content_ids:
+        content = db.get(Content, content_id)
+        if content is None or content.project.user_id != user.id:
+            failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
+            continue
+        try:
+            _queue_publish(content, single, db)
+        except _PublishError as exc:
+            failed.append(BulkFailureOut(content_id=content_id, reason=exc.detail))
+            continue
+        succeeded.append(content_id)
+    return BulkResultOut(succeeded=succeeded, failed=failed)
+
+
+@router.get("/{content_id}/internal-links", response_model=list[InternalLinkSuggestionOut])
+def internal_link_suggestions(
+    content_id: int,
+    limit: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[InternalLinkSuggestionOut]:
+    """Other published posts in this project worth linking to, by keyword overlap."""
+    content = _owned_content(content_id, db, user)
+    candidates = db.scalars(
+        select(Content).where(
+            Content.project_id == content.project_id,
+            Content.id != content.id,
+            Content.status == ContentStatus.PUBLISHED,
+        )
+    )
+    suggestions = seo.suggest_internal_links(
+        keywords=content.keywords,
+        focus_keyword=content.focus_keyword,
+        candidates=[
+            {
+                "content_id": c.id,
+                "title": c.title,
+                "slug": c.slug,
+                "keywords": c.keywords,
+                "focus_keyword": c.focus_keyword,
+                "canonical_url": c.canonical_url,
+            }
+            for c in candidates
+        ],
+        limit=limit,
+    )
+    return [InternalLinkSuggestionOut(**s) for s in suggestions]
 
 
 @router.get("/{content_id}", response_model=ContentDetail)
@@ -431,41 +560,47 @@ def approve_content(
     return _to_out(content)
 
 
-@router.post("/{content_id}/publish", response_model=list[PublicationOut])
-def publish_content(
-    content_id: int,
-    payload: PublishRequestIn,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> list[PublicationOut]:
-    """Queue a piece for one or more platforms.
+class _PublishError(Exception):
+    """A validation failure from :func:`_queue_publish`.
 
-    Queuing is synchronous and cheap; the publishing itself is a worker's job
-    (or runs inline when ``CELERY_ENABLED`` is off). The response is the queue
-    state, not the outcome — the caller polls the publications for that.
+    Carries the HTTP status the single-item endpoint should raise; the bulk
+    endpoint reads ``.detail`` and records it against that one item instead.
     """
-    content = _owned_content(content_id, db, user)
 
+    def __init__(self, detail: str, status_code: int = status.HTTP_400_BAD_REQUEST):
+        super().__init__(detail)
+        self.detail = detail
+        self.status_code = status_code
+
+
+def _queue_publish(
+    content: Content, payload: PublishRequestIn, db: Session
+) -> list[Publication]:
+    """Validate and queue a piece for one or more platforms.
+
+    Shared by the single-item and bulk publish endpoints so both apply the
+    exact same adapter/connection/link checks. Queuing is synchronous and
+    cheap; the publishing itself is a worker's job (or runs inline when
+    ``CELERY_ENABLED`` is off).
+    """
     unimplemented = [
         p.value for p in payload.platforms if not publishers.get_adapter(p).implemented
     ]
     if unimplemented:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=(
-                f"No finished adapter for: {', '.join(unimplemented)}. "
-                f"Publishing works for: "
-                f"{', '.join(p.value for p in publishers.implemented_platforms())}."
-            ),
+        raise _PublishError(
+            f"No finished adapter for: {', '.join(unimplemented)}. "
+            f"Publishing works for: "
+            f"{', '.join(p.value for p in publishers.implemented_platforms())}."
         )
 
     missing = [
-        p.value for p in payload.platforms if p.value not in user.connected_platforms
+        p.value
+        for p in payload.platforms
+        if p.value not in content.project.user.connected_platforms
     ]
     if missing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Not connected to: {', '.join(missing)}. Add credentials in Settings.",
+        raise _PublishError(
+            f"Not connected to: {', '.join(missing)}. Add credentials in Settings."
         )
 
     # Last cheap chance to catch a URL the model invented. Only a definitive 404
@@ -474,13 +609,11 @@ def publish_content(
     if settings.link_check_enabled and not payload.allow_broken_links:
         dead = link_check.broken(_check_content_links(content))
         if dead:
-            raise HTTPException(
+            raise _PublishError(
+                f"{len(dead)} link(s) in this post are dead: "
+                + "; ".join(f"{s.url} ({s.http_status or 'unreachable'})" for s in dead)
+                + ". Fix them, or publish anyway with allow_broken_links.",
                 status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"{len(dead)} link(s) in this post are dead: "
-                    + "; ".join(f"{s.url} ({s.http_status or 'unreachable'})" for s in dead)
-                    + ". Fix them, or publish anyway with allow_broken_links."
-                ),
             )
 
     publications = publishing_service.queue(
@@ -502,6 +635,26 @@ def publish_content(
 
     for publication in publications:
         db.refresh(publication)
+    return publications
+
+
+@router.post("/{content_id}/publish", response_model=list[PublicationOut])
+def publish_content(
+    content_id: int,
+    payload: PublishRequestIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[PublicationOut]:
+    """Queue a piece for one or more platforms.
+
+    The response is the queue state, not the outcome — the caller polls the
+    publications for that.
+    """
+    content = _owned_content(content_id, db, user)
+    try:
+        publications = _queue_publish(content, payload, db)
+    except _PublishError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return [PublicationOut.model_validate(p) for p in publications]
 
 

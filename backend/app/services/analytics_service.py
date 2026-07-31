@@ -328,6 +328,49 @@ def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
     ]
 
 
+def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
+    """Views and engagement recorded per day over the trailing window.
+
+    Distinct from :func:`timeline`, which counts *publish events*: this sums
+    every metric snapshot captured on each day, so it tracks reader activity
+    on posts that went out long before the window started. Every day is
+    present, including zero days — see :func:`timeline` for why.
+    """
+    since = utcnow() - timedelta(days=days)
+    _engagement_expr = (
+        func.coalesce(ContentMetric.reactions, 0)
+        + func.coalesce(ContentMetric.comments, 0)
+        + func.coalesce(ContentMetric.clicks, 0)
+        + func.coalesce(ContentMetric.shares, 0)
+    )
+    rows = db.execute(
+        select(ContentMetric.captured_at, ContentMetric.views, _engagement_expr)
+        .join(Publication, Publication.id == ContentMetric.publication_id)
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id, ContentMetric.captured_at >= since)
+    ).all()
+
+    views_by_day: dict[str, int] = defaultdict(int)
+    engagement_by_day: dict[str, int] = defaultdict(int)
+    for captured_at, views, engagement in rows:
+        day = captured_at.date().isoformat()
+        views_by_day[day] += views or 0
+        engagement_by_day[day] += engagement or 0
+
+    start = since.date()
+    return [
+        {
+            "date": (start + timedelta(days=offset)).isoformat(),
+            "views": views_by_day.get((start + timedelta(days=offset)).isoformat(), 0),
+            "engagement": engagement_by_day.get(
+                (start + timedelta(days=offset)).isoformat(), 0
+            ),
+        }
+        for offset in range(days + 1)
+    ]
+
+
 def overview(db: Session, user_id: int) -> dict:
     """Everything the analytics page needs, in one round trip."""
     return {
@@ -337,6 +380,7 @@ def overview(db: Session, user_id: int) -> dict:
         "by_project": by_project(db, user_id),
         "top_content": top_content(db, user_id),
         "timeline": timeline(db, user_id),
+        "engagement_trend": engagement_trend(db, user_id),
     }
 
 
@@ -345,6 +389,7 @@ __all__ = [
     "by_content_type",
     "by_platform",
     "by_project",
+    "engagement_trend",
     "overview",
     "timeline",
     "top_content",

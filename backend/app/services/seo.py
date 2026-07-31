@@ -566,6 +566,63 @@ def build_sitemap_xml(entries: list[dict[str, str]]) -> str:
     return f'<?xml version="1.0" encoding="UTF-8"?>\n{xml_bytes}\n'
 
 
+# ── Phase 3: Internal Linking ────────────────────────────────────────── #
+
+
+def suggest_internal_links(
+    *,
+    keywords: list[str],
+    focus_keyword: str = "",
+    candidates: list[dict],
+    limit: int = 5,
+) -> list[dict]:
+    """Rank other posts in the same project worth linking to, by keyword overlap.
+
+    Deterministic — no LLM call, same reasoning as the rest of this module.
+    Each candidate needs ``content_id``, ``title``, ``slug`` and ``keywords``;
+    ``focus_keyword`` and ``canonical_url`` are optional. A candidate's focus
+    keyword counts as one of its keywords, so a post focused on the exact term
+    this piece is about outranks one that only mentions it in passing.
+
+    Candidates with zero overlap are dropped rather than padded in at score 0
+    — a suggestion box with no real matches should say so, not list posts an
+    editor has no reason to link to.
+    """
+    own = {k.strip().lower() for k in keywords if k and k.strip()}
+    if focus_keyword and focus_keyword.strip():
+        own.add(focus_keyword.strip().lower())
+    if not own:
+        return []
+
+    scored: list[dict] = []
+    for candidate in candidates:
+        cand_keywords = {
+            k.strip().lower() for k in candidate.get("keywords") or [] if k and k.strip()
+        }
+        cand_focus = (candidate.get("focus_keyword") or "").strip().lower()
+        if cand_focus:
+            cand_keywords.add(cand_focus)
+
+        overlap = own & cand_keywords
+        if not overlap:
+            continue
+
+        score = len(overlap) + (1 if cand_focus and cand_focus in own else 0)
+        scored.append(
+            {
+                "content_id": candidate["content_id"],
+                "title": candidate["title"],
+                "slug": candidate["slug"],
+                "url": candidate.get("canonical_url"),
+                "matched_keywords": sorted(overlap),
+                "score": score,
+            }
+        )
+
+    scored.sort(key=lambda d: d["score"], reverse=True)
+    return scored[:limit]
+
+
 __all__ = [
     "KEYWORD_MAX",
     "META_DESCRIPTION_MAX",
@@ -583,5 +640,6 @@ __all__ = [
     "normalize_keywords",
     "seo_score",
     "strip_markdown",
+    "suggest_internal_links",
     "truncate_at_sentence",
 ]

@@ -96,3 +96,64 @@ def test_dashboard_shows_review_and_failed(client, auth, db, project):
 def test_analytics_requires_auth(client):
     assert client.get("/api/v1/analytics/overview").status_code == 401
     assert client.get("/api/v1/analytics/dashboard").status_code == 401
+
+
+def test_engagement_trend_empty_covers_every_day(client, auth):
+    resp = client.get("/api/v1/analytics/engagement-trend?days=7", headers=auth)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 8  # inclusive of both endpoints, like `timeline`
+    assert all(day["views"] == 0 and day["engagement"] == 0 for day in body)
+
+
+def test_engagement_trend_sums_snapshots_captured_on_the_same_day(
+    client, auth, db, project
+):
+    from app.models.metrics import ContentMetric
+    from app.models.mixins import utcnow
+
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Live post",
+        slug="live-post",
+        status=ContentStatus.PUBLISHED,
+    )
+    db.add(content)
+    db.flush()
+    pub = Publication(
+        content_id=content.id, platform=Platform.DEVTO, status=PublicationStatus.PUBLISHED
+    )
+    db.add(pub)
+    db.flush()
+    now = utcnow()
+    db.add_all(
+        [
+            ContentMetric(
+                publication_id=pub.id, captured_at=now, views=100, reactions=5, comments=2
+            ),
+            ContentMetric(
+                publication_id=pub.id, captured_at=now, views=50, reactions=1, comments=0
+            ),
+        ]
+    )
+    db.commit()
+
+    resp = client.get("/api/v1/analytics/engagement-trend?days=1", headers=auth)
+    assert resp.status_code == 200
+    body = resp.json()
+    today = body[-1]
+    assert today["views"] == 150
+    assert today["engagement"] == 8  # (5+2) + (1+0)
+    assert "engagement_trend" in client.get(
+        "/api/v1/analytics/overview", headers=auth
+    ).json()
+
+
+def test_engagement_trend_days_out_of_range_is_rejected(client, auth):
+    assert client.get(
+        "/api/v1/analytics/engagement-trend?days=0", headers=auth
+    ).status_code == 422
+    assert client.get(
+        "/api/v1/analytics/engagement-trend?days=181", headers=auth
+    ).status_code == 422

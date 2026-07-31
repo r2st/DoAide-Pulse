@@ -170,6 +170,42 @@ class PublishRequestIn(BaseModel):
     allow_broken_links: bool = False
 
 
+class InternalLinkSuggestionOut(BaseModel):
+    """Another post in the project worth linking to, by keyword overlap."""
+
+    content_id: int
+    title: str
+    slug: str
+    url: str | None = None
+    matched_keywords: list[str] = []
+    score: int
+
+
+class BulkContentIn(BaseModel):
+    """A batch of pieces to act on from the review queue."""
+
+    content_ids: list[int] = Field(min_length=1, max_length=100)
+
+
+class BulkPublishIn(BulkContentIn):
+    platforms: list[Platform] = Field(min_length=1)
+    scheduled_for: datetime | None = None
+    as_draft: bool = False
+    allow_broken_links: bool = False
+
+
+class BulkFailureOut(BaseModel):
+    content_id: int
+    reason: str
+
+
+class BulkResultOut(BaseModel):
+    """Per-item outcome — one bad piece in a batch must not sink the rest."""
+
+    succeeded: list[int] = []
+    failed: list[BulkFailureOut] = []
+
+
 class ScheduleUpdate(BaseModel):
     """Drag-and-drop on the calendar lands here."""
 

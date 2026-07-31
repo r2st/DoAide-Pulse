@@ -424,3 +424,224 @@ def test_publish_to_an_unfinished_adapter_is_refused(client, auth, project, db):
     detail = resp.json()["detail"]
     assert "No finished adapter" in detail
     assert "devto" in detail
+
+
+# --------------------------------------------------------------------------- #
+# Internal link suggestions                                                   #
+# --------------------------------------------------------------------------- #
+
+
+def test_internal_links_suggests_published_posts_by_shared_keyword(
+    client, auth, project, db
+):
+    target = Content(
+        project_id=project.id,
+        content_type=ContentType.HOW_TO,
+        status=ContentStatus.DRAFT,
+        title="New piece",
+        slug="new-piece",
+        keywords=["celery", "retries"],
+    )
+    match = Content(
+        project_id=project.id,
+        content_type=ContentType.TUTORIAL,
+        status=ContentStatus.PUBLISHED,
+        title="Celery deep dive",
+        slug="celery-deep-dive",
+        keywords=["celery", "async"],
+        canonical_url="https://example.com/celery-deep-dive",
+    )
+    unpublished_match = Content(
+        project_id=project.id,
+        content_type=ContentType.TUTORIAL,
+        status=ContentStatus.DRAFT,
+        title="Draft about celery",
+        slug="draft-celery",
+        keywords=["celery"],
+    )
+    no_overlap = Content(
+        project_id=project.id,
+        content_type=ContentType.TUTORIAL,
+        status=ContentStatus.PUBLISHED,
+        title="Totally different",
+        slug="totally-different",
+        keywords=["docker"],
+    )
+    db.add_all([target, match, unpublished_match, no_overlap])
+    db.commit()
+
+    resp = client.get(
+        f"/api/v1/content/{target.id}/internal-links", headers=auth
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [s["content_id"] for s in body] == [match.id]
+    assert body[0]["matched_keywords"] == ["celery"]
+    assert body[0]["url"] == "https://example.com/celery-deep-dive"
+
+
+def test_internal_links_empty_when_no_keyword_overlap(client, auth, project, db):
+    target = Content(
+        project_id=project.id,
+        content_type=ContentType.HOW_TO,
+        title="No keywords here",
+        slug="no-keywords-here",
+    )
+    db.add(target)
+    db.commit()
+
+    resp = client.get(f"/api/v1/content/{target.id}/internal-links", headers=auth)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+# --------------------------------------------------------------------------- #
+# Bulk operations                                                             #
+# --------------------------------------------------------------------------- #
+
+
+def test_bulk_approve_moves_status_and_reports_failures(client, auth, project, db):
+    a = Content(
+        project_id=project.id, content_type=ContentType.HOW_TO,
+        status=ContentStatus.REVIEW, title="A", slug="a",
+    )
+    already_published = Content(
+        project_id=project.id, content_type=ContentType.HOW_TO,
+        status=ContentStatus.PUBLISHED, title="B", slug="b",
+    )
+    db.add_all([a, already_published])
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/content/bulk/approve",
+        headers=auth,
+        json={"content_ids": [a.id, already_published.id, 999999]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["succeeded"] == [a.id]
+    failed_ids = {f["content_id"] for f in body["failed"]}
+    assert failed_ids == {already_published.id, 999999}
+
+    db.refresh(a)
+    assert a.status == ContentStatus.APPROVED
+
+
+def test_bulk_reject_archives_content(client, auth, project, db):
+    a = Content(
+        project_id=project.id, content_type=ContentType.HOW_TO,
+        status=ContentStatus.REVIEW, title="A", slug="a",
+    )
+    db.add(a)
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/content/bulk/reject", headers=auth, json={"content_ids": [a.id]}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["succeeded"] == [a.id]
+
+    db.refresh(a)
+    assert a.status == ContentStatus.ARCHIVED
+
+
+def test_bulk_operations_ignore_content_owned_by_another_user(client, auth, db):
+    """A bulk call must not leak the existence of someone else's content."""
+    from app.models.project import Project, Tone
+    from app.models.user import User
+    from app.security import hash_password
+
+    other_user = User(
+        email="other@example.com",
+        full_name="Other",
+        hashed_password=hash_password("hunter2hunter2"),
+    )
+    db.add(other_user)
+    db.commit()
+    other_project = Project(
+        user_id=other_user.id,
+        name="Other",
+        slug="other",
+        description="Someone else's project.",
+        tone=Tone.TECHNICAL,
+    )
+    db.add(other_project)
+    db.commit()
+    theirs = Content(
+        project_id=other_project.id,
+        content_type=ContentType.HOW_TO,
+        status=ContentStatus.REVIEW,
+        title="Not yours",
+        slug="not-yours",
+    )
+    db.add(theirs)
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/content/bulk/approve", headers=auth, json={"content_ids": [theirs.id]}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["succeeded"] == []
+    assert body["failed"][0]["reason"] == "Not found"
+
+    db.refresh(theirs)
+    assert theirs.status == ContentStatus.REVIEW
+
+
+def test_bulk_publish_requires_connection_per_item(client, auth, project, db):
+    connected = Content(
+        project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
+        title="Ship it", slug="ship-it-bulk",
+    )
+    db.add(connected)
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/content/bulk/publish",
+        headers=auth,
+        json={"content_ids": [connected.id], "platforms": ["devto"]},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["succeeded"] == []
+    assert "Not connected" in body["failed"][0]["reason"]
+
+
+def test_bulk_publish_succeeds_for_connected_platform(client, auth, project, db, user):
+    from app.models.platform_connection import ConnectionStatus, PlatformConnection
+    from app.models.publication import Platform
+    from app.services.crypto import encrypt_credentials
+
+    db.add(
+        PlatformConnection(
+            user_id=user.id,
+            platform=Platform.DEVTO,
+            status=ConnectionStatus.CONNECTED,
+            encrypted_credentials=encrypt_credentials({"api_key": "k"}),
+        )
+    )
+    content = Content(
+        project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
+        title="Stage it", slug="stage-it-bulk",
+    )
+    db.add(content)
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/content/bulk/publish",
+        headers=auth,
+        json={
+            "content_ids": [content.id],
+            "platforms": ["devto"],
+            "as_draft": True,
+            "scheduled_for": "2099-01-01T09:00:00Z",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["succeeded"] == [content.id]
+    assert body["failed"] == []
+
+    db.refresh(content)
+    assert content.status == ContentStatus.APPROVED

@@ -323,3 +323,89 @@ def test_build_sitemap_xml_produces_valid_xml():
     assert "<loc>https://example.com/a</loc>" in xml
     assert "<loc>https://example.com/b</loc>" in xml
     assert xml.count("<url>") == 2
+
+
+def test_suggest_internal_links_ranks_by_shared_keyword_count():
+    candidates = [
+        {
+            "content_id": 1,
+            "title": "Celery retries",
+            "slug": "celery-retries",
+            "keywords": ["celery", "retries", "async"],
+        },
+        {
+            "content_id": 2,
+            "title": "Async in FastAPI",
+            "slug": "async-fastapi",
+            "keywords": ["async", "fastapi"],
+        },
+        {
+            "content_id": 3,
+            "title": "Unrelated",
+            "slug": "unrelated",
+            "keywords": ["docker"],
+        },
+    ]
+    out = seo.suggest_internal_links(
+        keywords=["celery", "async", "retries"], candidates=candidates
+    )
+    assert [s["content_id"] for s in out] == [1, 2]
+    assert out[0]["matched_keywords"] == ["async", "celery", "retries"]
+    assert out[0]["score"] == 3
+
+
+def test_suggest_internal_links_focus_keyword_counts_as_a_keyword():
+    candidates = [
+        {
+            "content_id": 1,
+            "title": "Deep dive",
+            "slug": "deep-dive",
+            "keywords": [],
+            "focus_keyword": "observability",
+        }
+    ]
+    out = seo.suggest_internal_links(
+        keywords=[], focus_keyword="observability", candidates=candidates
+    )
+    assert len(out) == 1
+    assert out[0]["matched_keywords"] == ["observability"]
+    # Own overlap (+1) plus the "both pieces are focused on this" bonus (+1).
+    assert out[0]["score"] == 2
+
+
+def test_suggest_internal_links_drops_zero_overlap_candidates():
+    candidates = [
+        {"content_id": 1, "title": "X", "slug": "x", "keywords": ["docker"]},
+    ]
+    out = seo.suggest_internal_links(keywords=["kubernetes"], candidates=candidates)
+    assert out == []
+
+
+def test_suggest_internal_links_respects_limit():
+    candidates = [
+        {"content_id": i, "title": f"P{i}", "slug": f"p{i}", "keywords": ["shared"]}
+        for i in range(10)
+    ]
+    out = seo.suggest_internal_links(keywords=["shared"], candidates=candidates, limit=3)
+    assert len(out) == 3
+
+
+def test_suggest_internal_links_with_no_own_keywords_returns_nothing():
+    candidates = [
+        {"content_id": 1, "title": "X", "slug": "x", "keywords": ["docker"]},
+    ]
+    assert seo.suggest_internal_links(keywords=[], candidates=candidates) == []
+
+
+def test_suggest_internal_links_includes_canonical_url():
+    candidates = [
+        {
+            "content_id": 1,
+            "title": "X",
+            "slug": "x",
+            "keywords": ["docker"],
+            "canonical_url": "https://example.com/x",
+        },
+    ]
+    out = seo.suggest_internal_links(keywords=["docker"], candidates=candidates)
+    assert out[0]["url"] == "https://example.com/x"

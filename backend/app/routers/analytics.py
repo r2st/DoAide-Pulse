@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -24,6 +24,16 @@ def overview(
 ) -> dict:
     """Everything the analytics page needs, in one round trip."""
     return analytics_service.overview(db, user.id)
+
+
+@router.get("/engagement-trend")
+def engagement_trend(
+    days: int = Query(default=30, ge=1, le=180),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """Views and engagement recorded per day, for the dashboard trend chart."""
+    return analytics_service.engagement_trend(db, user.id, days=days)
 
 
 @router.get("/dashboard")
