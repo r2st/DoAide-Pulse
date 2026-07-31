@@ -31,6 +31,7 @@ from app.services.publishers.base import (
     PublishError,
     PublishRequest,
     PublishResult,
+    RateLimited,
     UnsupportedOption,
 )
 
@@ -282,6 +283,12 @@ def execute(db: Session, publication: Publication) -> Publication:
         _mark_connection_invalid(db, user_id, publication.platform, str(exc))
         _fail(db, publication, str(exc), terminal=True)
         return publication
+    except RateLimited as exc:
+        # The platform said when to come back, and coming back sooner is how a
+        # soft limit becomes a ban. Park the row until then rather than leaving
+        # it `pending` for the next sweep, which is minutes away at most.
+        _defer(db, publication, exc)
+        return publication
     except PublishError as exc:
         _fail(
             db,
@@ -353,6 +360,36 @@ def _adopt_canonical(
         content.id,
         publication.platform.value,
         url,
+    )
+
+
+def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
+    """Park a rate-limited publication until the platform is ready for it.
+
+    Counts against the same retry budget as any other failure — a platform that
+    rate-limits every attempt is a problem a human should see, not one to keep
+    quietly re-queueing — but the row goes ``scheduled`` rather than ``pending``
+    so the next sweep skips it until the wait is up.
+    """
+    if publication.attempts >= settings.publish_max_retries:
+        _fail(db, publication, str(exc), terminal=True)
+        return
+
+    wait = exc.retry_after
+    if wait is None:
+        wait = float(settings.publish_scan_interval_seconds)
+    wait = min(wait, float(settings.publish_rate_limit_max_defer_seconds))
+
+    publication.status = PublicationStatus.SCHEDULED
+    publication.scheduled_for = utcnow() + timedelta(seconds=wait)
+    publication.error = f"{exc} — retrying in {round(wait)}s"
+    db.commit()
+    logger.info(
+        "publication %s to %s rate-limited (attempt %d); deferred %.0fs",
+        publication.id,
+        publication.platform.value,
+        publication.attempts,
+        wait,
     )
 
 

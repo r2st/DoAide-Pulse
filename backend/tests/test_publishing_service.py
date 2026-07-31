@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.models.content import Content, ContentStatus, ContentType
+from app.models.mixins import as_aware
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import publishing_service
@@ -14,6 +15,7 @@ from app.services.publishers.base import (
     CredentialError,
     PublishError,
     PublishResult,
+    RateLimited,
 )
 
 
@@ -260,3 +262,98 @@ def test_due_publications_respects_the_schedule(db, content):
 
     due_later = publishing_service.due_publications(db, now=now + timedelta(days=2))
     assert future in due_later
+
+
+# --------------------------------------------------------------------------- #
+# Rate limiting                                                               #
+# --------------------------------------------------------------------------- #
+
+
+def _rate_limit(retry_after):
+    def _raise(self, req, creds):
+        raise RateLimited("Dev.to rate-limited the request", retry_after=retry_after)
+
+    return _raise
+
+
+def test_rate_limited_publish_waits_for_the_platforms_own_window(
+    db, content, connected, monkeypatch
+):
+    """A 429 parks the row until the platform said to come back.
+
+    Leaving it ``pending`` would hand it straight back to the next sweep, which
+    is minutes away — precisely the behaviour that turns a soft limit into a
+    ban.
+    """
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(DevToAdapter, "publish", _rate_limit(600.0))
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    before = datetime.now(UTC)
+    publishing_service.execute(db, publication)
+
+    assert publication.status == PublicationStatus.SCHEDULED
+    assert publication.scheduled_for is not None
+    delay = as_aware(publication.scheduled_for) - before
+    assert timedelta(seconds=590) <= delay <= timedelta(seconds=610)
+    assert "retrying in 600s" in publication.error
+    # Not due yet, so the sweep leaves it alone.
+    assert publication not in publishing_service.due_publications(db, now=before)
+
+
+def test_rate_limit_without_guidance_falls_back_to_the_sweep_interval(
+    db, content, connected, monkeypatch
+):
+    from app.config import settings
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(DevToAdapter, "publish", _rate_limit(None))
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    before = datetime.now(UTC)
+    publishing_service.execute(db, publication)
+
+    assert publication.status == PublicationStatus.SCHEDULED
+    delay = as_aware(publication.scheduled_for) - before
+    assert delay <= timedelta(seconds=settings.publish_scan_interval_seconds + 5)
+
+
+def test_an_absurd_retry_after_is_capped(db, content, connected, monkeypatch):
+    """A post that vanishes for a week reads as a bug, not as a queue."""
+    from app.config import settings
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(DevToAdapter, "publish", _rate_limit(7 * 86400.0))
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    before = datetime.now(UTC)
+    publishing_service.execute(db, publication)
+
+    delay = as_aware(publication.scheduled_for) - before
+    assert delay <= timedelta(
+        seconds=settings.publish_rate_limit_max_defer_seconds + 5
+    )
+
+
+def test_relentless_rate_limiting_still_ends_up_in_front_of_a_human(
+    db, content, connected, monkeypatch
+):
+    from app.config import settings
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(DevToAdapter, "publish", _rate_limit(30.0))
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+
+    for _ in range(settings.publish_max_retries - 1):
+        publishing_service.execute(db, publication)
+        assert publication.status == PublicationStatus.SCHEDULED
+
+    publishing_service.execute(db, publication)
+    assert publication.status == PublicationStatus.FAILED
+    assert content.status == ContentStatus.FAILED

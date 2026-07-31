@@ -10,14 +10,28 @@ Failures are split into two kinds because the caller's response differs:
 * :class:`CredentialError` — the token is wrong, expired or lacks a scope.
   Retrying is pointless; the connection is marked invalid and the user is asked
   to reconnect.
+* :class:`RateLimited` — the platform declined to process the request and said
+  when to come back. Retried, but not until then.
 * :class:`PublishError` — anything else. Might be transient, so it is retried
   with backoff up to ``PUBLISH_MAX_RETRIES``.
+
+There are two layers of retry, and they answer different questions. Inside
+:meth:`Adapter._request` a handful of fast in-process retries paper over the
+blips that resolve in seconds — a dropped connection, a 503 from a load
+balancer rolling. Above it, the publication row is re-armed by the beat sweep
+for anything that outlives them. The inner layer only retries what is *safe* to
+retry: see :func:`_is_retryable`, which is deliberately conservative about
+POSTs, because a duplicate article is worse than a failed one.
 """
 from __future__ import annotations
 
+import email.utils
 import logging
+import random
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -27,6 +41,20 @@ from app.models.publication import Platform
 
 logger = logging.getLogger(__name__)
 
+#: Methods that can be replayed without changing the outcome. A retried POST
+#: may create a second post; a retried GET cannot.
+_IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
+
+#: Statuses that mean "I did not process this" rather than "something went wrong
+#: while I was processing it". Safe to replay even for a POST, because the
+#: platform is telling us it never got as far as doing anything.
+_REJECTED_WITHOUT_PROCESSING = frozenset({429, 503})
+
+#: Statuses worth a second go at all. 500/502/504 are ambiguous for a POST —
+#: the write may well have landed — so :func:`_is_retryable` only replays them
+#: for idempotent methods.
+_TRANSIENT_STATUSES = frozenset({429, 500, 502, 503, 504})
+
 
 class PublishError(RuntimeError):
     """Publishing failed for a reason that might not recur."""
@@ -34,6 +62,24 @@ class PublishError(RuntimeError):
 
 class CredentialError(PublishError):
     """The stored credentials were rejected. Retrying will not help."""
+
+
+class RateLimited(PublishError):
+    """The platform refused the request and asked us to come back later.
+
+    Distinct from a plain :class:`PublishError` for one reason: it carries the
+    platform's own answer to "when?". Retrying a rate limit on the caller's
+    schedule rather than the platform's is how a soft limit becomes a hard ban,
+    so ``retry_after`` is honoured by parking the publication until then (see
+    ``app.services.publishing_service.execute``).
+
+    ``retry_after`` is ``None`` when the platform declined to say — the caller
+    falls back to its own backoff.
+    """
+
+    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class NotImplementedAdapter(PublishError):
@@ -221,38 +267,156 @@ class Adapter(ABC):
         headers: dict[str, str] | None = None,
         json_body: Any = None,
         params: dict | None = None,
+        retries: int | None = None,
     ) -> httpx.Response:
-        """One HTTP call with uniform error translation.
+        """One HTTP call with uniform error translation and safe retries.
 
         Auth failures become :class:`CredentialError` so the caller stops
-        retrying and marks the connection invalid; everything else stays
-        retryable.
-        """
-        try:
-            resp = httpx.request(
-                method,
-                url,
-                headers=headers,
-                json=json_body,
-                params=params,
-                timeout=settings.publish_timeout_seconds,
-                follow_redirects=True,
-            )
-        except httpx.HTTPError as exc:
-            raise PublishError(f"{self.display_name} request failed: {exc}") from exc
+        retrying and marks the connection invalid; a 429 becomes
+        :class:`RateLimited` carrying the platform's own ``Retry-After``;
+        everything else stays a retryable :class:`PublishError`.
 
+        Transient failures are retried in-process up to
+        ``PUBLISH_REQUEST_RETRIES`` times with exponential backoff and jitter,
+        but only when replaying the call cannot change the outcome — see
+        :func:`_is_retryable`. Pass ``retries=0`` to opt one call out.
+        """
+        budget = settings.publish_request_retries if retries is None else retries
+        attempt = 0
+
+        while True:
+            error: PublishError
+            response: httpx.Response | None = None
+            try:
+                response = httpx.request(
+                    method,
+                    url,
+                    headers=headers,
+                    json=json_body,
+                    params=params,
+                    timeout=settings.publish_timeout_seconds,
+                    follow_redirects=True,
+                )
+            except httpx.HTTPError as exc:
+                error = PublishError(f"{self.display_name} request failed: {exc}")
+                error.__cause__ = exc
+            else:
+                failure = self._translate(response)
+                if failure is None:
+                    return response
+                error = failure
+
+            attempt += 1
+            if attempt > budget or not _is_retryable(method, error, response):
+                raise error
+
+            delay = _backoff_delay(attempt, error)
+            logger.info(
+                "%s %s failed (%s) — retry %d/%d in %.1fs",
+                self.display_name,
+                method,
+                error,
+                attempt,
+                budget,
+                delay,
+            )
+            _sleep(delay)
+
+    def _translate(self, resp: httpx.Response) -> PublishError | None:
+        """The error a response deserves, or ``None`` when it is a success."""
         if resp.status_code in (401, 403):
-            raise CredentialError(
+            return CredentialError(
                 f"{self.display_name} rejected the credentials "
                 f"({resp.status_code}): {_short(resp.text)}"
             )
         if resp.status_code == 429:
-            raise PublishError(f"{self.display_name} rate-limited the request")
+            return RateLimited(
+                f"{self.display_name} rate-limited the request",
+                retry_after=_retry_after(resp),
+            )
         if resp.status_code >= 400:
-            raise PublishError(
+            return PublishError(
                 f"{self.display_name} returned {resp.status_code}: {_short(resp.text)}"
             )
-        return resp
+        return None
+
+
+def _is_retryable(
+    method: str, error: PublishError, response: httpx.Response | None
+) -> bool:
+    """Whether replaying this call is both useful and safe.
+
+    Useful rules out the terminal failures: a rejected credential is rejected
+    just as hard the second time. Safe is the interesting half — a POST that
+    failed *after* the platform started processing it may already have created
+    the post, so replaying it risks a duplicate. Three cases pass:
+
+    * the method is idempotent, so a replay cannot add anything;
+    * the platform answered 429 or 503, which say "I did not process this";
+    * the request never reached the platform at all (a connect error).
+
+    A read timeout on a POST fails all three, and deliberately: the request was
+    sent, and nobody knows whether it landed.
+    """
+    if isinstance(error, CredentialError | NotImplementedAdapter | UnsupportedOption):
+        return False
+
+    if method.upper() in _IDEMPOTENT_METHODS:
+        return response is None or response.status_code in _TRANSIENT_STATUSES
+
+    if response is not None:
+        return response.status_code in _REJECTED_WITHOUT_PROCESSING
+
+    # No response: retry only when we know the request never got out.
+    return isinstance(error.__cause__, httpx.ConnectError | httpx.ConnectTimeout)
+
+
+def _backoff_delay(attempt: int, error: PublishError) -> float:
+    """How long to wait before retry number *attempt* (1-based).
+
+    A ``Retry-After`` from the platform wins outright — guessing shorter than
+    what it asked for is how a soft limit becomes a ban. Otherwise exponential
+    backoff with full jitter, so several publications failing at once do not
+    come back in lockstep.
+    """
+    ceiling = settings.publish_retry_max_backoff_seconds
+    if isinstance(error, RateLimited) and error.retry_after is not None:
+        return min(error.retry_after, ceiling)
+
+    window = min(settings.publish_retry_backoff_seconds * (2 ** (attempt - 1)), ceiling)
+    return random.uniform(window / 2, window)
+
+
+def _retry_after(resp: httpx.Response) -> float | None:
+    """Seconds to wait, from the ``Retry-After`` header. ``None`` if unusable.
+
+    The header comes in two shapes (RFC 9110 §10.2.3): a delay in seconds, or
+    an HTTP-date. Both are handled; anything else, or a date already in the
+    past, reads as "no guidance" rather than an error.
+    """
+    raw = (resp.headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+
+    try:
+        when = email.utils.parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
+
+
+def _sleep(seconds: float) -> None:
+    """Indirection so tests can retry without actually waiting."""
+    time.sleep(seconds)
 
 
 def _short(text: str, limit: int = 300) -> str:
@@ -270,5 +434,6 @@ __all__ = [
     "PublishError",
     "PublishRequest",
     "PublishResult",
+    "RateLimited",
     "UnsupportedOption",
 ]

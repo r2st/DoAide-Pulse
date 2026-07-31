@@ -168,6 +168,19 @@ class Settings(BaseSettings):
     # A publication that fails is retried this many times with backoff before it
     # is parked as `failed` for a human to look at.
     publish_max_retries: int = 3
+    # In-process retries *within* a single adapter call, for the blips that
+    # resolve in seconds — a dropped connection, a 503 from a load balancer
+    # mid-roll. Only replays calls where doing so cannot double-post; see
+    # app.services.publishers.base._is_retryable. Set to 0 to rely solely on the
+    # publication-level retry above.
+    publish_request_retries: int = 2
+    # First backoff window, doubled per attempt, with full jitter inside it.
+    publish_retry_backoff_seconds: float = 1.0
+    publish_retry_max_backoff_seconds: float = 30.0
+    # Ceiling on how long a rate-limited publication is parked for. Platforms
+    # occasionally answer Retry-After with something enormous, and a post that
+    # silently disappears for a day looks like a bug rather than a queue.
+    publish_rate_limit_max_defer_seconds: int = 3600
 
     # ---- Link validation ----
     # HEAD-check every URL in a body before it goes out. Only a definitive 404 or
@@ -199,6 +212,16 @@ class Settings(BaseSettings):
     def _positive(cls, v: int) -> int:
         if v <= 0:
             raise ValueError("must be positive")
+        return v
+
+    @field_validator(
+        "publish_request_retries",
+        "publish_rate_limit_max_defer_seconds",
+    )
+    @classmethod
+    def _non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("must be zero or positive")
         return v
 
     @field_validator("jwt_secret")
