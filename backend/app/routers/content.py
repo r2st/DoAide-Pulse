@@ -26,19 +26,25 @@ from app.schemas.content import (
     ContentOut,
     ContentUpdate,
     GenerateRequest,
+    HeadlineApplyIn,
+    HeadlineVariantsOut,
+    HeadlineWindowOut,
     InternalLinkSuggestionOut,
     LinkCheckOut,
     LinkStatusOut,
     PublicationOut,
     PublishRequestIn,
+    RepurposeOut,
     SeoIssueOut,
 )
 from app.services import (
     content_generator,
     github_client,
+    headlines,
     link_check,
     publishers,
     publishing_service,
+    repurpose,
     seo,
 )
 
@@ -351,6 +357,94 @@ def internal_link_suggestions(
         limit=limit,
     )
     return [InternalLinkSuggestionOut(**s) for s in suggestions]
+
+
+@router.post("/{content_id}/repurpose", response_model=RepurposeOut)
+def repurpose_content(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> RepurposeOut:
+    """Draft a Twitter thread and a LinkedIn post from this piece.
+
+    POST, not GET, and runs inline like ``/generate``: this costs an LLM call
+    and nothing is persisted, so the caller gets a fresh set of snippets every
+    time — there is no cached result to invalidate.
+    """
+    content = _owned_content(content_id, db, user)
+    result = repurpose.generate(content, content.project)
+    return RepurposeOut(
+        twitter_thread=result.twitter_thread,
+        linkedin_post=result.linkedin_post,
+        provider=result.provider,
+        model=result.model,
+        is_fallback=result.is_fallback,
+    )
+
+
+@router.post("/{content_id}/headlines", response_model=HeadlineVariantsOut)
+def generate_headline_variants(
+    content_id: int,
+    count: int = Query(default=4, ge=2, le=6),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> HeadlineVariantsOut:
+    """Draft alternative headlines for this piece.
+
+    Nothing is applied or persisted here — POST /{content_id}/headlines/apply
+    is the separate step that actually swaps the live title.
+    """
+    content = _owned_content(content_id, db, user)
+    result = headlines.generate_variants(content, content.project, count=count)
+    return HeadlineVariantsOut(
+        variants=result.variants,
+        provider=result.provider,
+        model=result.model,
+        is_fallback=result.is_fallback,
+    )
+
+
+@router.post("/{content_id}/headlines/apply", response_model=ContentOut)
+def apply_content_headline(
+    content_id: int,
+    payload: HeadlineApplyIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ContentOut:
+    """Swap the live title, whether or not this piece is already published.
+
+    Unlike ``PATCH /{content_id}``, this is allowed after publish — testing
+    headlines on live content is the point. The slug (and so the URL) is left
+    untouched; only the display title changes.
+    """
+    content = _owned_content(content_id, db, user)
+    headlines.apply_headline(content, payload.title)
+    db.commit()
+    db.refresh(content)
+    return _to_out(content)
+
+
+@router.get("/{content_id}/headlines/performance", response_model=list[HeadlineWindowOut])
+def content_headline_performance(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[HeadlineWindowOut]:
+    """Engagement recorded while each headline (including the current one) was live."""
+    content = _owned_content(content_id, db, user)
+    windows = headlines.performance(content, db)
+    return [
+        HeadlineWindowOut(
+            title=w.title,
+            started_at=w.started_at,
+            ended_at=w.ended_at,
+            current=w.current,
+            views=w.views,
+            engagement=w.engagement,
+            snapshots=w.snapshots,
+        )
+        for w in windows
+    ]
 
 
 @router.get("/{content_id}", response_model=ContentDetail)

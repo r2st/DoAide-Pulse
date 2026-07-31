@@ -181,6 +181,48 @@ class InternalLinkSuggestionOut(BaseModel):
     score: int
 
 
+class RepurposeOut(BaseModel):
+    """Social snippets derived from a long-form piece — nothing persisted."""
+
+    twitter_thread: list[str] = []
+    linkedin_post: str = ""
+    provider: str | None = None
+    model: str | None = None
+    #: True when no AI provider was usable and this is the mechanical fallback
+    #: (paragraph-split thread, excerpt-based LinkedIn post).
+    is_fallback: bool = False
+
+
+class HeadlineVariantsOut(BaseModel):
+    """Alternative headlines suggested for a piece — nothing applied yet."""
+
+    variants: list[str] = []
+    provider: str | None = None
+    model: str | None = None
+    is_fallback: bool = False
+
+
+class HeadlineApplyIn(BaseModel):
+    """Swap the live headline. Allowed even on published content."""
+
+    title: str = Field(min_length=1, max_length=300)
+
+
+class HeadlineWindowOut(BaseModel):
+    """One headline and the engagement recorded while it was live."""
+
+    title: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    #: True for the headline live right now — its window has no end yet.
+    current: bool = False
+    views: int = 0
+    engagement: int = 0
+    #: How many metric snapshots landed in this window, so a caller can tell
+    #: "no engagement" from "no data yet".
+    snapshots: int = 0
+
+
 class BulkContentIn(BaseModel):
     """A batch of pieces to act on from the review queue."""
 

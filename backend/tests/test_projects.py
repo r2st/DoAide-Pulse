@@ -128,3 +128,34 @@ def test_list_projects_uses_batched_counts(client, auth, project, db, sql_log):
     assert len(selects) <= 5, (
         f"Expected ≤5 SELECTs (auth + projects + batched counts), got {len(selects)}"
     )
+
+
+# --------------------------------------------------------------------------- #
+# RSS feed                                                                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_feed_is_public_and_lists_only_published_content(client, project, db):
+    """No Authorization header at all — an RSS reader has none to send."""
+    published = Content(
+        project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
+        title="Herald 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+        excerpt="It's out.",
+    )
+    draft = Content(
+        project_id=project.id, content_type=ContentType.HOW_TO,
+        title="Unfinished thing", slug="unfinished-thing", status=ContentStatus.DRAFT,
+    )
+    db.add_all([published, draft])
+    db.commit()
+
+    resp = client.get(f"/api/v1/projects/{project.id}/feed.xml")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/rss+xml")
+    assert "Herald 1.0" in resp.text
+    assert "Unfinished thing" not in resp.text
+
+
+def test_feed_404s_for_a_nonexistent_project(client):
+    resp = client.get("/api/v1/projects/999999/feed.xml")
+    assert resp.status_code == 404

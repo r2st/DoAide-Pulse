@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ from app.schemas.project import (
     ProjectUpdate,
     RepoActivityOut,
 )
-from app.services import content_generator, github_client
+from app.services import content_generator, github_client, rss
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -252,6 +252,35 @@ def scan_repo(
         topics=activity.topics,
         commits=[c.summary for c in activity.new_commits[:20]],
     )
+
+
+@router.get("/{project_id}/feed.xml", include_in_schema=False)
+def project_feed(
+    project_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Public RSS feed of this project's published content.
+
+    Unauthenticated on purpose: an RSS reader has no bearer token to send, and
+    every item here is already live wherever it was published. Only
+    ``PUBLISHED`` content is ever included — drafts and the review queue never
+    reach this endpoint regardless of who asks.
+    """
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    items = list(
+        db.scalars(
+            select(Content)
+            .where(Content.project_id == project.id, Content.status == ContentStatus.PUBLISHED)
+            .order_by(Content.published_at.desc())
+            .limit(rss.FEED_ITEM_LIMIT)
+        )
+    )
+    xml = rss.build_feed(project, items, self_url=str(request.url))
+    return Response(content=xml, media_type="application/rss+xml")
 
 
 @router.get("/{project_id}/ideas", response_model=list[IdeaOut])

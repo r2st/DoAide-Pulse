@@ -146,6 +146,15 @@ class Content(Base, TimestampMixin):
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # ---- Headline testing ----
+    #: Past titles and the [started_at, ended_at) window each was live —
+    #: {"title": ..., "started_at": iso, "ended_at": iso}. The *current*
+    #: title's own window is not stored here; it is derived at read time from
+    #: the last entry's ``ended_at`` (or ``created_at`` if this is empty) so a
+    #: piece that never had its headline changed costs nothing. See
+    #: ``app.services.headlines``.
+    headline_history: Mapped[list[dict]] = mapped_column(JSON, default=list, nullable=False)
+
     project: Mapped[Project] = relationship(back_populates="content")
     publications: Mapped[list[Publication]] = relationship(
         back_populates="content", cascade="all, delete-orphan", lazy="selectin"

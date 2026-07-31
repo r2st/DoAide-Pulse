@@ -496,6 +496,168 @@ def test_internal_links_empty_when_no_keyword_overlap(client, auth, project, db)
 
 
 # --------------------------------------------------------------------------- #
+# Repurposing                                                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_repurpose_returns_snippets_via_the_mechanical_fallback(client, auth, project, db):
+    """No provider key is configured in tests, so this exercises the fallback."""
+    body = (
+        "## Section one\n\n"
+        + ("A concrete sentence about the feature. " * 15)
+        + "\n\n## Section two\n\n"
+        + ("Another concrete sentence about the feature. " * 15)
+    )
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.FEATURE_SPOTLIGHT,
+        title="Herald ships bulk content operations",
+        slug="herald-ships-bulk-content-operations",
+        body_markdown=body,
+        excerpt="Approve, reject or publish many drafts in one call.",
+        tags=["python", "fastapi"],
+    )
+    db.add(content)
+    db.commit()
+
+    resp = client.post(f"/api/v1/content/{content.id}/repurpose", headers=auth)
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    assert payload["is_fallback"] is True
+    assert payload["provider"] is None
+    assert 1 <= len(payload["twitter_thread"]) <= 5
+    assert payload["linkedin_post"]
+
+
+def test_repurpose_404s_for_content_owned_by_someone_else(client, auth, db):
+    from app.models.user import User
+    from app.security import hash_password
+
+    other = User(
+        email="other@example.com",
+        full_name="Other",
+        hashed_password=hash_password("hunter2hunter2"),
+    )
+    db.add(other)
+    db.commit()
+    from app.models.project import Project, Tone
+
+    other_project = Project(
+        user_id=other.id, name="Other", slug="other", tone=Tone.TECHNICAL
+    )
+    db.add(other_project)
+    db.commit()
+    other_content = Content(
+        project_id=other_project.id,
+        content_type=ContentType.HOW_TO,
+        title="Not yours",
+        slug="not-yours",
+        body_markdown="word " * 100,
+    )
+    db.add(other_content)
+    db.commit()
+
+    resp = client.post(f"/api/v1/content/{other_content.id}/repurpose", headers=auth)
+    assert resp.status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Headline testing                                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_headline_variants_endpoint_uses_fallback_without_a_provider(client, auth, project, db):
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.HOW_TO,
+        title="Herald ships bulk content operations",
+        slug="bulk-ops",
+    )
+    db.add(content)
+    db.commit()
+
+    resp = client.post(f"/api/v1/content/{content.id}/headlines", headers=auth)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["is_fallback"] is True
+    assert body["variants"]
+    assert content.title not in body["variants"]
+
+
+def test_apply_headline_updates_title_and_keeps_slug_even_when_published(client, auth, project, db):
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.HOW_TO,
+        title="Original title",
+        slug="original-title",
+        status=ContentStatus.PUBLISHED,
+    )
+    db.add(content)
+    db.commit()
+
+    resp = client.post(
+        f"/api/v1/content/{content.id}/headlines/apply",
+        headers=auth,
+        json={"title": "A Better Headline"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["title"] == "A Better Headline"
+    # The slug must not move — it's the URL this piece is already live at.
+    assert body["slug"] == "original-title"
+
+    db.refresh(content)
+    assert len(content.headline_history) == 1
+    assert content.headline_history[0]["title"] == "Original title"
+
+
+def test_apply_headline_404s_for_content_owned_by_someone_else(client, auth, db):
+    from app.models.project import Project, Tone
+    from app.models.user import User
+    from app.security import hash_password
+
+    other = User(
+        email="other2@example.com", full_name="Other", hashed_password=hash_password("hunter2hunter2")
+    )
+    db.add(other)
+    db.commit()
+    other_project = Project(user_id=other.id, name="Other", slug="other2", tone=Tone.TECHNICAL)
+    db.add(other_project)
+    db.commit()
+    other_content = Content(
+        project_id=other_project.id,
+        content_type=ContentType.HOW_TO,
+        title="Not yours",
+        slug="not-yours-2",
+    )
+    db.add(other_content)
+    db.commit()
+
+    resp = client.post(
+        f"/api/v1/content/{other_content.id}/headlines/apply",
+        headers=auth,
+        json={"title": "Hijacked"},
+    )
+    assert resp.status_code == 404
+
+
+def test_headline_performance_endpoint_returns_current_window_by_default(client, auth, project, db):
+    content = Content(
+        project_id=project.id, content_type=ContentType.HOW_TO, title="A Title", slug="a-title",
+    )
+    db.add(content)
+    db.commit()
+
+    resp = client.get(f"/api/v1/content/{content.id}/headlines/performance", headers=auth)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["current"] is True
+    assert body[0]["title"] == "A Title"
+    assert body[0]["snapshots"] == 0
+
+
+# --------------------------------------------------------------------------- #
 # Bulk operations                                                             #
 # --------------------------------------------------------------------------- #
 
