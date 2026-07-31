@@ -13,6 +13,7 @@ celery_app = Celery(
         "app.tasks.publish_tasks",
         "app.tasks.autopilot_tasks",
         "app.tasks.metrics_tasks",
+        "app.tasks.maintenance_tasks",
     ],
 )
 
@@ -59,5 +60,9 @@ celery_app.conf.beat_schedule = {
     "collect-metrics": {
         "task": "app.tasks.metrics_tasks.collect_all_metrics",
         "schedule": float(settings.metrics_scan_interval_seconds),
+    },
+    "purge-expired-tokens": {
+        "task": "app.tasks.maintenance_tasks.purge_expired_tokens",
+        "schedule": 86400.0,  # once a day
     },
 }

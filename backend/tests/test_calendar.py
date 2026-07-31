@@ -163,6 +163,30 @@ def test_cadence_guide_single_platform(client, auth):
     assert body[0]["platform"] == "devto"
 
 
+def test_calendar_rejects_window_over_365_days(client, auth):
+    """A window wider than a year is refused to prevent expensive queries."""
+    # Use naive ISO strings — a '+' in the query string is decoded as a space.
+    far_start = (_now() - timedelta(days=400)).strftime("%Y-%m-%dT%H:%M:%S")
+    far_end = _now().strftime("%Y-%m-%dT%H:%M:%S")
+    resp = client.get(
+        f"/api/v1/calendar?start={far_start}&end={far_end}",
+        headers=auth,
+    )
+    assert resp.status_code == 400
+    assert "365" in resp.json()["detail"]
+
+
+def test_calendar_accepts_window_under_365_days(client, auth):
+    """A 60-day window is well within the limit."""
+    start = (_now() - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+    end = (_now() + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%S")
+    resp = client.get(
+        f"/api/v1/calendar?start={start}&end={end}",
+        headers=auth,
+    )
+    assert resp.status_code == 200
+
+
 def test_calendar_requires_auth(client):
     assert client.get("/api/v1/calendar").status_code == 401
 

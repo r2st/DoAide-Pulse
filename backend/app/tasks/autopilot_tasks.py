@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -117,6 +118,9 @@ def scan_project(project_id: int) -> dict:
         project.last_scanned_at = utcnow()
         db.commit()
         return {"project_id": project_id, **result}
+    except SoftTimeLimitExceeded:
+        logger.warning("autopilot timed out on project %s", project_id)
+        return {"project_id": project_id, "status": "timeout"}
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("autopilot crashed on project %s: %s", project_id, exc)
         return {"project_id": project_id, "status": "error", "error": str(exc)}

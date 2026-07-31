@@ -34,8 +34,17 @@ def get_calendar(
     the rhythm, enough future to plan into. Published items are included but
     flagged ``movable=False`` — you cannot reschedule the past.
     """
-    window_start = start or (utcnow() - timedelta(days=30))
-    window_end = end or (utcnow() + timedelta(days=30))
+    window_start = as_aware(start) if start else (utcnow() - timedelta(days=30))
+    window_end = as_aware(end) if end else (utcnow() + timedelta(days=30))
+
+    # Cap the window so a careless or malicious request doesn't scan years of
+    # publications into memory.
+    max_window = timedelta(days=365)
+    if (window_end - window_start) > max_window:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Calendar window cannot exceed 365 days.",
+        )
 
     # Push the date filter into SQL so we never load the full publication table
     # into memory. A publication's calendar position is ``published_at`` if set,

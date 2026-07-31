@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
+
 from app.database import SessionLocal
 from app.models.publication import Publication, PublicationStatus
 from app.services import publishing_service
@@ -45,6 +47,20 @@ def publish_one(publication_id: int) -> dict:
             "status": publication.status.value,
             "url": publication.external_url,
         }
+    except SoftTimeLimitExceeded:
+        logger.warning(
+            "publish_one timed out for publication %s", publication_id
+        )
+        # Record the timeout so it shows up in the UI and can be retried.
+        try:
+            publication = db.get(Publication, publication_id)
+            if publication and not publication.is_terminal:
+                publication.error = "Task timed out — the platform may be slow"
+                publication.status = PublicationStatus.PENDING
+                db.commit()
+        except Exception:
+            logger.exception("failed to record timeout for publication %s", publication_id)
+        return {"publication_id": publication_id, "status": "timeout"}
     finally:
         db.close()
 

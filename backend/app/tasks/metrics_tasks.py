@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 
 from app.database import SessionLocal
@@ -45,6 +46,12 @@ def collect_all_metrics() -> dict:
             try:
                 if publishing_service.collect_metrics(db, publication) is not None:
                     recorded += 1
+            except SoftTimeLimitExceeded:
+                logger.warning(
+                    "metrics collection timed out after %d of %d publications",
+                    recorded, len(publications),
+                )
+                break
             except Exception:
                 # Isolate failures: a broken response from one platform must not
                 # prevent polling the rest.
