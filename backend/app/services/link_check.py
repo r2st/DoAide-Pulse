@@ -131,6 +131,18 @@ def _unreachable_for_a_reader(url: str) -> str | None:
     return None
 
 
+def unreachable_reason(url: str) -> str | None:
+    """Why *url* points somewhere no outside caller could reach, or ``None``.
+
+    The same pre-flight the link checker runs, exposed for the other places
+    Herald is handed a URL by a user or a model and then asks the server to open
+    it — outbound webhooks above all. Resolving the host and refusing loopback,
+    private and link-local addresses is what stops "call this URL when a post
+    goes out" from being a request to read the cloud metadata endpoint.
+    """
+    return _unreachable_for_a_reader(url)
+
+
 def _is_private(address: str) -> bool:
     try:
         parsed = ipaddress.ip_address(address)
@@ -290,4 +302,5 @@ __all__ = [
     "check_body",
     "check_url",
     "extract_urls",
+    "unreachable_reason",
 ]

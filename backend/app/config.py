@@ -182,6 +182,28 @@ class Settings(BaseSettings):
     # silently disappears for a day looks like a bug rather than a queue.
     publish_rate_limit_max_defer_seconds: int = 3600
 
+    # ---- Outbound webhooks ----
+    # Per-request budget for a user's own endpoint. Short: a webhook is a
+    # notification, and an endpoint that needs half a minute to acknowledge one
+    # is an endpoint that should acknowledge first and work afterwards.
+    webhook_timeout_seconds: float = 10.0
+    # Attempts per delivery before it is parked as failed for a human to
+    # redeliver. Covers a deploy window, not an outage.
+    webhook_max_attempts: int = 5
+    # First backoff window, doubled per attempt, capped. The default series is
+    # 30s, 1m, 2m, 4m — about eight minutes end to end.
+    webhook_retry_backoff_seconds: float = 30.0
+    webhook_retry_max_backoff_seconds: float = 3600.0
+    # Consecutive *fully failed* deliveries before the endpoint is deactivated.
+    # An endpoint that has swallowed nothing for this many events in a row is
+    # gone, and queueing for it only fills the delivery table.
+    webhook_disable_after_failures: int = 20
+    # How often the beat task sweeps for deliveries whose backoff has elapsed.
+    webhook_scan_interval_seconds: int = 60
+    # How long delivered/failed rows are kept before the maintenance sweep
+    # prunes them. Long enough to debug last week's missing notification.
+    webhook_delivery_retention_days: int = 30
+
     # ---- Link validation ----
     # HEAD-check every URL in a body before it goes out. Only a definitive 404 or
     # 410 blocks a publish; a timeout or a 403 is reported and ignored (see
@@ -238,6 +260,8 @@ class Settings(BaseSettings):
         "autopilot_daily_content_limit",
         "password_reset_token_ttl_minutes",
         "publish_max_retries",
+        "webhook_disable_after_failures",
+        "webhook_max_attempts",
     )
     @classmethod
     def _positive(cls, v: int) -> int:

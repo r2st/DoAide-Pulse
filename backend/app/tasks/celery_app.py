@@ -17,6 +17,7 @@ celery_app = Celery(
         "app.tasks.maintenance_tasks",
         "app.tasks.headline_tasks",
         "app.tasks.digest_tasks",
+        "app.tasks.webhook_tasks",
     ],
 )
 
@@ -79,8 +80,18 @@ celery_app.conf.beat_schedule = {
             minute="0",
         ),
     },
+    "deliver-webhooks": {
+        # Only picks up deliveries whose backoff has elapsed — the first attempt
+        # is dispatched by whatever emitted the event, not by this sweep.
+        "task": "app.tasks.webhook_tasks.deliver_due",
+        "schedule": float(settings.webhook_scan_interval_seconds),
+    },
     "purge-expired-tokens": {
         "task": "app.tasks.maintenance_tasks.purge_expired_tokens",
+        "schedule": 86400.0,  # once a day
+    },
+    "purge-old-webhook-deliveries": {
+        "task": "app.tasks.maintenance_tasks.purge_old_webhook_deliveries",
         "schedule": 86400.0,  # once a day
     },
 }

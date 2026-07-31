@@ -16,8 +16,16 @@ from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
+from app.models.webhook import (
+    SUBSCRIBABLE_EVENTS,
+    DeliveryStatus,
+    Webhook,
+    WebhookDelivery,
+    WebhookEvent,
+)
 
 __all__ = [
+    "SUBSCRIBABLE_EVENTS",
     "TARGET_WORDS",
     "AutopilotMode",
     "ConnectionStatus",
@@ -26,6 +34,7 @@ __all__ = [
     "ContentMetric",
     "ContentStatus",
     "ContentType",
+    "DeliveryStatus",
     "PasswordResetToken",
     "Platform",
     "PlatformConnection",
@@ -34,5 +43,8 @@ __all__ = [
     "PublicationStatus",
     "Tone",
     "User",
+    "Webhook",
+    "WebhookDelivery",
+    "WebhookEvent",
     "slugify",
 ]

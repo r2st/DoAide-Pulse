@@ -23,7 +23,8 @@ from app.models.metrics import ContentMetric
 from app.models.mixins import utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform, Publication, PublicationStatus
-from app.services import publishers, utm
+from app.models.webhook import WebhookEvent
+from app.services import publishers, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
 from app.services.publishers.base import (
     CredentialError,
@@ -309,8 +310,15 @@ def execute(db: Session, publication: Publication) -> Publication:
     publication.error = None
 
     _adopt_canonical(content, publication, result)
+    # Captured before the sync, because the interesting moment is the
+    # *transition* — a piece already live on Dev.to going out on Mastodon is
+    # not news, and firing "published" per platform would make the event mean
+    # something different from its name.
+    was_published = content.status == ContentStatus.PUBLISHED
     _sync_content_status(content)
     db.commit()
+    if not was_published and content.status == ContentStatus.PUBLISHED:
+        _notify_published(db, content, publication)
     logger.info(
         "published content %s to %s: %s",
         content.id,
@@ -318,6 +326,46 @@ def execute(db: Session, publication: Publication) -> Publication:
         result.external_url,
     )
     return publication
+
+
+def _notify_published(db: Session, content: Content, publication: Publication) -> None:
+    """Tell this user's webhooks that a piece is public.
+
+    Emitted after the commit that made it true, so an endpoint that turns round
+    and reads the API back sees what the payload describes.
+    """
+    project = content.project
+    webhooks.emit(
+        db,
+        user_id=project.user_id,
+        event=WebhookEvent.CONTENT_PUBLISHED,
+        data={
+            "content": webhook_payloads.content_payload(content),
+            "publication": webhook_payloads.publication_payload(publication),
+        },
+    )
+
+
+def _notify_failed(db: Session, publication: Publication) -> None:
+    """Tell this user's webhooks that a platform gave up on a piece.
+
+    Only for terminal failures. A mid-retry blip is not something to page
+    anyone about, and an endpoint told about all three attempts learns nothing
+    it did not know after the third.
+    """
+    content = publication.content
+    project = content.project if content else None
+    if project is None:  # pragma: no cover - a publication always has a project
+        return
+    webhooks.emit(
+        db,
+        user_id=project.user_id,
+        event=WebhookEvent.PUBLICATION_FAILED,
+        data={
+            "content": webhook_payloads.content_payload(content),
+            "publication": webhook_payloads.publication_payload(publication),
+        },
+    )
 
 
 def _adopt_canonical(
@@ -408,6 +456,8 @@ def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) 
         "terminal" if terminal else f"attempt {publication.attempts}",
         error,
     )
+    if terminal:
+        _notify_failed(db, publication)
 
 
 def _sync_content_status(content: Content) -> None:

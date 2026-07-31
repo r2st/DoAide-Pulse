@@ -30,12 +30,15 @@ from app.database import SessionLocal
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
 from app.models.mixins import utcnow
 from app.models.project import AutopilotMode, Project
+from app.models.webhook import WebhookEvent
 from app.services import (
     content_generator,
     github_client,
     link_check,
     publishing_service,
     seo,
+    webhook_payloads,
+    webhooks,
 )
 from app.tasks.celery_app import celery_app
 
@@ -275,6 +278,21 @@ def _act_on(
 
     if not auto:
         db.commit()
+        # The review queue is only a queue if somebody knows it has something in
+        # it. This is the one moment the autopilot needs a human and cannot ask
+        # for one through the UI it isn't looking at.
+        webhooks.emit(
+            db,
+            user_id=project.user_id,
+            event=WebhookEvent.REVIEW_PENDING,
+            data={
+                "content": webhook_payloads.content_payload(content),
+                "confidence": generated.confidence,
+                "seo_score": score,
+                "dead_links": dead_links,
+                "review_url": f"{settings.frontend_url.rstrip('/')}/content/{content.id}",
+            },
+        )
         return {
             "status": "queued_for_review",
             "content_id": content.id,
