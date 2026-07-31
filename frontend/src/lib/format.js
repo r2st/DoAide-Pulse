@@ -49,6 +49,20 @@ export function formatCount(value) {
   return Number(value).toLocaleString();
 }
 
+/**
+ * A 0..1 rate as a percentage, or "—" when there is nothing to divide by.
+ *
+ * The API returns null rather than 0 for a rate whose denominator is missing —
+ * Mastodon does not count reads, so its read rate is unknown, not zero. Keeping
+ * that distinction visible is the whole point of the "—".
+ */
+export function formatRate(value, digits = 1) {
+  if (value === null || value === undefined) return "—";
+  const number = Number(value);
+  if (Number.isNaN(number)) return "—";
+  return `${(number * 100).toFixed(digits)}%`;
+}
+
 /** "feature_spotlight" -> "Feature Spotlight". */
 export function titleize(value) {
   if (!value) return "";

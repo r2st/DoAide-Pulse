@@ -9,7 +9,13 @@ import {
 } from "../components/ui/Bits";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
-import { formatCount, formatDateTime, formatWhen, titleize } from "../lib/format";
+import {
+  formatCount,
+  formatDateTime,
+  formatRate,
+  formatWhen,
+  titleize,
+} from "../lib/format";
 
 /**
  * The home page: how much has gone out, what is waiting on you, what is next.
@@ -70,11 +76,17 @@ export default function Dashboard() {
             value={formatCount(totals.published_count)}
             hint={`${formatCount(totals.publication_count)} across all platforms`}
           />
-          <Stat label="Views" value={formatCount(totals.views)} />
+          <Stat
+            label="Views"
+            value={formatCount(totals.views)}
+            // A rate the platforms did not report comes back null, and renders
+            // as "—" rather than a 0% that would read as nobody clicking.
+            hint={`${formatRate(totals.click_through_rate)} click-through`}
+          />
           <Stat
             label="Engagement"
             value={formatCount(totals.engagement)}
-            hint="Reactions, comments, clicks"
+            hint={`${formatRate(totals.engagement_rate)} of views`}
           />
         </div>
       )}

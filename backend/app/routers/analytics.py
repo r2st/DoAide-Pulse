@@ -1,7 +1,6 @@
 """Analytics dashboard endpoints."""
 from __future__ import annotations
 
-import dataclasses
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -36,6 +35,14 @@ def engagement_trend(
     return analytics_service.engagement_trend(db, user.id, days=days)
 
 
+@router.get("/read-time")
+def read_time(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> dict:
+    """How long the published pieces are, and whether length pays off."""
+    return analytics_service.read_time(db, user.id)
+
+
 @router.get("/dashboard")
 def dashboard(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
@@ -45,7 +52,7 @@ def dashboard(
     Separate from ``/overview`` because the dashboard is loaded far more often
     and does not need the full per-type/per-platform breakdown.
     """
-    totals = analytics_service.totals(db, user.id)
+    summary = analytics_service.totals(db, user.id)
 
     review_count = db.scalar(
         select(func.count(Content.id))
@@ -94,7 +101,7 @@ def dashboard(
     )
 
     return {
-        "totals": dataclasses.asdict(totals),
+        "totals": summary.to_dict(),
         "needs_review": review_count,
         "failed_publications": [
             {

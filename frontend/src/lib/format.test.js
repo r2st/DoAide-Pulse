@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatCount, formatWhen, localDayKey, statusTone, titleize } from "./format";
+import {
+  formatCount,
+  formatRate,
+  formatWhen,
+  localDayKey,
+  statusTone,
+  titleize,
+} from "./format";
 
 describe("formatWhen", () => {
   it("handles both directions and empty values", () => {
@@ -27,6 +34,21 @@ describe("formatCount", () => {
     expect(formatCount(0)).toBe("0");
     expect(formatCount(null)).toBe("—");
     expect(formatCount(undefined)).toBe("—");
+  });
+});
+
+describe("formatRate", () => {
+  it("renders a fraction as a percentage", () => {
+    expect(formatRate(0.0425)).toBe("4.3%");
+    expect(formatRate(1)).toBe("100.0%");
+    expect(formatRate(0.05, 0)).toBe("5%");
+  });
+
+  it("keeps zero apart from unknown", () => {
+    // Nobody clicked, versus the platform not counting clicks at all.
+    expect(formatRate(0)).toBe("0.0%");
+    expect(formatRate(null)).toBe("—");
+    expect(formatRate(undefined)).toBe("—");
   });
 });
 

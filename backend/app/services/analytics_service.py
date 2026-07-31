@@ -8,6 +8,11 @@ All of this is SQL over ``content_metrics``, which is append-only (see
 * A metric a platform doesn't report stays ``NULL``, so averages use
   ``COUNT(field)`` rather than the row count. A LinkedIn post with no view
   count must not drag the average views per post toward zero.
+
+The same discipline governs every *rate* here. A rate with nothing in its
+denominator is ``None``, never ``0.0``: "nobody clicked" and "this platform
+does not report views" are different facts, and a dashboard that renders both
+as 0% quietly tells the user their best channel is dead.
 """
 from __future__ import annotations
 
@@ -25,6 +30,39 @@ from app.models.mixins import utcnow
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 
+#: Reading-time bands, in minutes, for "does length pay off here?". Bounds are
+#: inclusive upper edges; the last band is open-ended. Three bands rather than
+#: a histogram because the decision they inform is ternary — write shorter,
+#: keep going, or write longer.
+_LENGTH_BANDS: tuple[tuple[str, int | None], ...] = (
+    ("short", 3),
+    ("medium", 8),
+    ("long", None),
+)
+
+
+def _rate(
+    numerator: int | None, denominator: int | None, *, reported: int | None = None
+) -> float | None:
+    """*numerator* / *denominator* as a fraction, or ``None`` when unanswerable.
+
+    Fractions rather than percentages throughout: a rate that is sometimes 0.04
+    and sometimes 4.0 depending on which endpoint returned it is a formatting
+    bug waiting to happen in the UI. Four decimal places keeps a click in ten
+    thousand views visible.
+
+    *reported* is how many publications supplied the numerator at all. Pass it
+    for any metric a platform may simply not have — reads and clicks — so that
+    "Mastodon does not count reads" comes back as ``None`` rather than a read
+    rate of 0.0, which reads as an audience that opens every post and finishes
+    none of them.
+    """
+    if not denominator or numerator is None:
+        return None
+    if reported is not None and reported <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
 
 @dataclass(frozen=True)
 class Totals:
@@ -32,8 +70,83 @@ class Totals:
     published_count: int = 0
     publication_count: int = 0
     views: int = 0
+    #: Platforms that distinguish "opened" from "read to the end" report this.
+    #: Dev.to and Medium do; the social platforms have nothing to report.
+    reads: int = 0
     clicks: int = 0
     engagement: int = 0
+    #: How many publications reported reads / clicks at all. Zero means the
+    #: corresponding rate is unknown rather than zero — see :func:`_rate`.
+    reads_reported: int = 0
+    clicks_reported: int = 0
+
+    @property
+    def click_through_rate(self) -> float | None:
+        """Clicks per view — how often a reader followed the link out."""
+        return _rate(self.clicks, self.views, reported=self.clicks_reported)
+
+    @property
+    def read_rate(self) -> float | None:
+        """Reads per view — how often an opened post was actually read."""
+        return _rate(self.reads, self.views, reported=self.reads_reported)
+
+    @property
+    def engagement_rate(self) -> float | None:
+        """Any interaction per view."""
+        return _rate(self.engagement, self.views)
+
+    def to_dict(self) -> dict:
+        """Counts plus the derived rates, for the API.
+
+        The rates are properties, so ``dataclasses.asdict`` alone would drop
+        them silently — which is exactly the kind of omission nobody notices
+        until the dashboard has been missing a number for a week.
+        """
+        return {
+            **dataclasses.asdict(self),
+            "click_through_rate": self.click_through_rate,
+            "read_rate": self.read_rate,
+            "engagement_rate": self.engagement_rate,
+        }
+
+
+def _blank_metrics() -> dict[str, int]:
+    """A zeroed bucket the aggregations accumulate snapshots into."""
+    return {
+        "views": 0,
+        "reads": 0,
+        "clicks": 0,
+        "engagement": 0,
+        "reads_reported": 0,
+        "clicks_reported": 0,
+    }
+
+
+def _accumulate(bucket: dict[str, int], metric: ContentMetric) -> None:
+    """Fold one snapshot into *bucket*, keeping track of what was reported."""
+    bucket["views"] += metric.views or 0
+    bucket["engagement"] += metric.engagement
+    if metric.reads is not None:
+        bucket["reads"] += metric.reads
+        bucket["reads_reported"] += 1
+    if metric.clicks is not None:
+        bucket["clicks"] += metric.clicks
+        bucket["clicks_reported"] += 1
+
+
+def _rates(bucket: dict[str, int]) -> dict[str, float | None]:
+    """The three derived rates for an accumulated bucket."""
+    return {
+        "click_through_rate": _rate(
+            bucket["clicks"], bucket["views"], reported=bucket["clicks_reported"]
+        ),
+        "read_rate": _rate(
+            bucket["reads"], bucket["views"], reported=bucket["reads_reported"]
+        ),
+        # Engagement is derived from four columns that coalesce to zero, so it
+        # is always reported: a zero here really is "nobody interacted".
+        "engagement_rate": _rate(bucket["engagement"], bucket["views"]),
+    }
 
 
 def _latest_metric_subquery():
@@ -112,8 +225,13 @@ def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Total
     agg = db.execute(
         select(
             func.coalesce(func.sum(ContentMetric.views), 0),
+            func.coalesce(func.sum(ContentMetric.reads), 0),
             func.coalesce(func.sum(ContentMetric.clicks), 0),
             func.coalesce(func.sum(_engagement_expr), 0),
+            # COUNT skips NULLs, which is the whole point: it separates "no
+            # reads" from "this platform has no such number".
+            func.count(ContentMetric.reads),
+            func.count(ContentMetric.clicks),
         )
         .join(latest, latest.c.metric_id == ContentMetric.id)
         .join(Publication, Publication.id == ContentMetric.publication_id)
@@ -126,8 +244,11 @@ def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Total
         published_count=published_count,
         publication_count=pub_count,
         views=agg[0],
-        clicks=agg[1],
-        engagement=agg[2],
+        reads=agg[1],
+        clicks=agg[2],
+        engagement=agg[3],
+        reads_reported=agg[4],
+        clicks_reported=agg[5],
     )
 
 
@@ -138,7 +259,7 @@ def by_content_type(db: Session, user_id: int) -> list[dict]:
     not by the number that exist — see the module docstring.
     """
     buckets: dict[ContentType, dict] = defaultdict(
-        lambda: {"published": 0, "views": 0, "engagement": 0, "with_views": 0}
+        lambda: {"published": 0, "with_views": 0, **_blank_metrics()}
     )
 
     latest = _latest_metric_subquery()
@@ -154,9 +275,8 @@ def by_content_type(db: Session, user_id: int) -> list[dict]:
     for content_type, metric in rows:
         bucket = buckets[content_type]
         bucket["published"] += 1
-        bucket["engagement"] += metric.engagement
+        _accumulate(bucket, metric)
         if metric.views is not None:
-            bucket["views"] += metric.views
             bucket["with_views"] += 1
 
     out = [
@@ -165,10 +285,13 @@ def by_content_type(db: Session, user_id: int) -> list[dict]:
             "label": ct.label,
             "publications": data["published"],
             "views": data["views"],
+            "reads": data["reads"],
+            "clicks": data["clicks"],
             "engagement": data["engagement"],
             "avg_views": round(data["views"] / data["with_views"], 1)
             if data["with_views"]
             else None,
+            **_rates(data),
         }
         for ct, data in buckets.items()
     ]
@@ -183,7 +306,7 @@ def by_platform(db: Session, user_id: int) -> list[dict]:
     different responses.
     """
     stats: dict[Platform, dict] = defaultdict(
-        lambda: {"published": 0, "failed": 0, "views": 0, "engagement": 0}
+        lambda: {"published": 0, "failed": 0, **_blank_metrics()}
     )
 
     # Aggregate publication counts per platform in SQL
@@ -206,9 +329,7 @@ def by_platform(db: Session, user_id: int) -> list[dict]:
             bucket["failed"] += cnt
 
     for publication, metric in _latest_metrics(db, user_id):
-        bucket = stats[publication.platform]
-        bucket["views"] += metric.views or 0
-        bucket["engagement"] += metric.engagement
+        _accumulate(stats[publication.platform], metric)
 
     out = [
         {
@@ -216,7 +337,13 @@ def by_platform(db: Session, user_id: int) -> list[dict]:
             "published": data["published"],
             "failed": data["failed"],
             "views": data["views"],
+            "reads": data["reads"],
+            "clicks": data["clicks"],
             "engagement": data["engagement"],
+            # The comparison worth making across platforms is not the raw view
+            # count — Dev.to will always beat Mastodon on that — but what a view
+            # is worth once you have it.
+            **_rates(data),
         }
         for platform, data in stats.items()
     ]
@@ -267,11 +394,9 @@ def by_project(db: Session, user_id: int) -> list[dict]:
 
 def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
     """The best-performing individual pieces."""
-    scores: dict[int, dict] = defaultdict(lambda: {"views": 0, "engagement": 0})
+    scores: dict[int, dict] = defaultdict(_blank_metrics)
     for publication, metric in _latest_metrics(db, user_id):
-        bucket = scores[publication.content_id]
-        bucket["views"] += metric.views or 0
-        bucket["engagement"] += metric.engagement
+        _accumulate(scores[publication.content_id], metric)
 
     if not scores:
         return []
@@ -286,7 +411,9 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
             "content_type": content_rows[cid].content_type.value,
             "project_id": content_rows[cid].project_id,
             "published_at": content_rows[cid].published_at,
+            "read_minutes": content_rows[cid].read_minutes,
             **data,
+            **_rates(data),
         }
         for cid, data in scores.items()
         if cid in content_rows
@@ -337,50 +464,165 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
     present, including zero days — see :func:`timeline` for why.
     """
     since = utcnow() - timedelta(days=days)
-    _engagement_expr = (
-        func.coalesce(ContentMetric.reactions, 0)
-        + func.coalesce(ContentMetric.comments, 0)
-        + func.coalesce(ContentMetric.clicks, 0)
-        + func.coalesce(ContentMetric.shares, 0)
-    )
     rows = db.execute(
-        select(ContentMetric.captured_at, ContentMetric.views, _engagement_expr)
+        select(ContentMetric)
         .join(Publication, Publication.id == ContentMetric.publication_id)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
         .where(Project.user_id == user_id, ContentMetric.captured_at >= since)
-    ).all()
+    ).scalars()
 
-    views_by_day: dict[str, int] = defaultdict(int)
-    engagement_by_day: dict[str, int] = defaultdict(int)
-    for captured_at, views, engagement in rows:
-        day = captured_at.date().isoformat()
-        views_by_day[day] += views or 0
-        engagement_by_day[day] += engagement or 0
+    by_day: dict[str, dict[str, int]] = defaultdict(_blank_metrics)
+    for metric in rows:
+        _accumulate(by_day[metric.captured_at.date().isoformat()], metric)
 
     start = since.date()
-    return [
-        {
-            "date": (start + timedelta(days=offset)).isoformat(),
-            "views": views_by_day.get((start + timedelta(days=offset)).isoformat(), 0),
-            "engagement": engagement_by_day.get(
-                (start + timedelta(days=offset)).isoformat(), 0
-            ),
-        }
-        for offset in range(days + 1)
-    ]
+    out: list[dict] = []
+    for offset in range(days + 1):
+        day = (start + timedelta(days=offset)).isoformat()
+        bucket = by_day.get(day)
+        if bucket is None:
+            out.append(
+                {
+                    "date": day,
+                    "views": 0,
+                    "reads": 0,
+                    "clicks": 0,
+                    "engagement": 0,
+                    "click_through_rate": None,
+                    "read_rate": None,
+                    "engagement_rate": None,
+                }
+            )
+            continue
+        out.append(
+            {
+                "date": day,
+                "views": bucket["views"],
+                "reads": bucket["reads"],
+                "clicks": bucket["clicks"],
+                "engagement": bucket["engagement"],
+                **_rates(bucket),
+            }
+        )
+    return out
+
+
+def _band_for(read_minutes: int) -> str:
+    for name, upper in _LENGTH_BANDS:
+        if upper is None or read_minutes <= upper:
+            return name
+    return _LENGTH_BANDS[-1][0]  # pragma: no cover - the last band is open-ended
+
+
+def read_time(db: Session, user_id: int) -> dict:
+    """How long this user's posts are, and whether the long ones pay off.
+
+    Two questions, one query. The first is descriptive — how much reading has
+    Herald actually published. The second is the one worth acting on: a piece's
+    reading time is known before it goes out, so if the twelve-minute tutorials
+    consistently out-earn the two-minute announcements per view, that is a
+    commissioning decision rather than a post-hoc observation.
+
+    ``reader_minutes`` multiplies *reads* by reading time, not views: a view is
+    somebody arriving, and counting the full reading time for a bounce would
+    invent attention nobody paid. Publications on platforms that don't report
+    reads contribute nothing to it, which is why the basis is reported
+    alongside — a zero here often means "nowhere you publish counts reads",
+    not "nobody read it".
+    """
+    published = list(
+        db.scalars(
+            select(Content)
+            .join(Project, Project.id == Content.project_id)
+            .where(
+                Project.user_id == user_id,
+                Content.status == ContentStatus.PUBLISHED,
+            )
+        )
+    )
+
+    latest = _latest_metric_subquery()
+    rows = db.execute(
+        select(Content, ContentMetric)
+        .join(Publication, Publication.content_id == Content.id)
+        .join(ContentMetric, ContentMetric.publication_id == Publication.id)
+        .join(latest, latest.c.metric_id == ContentMetric.id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id)
+    ).all()
+
+    bands: dict[str, dict] = {
+        name: {"publications": 0, "read_minutes": 0, **_blank_metrics()}
+        for name, _ in _LENGTH_BANDS
+    }
+    reader_minutes = 0
+    total_views = total_reads = 0
+    reads_reported = 0
+
+    for content, metric in rows:
+        bucket = bands[_band_for(content.read_minutes)]
+        bucket["publications"] += 1
+        bucket["read_minutes"] += content.read_minutes
+        _accumulate(bucket, metric)
+
+        total_views += metric.views or 0
+        if metric.reads is not None:
+            total_reads += metric.reads
+            reads_reported += 1
+            reader_minutes += metric.reads * content.read_minutes
+
+    return {
+        "published_pieces": len(published),
+        "avg_read_minutes": round(
+            sum(c.read_minutes for c in published) / len(published), 1
+        )
+        if published
+        else None,
+        "total_words": sum(c.word_count for c in published),
+        #: Reading time actually spent, as far as the platforms will say.
+        "reader_minutes": reader_minutes,
+        #: How many publications contributed to it. Zero means no platform you
+        #: publish to reports reads — not that nobody read anything.
+        "publications_reporting_reads": reads_reported,
+        "read_rate": _rate(total_reads, total_views) if reads_reported else None,
+        "by_length": [
+            {
+                "band": name,
+                "max_read_minutes": upper,
+                "publications": bands[name]["publications"],
+                "avg_read_minutes": round(
+                    bands[name]["read_minutes"] / bands[name]["publications"], 1
+                )
+                if bands[name]["publications"]
+                else None,
+                "views": bands[name]["views"],
+                "reads": bands[name]["reads"],
+                "clicks": bands[name]["clicks"],
+                "engagement": bands[name]["engagement"],
+                "avg_views": round(
+                    bands[name]["views"] / bands[name]["publications"], 1
+                )
+                if bands[name]["publications"]
+                else None,
+                **_rates(bands[name]),
+            }
+            for name, upper in _LENGTH_BANDS
+        ],
+    }
 
 
 def overview(db: Session, user_id: int) -> dict:
     """Everything the analytics page needs, in one round trip."""
     return {
-        "totals": dataclasses.asdict(totals(db, user_id)),
+        "totals": totals(db, user_id).to_dict(),
         "by_content_type": by_content_type(db, user_id),
         "by_platform": by_platform(db, user_id),
         "by_project": by_project(db, user_id),
         "top_content": top_content(db, user_id),
         "timeline": timeline(db, user_id),
         "engagement_trend": engagement_trend(db, user_id),
+        "read_time": read_time(db, user_id),
     }
 
 
@@ -391,6 +633,7 @@ __all__ = [
     "by_project",
     "engagement_trend",
     "overview",
+    "read_time",
     "timeline",
     "top_content",
     "totals",
