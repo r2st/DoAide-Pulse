@@ -81,6 +81,9 @@ class PublishRequest:
     excerpt: str
     meta_description: str
     tags: list[str] = field(default_factory=list)
+    keywords: list[str] = field(default_factory=list)
+    #: The primary SEO keyword this piece targets. Drives the SEO audit score.
+    focus_keyword: str = ""
     #: URL-safe identifier for this piece — the filename a Git destination
     #: writes to, and the ``utm_content`` value on its share link.
     slug: str = ""

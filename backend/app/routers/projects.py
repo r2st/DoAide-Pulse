@@ -1,8 +1,11 @@
 """Project registry: register what Herald should write about."""
 from __future__ import annotations
 
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -44,45 +47,85 @@ def _unique_slug(db: Session, user_id: int, name: str, *, exclude_id: int | None
         suffix += 1
 
 
-def _to_out(db: Session, project: Project) -> ProjectOut:
-    """Serialize with the two counters the list page needs."""
-    counts = db.execute(
-        select(Content.status, func.count(Content.id))
-        .where(Content.project_id == project.id)
-        .group_by(Content.status)
-    ).all()
-    total = sum(count for _, count in counts)
-    published = next(
-        (count for status_, count in counts if status_ == ContentStatus.PUBLISHED), 0
-    )
+def _project_fields(project: Project) -> dict:
+    """The column values shared by every serialisation path."""
+    return {
+        key: getattr(project, key)
+        for key in (
+            "id", "name", "slug", "description", "repo_url", "live_url",
+            "tech_stack", "target_audience", "keywords", "tone", "is_active",
+            "autopilot_mode", "autopilot_platforms", "auto_canonical",
+            "canonical_platform", "utm_enabled", "utm_campaign",
+            "last_seen_commit_sha",
+            "last_seen_release_tag", "last_scanned_at", "created_at",
+        )
+    }
+
+
+def _to_out(
+    project: Project,
+    *,
+    content_count: int = 0,
+    published_count: int = 0,
+    db: Session | None = None,
+) -> ProjectOut:
+    """Serialize a project with content counters.
+
+    When ``db`` is passed the counts are looked up on the spot (single-project
+    views). When the caller already has them — the list endpoint batches the
+    query — they are passed directly and no extra SQL is emitted.
+    """
+    if db is not None:
+        counts = db.execute(
+            select(Content.status, func.count(Content.id))
+            .where(Content.project_id == project.id)
+            .group_by(Content.status)
+        ).all()
+        content_count = sum(count for _, count in counts)
+        published_count = next(
+            (count for status_, count in counts if status_ == ContentStatus.PUBLISHED), 0
+        )
     return ProjectOut(
         **{
-            **{
-                key: getattr(project, key)
-                for key in (
-                    "id", "name", "slug", "description", "repo_url", "live_url",
-                    "tech_stack", "target_audience", "keywords", "tone", "is_active",
-                    "autopilot_mode", "autopilot_platforms", "auto_canonical",
-                    "canonical_platform", "utm_enabled", "utm_campaign",
-                    "last_seen_commit_sha",
-                    "last_seen_release_tag", "last_scanned_at", "created_at",
-                )
-            },
+            **_project_fields(project),
             "repo_full_name": project.repo_full_name,
-            "content_count": total,
-            "published_count": published,
+            "content_count": content_count,
+            "published_count": published_count,
         }
     )
+
+
+def _batch_counts(db: Session, project_ids: list[int]) -> dict[int, tuple[int, int]]:
+    """Fetch (total, published) content counts for a batch of projects in one query."""
+    if not project_ids:
+        return {}
+    rows = db.execute(
+        select(
+            Content.project_id,
+            func.count(Content.id),
+            func.count(Content.id).filter(Content.status == ContentStatus.PUBLISHED),
+        )
+        .where(Content.project_id.in_(project_ids))
+        .group_by(Content.project_id)
+    ).all()
+    return {pid: (total, published) for pid, total, published in rows}
 
 
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> list[ProjectOut]:
-    projects = db.scalars(
-        select(Project).where(Project.user_id == user.id).order_by(Project.name)
+    projects = list(
+        db.scalars(
+            select(Project).where(Project.user_id == user.id).order_by(Project.name)
+        )
     )
-    return [_to_out(db, p) for p in projects]
+    counts = _batch_counts(db, [p.id for p in projects])
+    return [
+        _to_out(p, content_count=counts.get(p.id, (0, 0))[0],
+                published_count=counts.get(p.id, (0, 0))[1])
+        for p in projects
+    ]
 
 
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
@@ -98,9 +141,15 @@ def create_project(
         autopilot_platforms=[p.value for p in payload.autopilot_platforms],
     )
     db.add(project)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        project.slug = f"{project.slug}-{secrets.token_hex(3)}"
+        db.add(project)
+        db.commit()
     db.refresh(project)
-    return _to_out(db, project)
+    return _to_out(project, db=db)
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
@@ -109,7 +158,7 @@ def get_project(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
-    return _to_out(db, owned_project(project_id, db, user))
+    return _to_out(owned_project(project_id, db, user), db=db)
 
 
 @router.patch("/{project_id}", response_model=ProjectOut)
@@ -136,7 +185,7 @@ def update_project(
 
     db.commit()
     db.refresh(project)
-    return _to_out(db, project)
+    return _to_out(project, db=db)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

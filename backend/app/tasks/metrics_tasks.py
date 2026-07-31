@@ -40,11 +40,17 @@ def collect_all_metrics() -> dict:
                 )
             )
         )
-        recorded = sum(
-            1
-            for publication in publications
-            if publishing_service.collect_metrics(db, publication) is not None
-        )
+        recorded = 0
+        for publication in publications:
+            try:
+                if publishing_service.collect_metrics(db, publication) is not None:
+                    recorded += 1
+            except Exception:
+                # Isolate failures: a broken response from one platform must not
+                # prevent polling the rest.
+                logger.exception(
+                    "metrics collection failed for publication %s", publication.id
+                )
     finally:
         db.close()
 

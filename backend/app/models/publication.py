@@ -16,6 +16,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -76,6 +77,9 @@ class Publication(Base, TimestampMixin):
         # rather than accumulating duplicates that would each be counted in
         # analytics.
         UniqueConstraint("content_id", "platform", name="uq_publication_content_platform"),
+        # The beat sweep queries "status IN (pending, scheduled) WHERE
+        # scheduled_for <= now()". This covers it.
+        Index("ix_publication_status_scheduled", "status", "scheduled_for"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

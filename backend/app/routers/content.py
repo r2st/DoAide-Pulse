@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -96,6 +98,24 @@ def _unique_slug(db: Session, project_id: int, title: str) -> str:
         candidate = f"{base}-{suffix}"
         suffix += 1
     return candidate
+
+
+def _commit_content(db: Session, content: Content) -> None:
+    """Add and commit, retrying once on a slug collision.
+
+    ``_unique_slug`` prevents most collisions, but two concurrent requests can
+    race past the check. The database-level unique constraint catches the
+    loser; we regenerate the slug and retry rather than surfacing a 500.
+    """
+    db.add(content)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        content.slug = f"{content.slug}-{secrets.token_hex(3)}"
+        db.add(content)
+        db.commit()
+    db.refresh(content)
 
 
 # --------------------------------------------------------------------------- #
@@ -282,9 +302,7 @@ def generate_content(
             "fallback": generated.is_fallback,
         },
     )
-    db.add(content)
-    db.commit()
-    db.refresh(content)
+    _commit_content(db, content)
     return _to_detail(content)
 
 
@@ -312,9 +330,7 @@ def create_content(
         cover_image_url=payload.cover_image_url,
         source={"kind": "manual", "user_id": user.id},
     )
-    db.add(content)
-    db.commit()
-    db.refresh(content)
+    _commit_content(db, content)
     return _to_detail(content)
 
 
@@ -547,7 +563,13 @@ def write_from_idea(
         source={"kind": "idea", "idea_id": idea.id, "headline": idea.headline},
     )
     db.add(content)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        content.slug = f"{content.slug}-{secrets.token_hex(3)}"
+        db.add(content)
+        db.flush()
     idea.used_content_id = content.id
     db.commit()
     db.refresh(content)

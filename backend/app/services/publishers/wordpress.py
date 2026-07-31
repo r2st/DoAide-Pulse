@@ -98,6 +98,19 @@ class WordPressAdapter(Adapter):
         tags = formatting.normalize_tags(request.tags, limit=8, allow_spaces=True)
         if tags:
             payload["tags_input"] = tags
+        # SEO meta — sent via the `meta` field so Yoast SEO (or compatible
+        # plugins) can pick them up.  Sites without Yoast ignore unknown meta
+        # keys, so this is safe either way.
+        meta: dict[str, str] = {}
+        if request.meta_description:
+            meta["_yoast_wpseo_metadesc"] = request.meta_description
+        focus = getattr(request, "focus_keyword", "") or ""
+        if focus:
+            meta["_yoast_wpseo_focuskw"] = focus
+        if request.canonical_url:
+            meta["_yoast_wpseo_canonical"] = request.canonical_url
+        if meta:
+            payload["meta"] = meta
         return payload
 
     def _headers(self, username: str, application_password: str) -> dict[str, str]:

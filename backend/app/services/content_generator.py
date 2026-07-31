@@ -95,6 +95,9 @@ class GeneratedContent:
     meta_description: str
     keywords: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    #: The primary SEO keyword — the first project keyword, used to drive the
+    #: SEO audit score (density, first-paragraph, subheading checks).
+    focus_keyword: str = ""
     #: The model's own read on whether this is publishable unreviewed. 0.0 for
     #: the template fallback, so it can never clear the auto-publish gate.
     confidence: float = 0.0
@@ -229,13 +232,15 @@ def _fallback(
 
     body = "\n\n".join(sections)
     title = f"{brief['name']}: {content_type.label}"
+    keywords = seo.normalize_keywords(brief["keywords"])
     return GeneratedContent(
         title=title,
         body_markdown=body,
         excerpt=seo.build_excerpt(body),
         meta_description=seo.build_meta_description("", fallback_body=body),
-        keywords=seo.normalize_keywords(brief["keywords"]),
+        keywords=keywords,
         tags=seo.normalize_keywords(brief["tech_stack"], extra=["devtools"])[:4],
+        focus_keyword=keywords[0] if keywords else "",
         confidence=0.0,
         is_fallback=True,
     )
@@ -337,6 +342,8 @@ def _assemble(
         # Platform tags are their own vocabulary: lowercase, no spaces, and
         # capped at 4 because Dev.to rejects a fifth.
         tags=[t.replace(" ", "") for t in ai.as_str_list(payload.get("tags"), limit=4)],
+        # The first keyword is the focus — the one the audit scores against.
+        focus_keyword=keywords[0] if keywords else "",
         confidence=ai.as_float(payload.get("confidence"), default=0.5),
         provider=completion.provider,
         model=completion.model,

@@ -10,13 +10,16 @@ from __future__ import annotations
 import os
 
 # Must be set before anything imports app.config, which reads it at import time.
-os.environ.setdefault("DATABASE_URL", "sqlite://")
-os.environ.setdefault("JWT_SECRET", "test-secret-not-a-real-one")
-os.environ.setdefault("CELERY_ENABLED", "false")
+# Use direct assignment (not setdefault) so the production .env file on the
+# server cannot leak into the test suite via pydantic-settings.
+os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["JWT_SECRET"] = "test-secret-not-a-real-one"
+os.environ["CELERY_ENABLED"] = "false"
+os.environ["ENVIRONMENT"] = "development"
 # Registration is closed in production; the tests that exercise the happy path
 # open it explicitly (see tests/test_auth.py), so it must be reachable here.
-os.environ.setdefault("REGISTRATION_ENABLED", "true")
-os.environ.setdefault("REGISTRATION_INVITE_TOKEN", "")
+os.environ["REGISTRATION_ENABLED"] = "true"
+os.environ["REGISTRATION_INVITE_TOKEN"] = ""
 # No provider keys: the chain is empty, so generation takes the template path.
 for key in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
     os.environ[key] = ""
@@ -26,6 +29,19 @@ for key in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_AP
 # configured and assert against the wrong branch.
 for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"):
     os.environ[key] = ""
+# GitHub token must be blank in tests — the production .env has a real one and
+# pydantic-settings reads it.
+os.environ["GITHUB_TOKEN"] = ""
+# CORS must be the dev defaults, not the production origin.
+os.environ["BACKEND_CORS_ORIGINS"] = "http://localhost:5173,http://localhost:3000"
+
+# Clear the settings cache and rebuild the module-level singleton so test
+# environment variables take effect even when running on a server whose .env
+# holds production values.
+import app.config as _cfg  # noqa: E402
+
+_cfg.get_settings.cache_clear()
+_cfg.settings = _cfg.get_settings()
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

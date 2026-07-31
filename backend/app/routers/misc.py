@@ -59,9 +59,17 @@ def _check_redis() -> _Probe:
     return _Probe(True)
 
 
-def _short(exc: BaseException) -> str:
-    """One line of cause, truncated — this response is public."""
-    return f"{type(exc).__name__}: {exc}".splitlines()[0][:200]
+def _short(exc: BaseException, *, public: bool = True) -> str:
+    """One line of cause, truncated.
+
+    When *public* is True (the default for the unauthenticated health endpoint)
+    the detail is stripped to just the exception class name — internal messages
+    and partial stack traces must not leak to anonymous callers.
+    """
+    cls = type(exc).__name__
+    if public:
+        return cls
+    return f"{cls}: {exc}".splitlines()[0][:200]
 
 
 @router.get("/health", response_model=HealthOut)

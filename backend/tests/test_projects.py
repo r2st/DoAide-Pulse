@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.models.content import Content, ContentStatus, ContentType
 from app.models.project import Project
 
 
@@ -85,3 +86,45 @@ def test_scan_without_repo_url_is_400(client, auth, db, user):
 )
 def test_repo_full_name_parsing(url, expected):
     assert Project(name="x", slug="x", repo_url=url).repo_full_name == expected
+
+
+def test_list_projects_uses_batched_counts(client, auth, project, db, sql_log):
+    """list_projects should fetch content counts in one query, not N+1."""
+    # Create a second project so there's something to iterate over.
+    p2 = Project(user_id=project.user_id, name="GoSumo", slug="gosumo")
+    db.add(p2)
+    db.flush()
+    # Seed some content so counts are non-trivial.
+    for p in (project, p2):
+        db.add(Content(
+            project_id=p.id, content_type=ContentType.ANNOUNCEMENT,
+            title=f"{p.name} v1", slug=f"{p.slug}-v1",
+            status=ContentStatus.PUBLISHED,
+        ))
+        db.add(Content(
+            project_id=p.id, content_type=ContentType.TUTORIAL,
+            title=f"{p.name} guide", slug=f"{p.slug}-guide",
+            status=ContentStatus.DRAFT,
+        ))
+    db.commit()
+
+    sql_log.clear()
+    resp = client.get("/api/v1/projects", headers=auth)
+    assert resp.status_code == 200
+    body = resp.json()
+    # project fixture ("Herald") + p2 ("GoSumo")
+    assert len(body) == 2
+
+    # Verify counts are correct.
+    by_slug = {p["slug"]: p for p in body}
+    assert by_slug["herald"]["content_count"] == 2
+    assert by_slug["herald"]["published_count"] == 1
+    assert by_slug["gosumo"]["content_count"] == 2
+    assert by_slug["gosumo"]["published_count"] == 1
+
+    # The N+1 fix: auth (user + selectin connections), projects, batched counts
+    # = 4 SELECTs.  Without the fix it would be 2 + N (one count per project).
+    selects = [s for s in sql_log if s.strip().upper().startswith("SELECT")]
+    assert len(selects) <= 5, (
+        f"Expected ≤5 SELECTs (auth + projects + batched counts), got {len(selects)}"
+    )

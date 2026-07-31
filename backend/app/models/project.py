@@ -15,7 +15,7 @@ from datetime import datetime  # noqa: TC003
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,6 +70,9 @@ _REPO_RE = re.compile(
 
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"
+    __table_args__ = (
+        UniqueConstraint("user_id", "slug", name="uq_project_user_slug"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(

@@ -4,13 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.content import Content, ContentStatus
-from app.models.mixins import utcnow
+from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
@@ -37,11 +37,20 @@ def get_calendar(
     window_start = start or (utcnow() - timedelta(days=30))
     window_end = end or (utcnow() + timedelta(days=30))
 
+    # Push the date filter into SQL so we never load the full publication table
+    # into memory. A publication's calendar position is ``published_at`` if set,
+    # else ``scheduled_for``, so both columns are checked against the window.
     query = (
         select(Publication, Content, Project)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
-        .where(Project.user_id == user.id)
+        .where(
+            Project.user_id == user.id,
+            or_(
+                Publication.published_at.between(window_start, window_end),
+                Publication.scheduled_for.between(window_start, window_end),
+            ),
+        )
     )
     if project_id is not None:
         query = query.where(Content.project_id == project_id)
@@ -49,7 +58,7 @@ def get_calendar(
     entries: list[CalendarEntry] = []
     for publication, content, project in db.execute(query).all():
         when = publication.published_at or publication.scheduled_for
-        if when is None or not (window_start <= when <= window_end):
+        if when is None:
             continue
         entries.append(
             CalendarEntry(
@@ -81,7 +90,7 @@ def get_calendar(
         )
     ).all()
     for content, project in unrouted:
-        if not (window_start <= content.scheduled_for <= window_end):
+        if not (window_start <= as_aware(content.scheduled_for) <= window_end):
             continue
         entries.append(
             CalendarEntry(
@@ -101,13 +110,13 @@ def get_calendar(
     entries.sort(key=lambda e: e.when)
 
     connected = [Platform(p) for p in user.connected_platforms]
-    taken = [e.when for e in entries if e.when >= utcnow()]
+    taken = [as_aware(e.when) for e in entries if as_aware(e.when) >= utcnow()]
     suggested: list[datetime] = []
     for platform in connected:
         suggested.extend(
             slot
             for slot in cadence.suggest_schedule(platform, count=2, start=utcnow())
-            if all(abs((slot - t).total_seconds()) > 12 * 3600 for t in taken)
+            if all(abs((slot - as_aware(t)).total_seconds()) > 12 * 3600 for t in taken)
         )
 
     return CalendarOut(

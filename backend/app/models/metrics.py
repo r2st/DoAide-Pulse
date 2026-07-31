@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer
+from sqlalchemy import DateTime, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,6 +24,11 @@ if TYPE_CHECKING:
 
 class ContentMetric(Base):
     __tablename__ = "content_metrics"
+    __table_args__ = (
+        # The metrics dashboard queries "all snapshots for publication X, ordered
+        # by time". This composite index covers it without a filesort.
+        Index("ix_content_metrics_pub_captured", "publication_id", "captured_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     publication_id: Mapped[int] = mapped_column(

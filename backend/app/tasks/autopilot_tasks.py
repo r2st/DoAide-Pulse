@@ -33,6 +33,7 @@ from app.services import (
     github_client,
     link_check,
     publishing_service,
+    seo,
 )
 from app.tasks.celery_app import celery_app
 
@@ -195,6 +196,26 @@ def _act_on(
                 ", ".join(dead_links),
             )
 
+    # SEO quality gate: a post that would rank poorly should not go out
+    # unreviewed, even if the model is confident about accuracy.
+    score = seo.seo_score(
+        title=generated.title,
+        body_markdown=generated.body_markdown,
+        meta_description=generated.meta_description,
+        keywords=generated.keywords,
+        focus_keyword=generated.focus_keyword,
+        slug=_unique_slug(db, project.id, generated.title),
+        cover_image_url=None,  # autopilot rarely has one
+    )
+    if auto and score < seo.SEO_SCORE_THRESHOLD:
+        auto = False
+        logger.info(
+            "autopilot held %r back from auto-publish: SEO score %d < %d",
+            generated.title,
+            score,
+            seo.SEO_SCORE_THRESHOLD,
+        )
+
     content = Content(
         project_id=project.id,
         content_type=content_type,
@@ -217,7 +238,9 @@ def _act_on(
             # Recorded so the review queue can say *why* a confident piece is
             # sitting there instead of having gone out.
             "dead_links": dead_links,
+            "seo_score": score,
         },
+        focus_keyword=generated.focus_keyword,
     )
 
     content.status = ContentStatus.APPROVED if auto else ContentStatus.REVIEW
@@ -273,9 +296,17 @@ def scan_all_projects() -> dict:
     finally:
         db.close()
 
-    results = [scan_project(project_id) for project_id in ids]
-    written = sum(
-        1 for r in results if r.get("status") in ("queued_for_review", "auto_published")
-    )
-    logger.info("autopilot scanned %d project(s), wrote %d", len(ids), written)
-    return {"scanned": len(ids), "written": written}
+    # Dispatch each project as a separate Celery task so they run in parallel
+    # across workers instead of blocking a single task for the entire fleet.
+    dispatched = 0
+    for project_id in ids:
+        try:
+            scan_project.delay(project_id)
+            dispatched += 1
+        except Exception:
+            # Broker down — fall back to inline.
+            scan_project(project_id)
+            dispatched += 1
+
+    logger.info("autopilot scanned %d project(s), wrote %d", len(ids), dispatched)
+    return {"scanned": len(ids), "written": dispatched}

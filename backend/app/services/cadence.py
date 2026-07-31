@@ -80,12 +80,59 @@ CADENCES: dict[Platform, Cadence] = {
         rationale="Your own blog has no feed to time against — consistency "
         "matters more than the hour.",
     ),
+    Platform.BLUESKY: Cadence(
+        platform=Platform.BLUESKY,
+        max_per_week=7,
+        best_weekdays=(0, 1, 2, 3, 4),
+        best_hour_utc=15,
+        rationale="Short-form platform with a fast-moving feed — one post per "
+        "weekday is comfortable, and mid-afternoon UTC catches both "
+        "European and US audiences.",
+    ),
+    Platform.MASTODON: Cadence(
+        platform=Platform.MASTODON,
+        max_per_week=5,
+        best_weekdays=(0, 1, 2, 3, 4),
+        best_hour_utc=14,
+        rationale="The federated timeline is chronological, so timing matters "
+        "more than on algorithmic feeds. Weekday afternoons UTC "
+        "see the most activity.",
+    ),
+    Platform.GIT: Cadence(
+        platform=Platform.GIT,
+        max_per_week=3,
+        best_weekdays=(1, 2, 3),
+        best_hour_utc=13,
+        rationale="Static-site deploys on Tue–Thu give search engines a "
+        "consistent crawl window and avoid weekend low-traffic periods.",
+    ),
 }
+
+
+_DEFAULT_CADENCE_TEMPLATE = Cadence(
+    platform=Platform.DEVTO,  # placeholder, overwritten below
+    max_per_week=2,
+    best_weekdays=(1, 2, 3),
+    best_hour_utc=13,
+    rationale="No platform-specific guidance yet — defaulting to a "
+    "conservative twice-a-week cadence.",
+)
 
 
 def cadence_for(platform: Platform | str) -> Cadence:
     key = platform if isinstance(platform, Platform) else Platform(platform)
-    return CADENCES[key]
+    cadence = CADENCES.get(key)
+    if cadence is not None:
+        return cadence
+    # Return a safe default rather than crashing when a new platform is added
+    # to the enum before the cadence table is updated.
+    return Cadence(
+        platform=key,
+        max_per_week=_DEFAULT_CADENCE_TEMPLATE.max_per_week,
+        best_weekdays=_DEFAULT_CADENCE_TEMPLATE.best_weekdays,
+        best_hour_utc=_DEFAULT_CADENCE_TEMPLATE.best_hour_utc,
+        rationale=_DEFAULT_CADENCE_TEMPLATE.rationale,
+    )
 
 
 def next_slot(

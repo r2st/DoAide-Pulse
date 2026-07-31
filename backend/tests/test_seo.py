@@ -68,13 +68,221 @@ def test_audit_flags_a_skipped_heading_level_once():
 
 
 def test_audit_is_clean_for_a_good_post():
-    body = "## Why\n\n" + ("word " * 400) + "\n\n## How\n\ntext\n"
+    body = (
+        "## Why Marketing Automation Matters\n\n"
+        "Marketing automation saves teams hours every week. "
+        + ("word " * 180)
+        + "marketing automation "
+        + ("word " * 180)
+        + "\n\n## How Marketing Automation Works\n\ntext\n"
+    )
     issues = seo.audit(
         title="Marketing automation, automated",
         body_markdown=body,
-        meta_description="A description of exactly the right sort of length for a "
-        "search engine result page to show in full.",
+        meta_description="A description about marketing automation of exactly the right "
+        "sort of length for a search engine result page.",
         keywords=["marketing automation"],
         cover_image_url="https://cdn.example.com/cover.png",
     )
     assert issues == []
+
+
+# -- Focus keyword checks ------------------------------------------------- #
+
+
+def test_audit_flags_low_keyword_density():
+    body = "## Introduction\n\n" + ("unrelated " * 400) + "\n\n## Summary\n\ntext\n"
+    issues = seo.audit(
+        title="Marketing automation guide",
+        body_markdown=body,
+        meta_description="A guide to marketing automation for developers.",
+        keywords=["marketing automation"],
+        focus_keyword="marketing automation",
+        cover_image_url="https://cdn.example.com/cover.png",
+    )
+    density_issues = [i for i in issues if "density" in i.message]
+    assert len(density_issues) == 1
+
+
+def test_audit_flags_missing_focus_keyword_in_first_paragraph():
+    body = "## Why Marketing Automation\n\nThis paragraph talks about something else entirely " \
+           "and has enough words to be real.\n\n" + ("marketing automation " * 200) + "\n"
+    issues = seo.audit(
+        title="Marketing automation guide",
+        body_markdown=body,
+        meta_description="A guide to marketing automation.",
+        keywords=["marketing automation"],
+        focus_keyword="marketing automation",
+        cover_image_url="https://cdn.example.com/cover.png",
+    )
+    first_para_issues = [i for i in issues if "opening paragraph" in i.message]
+    assert len(first_para_issues) == 1
+
+
+def test_audit_flags_missing_focus_keyword_in_subheadings():
+    body = "## Introduction\n\n" + ("marketing automation " * 200) + \
+           "\n\n## Summary\n\ntext\n"
+    issues = seo.audit(
+        title="Marketing automation guide",
+        body_markdown=body,
+        meta_description="A guide to marketing automation.",
+        keywords=["marketing automation"],
+        focus_keyword="marketing automation",
+        cover_image_url="https://cdn.example.com/cover.png",
+    )
+    heading_issues = [i for i in issues if "subheading" in i.message]
+    assert len(heading_issues) == 1
+
+
+def test_audit_flags_missing_image_alt_text():
+    body = "## Why\n\n![](https://example.com/img.png)\n\n" + ("word " * 400) + "\n"
+    issues = seo.audit(
+        title="Marketing automation guide",
+        body_markdown=body,
+        meta_description="A guide to marketing automation.",
+        keywords=["marketing automation"],
+        cover_image_url="https://cdn.example.com/cover.png",
+    )
+    alt_issues = [i for i in issues if "alt text" in i.message]
+    assert len(alt_issues) == 1
+
+
+def test_audit_flags_long_slug():
+    issues = seo.audit(
+        title="Short",
+        body_markdown="## Why\n\n" + ("word " * 400) + "\n",
+        meta_description="x" * 100,
+        keywords=["test"],
+        slug="a-very-long-slug-that-exceeds-sixty-characters-and-should-be-trimmed-down-significantly",
+    )
+    slug_issues = [i for i in issues if "Slug" in i.message]
+    assert len(slug_issues) >= 1
+
+
+# -- SEO score ------------------------------------------------------------- #
+
+
+def test_seo_score_perfect_post():
+    # A post that passes every check should score 100.
+    body = (
+        "## Marketing Automation Explained\n\n"
+        "Marketing automation helps developers save time by automating "
+        "repetitive tasks. "
+        + ("word " * 150)
+        + "marketing automation "
+        + ("word " * 150)
+        + "\n\n## How Marketing Automation Works\n\ntext\n"
+    )
+    score = seo.seo_score(
+        title="Marketing Automation Guide",
+        body_markdown=body,
+        meta_description="A complete guide to marketing automation for developers.",
+        keywords=["marketing automation"],
+        focus_keyword="marketing automation",
+        slug="marketing-automation-guide",
+        cover_image_url="https://cdn.example.com/cover.png",
+    )
+    assert score >= 90
+
+
+def test_seo_score_thin_post():
+    score = seo.seo_score(
+        title="",
+        body_markdown="Too short.",
+        meta_description="",
+        keywords=[],
+    )
+    assert score < seo.SEO_SCORE_THRESHOLD
+
+
+def test_seo_score_is_bounded():
+    # Even the worst post can't go below 0.
+    score = seo.seo_score(
+        title="",
+        body_markdown="x",
+        meta_description="",
+        keywords=[],
+    )
+    assert 0 <= score <= 100
+
+
+# -- JSON-LD structured data ---------------------------------------------- #
+
+
+def test_build_json_ld_returns_valid_json():
+    import json
+
+    ld = seo.build_json_ld(
+        title="Test Article",
+        body_markdown="## Intro\n\n" + ("word " * 300),
+        meta_description="A test article.",
+        url="https://example.com/test",
+        cover_image_url="https://cdn.example.com/img.png",
+        keywords=["python", "testing"],
+        author_name="Herald",
+        publisher_name="Acme",
+    )
+    parsed = json.loads(ld)
+    assert parsed["@context"] == "https://schema.org"
+    assert parsed["@type"] == "Article"
+    assert parsed["headline"] == "Test Article"
+    assert parsed["image"] == "https://cdn.example.com/img.png"
+    assert parsed["keywords"] == ["python", "testing"]
+    assert parsed["author"]["name"] == "Herald"
+    assert parsed["publisher"]["name"] == "Acme"
+    assert "datePublished" in parsed
+    assert parsed["wordCount"] > 0
+
+
+def test_build_json_ld_omits_optional_fields():
+    import json
+
+    ld = seo.build_json_ld(
+        title="Minimal",
+        body_markdown="Short body.",
+        meta_description="desc",
+        url="",
+    )
+    parsed = json.loads(ld)
+    assert "image" not in parsed
+    assert "author" not in parsed
+    assert "publisher" not in parsed
+    assert "mainEntityOfPage" not in parsed
+
+
+def test_json_ld_script_tag_wraps_correctly():
+    tag = seo.json_ld_script_tag('{"@type": "Article"}')
+    assert tag.startswith("\n<script type=\"application/ld+json\">")
+    assert tag.endswith("</script>\n")
+    assert '{"@type": "Article"}' in tag
+
+
+# -- Sitemap generation --------------------------------------------------- #
+
+
+def test_build_sitemap_entry_has_required_elements():
+    from xml.etree.ElementTree import tostring
+
+    entry = seo.build_sitemap_entry(
+        url="https://example.com/post",
+        lastmod="2026-07-30",
+    )
+    xml = tostring(entry, encoding="unicode")
+    assert "<loc>https://example.com/post</loc>" in xml
+    assert "<lastmod>2026-07-30</lastmod>" in xml
+    assert "<changefreq>weekly</changefreq>" in xml
+    assert "<priority>0.7</priority>" in xml
+
+
+def test_build_sitemap_xml_produces_valid_xml():
+    entries = [
+        {"url": "https://example.com/a", "lastmod": "2026-07-01"},
+        {"url": "https://example.com/b"},
+    ]
+    xml = seo.build_sitemap_xml(entries)
+    assert xml.startswith('<?xml version="1.0"')
+    assert "<urlset" in xml
+    assert "http://www.sitemaps.org/schemas/sitemap/0.9" in xml
+    assert "<loc>https://example.com/a</loc>" in xml
+    assert "<loc>https://example.com/b</loc>" in xml
+    assert xml.count("<url>") == 2

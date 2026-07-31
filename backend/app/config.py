@@ -199,6 +199,17 @@ class Settings(BaseSettings):
             raise ValueError("must be positive")
         return v
 
+    @field_validator("jwt_secret")
+    @classmethod
+    def _jwt_secret_not_default_in_production(cls, v: str, info) -> str:
+        """Refuse to start in production with the placeholder JWT secret."""
+        env = (info.data.get("environment") or "development").lower()
+        if env in {"production", "prod"} and v == "change-me-to-a-long-random-string":
+            raise ValueError(
+                "JWT_SECRET must be changed from its default value in production"
+            )
+        return v
+
     @field_validator("autopilot_auto_publish_confidence")
     @classmethod
     def _unit_interval(cls, v: float) -> float:

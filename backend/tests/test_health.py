@@ -46,7 +46,9 @@ def test_database_down_fails_the_check(client, redis_up, monkeypatch):
     assert resp.status_code == 503
     body = resp.json()
     assert body["status"] == "degraded"
-    assert body["database"] == {"status": "unavailable", "required": True, "detail": "boom"}
+    assert body["database"]["status"] == "unavailable"
+    assert body["database"]["required"] is True
+    assert body["database"]["detail"]  # non-empty, stripped to class name in public mode
 
 
 def test_real_database_probe_reports_a_broken_session(db, monkeypatch):
@@ -62,7 +64,8 @@ def test_real_database_probe_reports_a_broken_session(db, monkeypatch):
     monkeypatch.setattr(db, "execute", explode)
     probe = misc._check_database(db)
     assert probe.ok is False
-    assert "OperationalError" in probe.detail
+    # The probe stores the public-safe detail (just the class name).
+    assert "OperationalError" in probe.detail or probe.detail == "OperationalError"
 
 
 def test_redis_down_fails_the_check_when_celery_is_enabled(
@@ -75,7 +78,7 @@ def test_redis_down_fails_the_check_when_celery_is_enabled(
     body = resp.json()
     assert body["status"] == "degraded"
     assert body["redis"]["required"] is True
-    assert "ConnectionError" in body["redis"]["detail"]
+    assert body["redis"]["detail"]  # non-empty, but no internal details leaked
 
 
 def test_redis_down_is_tolerated_when_celery_is_disabled(client, redis_down):
@@ -84,11 +87,10 @@ def test_redis_down_is_tolerated_when_celery_is_disabled(client, redis_down):
     resp = client.get(HEALTH)
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
-    assert resp.json()["redis"] == {
-        "status": "unavailable",
-        "required": False,
-        "detail": "ConnectionError: refused",
-    }
+    redis_out = resp.json()["redis"]
+    assert redis_out["status"] == "unavailable"
+    assert redis_out["required"] is False
+    assert redis_out["detail"]  # non-empty class name
 
 
 def test_redis_probe_swallows_a_bad_url(monkeypatch):
@@ -102,9 +104,12 @@ def test_redis_probe_swallows_a_bad_url(monkeypatch):
 
 def test_detail_is_one_truncated_line():
     exc = ValueError("line one\nline two with a secret-looking string")
-    detail = misc._short(exc)
+    # Public mode (default) only reveals the exception class name.
+    assert misc._short(exc) == "ValueError"
+    # Non-public mode includes the first line, truncated.
+    detail = misc._short(exc, public=False)
     assert detail == "ValueError: line one"
-    assert len(misc._short(ValueError("x" * 500))) <= 200
+    assert len(misc._short(ValueError("x" * 500), public=False)) <= 200
 
 
 def test_health_still_reports_capabilities(client, redis_up):

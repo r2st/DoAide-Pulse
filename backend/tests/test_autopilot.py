@@ -215,6 +215,8 @@ def test_a_confident_piece_with_live_links_publishes(
     stub_github["set"](make_activity(commits=1, release=True))
     _confident_generation(monkeypatch, "See the [docs](https://example.com/real).")
     monkeypatch.setattr(autopilot_tasks.link_check, "check_body", lambda body, **kw: [])
+    # Bypass the SEO quality gate — the stub content is deliberately minimal.
+    monkeypatch.setattr(autopilot_tasks.seo, "seo_score", lambda **kw: 100)
     # The publish itself is not what this test is about.
     monkeypatch.setattr(autopilot_tasks, "_publish_now", lambda publication_id: None)
 

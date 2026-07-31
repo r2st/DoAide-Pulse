@@ -193,6 +193,8 @@ def build_request(
         excerpt=content.excerpt,
         meta_description=content.meta_description,
         tags=list(content.tags or []),
+        keywords=list(content.keywords or []),
+        focus_keyword=getattr(content, "focus_keyword", "") or "",
         slug=content.slug,
         canonical_url=content.canonical_url,
         share_url=tagged.url(

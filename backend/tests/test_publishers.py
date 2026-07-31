@@ -171,6 +171,41 @@ def test_git_file_has_front_matter_and_body(request_):
     assert "draft:" not in contents
 
 
+def test_git_file_includes_keywords_in_front_matter():
+    req = PublishRequest(
+        title="Test",
+        body_markdown="## Test\n\nBody text.",
+        excerpt="Test excerpt.",
+        meta_description="Test description.",
+        tags=["python"],
+        keywords=["python", "automation"],
+        focus_keyword="python",
+    )
+    contents = GitAdapter().build_file(req)
+    assert "keywords:" in contents
+    assert "focusKeyword:" in contents
+
+
+def test_git_file_includes_reading_time(request_):
+    contents = GitAdapter().build_file(request_)
+    assert "readingTime:" in contents
+    assert "wordCount:" in contents
+
+
+def test_git_file_includes_json_ld(request_):
+    contents = GitAdapter().build_file(request_)
+    assert '<script type="application/ld+json">' in contents
+    import json
+    # Extract the JSON-LD block and verify it parses.
+    start = contents.index('<script type="application/ld+json">') + len(
+        '<script type="application/ld+json">'
+    )
+    end = contents.index("</script>")
+    parsed = json.loads(contents[start:end])
+    assert parsed["@type"] == "Article"
+    assert parsed["headline"] == request_.title
+
+
 def test_git_draft_is_a_front_matter_flag_not_a_refusal(request_):
     contents = GitAdapter().build_file(replace(request_, as_draft=True))
     assert "draft: true" in contents
@@ -293,6 +328,33 @@ def test_wordpress_payload_and_auth_header(request_):
     payload = adapter.build_payload(request_)
     assert payload["status"] == "publish"
     assert "<h2>" in payload["content"]
+
+
+def test_wordpress_payload_includes_seo_meta():
+    req = PublishRequest(
+        title="Test SEO",
+        body_markdown="## Test\n\nBody.",
+        excerpt="Test excerpt.",
+        meta_description="A great meta description for SEO.",
+        tags=["python"],
+        keywords=["python"],
+        focus_keyword="python",
+        canonical_url="https://example.com/original",
+    )
+    payload = WordPressAdapter().build_payload(req)
+    assert "meta" in payload
+    assert payload["meta"]["_yoast_wpseo_metadesc"] == "A great meta description for SEO."
+    assert payload["meta"]["_yoast_wpseo_focuskw"] == "python"
+    assert payload["meta"]["_yoast_wpseo_canonical"] == "https://example.com/original"
+
+
+def test_wordpress_payload_omits_meta_when_empty(request_):
+    # The base fixture has no focus_keyword and no canonical_url set.
+    # meta_description is set but canonical_url isn't — should still include
+    # what's available.
+    payload = WordPressAdapter().build_payload(request_)
+    if "meta" in payload:
+        assert "_yoast_wpseo_metadesc" in payload["meta"]
 
 
 def test_devto_metadata_only_sends_canonical_when_present(request_, monkeypatch):

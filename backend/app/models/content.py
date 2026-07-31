@@ -20,6 +20,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy import (
     Enum as SAEnum,
@@ -79,6 +80,9 @@ TARGET_WORDS: dict[ContentType, int] = {
 
 class Content(Base, TimestampMixin):
     __tablename__ = "content"
+    __table_args__ = (
+        UniqueConstraint("project_id", "slug", name="uq_content_project_slug"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(
@@ -105,6 +109,10 @@ class Content(Base, TimestampMixin):
     # ---- SEO ----
     meta_description: Mapped[str] = mapped_column(String(320), default="", nullable=False)
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    #: The single keyword this piece is optimised for. Drives the SEO audit
+    #: score (keyword density, first-paragraph presence, subheading inclusion).
+    #: Populated automatically from the first project keyword during generation.
+    focus_keyword: Mapped[str] = mapped_column(String(100), default="", nullable=False)
     #: Tags as the blogging platforms mean them (Dev.to caps at 4, Medium at 5).
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     #: Set when the piece is published somewhere first and syndicated after —

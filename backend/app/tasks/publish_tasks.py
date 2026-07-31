@@ -65,11 +65,17 @@ def publish_due() -> dict:
         db.close()
 
     for publication_id in ids:
-        publish_one(publication_id)
+        try:
+            publish_one.delay(publication_id)
+        except Exception:
+            # Broker down — fall back to inline execution so the sweep does not
+            # silently drop due publications.
+            logger.debug("broker unavailable, running publish_one inline")
+            publish_one(publication_id)
 
     if ids:
-        logger.info("publish_due processed %d publication(s)", len(ids))
-    return {"processed": len(ids)}
+        logger.info("publish_due dispatched %d publication(s)", len(ids))
+    return {"dispatched": len(ids)}
 
 
 @celery_app.task(name="app.tasks.publish_tasks.cancel_publication")

@@ -6,11 +6,13 @@ endpoints reachable without a bearer token. See :mod:`app.ratelimit`.
 """
 from __future__ import annotations
 
+import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -95,7 +97,14 @@ def register(
         hashed_password=hash_password(payload.password),
     )
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
     db.refresh(user)
     return user
 
@@ -110,7 +119,20 @@ def login(
 ) -> Token:
     # OAuth2PasswordRequestForm uses ``username``; we treat it as the email.
     user = db.scalar(select(User).where(User.email == form.username))
-    if not user or not verify_password(form.password, user.hashed_password):
+
+    # Always run bcrypt even when the user does not exist — otherwise the
+    # response-time difference between "email not found" (instant) and "wrong
+    # password" (~100 ms of bcrypt) lets an attacker enumerate valid emails.
+    _dummy_hash = "$2b$12$LJ3m4ys3Lf0mtVxlhEEPLu0PjGiHSPjxjdocRRiS/cFEhJdPmWEy."
+    if not verify_password(form.password, user.hashed_password if user else _dummy_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if user is None:
+        # Unreachable when verify_password returned True above with the dummy
+        # hash (it can't), but keeps the type checker happy and is a safety net.
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -157,7 +179,12 @@ def request_password_reset(
     if user is not None and user.is_active:
         raw_token = password_reset.issue(db, user)
         subject, body = password_reset.build_email(raw_token)
-        mailer.send(to=user.email, subject=subject, body=body)
+        try:
+            mailer.send(to=user.email, subject=subject, body=body)
+        except Exception:
+            # SMTP failures must not leak through — the response is deliberately
+            # vague, and a 500 here reveals "this email has an account".
+            logging.getLogger(__name__).exception("password reset email failed")
 
     return MessageOut(detail=_RESET_REQUESTED)
 

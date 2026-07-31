@@ -29,12 +29,14 @@ API: https://docs.github.com/en/rest/repos/contents
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Any
 
 from app.config import settings
 from app.models.publication import Platform
+from app.services import seo
 from app.services.publishers import formatting
 from app.services.publishers.base import (
     Adapter,
@@ -44,6 +46,8 @@ from app.services.publishers.base import (
     PublishRequest,
     PublishResult,
 )
+
+logger = logging.getLogger(__name__)
 
 #: Where the file goes, unless the user says otherwise. Astro's content
 #: collections and Eleventy both read this path; Hugo wants `content/posts`.
@@ -202,8 +206,38 @@ class GitAdapter(Adapter):
         # the original.
         if request.canonical_url:
             matter["canonicalURL"] = request.canonical_url
+        # Keywords help static-site generators (Astro, Hugo, Next.js) populate
+        # <meta name="keywords"> and JSON-LD. The focus keyword is the primary
+        # SEO target for this piece.
+        if getattr(request, "keywords", None):
+            matter["keywords"] = request.keywords
+        if getattr(request, "focus_keyword", None):
+            matter["focusKeyword"] = request.focus_keyword
 
-        return f"{formatting.front_matter(matter)}\n\n{request.body_markdown.strip()}\n"
+        # Reading time and word count — most blog themes display these.
+        plain = seo.strip_markdown(request.body_markdown)
+        word_count = len(plain.split())
+        reading_time = max(1, round(word_count / 238))  # avg adult: ~238 wpm
+        matter["readingTime"] = reading_time
+        matter["wordCount"] = word_count
+
+        body = request.body_markdown.strip()
+
+        # Append JSON-LD structured data so static-site generators that don't
+        # auto-generate it still get schema.org Article markup in the page.
+        json_ld = seo.build_json_ld(
+            title=request.title,
+            body_markdown=body,
+            meta_description=request.meta_description or request.excerpt,
+            url=request.canonical_url or "",
+            cover_image_url=request.cover_image_url,
+            keywords=request.keywords or None,
+            author_name=request.project_name,
+            publisher_name=request.project_name,
+        )
+        body += seo.json_ld_script_tag(json_ld)
+
+        return f"{formatting.front_matter(matter)}\n\n{body}\n"
 
     # -- the adapter -------------------------------------------------------- #
 
@@ -275,11 +309,97 @@ class GitAdapter(Adapter):
         if not commit_sha:
             raise PublishError(f"GitHub returned no commit for {path}: {data}")
 
+        published_url = self._published_url(request, credentials, data, commit)
+
+        # Best-effort sitemap update: add the new post's URL and re-commit
+        # sitemap.xml.  Failures here must not block the publish result.
+        site = str(credentials.get("site_url") or "").strip().rstrip("/")
+        if site and not request.as_draft:
+            try:
+                self._update_sitemap(
+                    repo=repo,
+                    branch=branch,
+                    token=token,
+                    headers=self._headers(token),
+                    post_url=published_url,
+                )
+            except Exception:
+                logger.info("sitemap update skipped for %s", repo, exc_info=True)
+
         return PublishResult(
             external_id=commit_sha,
-            external_url=self._published_url(request, credentials, data, commit),
+            external_url=published_url,
             extra={"path": path, "branch": branch or "default", "repo": repo},
         )
+
+    def _update_sitemap(
+        self,
+        *,
+        repo: str,
+        branch: str,
+        token: str,
+        headers: dict[str, str],
+        post_url: str,
+    ) -> None:
+        """Add *post_url* to ``sitemap.xml`` in the repo, creating it if absent.
+
+        The sitemap is fetched, parsed, de-duplicated, and re-committed in a
+        single PUT. If the file does not exist yet it is created with just
+        this one entry. This is best-effort: the caller catches any exception.
+        """
+        sitemap_path = "public/sitemap.xml"
+        params = {"ref": branch} if branch else None
+
+        # Fetch existing sitemap (if any).
+        existing_sha: str | None = None
+        existing_urls: set[str] = set()
+        try:
+            resp = self._request(
+                "GET",
+                f"{_API}/repos/{repo}/contents/{sitemap_path}",
+                headers=headers,
+                params=params,
+            )
+            data = resp.json()
+            if isinstance(data, dict) and data.get("content"):
+                existing_sha = data.get("sha")
+                raw = base64.b64decode(data["content"]).decode("utf-8")
+                # Parse existing URLs out of the XML.
+                import xml.etree.ElementTree as ET
+
+                root = ET.fromstring(raw)
+                ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+                for loc in root.findall(".//sm:loc", ns):
+                    if loc.text:
+                        existing_urls.add(loc.text.strip())
+        except PublishError:
+            pass  # 404 — sitemap does not exist yet.
+
+        if post_url in existing_urls:
+            return  # Already present, nothing to do.
+
+        # Build updated sitemap.
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        entries = [{"url": u} for u in sorted(existing_urls)]
+        entries.append({"url": post_url, "lastmod": now_iso})
+        sitemap_xml = seo.build_sitemap_xml(entries)
+
+        payload: dict[str, Any] = {
+            "message": f"chore: update sitemap.xml",
+            "content": base64.b64encode(sitemap_xml.encode("utf-8")).decode("ascii"),
+        }
+        if branch:
+            payload["branch"] = branch
+        if existing_sha:
+            payload["sha"] = existing_sha
+
+        self._request(
+            "PUT",
+            f"{_API}/repos/{repo}/contents/{sitemap_path}",
+            headers=headers,
+            json_body=payload,
+        )
+        logger.info("sitemap.xml updated in %s with %s", repo, post_url)
 
     def _published_url(
         self,

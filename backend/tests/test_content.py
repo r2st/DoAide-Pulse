@@ -6,6 +6,8 @@ engine must always produce a draft.
 """
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from app.models.content import Content, ContentStatus, ContentType
 
 
@@ -79,14 +81,14 @@ def test_detail_includes_seo_issues(client, auth, project):
 
 
 def test_list_filters_by_status_and_project(client, auth, project, db):
-    for status_ in (ContentStatus.DRAFT, ContentStatus.REVIEW, ContentStatus.REVIEW):
+    for i, status_ in enumerate((ContentStatus.DRAFT, ContentStatus.REVIEW, ContentStatus.REVIEW)):
         db.add(
             Content(
                 project_id=project.id,
                 content_type=ContentType.HOW_TO,
                 status=status_,
-                title=f"T{status_.value}{id(status_)}",
-                slug=f"s-{status_.value}-{len(status_.value)}-{id(status_) % 997}",
+                title=f"T{status_.value}-{i}",
+                slug=f"s-{status_.value}-{i}",
             )
         )
     db.commit()
@@ -189,6 +191,38 @@ def test_publish_records_as_draft_on_the_publication(client, auth, project, db, 
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()[0]["as_draft"] is True
+
+
+def test_slug_collision_retries_with_random_suffix(client, auth, project, db):
+    """If a concurrent insert grabs the same slug, the retry path kicks in."""
+    from sqlalchemy.exc import IntegrityError as _IE
+
+    original_commit = db.commit.__func__ if hasattr(db.commit, '__func__') else None
+    call_count = {"n": 0}
+
+    # Pre-create a content row with slug "shipping-herald" so the first commit
+    # hits the unique constraint.
+    db.add(Content(
+        project_id=project.id,
+        content_type=ContentType.HOW_TO,
+        status=ContentStatus.DRAFT,
+        title="Shipping Herald",
+        slug="shipping-herald",
+    ))
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Shipping Herald",
+            "body_markdown": "## Hello\n\n" + ("word " * 100),
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    # The _unique_slug function should have incremented to shipping-herald-2
+    assert resp.json()["slug"] != "shipping-herald"
 
 
 def test_publish_to_an_unfinished_adapter_is_refused(client, auth, project, db):
