@@ -11,7 +11,7 @@ from app.models.content import Content, ContentStatus
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
-from app.services import analytics_service
+from app.services import analytics_service, digest, mailer
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -40,6 +40,44 @@ def read_time(
 ) -> dict:
     """How long the published pieces are, and whether length pays off."""
     return analytics_service.read_time(db, user.id)
+
+
+@router.get("/digest")
+def digest_preview(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> dict:
+    """This week's digest, as data. Sends nothing.
+
+    The same object the Monday email is rendered from, so what the UI shows and
+    what lands in the inbox cannot drift.
+    """
+    return digest.build(db, user).as_dict()
+
+
+@router.post("/digest/send")
+def digest_send(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> dict:
+    """Mail this week's digest now.
+
+    ``sent: false`` is a normal answer, not a failure — an empty week is not
+    mailed, and neither is anything when SMTP is unconfigured. ``reason`` says
+    which it was, so the UI need not guess.
+    """
+    built = digest.build(db, user)
+    if built.is_empty:
+        return {"sent": False, "reason": "Nothing happened this week."}
+    if not mailer.configured():
+        return {
+            "sent": False,
+            "reason": "SMTP is not configured — set SMTP_HOST to send mail.",
+        }
+    sent = digest.send(db, user)
+    return {
+        "sent": sent,
+        "reason": "" if sent else "The mail server refused the message.",
+        "subject": built.subject,
+    }
 
 
 @router.get("/dashboard")

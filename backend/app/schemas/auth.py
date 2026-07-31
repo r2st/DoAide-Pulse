@@ -39,6 +39,15 @@ class UserOut(BaseModel):
     email: EmailStr
     full_name: str | None = None
     is_active: bool
+    #: Whether the Monday performance summary goes out. See app.services.digest.
+    weekly_digest_enabled: bool = True
     connected_platforms: list[str] = []
 
     model_config = {"from_attributes": True}
+
+
+class PreferencesUpdate(BaseModel):
+    """The account preferences a user can change. PATCH semantics."""
+
+    full_name: str | None = Field(default=None, max_length=200)
+    weekly_digest_enabled: bool | None = None

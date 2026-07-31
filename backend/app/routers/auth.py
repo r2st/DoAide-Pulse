@@ -24,6 +24,7 @@ from app.schemas.auth import (
     MessageOut,
     PasswordResetConfirm,
     PasswordResetRequest,
+    PreferencesUpdate,
     Token,
     UserCreate,
     UserOut,
@@ -212,6 +213,21 @@ def confirm_password_reset(
             "Request a new one.",
         )
     return MessageOut(detail="Password updated. You can sign in with it now.")
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    payload: PreferencesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Change account preferences — the display name and the weekly digest."""
+    for field_, value in payload.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(current_user, field_, value)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
 
 
 @router.get("/me", response_model=UserOut)

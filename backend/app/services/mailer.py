@@ -36,8 +36,14 @@ def _from_address() -> str:
     return settings.smtp_from.strip() or f"herald@{settings.smtp_host.strip()}"
 
 
-def send(*, to: str, subject: str, body: str) -> bool:
-    """Deliver a plain-text message. Never raises; returns whether it went out."""
+def send(*, to: str, subject: str, body: str, html: str | None = None) -> bool:
+    """Deliver a message. Never raises; returns whether it went out.
+
+    *body* is the plain-text version and is always required — an HTML-only
+    email is unreadable to anything that cannot render it, and it is the part
+    that ends up in the log when SMTP is not configured. Passing *html* adds an
+    alternative part; the client picks.
+    """
     if not configured():
         logger.warning(
             "SMTP is not configured (SMTP_HOST is blank) — not sending %r to %s. "
@@ -53,6 +59,10 @@ def send(*, to: str, subject: str, body: str) -> bool:
     message["To"] = to
     message["Subject"] = subject
     message.set_content(body)
+    if html:
+        # Added second, so it becomes the preferred alternative while the text
+        # part stays the fallback.
+        message.add_alternative(html, subtype="html")
 
     timeout = settings.smtp_timeout_seconds
     try:

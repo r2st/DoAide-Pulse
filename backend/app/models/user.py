@@ -22,6 +22,13 @@ class User(Base, TimestampMixin):
     full_name: Mapped[str | None] = mapped_column(String(200))
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    #: Send the weekly performance summary. On by default — it is the only
+    #: thing that closes the loop between publishing and knowing whether it
+    #: worked — but a week with nothing in it is never sent, and nothing is
+    #: sent at all unless SMTP is configured. See ``app.services.digest``.
+    weekly_digest_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
 
     projects: Mapped[list[Project]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

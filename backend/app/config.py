@@ -192,6 +192,15 @@ class Settings(BaseSettings):
     # Latency guard on a single publish request, not a policy about post length.
     link_check_max_urls: int = 25
 
+    # ---- Weekly digest ----
+    # The window each digest reports on, and the comparison window is the one
+    # immediately before it.
+    digest_window_days: int = 7
+    # When the sweep runs, UTC. Monday morning: a summary that lands before the
+    # week's work starts is one that gets acted on.
+    digest_send_weekday: int = 0  # 0 = Monday
+    digest_send_hour: int = 8
+
     # ---- Headline testing ----
     # Evidence a headline's window needs before it is ranked at all. One poll an
     # hour after a swap says nothing about a headline.
@@ -236,7 +245,21 @@ class Settings(BaseSettings):
             raise ValueError("must be positive")
         return v
 
-    @field_validator("schedule_max_horizon_days")
+    @field_validator("digest_send_weekday")
+    @classmethod
+    def _weekday(cls, v: int) -> int:
+        if not 0 <= v <= 6:
+            raise ValueError("must be 0 (Monday) through 6 (Sunday)")
+        return v
+
+    @field_validator("digest_send_hour")
+    @classmethod
+    def _hour(cls, v: int) -> int:
+        if not 0 <= v <= 23:
+            raise ValueError("must be an hour of the day, 0-23")
+        return v
+
+    @field_validator("digest_window_days", "schedule_max_horizon_days")
     @classmethod
     def _at_least_a_day(cls, v: int) -> int:
         if v < 1:

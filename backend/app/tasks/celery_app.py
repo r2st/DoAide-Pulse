@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 
 from app.config import settings
 
@@ -15,6 +16,7 @@ celery_app = Celery(
         "app.tasks.metrics_tasks",
         "app.tasks.maintenance_tasks",
         "app.tasks.headline_tasks",
+        "app.tasks.digest_tasks",
     ],
 )
 
@@ -65,6 +67,17 @@ celery_app.conf.beat_schedule = {
     "auto-select-headlines": {
         "task": "app.tasks.headline_tasks.auto_select_headlines",
         "schedule": float(settings.headline_auto_select_interval_seconds),
+    },
+    "weekly-digest": {
+        "task": "app.tasks.digest_tasks.send_weekly_digests",
+        # A calendar schedule, not an interval: "every 604800 seconds" drifts
+        # against the week, and a summary that lands at 03:12 on a Thursday is
+        # one nobody opens.
+        "schedule": crontab(
+            day_of_week=str(settings.digest_send_weekday),
+            hour=str(settings.digest_send_hour),
+            minute="0",
+        ),
     },
     "purge-expired-tokens": {
         "task": "app.tasks.maintenance_tasks.purge_expired_tokens",
