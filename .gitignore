@@ -45,3 +45,11 @@ frontend/.vite/
 uploads/
 *.db
 *.sqlite3
+
+# ---- Scratch/export artifacts ----
+docs/*.tmp
+docs/.~lock.*
+docs/*.pdf
+docs/*.docx
+docs/page-*.jpg
+docs/herald-seo-features.js
