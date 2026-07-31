@@ -7,10 +7,22 @@ because a checker that blocks on timeouts gets switched off within a week.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 import httpx
 import pytest
 
 from app.services import link_check
+
+
+def _soon() -> str:
+    """A publish time far enough ahead that nothing goes out during the test.
+
+    Not a far-future sentinel: scheduling refuses anything past a one-year
+    horizon, so that a mistyped year cannot park a post for a decade.
+    """
+    return (datetime.now(UTC) + timedelta(days=7)).isoformat()
+
 
 # --------------------------------------------------------------------------- #
 # Extraction                                                                   #
@@ -358,7 +370,7 @@ def test_publishing_with_a_dead_link_is_refused(
     resp = client.post(
         f"/api/v1/content/{piece.id}/publish",
         headers=auth,
-        json={"platforms": ["devto"], "scheduled_for": "2099-01-01T09:00:00Z"},
+        json={"platforms": ["devto"], "scheduled_for": _soon()},
     )
 
     assert resp.status_code == 409
@@ -384,7 +396,7 @@ def test_an_unknown_verdict_never_blocks_a_publish(
     resp = client.post(
         f"/api/v1/content/{piece.id}/publish",
         headers=auth,
-        json={"platforms": ["devto"], "scheduled_for": "2099-01-01T09:00:00Z"},
+        json={"platforms": ["devto"], "scheduled_for": _soon()},
     )
     assert resp.status_code == 200, resp.text
 
@@ -403,7 +415,7 @@ def test_a_dead_link_can_be_overridden(
         json={
             "platforms": ["devto"],
             "allow_broken_links": True,
-            "scheduled_for": "2099-01-01T09:00:00Z",
+            "scheduled_for": _soon(),
         },
     )
     assert resp.status_code == 200, resp.text
@@ -422,6 +434,6 @@ def test_the_gate_can_be_switched_off(
     resp = client.post(
         f"/api/v1/content/{piece.id}/publish",
         headers=auth,
-        json={"platforms": ["devto"], "scheduled_for": "2099-01-01T09:00:00Z"},
+        json={"platforms": ["devto"], "scheduled_for": _soon()},
     )
     assert resp.status_code == 200, resp.text

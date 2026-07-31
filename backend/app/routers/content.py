@@ -14,7 +14,7 @@ from app.database import get_db
 from app.deps import get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
 from app.models.project import Project
-from app.models.publication import Publication, PublicationStatus
+from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
 from app.schemas.content import (
     BulkContentIn,
@@ -35,7 +35,9 @@ from app.schemas.content import (
     PublicationOut,
     PublishRequestIn,
     RepurposeOut,
+    ScheduleContentIn,
     SeoIssueOut,
+    SlotOut,
 )
 from app.services import (
     content_generator,
@@ -45,6 +47,7 @@ from app.services import (
     publishers,
     publishing_service,
     repurpose,
+    scheduling,
     seo,
 )
 
@@ -677,6 +680,13 @@ def _queue_publish(
     cheap; the publishing itself is a worker's job (or runs inline when
     ``CELERY_ENABLED`` is off).
     """
+    try:
+        when = scheduling.normalize(payload.scheduled_for)
+    except scheduling.ScheduleError as exc:
+        # A time in the past would otherwise be picked up by the very next
+        # sweep — "publish now" wearing the costume of a schedule.
+        raise _PublishError(str(exc), status.HTTP_422_UNPROCESSABLE_ENTITY) from exc
+
     unimplemented = [
         p.value for p in payload.platforms if not publishers.get_adapter(p).implemented
     ]
@@ -714,17 +724,17 @@ def _queue_publish(
         db,
         content,
         list(payload.platforms),
-        scheduled_for=payload.scheduled_for,
+        scheduled_for=when,
         as_draft=payload.as_draft,
     )
 
     if content.status in (ContentStatus.DRAFT, ContentStatus.REVIEW):
         content.status = ContentStatus.APPROVED
-    content.scheduled_for = payload.scheduled_for
+    content.scheduled_for = when
     db.commit()
 
     # Nothing scheduled goes out now. Scheduled work waits for the beat task.
-    if payload.scheduled_for is None:
+    if when is None:
         _dispatch([p.id for p in publications])
 
     for publication in publications:
@@ -750,6 +760,158 @@ def publish_content(
     except _PublishError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return [PublicationOut.model_validate(p) for p in publications]
+
+
+def _schedulable_platforms(content: Content) -> list[Platform]:
+    """The platforms this piece is queued for and could still be moved.
+
+    Anything already live is excluded: its time is not in the future any more,
+    and rescheduling it would only mean posting it twice.
+    """
+    return [
+        p.platform
+        for p in content.publications
+        if p.status != PublicationStatus.PUBLISHED
+    ]
+
+
+def _canonical_platform(content: Content) -> Platform | None:
+    project = content.project
+    if project is None or not project.auto_canonical:
+        return None
+    return project.canonical_platform
+
+
+@router.get("/{content_id}/schedule/suggestions", response_model=list[SlotOut])
+def schedule_suggestions(
+    content_id: int,
+    platforms: list[Platform] | None = Query(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[SlotOut]:
+    """When Herald would put this out, and why. Nothing is queued or changed.
+
+    Answering this before the user commits is the point: a proposed Tuesday
+    13:00 UTC they can override is more useful than one applied silently.
+    """
+    content = _owned_content(content_id, db, user)
+    wanted = (
+        list(platforms or [])
+        or _schedulable_platforms(content)
+        or [Platform(p) for p in user.connected_platforms]
+    )
+    if not wanted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Name the platforms to suggest slots for — this piece is not "
+            "queued anywhere and no platform is connected.",
+        )
+
+    slots = scheduling.optimal_slots(
+        db, user.id, list(wanted), canonical=_canonical_platform(content)
+    )
+    return [SlotOut(**slot.as_dict()) for slot in slots]
+
+
+@router.post("/{content_id}/schedule", response_model=list[PublicationOut])
+def schedule_content(
+    content_id: int,
+    payload: ScheduleContentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[PublicationOut]:
+    """Put a piece on the calendar for a specific time, or let Herald pick one.
+
+    Runs the same adapter, connection and dead-link checks as an immediate
+    publish — a schedule that passes validation now and fails at 3am because
+    the platform was never connected is the worst of both worlds.
+    """
+    content = _owned_content(content_id, db, user)
+
+    if payload.optimize and payload.scheduled_for is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Give a time or ask Herald to pick one — not both.",
+        )
+    if not payload.optimize and payload.scheduled_for is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Give a scheduled_for, or set optimize to have Herald pick "
+            "one. Use POST /content/{id}/publish to go out now.",
+        )
+
+    platforms = list(payload.platforms or _schedulable_platforms(content))
+    if not platforms:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This piece is not queued anywhere yet — name the platforms "
+            "to schedule it for.",
+        )
+
+    slots: list[scheduling.Slot] = []
+    when = payload.scheduled_for
+    if payload.optimize:
+        slots = scheduling.optimal_slots(
+            db, user.id, platforms, canonical=_canonical_platform(content)
+        )
+        # The piece's own time is the first thing to go out; each platform
+        # keeps its own below.
+        when = slots[0].when
+
+    try:
+        publications = _queue_publish(
+            content,
+            PublishRequestIn(
+                platforms=platforms,
+                scheduled_for=when,
+                as_draft=payload.as_draft,
+            ),
+            db,
+        )
+    except _PublishError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    if slots:
+        per_platform = {slot.platform: slot.when for slot in slots}
+        for publication in publications:
+            if publication.status == PublicationStatus.PUBLISHED:
+                continue
+            publication.scheduled_for = per_platform.get(
+                publication.platform, publication.scheduled_for
+            )
+            publication.status = PublicationStatus.SCHEDULED
+        db.commit()
+        for publication in publications:
+            db.refresh(publication)
+
+    return [PublicationOut.model_validate(p) for p in publications]
+
+
+@router.delete("/{content_id}/schedule", response_model=list[PublicationOut])
+def unschedule_content(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[PublicationOut]:
+    """Take a piece off the calendar without publishing it.
+
+    Scheduled rows are cancelled rather than returned to ``pending``: pending
+    means "go out on the next sweep", which is the opposite of what somebody
+    clicking unschedule asked for. Re-publishing later re-arms the same rows.
+    """
+    content = _owned_content(content_id, db, user)
+    targets = [
+        p for p in content.publications if p.status == PublicationStatus.SCHEDULED
+    ]
+
+    for publication in targets:
+        publication.status = PublicationStatus.CANCELLED
+        publication.scheduled_for = None
+    content.scheduled_for = None
+    db.commit()
+    for publication in targets:
+        db.refresh(publication)
+    return [PublicationOut.model_validate(p) for p in targets]
 
 
 def _dispatch(publication_ids: list[int]) -> None:

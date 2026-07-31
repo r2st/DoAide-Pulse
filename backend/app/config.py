@@ -192,6 +192,15 @@ class Settings(BaseSettings):
     # Latency guard on a single publish request, not a policy about post length.
     link_check_max_urls: int = 25
 
+    # ---- Scheduling ----
+    # How far into the past a requested publish time may fall before it is
+    # refused. Small but non-zero: a client clock a minute behind the server
+    # should not turn "publish at 09:00" into an error.
+    schedule_past_grace_seconds: int = 120
+    # Ceiling on how far ahead something may be scheduled. Exists to catch a
+    # mistyped year, which otherwise parks a post for a decade in silence.
+    schedule_max_horizon_days: int = 365
+
     # ---- Syndication ----
     # How long the copies wait after the project's canonical platform when both
     # are queued in one go. Two jobs: it lets the original's URL land on the
@@ -214,9 +223,17 @@ class Settings(BaseSettings):
             raise ValueError("must be positive")
         return v
 
+    @field_validator("schedule_max_horizon_days")
+    @classmethod
+    def _at_least_a_day(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("must be at least 1 day")
+        return v
+
     @field_validator(
         "publish_request_retries",
         "publish_rate_limit_max_defer_seconds",
+        "schedule_past_grace_seconds",
     )
     @classmethod
     def _non_negative(cls, v: int) -> int:

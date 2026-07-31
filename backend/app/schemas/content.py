@@ -248,6 +248,29 @@ class BulkResultOut(BaseModel):
     failed: list[BulkFailureOut] = []
 
 
+class ScheduleContentIn(BaseModel):
+    """Put a piece on the calendar, or move the one that is already there."""
+
+    #: Where it should go. Omitted means "the platforms it is already queued
+    #: for", which is what a plain reschedule wants.
+    platforms: list[Platform] | None = Field(default=None, min_length=1)
+    #: When. Required unless ``optimize`` is set, and refused if both are.
+    scheduled_for: datetime | None = None
+    #: Let Herald pick the time per platform from the cadence table instead.
+    #: Each platform gets its own slot, so a cross-post staggers rather than
+    #: firing five copies into five feeds in the same second.
+    optimize: bool = False
+    as_draft: bool = False
+
+
+class SlotOut(BaseModel):
+    """A proposed publish time for one platform, and why."""
+
+    platform: Platform
+    when: datetime
+    rationale: str = ""
+
+
 class ScheduleUpdate(BaseModel):
     """Drag-and-drop on the calendar lands here."""
 

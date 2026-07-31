@@ -6,9 +6,19 @@ engine must always produce a draft.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from app.models.content import Content, ContentStatus, ContentType, unique_content_slug
+
+
+def _soon() -> str:
+    """A publish time far enough ahead that nothing goes out during the test.
+
+    Not a far-future sentinel: scheduling refuses anything past a one-year
+    horizon, so that a mistyped year cannot park a post for a decade.
+    """
+    return (datetime.now(UTC) + timedelta(days=7)).isoformat()
 
 
 def test_generate_falls_back_to_a_template_with_zero_confidence(client, auth, project):
@@ -366,7 +376,7 @@ def test_publish_records_as_draft_on_the_publication(client, auth, project, db, 
         json={
             "platforms": ["devto"],
             "as_draft": True,
-            "scheduled_for": "2099-01-01T09:00:00Z",
+            "scheduled_for": _soon(),
         },
     )
     assert resp.status_code == 200, resp.text
@@ -797,7 +807,7 @@ def test_bulk_publish_succeeds_for_connected_platform(client, auth, project, db,
             "content_ids": [content.id],
             "platforms": ["devto"],
             "as_draft": True,
-            "scheduled_for": "2099-01-01T09:00:00Z",
+            "scheduled_for": _soon(),
         },
     )
     assert resp.status_code == 200, resp.text
