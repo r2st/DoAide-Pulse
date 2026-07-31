@@ -15,7 +15,7 @@ pydantic>=2.7
 pydantic-settings>=2.3
 
 # ---- Auth ----
-python-jose[cryptography]>=3.3
+PyJWT>=2.8
 bcrypt>=4.1
 # Rate limiting for /auth/* (login guessing, signup, reset-mail flooding).
 slowapi>=0.1.9

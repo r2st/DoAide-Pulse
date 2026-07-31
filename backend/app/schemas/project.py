@@ -11,12 +11,12 @@ from app.models.publication import Platform
 
 class ProjectBase(BaseModel):
     name: str = Field(min_length=1, max_length=120)
-    description: str = ""
+    description: str = Field(default="", max_length=5000)
     repo_url: str | None = Field(default=None, max_length=500)
     live_url: str | None = Field(default=None, max_length=500)
-    tech_stack: list[str] = []
-    target_audience: str = ""
-    keywords: list[str] = []
+    tech_stack: list[str] = Field(default=[], max_length=25)
+    target_audience: str = Field(default="", max_length=500)
+    keywords: list[str] = Field(default=[], max_length=25)
     tone: Tone = Tone.TECHNICAL
     is_active: bool = True
     autopilot_mode: AutopilotMode = AutopilotMode.OFF
@@ -54,12 +54,12 @@ class ProjectUpdate(BaseModel):
     """Every field optional — PATCH semantics."""
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
-    description: str | None = None
-    repo_url: str | None = None
-    live_url: str | None = None
-    tech_stack: list[str] | None = None
-    target_audience: str | None = None
-    keywords: list[str] | None = None
+    description: str | None = Field(default=None, max_length=5000)
+    repo_url: str | None = Field(default=None, max_length=500)
+    live_url: str | None = Field(default=None, max_length=500)
+    tech_stack: list[str] | None = Field(default=None, max_length=25)
+    target_audience: str | None = Field(default=None, max_length=500)
+    keywords: list[str] | None = Field(default=None, max_length=25)
     tone: Tone | None = None
     is_active: bool | None = None
     autopilot_mode: AutopilotMode | None = None

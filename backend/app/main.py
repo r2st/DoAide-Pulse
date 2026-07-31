@@ -1,14 +1,27 @@
 """Herald FastAPI application entrypoint."""
 from __future__ import annotations
 
+import logging
+import uuid
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from app.config import settings
 from app.ratelimit import limiter, rate_limit_exceeded_handler
 from app.routers import analytics, auth, calendar, content, misc, projects
 from app.routers import settings as settings_router
+
+logger = logging.getLogger(__name__)
+
+#: Reject request bodies larger than 1 MB. The largest legitimate payload is a
+#: content body (~200 KB max via schema validation), and this gives comfortable
+#: headroom while stopping a multi-GB upload from consuming all memory.
+MAX_BODY_BYTES = 1 * 1024 * 1024
 
 
 def docs_enabled() -> bool:
@@ -42,6 +55,62 @@ def create_app() -> FastAPI:
     # time, so this assignment is what makes @limiter.limit(...) live.
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+    # --- Middleware stack (outermost first) ---
+
+    # Request ID: every request gets a unique id for log correlation and
+    # debugging. Returned in X-Request-ID so the frontend can quote it in
+    # bug reports.
+    class RequestIDMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next) -> Response:
+            request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+            request.state.request_id = request_id
+            response = await call_next(request)
+            response.headers["X-Request-ID"] = request_id
+            return response
+
+    app.add_middleware(RequestIDMiddleware)
+
+    # Body size guard: reject oversized payloads before they reach a route.
+    class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next) -> Response:
+            cl = request.headers.get("content-length")
+            if cl:
+                try:
+                    length = int(cl)
+                except (ValueError, OverflowError):
+                    return JSONResponse(
+                        {"detail": "Invalid Content-Length header"},
+                        status_code=400,
+                    )
+                if length < 0:
+                    return JSONResponse(
+                        {"detail": "Invalid Content-Length header"},
+                        status_code=400,
+                    )
+                if length > MAX_BODY_BYTES:
+                    return JSONResponse(
+                        {"detail": "Request body too large"},
+                        status_code=413,
+                    )
+            return await call_next(request)
+
+    app.add_middleware(BodySizeLimitMiddleware)
+
+    # Security headers. Caddy already sets HSTS and some of these, but
+    # defence-in-depth means the app should not rely on that.
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next) -> Response:
+            response = await call_next(request)
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = (
+                "camera=(), microphone=(), geolocation=()"
+            )
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # No allow_credentials: Herald authenticates with a bearer token the SPA
     # holds and sends explicitly, never with a cookie. Allowing credentialed

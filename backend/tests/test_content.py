@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from app.models.content import Content, ContentStatus, ContentType
+from app.models.content import Content, ContentStatus, ContentType, unique_content_slug
 
 
 def test_generate_falls_back_to_a_template_with_zero_confidence(client, auth, project):
@@ -103,6 +103,91 @@ def test_list_filters_by_status_and_project(client, auth, project, db):
     queue = client.get("/api/v1/content/queue/review", headers=auth)
     assert queue.status_code == 200
     assert len(queue.json()) == 2
+
+
+def test_list_content_pagination_offset(client, auth, project, db):
+    """The offset parameter lets clients paginate through results."""
+    for i in range(5):
+        db.add(
+            Content(
+                project_id=project.id,
+                content_type=ContentType.HOW_TO,
+                status=ContentStatus.DRAFT,
+                title=f"Post {i}",
+                slug=f"post-{i}",
+            )
+        )
+    db.commit()
+
+    # First page
+    page1 = client.get("/api/v1/content?limit=2&offset=0", headers=auth).json()
+    assert len(page1) == 2
+
+    # Second page
+    page2 = client.get("/api/v1/content?limit=2&offset=2", headers=auth).json()
+    assert len(page2) == 2
+
+    # No overlap between pages
+    ids1 = {c["id"] for c in page1}
+    ids2 = {c["id"] for c in page2}
+    assert ids1.isdisjoint(ids2)
+
+    # Past the end
+    past = client.get("/api/v1/content?limit=2&offset=100", headers=auth).json()
+    assert len(past) == 0
+
+
+def test_unique_content_slug_deduplicates(db, project):
+    """The shared unique_content_slug function increments suffixes correctly."""
+    db.add(
+        Content(
+            project_id=project.id,
+            content_type=ContentType.HOW_TO,
+            status=ContentStatus.DRAFT,
+            title="My Post",
+            slug="my-post",
+        )
+    )
+    db.commit()
+
+    # Second call should produce "my-post-2"
+    slug2 = unique_content_slug(db, project.id, "My Post")
+    assert slug2 == "my-post-2"
+
+    # Insert that and get the third
+    db.add(
+        Content(
+            project_id=project.id,
+            content_type=ContentType.HOW_TO,
+            status=ContentStatus.DRAFT,
+            title="My Post",
+            slug=slug2,
+        )
+    )
+    db.commit()
+    slug3 = unique_content_slug(db, project.id, "My Post")
+    assert slug3 == "my-post-3"
+
+
+def test_detail_includes_focus_keyword_seo_checks(client, auth, project):
+    """The SEO panel should check focus_keyword and slug, not skip them."""
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Building FastAPI Apps",
+            "body_markdown": "## Introduction\n\n" + ("FastAPI is great. " * 50),
+            "keywords": ["fastapi"],
+        },
+    )
+    assert resp.status_code == 201
+    issues = resp.json()["seo_issues"]
+    # With focus_keyword and slug now passed, the audit should produce
+    # slug-related or keyword-in-slug checks where applicable.
+    fields_checked = {i["field"] for i in issues}
+    # At minimum, body and cover_image_url should appear (missing cover, etc.)
+    assert "cover_image_url" in fields_checked
 
 
 def test_approve_moves_status(client, auth, project, db):

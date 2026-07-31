@@ -21,11 +21,12 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    select,
 )
 from sqlalchemy import (
     Enum as SAEnum,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 from app.database import Base
 from app.models.mixins import TimestampMixin
@@ -189,3 +190,24 @@ class ContentIdea(Base, TimestampMixin):
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<ContentIdea id={self.id} headline={self.headline!r}>"
+
+
+def unique_content_slug(db: Session, project_id: int, title: str) -> str:
+    """A slug unique within this project's content.
+
+    Used by both the content router and the autopilot task — kept here so the
+    query and the model live in the same module. The database-level unique
+    constraint is the real guard; this avoids the common case.
+    """
+    from app.models.project import slugify
+
+    base = slugify(title)
+    candidate, suffix = base, 2
+    while db.scalar(
+        select(Content.id).where(
+            Content.project_id == project_id, Content.slug == candidate
+        )
+    ):
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate

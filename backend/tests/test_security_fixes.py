@@ -255,12 +255,12 @@ def test_metrics_task_isolates_failures():
 
 def test_jwt_includes_iat_claim():
     """Access tokens must include an iat (issued-at) claim."""
-    from jose import jwt as jose_jwt
+    import jwt
 
     from app.security import create_access_token
 
     token = create_access_token("42")
-    payload = jose_jwt.decode(
+    payload = jwt.decode(
         token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
     )
     assert "iat" in payload

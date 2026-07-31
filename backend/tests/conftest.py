@@ -34,6 +34,11 @@ for key in ("SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD", "SMTP_FROM"):
 os.environ["GITHUB_TOKEN"] = ""
 # CORS must be the dev defaults, not the production origin.
 os.environ["BACKEND_CORS_ORIGINS"] = "http://localhost:5173,http://localhost:3000"
+# Rate limit storage must be in-memory for tests. The production .env points
+# at Redis, and swallow_errors=True silently lets everything through when the
+# storage backend is unreachable — which hides real rate-limit bugs.
+os.environ["RATE_LIMIT_STORAGE_URI"] = ""
+os.environ["RATE_LIMIT_ENABLED"] = "true"
 
 # Clear the settings cache and rebuild the module-level singleton so test
 # environment variables take effect even when running on a server whose .env
@@ -50,11 +55,33 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 from app import ratelimit  # noqa: E402
+
+# Rebuild the limiter with the test settings. If any module imported
+# ``app.ratelimit`` before conftest ran (transitive import from app.main during
+# pytest collection), the limiter was created with the production .env values
+# (e.g. Redis storage URI). Replacing it here guarantees in-memory storage.
+import slowapi  # noqa: E402
+
+ratelimit.limiter = slowapi.Limiter(
+    key_func=ratelimit.client_key,
+    storage_uri=_cfg.settings.rate_limit_storage_uri or "memory://",
+    enabled=_cfg.settings.rate_limit_enabled,
+    headers_enabled=True,
+    swallow_errors=True,
+    key_prefix="herald",
+)
+
 from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.project import Project, Tone  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.security import hash_password  # noqa: E402
+
+# Wire the rebuilt limiter into the running app. ``create_app()`` already set
+# ``app.state.limiter``, but if the module was loaded before conftest's rebuild
+# it would be the stale one. Overwriting it guarantees the test-time limiter
+# is what slowapi's decorators dispatch through.
+app.state.limiter = ratelimit.limiter
 
 # StaticPool keeps every connection pointed at the same in-memory database —
 # without it each connection gets its own empty one.

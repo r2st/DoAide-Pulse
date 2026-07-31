@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, owned_project
-from app.models.content import Content, ContentIdea, ContentStatus, ContentType
-from app.models.project import Project, slugify
+from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
+from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
 from app.schemas.content import (
@@ -77,6 +77,8 @@ def _to_detail(content: Content) -> ContentDetail:
         meta_description=content.meta_description,
         keywords=list(content.keywords or []),
         cover_image_url=content.cover_image_url,
+        focus_keyword=getattr(content, "focus_keyword", "") or "",
+        slug=content.slug,
     )
     return ContentDetail(
         **_to_out(content).model_dump(),
@@ -85,19 +87,6 @@ def _to_detail(content: Content) -> ContentDetail:
             SeoIssueOut(level=i.level, field=i.field, message=i.message) for i in issues
         ],
     )
-
-
-def _unique_slug(db: Session, project_id: int, title: str) -> str:
-    base = slugify(title)
-    candidate, suffix = base, 2
-    while db.scalar(
-        select(Content.id).where(
-            Content.project_id == project_id, Content.slug == candidate
-        )
-    ):
-        candidate = f"{base}-{suffix}"
-        suffix += 1
-    return candidate
 
 
 def _commit_content(db: Session, content: Content) -> None:
@@ -129,6 +118,7 @@ def list_content(
     status_filter: ContentStatus | None = Query(default=None, alias="status"),
     content_type: ContentType | None = None,
     limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[ContentOut]:
@@ -142,6 +132,7 @@ def list_content(
         .options(joinedload(Content.project))
         .where(Project.user_id == user.id)
         .order_by(Content.created_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     if project_id is not None:
@@ -286,7 +277,7 @@ def generate_content(
         content_type=payload.content_type,
         status=ContentStatus.DRAFT,
         title=generated.title,
-        slug=_unique_slug(db, project.id, generated.title),
+        slug=unique_content_slug(db, project.id, generated.title),
         body_markdown=generated.body_markdown,
         excerpt=generated.excerpt,
         meta_description=generated.meta_description,
@@ -319,7 +310,7 @@ def create_content(
         content_type=payload.content_type,
         status=ContentStatus.DRAFT,
         title=payload.title,
-        slug=_unique_slug(db, project.id, payload.title),
+        slug=unique_content_slug(db, project.id, payload.title),
         body_markdown=payload.body_markdown,
         excerpt=payload.excerpt or seo.build_excerpt(payload.body_markdown),
         meta_description=payload.meta_description
@@ -352,7 +343,7 @@ def update_content(
         )
 
     if "title" in data and data["title"] != content.title:
-        content.slug = _unique_slug(db, content.project_id, data["title"])
+        content.slug = unique_content_slug(db, content.project_id, data["title"])
     if "keywords" in data and data["keywords"] is not None:
         data["keywords"] = seo.normalize_keywords(data["keywords"])
 
@@ -551,7 +542,7 @@ def write_from_idea(
         content_type=idea.content_type,
         status=ContentStatus.DRAFT,
         title=generated.title,
-        slug=_unique_slug(db, project.id, generated.title),
+        slug=unique_content_slug(db, project.id, generated.title),
         body_markdown=generated.body_markdown,
         excerpt=generated.excerpt,
         meta_description=generated.meta_description,

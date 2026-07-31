@@ -25,9 +25,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.content import Content, ContentIdea, ContentStatus, ContentType
+from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
 from app.models.mixins import utcnow
-from app.models.project import AutopilotMode, Project, slugify
+from app.models.project import AutopilotMode, Project
 from app.services import (
     content_generator,
     github_client,
@@ -75,19 +75,6 @@ def _daily_count(db: Session, project_id: int) -> int:
         )
         or 0
     )
-
-
-def _unique_slug(db: Session, project_id: int, title: str) -> str:
-    base = slugify(title)
-    candidate, suffix = base, 2
-    while db.scalar(
-        select(Content.id).where(
-            Content.project_id == project_id, Content.slug == candidate
-        )
-    ):
-        candidate = f"{base}-{suffix}"
-        suffix += 1
-    return candidate
 
 
 @celery_app.task(name="app.tasks.autopilot_tasks.scan_project")
@@ -204,7 +191,7 @@ def _act_on(
         meta_description=generated.meta_description,
         keywords=generated.keywords,
         focus_keyword=generated.focus_keyword,
-        slug=_unique_slug(db, project.id, generated.title),
+        slug=unique_content_slug(db, project.id, generated.title),
         cover_image_url=None,  # autopilot rarely has one
     )
     if auto and score < seo.SEO_SCORE_THRESHOLD:
@@ -220,7 +207,7 @@ def _act_on(
         project_id=project.id,
         content_type=content_type,
         title=generated.title,
-        slug=_unique_slug(db, project.id, generated.title),
+        slug=unique_content_slug(db, project.id, generated.title),
         body_markdown=generated.body_markdown,
         excerpt=generated.excerpt,
         meta_description=generated.meta_description,
@@ -308,5 +295,5 @@ def scan_all_projects() -> dict:
             scan_project(project_id)
             dispatched += 1
 
-    logger.info("autopilot scanned %d project(s), wrote %d", len(ids), dispatched)
-    return {"scanned": len(ids), "written": dispatched}
+    logger.info("autopilot dispatched %d of %d project(s)", dispatched, len(ids))
+    return {"scanned": len(ids), "dispatched": dispatched}

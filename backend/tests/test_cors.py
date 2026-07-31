@@ -55,3 +55,58 @@ def test_configured_origins_are_an_explicit_list(client):
     keep the list explicit so nobody is tempted to reintroduce either."""
     assert "*" not in settings.cors_origins
     assert settings.cors_origins == ["http://localhost:5173", "http://localhost:3000"]
+
+
+def test_security_headers_present(client):
+    """Every response should carry defence-in-depth security headers."""
+    resp = client.get("/api/v1/health")
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["x-frame-options"] == "DENY"
+    assert "strict-origin" in resp.headers["referrer-policy"]
+    assert "camera=()" in resp.headers["permissions-policy"]
+
+
+def test_request_id_header_returned(client):
+    """Every response should include X-Request-ID for log correlation."""
+    resp = client.get("/api/v1/health")
+    assert "x-request-id" in resp.headers
+    assert len(resp.headers["x-request-id"]) > 0
+
+
+def test_request_id_echoed_when_provided(client):
+    """A client-supplied X-Request-ID should be echoed back."""
+    resp = client.get("/api/v1/health", headers={"X-Request-ID": "test-123"})
+    assert resp.headers["x-request-id"] == "test-123"
+
+
+def test_oversized_body_rejected(client):
+    """Bodies larger than 1 MB should be rejected with 413."""
+    resp = client.post(
+        "/api/v1/auth/register",
+        content="x" * (1024 * 1024 + 1),
+        headers={"Content-Type": "application/json", "Content-Length": str(1024 * 1024 + 1)},
+    )
+    assert resp.status_code == 413
+    assert "too large" in resp.json()["detail"].lower()
+
+
+def test_malformed_content_length_rejected(client):
+    """A non-numeric Content-Length must return 400, not crash."""
+    resp = client.post(
+        "/api/v1/auth/register",
+        content="{}",
+        headers={"Content-Type": "application/json", "Content-Length": "not-a-number"},
+    )
+    assert resp.status_code == 400
+    assert "invalid" in resp.json()["detail"].lower()
+
+
+def test_negative_content_length_rejected(client):
+    """Negative Content-Length must return 400."""
+    resp = client.post(
+        "/api/v1/auth/register",
+        content="{}",
+        headers={"Content-Type": "application/json", "Content-Length": "-1"},
+    )
+    assert resp.status_code == 400
+    assert "invalid" in resp.json()["detail"].lower()

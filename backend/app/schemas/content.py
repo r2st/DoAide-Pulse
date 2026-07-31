@@ -47,12 +47,12 @@ class ContentCreate(BaseModel):
     project_id: int
     content_type: ContentType = ContentType.FEATURE_SPOTLIGHT
     title: str = Field(min_length=1, max_length=300)
-    body_markdown: str = ""
-    excerpt: str = ""
-    meta_description: str = ""
-    keywords: list[str] = []
-    tags: list[str] = []
-    canonical_url: str | None = None
+    body_markdown: str = Field(default="", max_length=200_000)
+    excerpt: str = Field(default="", max_length=1000)
+    meta_description: str = Field(default="", max_length=500)
+    keywords: list[str] = Field(default=[], max_length=30)
+    tags: list[str] = Field(default=[], max_length=30)
+    canonical_url: str | None = Field(default=None, max_length=700)
     cover_image_url: str | None = Field(default=None, max_length=700)
 
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
@@ -60,12 +60,12 @@ class ContentCreate(BaseModel):
 
 class ContentUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
-    body_markdown: str | None = None
-    excerpt: str | None = None
-    meta_description: str | None = None
-    keywords: list[str] | None = None
-    tags: list[str] | None = None
-    canonical_url: str | None = None
+    body_markdown: str | None = Field(default=None, max_length=200_000)
+    excerpt: str | None = Field(default=None, max_length=1000)
+    meta_description: str | None = Field(default=None, max_length=500)
+    keywords: list[str] | None = Field(default=None, max_length=30)
+    tags: list[str] | None = Field(default=None, max_length=30)
+    canonical_url: str | None = Field(default=None, max_length=700)
     cover_image_url: str | None = Field(default=None, max_length=700)
     content_type: ContentType | None = None
     status: ContentStatus | None = None
