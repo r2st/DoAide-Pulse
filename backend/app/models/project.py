@@ -109,6 +109,17 @@ class Project(Base, TimestampMixin):
         SAEnum(Platform, native_enum=False, length=30)
     )
 
+    # ---- Headline testing ----
+    #: Let Herald swap in the best-performing past headline on its own. Off by
+    #: default, and deliberately: a title changing under the author without
+    #: their say-so is startling, and the measurement carries a known bias
+    #: toward whichever headline was live at launch (see
+    #: ``app.services.headlines.pick_winner``). Opting in is accepting that
+    #: trade in exchange for never having to check.
+    auto_headline_winner: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+
     # ---- Attribution ----
     #: Append UTM parameters to the links published posts point at, so the
     #: project's own analytics can tell which platform sent the visit. Never

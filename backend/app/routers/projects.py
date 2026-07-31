@@ -55,7 +55,8 @@ def _project_fields(project: Project) -> dict:
             "id", "name", "slug", "description", "repo_url", "live_url",
             "tech_stack", "target_audience", "keywords", "tone", "is_active",
             "autopilot_mode", "autopilot_platforms", "auto_canonical",
-            "canonical_platform", "utm_enabled", "utm_campaign",
+            "canonical_platform", "auto_headline_winner",
+            "utm_enabled", "utm_campaign",
             "last_seen_commit_sha",
             "last_seen_release_tag", "last_scanned_at", "created_at",
         )

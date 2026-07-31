@@ -190,11 +190,15 @@ def test_performance_attributes_metrics_to_the_headline_that_was_live(project, d
     db.commit()
     db.refresh(content)
 
+    # Platform counters are cumulative, so this reads as 50 more views and two
+    # more interactions than the previous poll — not as a post that lost half
+    # its audience.
     after = ContentMetric(
         publication_id=publication.id,
         captured_at=datetime.now(UTC) + timedelta(hours=1),
-        views=50,
-        reactions=2,
+        views=150,
+        reactions=7,
+        comments=1,
         shares=1,
     )
     db.add(after)
@@ -211,6 +215,7 @@ def test_performance_attributes_metrics_to_the_headline_that_was_live(project, d
 
     assert current.current is True
     assert current.title == "New Headline"
+    # What the new headline *added*, not the running total it inherited.
     assert current.views == 50
-    assert current.engagement == 3  # reactions(2) + shares(1)
+    assert current.engagement == 3  # reactions +2, shares +1
     assert current.snapshots == 1

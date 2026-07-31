@@ -192,6 +192,19 @@ class Settings(BaseSettings):
     # Latency guard on a single publish request, not a policy about post length.
     link_check_max_urls: int = 25
 
+    # ---- Headline testing ----
+    # Evidence a headline's window needs before it is ranked at all. One poll an
+    # hour after a swap says nothing about a headline.
+    headline_min_snapshots: int = 2
+    headline_min_window_hours: float = 24.0
+    # How far ahead a challenger must be before the lead is called rather than
+    # attributed to noise. Also what stops headlines flapping week to week.
+    headline_winner_margin: float = 0.25
+    # How often the beat task looks for a project whose headlines should be
+    # re-judged. Daily: engagement moves slower than that, and a headline that
+    # changes under the user more often than they look at it is a nuisance.
+    headline_auto_select_interval_seconds: int = 86400
+
     # ---- Scheduling ----
     # How far into the past a requested publish time may fall before it is
     # refused. Small but non-zero: a client clock a minute behind the server
@@ -252,7 +265,7 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("autopilot_auto_publish_confidence")
+    @field_validator("autopilot_auto_publish_confidence", "headline_winner_margin")
     @classmethod
     def _unit_interval(cls, v: float) -> float:
         if not 0.0 <= v <= 1.0:

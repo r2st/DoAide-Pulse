@@ -14,6 +14,7 @@ celery_app = Celery(
         "app.tasks.autopilot_tasks",
         "app.tasks.metrics_tasks",
         "app.tasks.maintenance_tasks",
+        "app.tasks.headline_tasks",
     ],
 )
 
@@ -60,6 +61,10 @@ celery_app.conf.beat_schedule = {
     "collect-metrics": {
         "task": "app.tasks.metrics_tasks.collect_all_metrics",
         "schedule": float(settings.metrics_scan_interval_seconds),
+    },
+    "auto-select-headlines": {
+        "task": "app.tasks.headline_tasks.auto_select_headlines",
+        "schedule": float(settings.headline_auto_select_interval_seconds),
     },
     "purge-expired-tokens": {
         "task": "app.tasks.maintenance_tasks.purge_expired_tokens",

@@ -18,6 +18,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.content import Content
 from app.models.metrics import ContentMetric
 from app.models.mixins import as_aware, utcnow
@@ -159,7 +160,14 @@ def apply_headline(content: Content, new_title: str, *, now: datetime | None = N
 
 @dataclass
 class HeadlineWindow:
-    """One headline, the window it was live, and what happened during it."""
+    """One headline, the window it was live, and what it earned.
+
+    ``views`` and ``engagement`` are what was *gained* during the window, not
+    the running totals the snapshots carry. Platform counters are cumulative —
+    Dev.to's ``page_views_count`` is lifetime views — so summing the snapshots
+    that land in a window would count the same views once per poll and hand
+    every contest to whichever headline happened to be live longest.
+    """
 
     title: str
     started_at: datetime
@@ -169,14 +177,50 @@ class HeadlineWindow:
     engagement: int = 0
     snapshots: int = 0
 
+    def hours_live(self, *, now: datetime | None = None) -> float:
+        """How long this headline was up. The open window runs to *now*."""
+        end = as_aware(self.ended_at) if self.ended_at else (now or utcnow())
+        return max((end - as_aware(self.started_at)).total_seconds(), 0.0) / 3600
+
+    def views_per_day(self, *, now: datetime | None = None) -> float | None:
+        """Views gained per day live, or ``None`` with nothing to divide by.
+
+        This, rather than the raw count, is what makes two headlines
+        comparable: one live for a fortnight will out-total one live for an
+        afternoon whatever it said.
+        """
+        hours = self.hours_live(now=now)
+        if hours <= 0 or self.snapshots == 0:
+            return None
+        return round(self.views / (hours / 24), 2)
+
+    def as_dict(self, *, now: datetime | None = None) -> dict:
+        return {
+            "title": self.title,
+            "started_at": self.started_at,
+            "ended_at": self.ended_at,
+            "current": self.current,
+            "views": self.views,
+            "engagement": self.engagement,
+            "snapshots": self.snapshots,
+            "hours_live": round(self.hours_live(now=now), 1),
+            "views_per_day": self.views_per_day(now=now),
+        }
+
 
 def performance(content: Content, db: Session) -> list[HeadlineWindow]:
-    """Engagement recorded while each headline (including the current one) was live.
+    """What each headline (including the current one) earned while it was live.
 
     Chronological order — oldest headline first, current one last and open-
     ended. Every metric snapshot for this content's publications falls into
     exactly one window, since the windows are contiguous and derived from the
     same swap timestamps that close and open them.
+
+    Attribution is by *gain*, per publication: a snapshot's contribution is the
+    difference from that publication's previous snapshot, credited to whichever
+    headline was live when the later one was taken. A platform whose counter
+    goes backwards (a purge, a rescrape) contributes zero rather than a
+    negative, since no headline made views disappear.
     """
     history = list(content.headline_history or [])
     windows = [
@@ -199,26 +243,194 @@ def performance(content: Content, db: Session) -> list[HeadlineWindow]:
         select(ContentMetric)
         .join(Publication, Publication.id == ContentMetric.publication_id)
         .where(Publication.content_id == content.id)
-        .order_by(ContentMetric.captured_at)
+        # Per publication, then in time order: the deltas below are only
+        # meaningful against the same platform's previous reading.
+        .order_by(ContentMetric.publication_id, ContentMetric.captured_at)
     )
+
+    previous: dict[int, tuple[int, int]] = {}
     for metric in metrics:
-        captured = as_aware(metric.captured_at)
-        for window in windows:
-            start = as_aware(window.started_at)
-            end = as_aware(window.ended_at) if window.ended_at else None
-            if captured >= start and (end is None or captured < end):
-                window.views += metric.views or 0
-                window.engagement += metric.engagement
-                window.snapshots += 1
-                break
+        window = _window_for(windows, as_aware(metric.captured_at))
+        if window is None:
+            continue
+
+        last_views, last_engagement = previous.get(metric.publication_id, (0, 0))
+        views_now = metric.views if metric.views is not None else last_views
+        engagement_now = metric.engagement
+        previous[metric.publication_id] = (views_now, engagement_now)
+
+        window.views += max(0, views_now - last_views)
+        window.engagement += max(0, engagement_now - last_engagement)
+        window.snapshots += 1
 
     return windows
+
+
+def _window_for(
+    windows: list[HeadlineWindow], captured: datetime
+) -> HeadlineWindow | None:
+    for window in windows:
+        start = as_aware(window.started_at)
+        end = as_aware(window.ended_at) if window.ended_at else None
+        if captured >= start and (end is None or end > captured):
+            return window
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Picking a winner                                                            #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class Winner:
+    """The verdict on a headline contest.
+
+    ``confident`` is the only field an automated swap should read. Everything
+    else exists so the UI — and the log line the swap writes — can say why.
+    """
+
+    #: The best-performing headline, which is often the one already live.
+    title: str
+    #: True when the best is not what is live *and* the evidence clears the
+    #: bar. Nothing swaps a live headline on a maybe.
+    confident: bool
+    reason: str
+    #: Views per day for the leader and for the headline currently live.
+    score: float | None = None
+    current_score: float | None = None
+    #: Every window that had enough evidence to be considered, best first.
+    ranked: list[HeadlineWindow] = field(default_factory=list)
+
+
+def pick_winner(
+    windows: list[HeadlineWindow], *, now: datetime | None = None
+) -> Winner:
+    """Which headline earned the most attention per day it was live.
+
+    Three guards stand between a number and a swap, and each exists because of
+    a way this can be wrong:
+
+    * **Evidence.** A window needs ``HEADLINE_MIN_SNAPSHOTS`` polls and
+      ``HEADLINE_MIN_WINDOW_HOURS`` of airtime before it is ranked at all. One
+      poll an hour after a swap says nothing about a headline.
+    * **Margin.** The challenger must beat the incumbent by
+      ``HEADLINE_WINNER_MARGIN``. Without it, headlines flap forever on noise.
+    * **The incumbent is judged too.** If the headline now live has not yet
+      earned enough evidence, nothing is confident — which is also what stops a
+      swap from immediately triggering another.
+
+    One bias is worth stating plainly rather than pretending away: a post earns
+    most of its views in its first days, so whichever headline was live at
+    launch is flattered. The margin blunts it; it does not remove it. This is
+    why the automated swap is opt-in per project.
+    """
+    moment = now or utcnow()
+    ranked = sorted(
+        (w for w in windows if _has_evidence(w, now=moment)),
+        key=lambda w: (w.views_per_day(now=moment) or 0.0, w.engagement),
+        reverse=True,
+    )
+    live = next((w for w in windows if w.current), None)
+    live_score = live.views_per_day(now=moment) if live else None
+    live_title = live.title if live else ""
+
+    if not ranked:
+        return Winner(
+            title=live_title,
+            confident=False,
+            reason="Not enough data yet — no headline has been live long enough "
+            "to judge.",
+            current_score=live_score,
+        )
+
+    leader = ranked[0]
+    leader_score = leader.views_per_day(now=moment) or 0.0
+
+    if leader.current:
+        return Winner(
+            title=leader.title,
+            confident=False,
+            reason="The headline already live is the best performer.",
+            score=leader_score,
+            current_score=live_score,
+            ranked=ranked,
+        )
+
+    if live is None or not _has_evidence(live, now=moment):
+        return Winner(
+            title=leader.title,
+            confident=False,
+            reason="The headline live now has not had a fair run yet — give it "
+            "time before judging it against the others.",
+            score=leader_score,
+            current_score=live_score,
+            ranked=ranked,
+        )
+
+    margin = settings.headline_winner_margin
+    threshold = (live_score or 0.0) * (1 + margin)
+    if leader_score <= threshold:
+        return Winner(
+            title=leader.title,
+            confident=False,
+            reason=(
+                f"{leader.title!r} leads, but not by the "
+                f"{round(margin * 100)}% needed to call it rather than noise."
+            ),
+            score=leader_score,
+            current_score=live_score,
+            ranked=ranked,
+        )
+
+    return Winner(
+        title=leader.title,
+        confident=True,
+        reason=(
+            f"{leader.title!r} earned {leader_score} views/day against "
+            f"{live_score} for the headline live now, over {leader.snapshots} "
+            "readings."
+        ),
+        score=leader_score,
+        current_score=live_score,
+        ranked=ranked,
+    )
+
+
+def _has_evidence(window: HeadlineWindow, *, now: datetime) -> bool:
+    return (
+        window.snapshots >= settings.headline_min_snapshots
+        and window.hours_live(now=now) >= settings.headline_min_window_hours
+        and window.views > 0
+    )
+
+
+def auto_select(
+    content: Content, db: Session, *, now: datetime | None = None
+) -> tuple[Winner, bool]:
+    """Swap in the winning headline when the evidence is good enough.
+
+    Returns ``(verdict, applied)``. Mutates *content* on a swap; the caller
+    commits, in keeping with :func:`apply_headline`.
+    """
+    verdict = pick_winner(performance(content, db), now=now)
+    if not verdict.confident or verdict.title == content.title:
+        return verdict, False
+
+    apply_headline(content, verdict.title, now=now)
+    logger.info(
+        "content %s headline auto-selected: %s", content.id, verdict.reason
+    )
+    return verdict, True
 
 
 __all__ = [
     "HeadlineVariants",
     "HeadlineWindow",
+    "Winner",
     "apply_headline",
+    "auto_select",
     "generate_variants",
     "performance",
+    "pick_winner",
 ]

@@ -209,18 +209,39 @@ class HeadlineApplyIn(BaseModel):
 
 
 class HeadlineWindowOut(BaseModel):
-    """One headline and the engagement recorded while it was live."""
+    """One headline and what it earned while it was live."""
 
     title: str
     started_at: datetime
     ended_at: datetime | None = None
     #: True for the headline live right now — its window has no end yet.
     current: bool = False
+    #: Gained during the window, not the running total the snapshots carry —
+    #: platform counters are cumulative. See app.services.headlines.
     views: int = 0
     engagement: int = 0
     #: How many metric snapshots landed in this window, so a caller can tell
     #: "no engagement" from "no data yet".
     snapshots: int = 0
+    hours_live: float = 0.0
+    #: The comparable number: views gained per day live. ``None`` until there
+    #: is something to divide.
+    views_per_day: float | None = None
+
+
+class HeadlineWinnerOut(BaseModel):
+    """Which headline is winning, and whether that is worth acting on."""
+
+    title: str
+    #: True only when the leader is not what is live *and* the evidence clears
+    #: the bar. The only field an automated swap should read.
+    confident: bool = False
+    reason: str = ""
+    score: float | None = None
+    current_score: float | None = None
+    ranked: list[HeadlineWindowOut] = []
+    #: Set by the auto-select endpoint: whether the title actually changed.
+    applied: bool = False
 
 
 class BulkContentIn(BaseModel):

@@ -29,6 +29,7 @@ from app.schemas.content import (
     HeadlineApplyIn,
     HeadlineVariantsOut,
     HeadlineWindowOut,
+    HeadlineWinnerOut,
     InternalLinkSuggestionOut,
     LinkCheckOut,
     LinkStatusOut,
@@ -433,21 +434,59 @@ def content_headline_performance(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[HeadlineWindowOut]:
-    """Engagement recorded while each headline (including the current one) was live."""
+    """What each headline (including the current one) earned while it was live."""
     content = _owned_content(content_id, db, user)
-    windows = headlines.performance(content, db)
     return [
-        HeadlineWindowOut(
-            title=w.title,
-            started_at=w.started_at,
-            ended_at=w.ended_at,
-            current=w.current,
-            views=w.views,
-            engagement=w.engagement,
-            snapshots=w.snapshots,
-        )
-        for w in windows
+        HeadlineWindowOut(**w.as_dict()) for w in headlines.performance(content, db)
     ]
+
+
+def _winner_out(verdict: headlines.Winner, *, applied: bool = False) -> HeadlineWinnerOut:
+    return HeadlineWinnerOut(
+        title=verdict.title,
+        confident=verdict.confident,
+        reason=verdict.reason,
+        score=verdict.score,
+        current_score=verdict.current_score,
+        ranked=[HeadlineWindowOut(**w.as_dict()) for w in verdict.ranked],
+        applied=applied,
+    )
+
+
+@router.get("/{content_id}/headlines/winner", response_model=HeadlineWinnerOut)
+def content_headline_winner(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> HeadlineWinnerOut:
+    """Which headline is winning, and whether the lead is worth acting on.
+
+    Read-only: nothing is applied here, so the answer can be shown next to the
+    headline without committing to it.
+    """
+    content = _owned_content(content_id, db, user)
+    return _winner_out(headlines.pick_winner(headlines.performance(content, db)))
+
+
+@router.post("/{content_id}/headlines/auto-select", response_model=HeadlineWinnerOut)
+def apply_headline_winner(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> HeadlineWinnerOut:
+    """Swap in the winning headline, if there is a confident one.
+
+    Not an error when nothing changes — "the headline live now is the best one"
+    is a successful answer to "pick the winner", and the reason says which case
+    it was. The same decision the beat sweep makes for projects that opted in,
+    available on demand for those that did not.
+    """
+    content = _owned_content(content_id, db, user)
+    verdict, applied = headlines.auto_select(content, db)
+    if applied:
+        db.commit()
+        db.refresh(content)
+    return _winner_out(verdict, applied=applied)
 
 
 @router.get("/{content_id}", response_model=ContentDetail)

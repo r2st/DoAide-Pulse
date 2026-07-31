@@ -1,7 +1,6 @@
 """Analytics dashboard endpoints."""
 from __future__ import annotations
 
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload

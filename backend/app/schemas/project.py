@@ -25,6 +25,9 @@ class ProjectBase(BaseModel):
     auto_canonical: bool = True
     #: Which destination counts as the original. ``None`` = first to publish wins.
     canonical_platform: Platform | None = None
+    #: Let Herald swap in the best-performing past headline unattended. Off by
+    #: default — see ``Project.auto_headline_winner`` for why.
+    auto_headline_winner: bool = False
     #: Tag outbound links so the project's analytics can attribute the visit.
     utm_enabled: bool = True
     #: ``utm_campaign``. Blank falls back to the project slug.
@@ -66,6 +69,7 @@ class ProjectUpdate(BaseModel):
     autopilot_platforms: list[Platform] | None = None
     auto_canonical: bool | None = None
     canonical_platform: Platform | None = None
+    auto_headline_winner: bool | None = None
     utm_enabled: bool | None = None
     utm_campaign: str | None = Field(default=None, max_length=120)
 
