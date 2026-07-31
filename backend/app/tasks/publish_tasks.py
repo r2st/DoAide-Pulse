@@ -11,6 +11,8 @@ import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
 
+from sqlalchemy import update
+
 from app.database import SessionLocal
 from app.models.publication import Publication, PublicationStatus
 from app.services import publishing_service
@@ -30,11 +32,27 @@ def publish_one(publication_id: int) -> dict:
     """
     db = SessionLocal()
     try:
+        # Atomic claim: only the first worker to transition the row from a
+        # dispatchable state to PUBLISHING wins.  A concurrent publish_one
+        # for the same id will see rowcount=0 and skip.
+        claimed = db.execute(
+            update(Publication)
+            .where(
+                Publication.id == publication_id,
+                Publication.status.in_(
+                    [PublicationStatus.PENDING, PublicationStatus.SCHEDULED]
+                ),
+            )
+            .values(status=PublicationStatus.PUBLISHING)
+        ).rowcount
+        db.commit()
+
         publication = db.get(Publication, publication_id)
         if publication is None:
             logger.warning("publish_one: publication %s is gone", publication_id)
             return {"publication_id": publication_id, "status": "missing"}
-        if publication.is_terminal:
+        if not claimed:
+            # Another worker already claimed it, or it's in a terminal state.
             return {
                 "publication_id": publication_id,
                 "status": publication.status.value,

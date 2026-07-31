@@ -64,11 +64,16 @@ class DependencyOut(BaseModel):
 
 
 class HealthOut(BaseModel):
-    #: "ok" when every *required* dependency answered, "degraded" otherwise.
-    #: Degraded is served with HTTP 503 — Caddy reads the status code.
+    """Public liveness probe — no operational details leak."""
+
     status: str
     database: DependencyOut = DependencyOut(status="unknown")
     redis: DependencyOut = DependencyOut(status="unknown")
+
+
+class HealthDetailOut(HealthOut):
+    """Authenticated detail view — answers "why isn't X working?"."""
+
     llm_providers: list[str] = []
     llm_breakers_open: dict = {}
     github_configured: bool = False

@@ -112,8 +112,21 @@ def test_detail_is_one_truncated_line():
     assert len(misc._short(ValueError("x" * 500), public=False)) <= 200
 
 
-def test_health_still_reports_capabilities(client, redis_up):
+def test_public_health_does_not_leak_details(client, redis_up):
+    """The public probe returns only status and dependency health."""
     body = client.get(HEALTH).json()
+    assert "llm_providers" not in body
+    assert "implemented_platforms" not in body
+    assert "github_configured" not in body
+
+
+def test_health_detail_requires_auth(client, redis_up):
+    resp = client.get(f"{HEALTH}/detail")
+    assert resp.status_code == 401
+
+
+def test_health_detail_reports_capabilities(client, auth, redis_up):
+    body = client.get(f"{HEALTH}/detail", headers=auth).json()
     # conftest blanks every key, so the chain is empty in tests.
     assert body["llm_providers"] == []
     assert set(body["implemented_platforms"]) == {

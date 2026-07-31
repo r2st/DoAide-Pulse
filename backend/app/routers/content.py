@@ -165,25 +165,41 @@ def list_content(
 
 @router.get("/queue/review", response_model=list[ContentOut])
 def review_queue(
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    response: Response,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[ContentOut]:
     """Everything the autopilot wrote that is waiting on a human."""
-    rows = db.scalars(
+    base = (
         select(Content)
         .join(Project, Project.id == Content.project_id)
-        .options(joinedload(Content.project))
         .where(Project.user_id == user.id, Content.status == ContentStatus.REVIEW)
+    )
+    total = db.scalar(
+        select(func.count()).select_from(base.with_only_columns(Content.id).subquery())
+    )
+    response.headers["X-Total-Count"] = str(total or 0)
+    rows = db.scalars(
+        base.options(joinedload(Content.project))
         .order_by(Content.created_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
     return [_to_out(c) for c in rows]
 
 
 @router.get("/queue/publications", response_model=list[PublicationOut])
 def publication_queue(
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    response: Response,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[PublicationOut]:
     """Everything in flight or waiting: pending, scheduled, publishing, failed."""
-    rows = db.scalars(
+    base = (
         select(Publication)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
@@ -191,7 +207,19 @@ def publication_queue(
             Project.user_id == user.id,
             Publication.status != PublicationStatus.PUBLISHED,
         )
-        .order_by(Publication.scheduled_for.is_(None).desc(), Publication.scheduled_for)
+    )
+    total = db.scalar(
+        select(func.count()).select_from(
+            base.with_only_columns(Publication.id).subquery()
+        )
+    )
+    response.headers["X-Total-Count"] = str(total or 0)
+    rows = db.scalars(
+        base.order_by(
+            Publication.scheduled_for.is_(None).desc(), Publication.scheduled_for
+        )
+        .offset(offset)
+        .limit(limit)
     )
     return [PublicationOut.model_validate(p) for p in rows]
 

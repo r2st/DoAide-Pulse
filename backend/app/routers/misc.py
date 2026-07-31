@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.schemas.settings import DependencyOut, HealthOut
+from app.deps import get_current_user
+from app.models.user import User
+from app.schemas.settings import DependencyOut, HealthDetailOut, HealthOut
 from app.services import llm_router, publishers
 from app.services.crypto import encryption_enabled
 
@@ -72,24 +74,8 @@ def _short(exc: BaseException, *, public: bool = True) -> str:
     return f"{cls}: {exc}".splitlines()[0][:200]
 
 
-@router.get("/health", response_model=HealthOut)
-def health(response: Response, db: Session = Depends(get_db)) -> HealthOut:
-    """Liveness, plus enough state to answer "why isn't X working?".
-
-    Caddy polls this as its `health_uri`, so the status code is load-bearing: a
-    non-2xx pulls this uvicorn out of the upstream pool. It therefore reports
-    503 only for a dependency Herald genuinely cannot work without.
-
-    * **Postgres — always required.** Every authenticated request touches it.
-    * **Redis — required when ``CELERY_ENABLED``.** With workers running, a
-      dead Redis means generation and publishing are silently queued nowhere;
-      better to fail the check than to accept work that will never happen. In a
-      single-process deployment (and in tests) everything runs inline, so Redis
-      being down is reported but not fatal.
-
-    The breaker state is per-process, so this reports the API process's view —
-    workers keep their own. Enough to answer "is AI degraded right now?".
-    """
+def _health_core(response: Response, db: Session) -> tuple[bool, DependencyOut, DependencyOut]:
+    """Shared probe logic for both health endpoints."""
     database = _check_database(db)
     redis_probe = _check_redis()
     redis_required = settings.celery_enabled
@@ -103,18 +89,46 @@ def health(response: Response, db: Session = Depends(get_db)) -> HealthOut:
             redis_probe.detail or "ok",
         )
 
-    return HealthOut(
+    db_out = DependencyOut(
+        status="ok" if database.ok else "unavailable",
+        required=True,
+        detail=database.detail,
+    )
+    redis_out = DependencyOut(
+        status="ok" if redis_probe.ok else "unavailable",
+        required=redis_required,
+        detail=redis_probe.detail,
+    )
+    return healthy, db_out, redis_out
+
+
+@router.get("/health", response_model=HealthOut)
+def health(response: Response, db: Session = Depends(get_db)) -> HealthOut:
+    """Public liveness probe.
+
+    Caddy polls this as its ``health_uri``, so the status code is load-bearing.
+    Returns only dependency reachability — no operational details.
+    """
+    healthy, db_out, redis_out = _health_core(response, db)
+    return HealthOut(status="ok" if healthy else "degraded", database=db_out, redis=redis_out)
+
+
+@router.get("/health/detail", response_model=HealthDetailOut)
+def health_detail(
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> HealthDetailOut:
+    """Authenticated detail view — answers "why isn't X working?".
+
+    LLM provider config, circuit-breaker state, platform list, and encryption
+    status are only visible to logged-in users.
+    """
+    healthy, db_out, redis_out = _health_core(response, db)
+    return HealthDetailOut(
         status="ok" if healthy else "degraded",
-        database=DependencyOut(
-            status="ok" if database.ok else "unavailable",
-            required=True,
-            detail=database.detail,
-        ),
-        redis=DependencyOut(
-            status="ok" if redis_probe.ok else "unavailable",
-            required=redis_required,
-            detail=redis_probe.detail,
-        ),
+        database=db_out,
+        redis=redis_out,
         llm_providers=llm_router.configured_providers(),
         llm_breakers_open=llm_router.breaker.snapshot(),
         github_configured=bool(settings.github_token),

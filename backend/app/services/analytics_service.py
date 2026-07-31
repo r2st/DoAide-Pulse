@@ -63,47 +63,70 @@ def _latest_metrics(db: Session, user_id: int) -> list[tuple[Publication, Conten
 
 
 def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Totals:
-    """Headline numbers for the dashboard."""
-    content_q = (
-        select(Content).join(Project, Project.id == Content.project_id)
+    """Headline numbers for the dashboard.
+
+    Uses SQL aggregates instead of loading every row into Python.
+    """
+    base = (
+        select(Content.id, Content.status)
+        .join(Project, Project.id == Content.project_id)
         .where(Project.user_id == user_id)
     )
     if project_id is not None:
-        content_q = content_q.where(Content.project_id == project_id)
+        base = base.where(Content.project_id == project_id)
 
-    all_content = list(db.scalars(content_q))
-    content_ids = [c.id for c in all_content]
+    content_sub = base.subquery()
+    counts = db.execute(
+        select(
+            func.count().label("total"),
+            func.count()
+            .filter(content_sub.c.status == ContentStatus.PUBLISHED)
+            .label("published"),
+        ).select_from(content_sub)
+    ).one()
+    content_count = counts.total or 0
+    published_count = counts.published or 0
 
-    published = sum(1 for c in all_content if c.status == ContentStatus.PUBLISHED)
-
-    if not content_ids:
+    if content_count == 0:
         return Totals()
 
-    publications = list(
-        db.scalars(
-            select(Publication).where(
-                Publication.content_id.in_(content_ids),
-                Publication.status == PublicationStatus.PUBLISHED,
-            )
-        )
-    )
+    # Published publications for this user's content
+    pub_count = db.scalar(
+        select(func.count())
+        .select_from(Publication)
+        .join(content_sub, content_sub.c.id == Publication.content_id)
+        .where(Publication.status == PublicationStatus.PUBLISHED)
+    ) or 0
 
-    latest = _latest_metric_subquery()
-    metrics = list(
-        db.scalars(
-            select(ContentMetric)
-            .join(latest, latest.c.metric_id == ContentMetric.id)
-            .where(ContentMetric.publication_id.in_([p.id for p in publications] or [0]))
-        )
+    # Aggregate latest metrics in SQL.
+    # ``engagement`` is a Python property (reactions + comments + clicks + shares),
+    # so we express it as a SQL expression here.
+    _engagement_expr = (
+        func.coalesce(ContentMetric.reactions, 0)
+        + func.coalesce(ContentMetric.comments, 0)
+        + func.coalesce(ContentMetric.clicks, 0)
+        + func.coalesce(ContentMetric.shares, 0)
     )
+    latest = _latest_metric_subquery()
+    agg = db.execute(
+        select(
+            func.coalesce(func.sum(ContentMetric.views), 0),
+            func.coalesce(func.sum(ContentMetric.clicks), 0),
+            func.coalesce(func.sum(_engagement_expr), 0),
+        )
+        .join(latest, latest.c.metric_id == ContentMetric.id)
+        .join(Publication, Publication.id == ContentMetric.publication_id)
+        .join(content_sub, content_sub.c.id == Publication.content_id)
+        .where(Publication.status == PublicationStatus.PUBLISHED)
+    ).one()
 
     return Totals(
-        content_count=len(all_content),
-        published_count=published,
-        publication_count=len(publications),
-        views=sum(m.views or 0 for m in metrics),
-        clicks=sum(m.clicks or 0 for m in metrics),
-        engagement=sum(m.engagement for m in metrics),
+        content_count=content_count,
+        published_count=published_count,
+        publication_count=pub_count,
+        views=agg[0],
+        clicks=agg[1],
+        engagement=agg[2],
     )
 
 
@@ -162,20 +185,24 @@ def by_platform(db: Session, user_id: int) -> list[dict]:
         lambda: {"published": 0, "failed": 0, "views": 0, "engagement": 0}
     )
 
-    publications = list(
-        db.scalars(
-            select(Publication)
-            .join(Content, Content.id == Publication.content_id)
-            .join(Project, Project.id == Content.project_id)
-            .where(Project.user_id == user_id)
+    # Aggregate publication counts per platform in SQL
+    platform_counts = db.execute(
+        select(
+            Publication.platform,
+            Publication.status,
+            func.count().label("cnt"),
         )
-    )
-    for publication in publications:
-        bucket = stats[publication.platform]
-        if publication.status == PublicationStatus.PUBLISHED:
-            bucket["published"] += 1
-        elif publication.status == PublicationStatus.FAILED:
-            bucket["failed"] += 1
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id)
+        .group_by(Publication.platform, Publication.status)
+    ).all()
+    for platform, pub_status, cnt in platform_counts:
+        bucket = stats[platform]
+        if pub_status == PublicationStatus.PUBLISHED:
+            bucket["published"] += cnt
+        elif pub_status == PublicationStatus.FAILED:
+            bucket["failed"] += cnt
 
     for publication, metric in _latest_metrics(db, user_id):
         bucket = stats[publication.platform]

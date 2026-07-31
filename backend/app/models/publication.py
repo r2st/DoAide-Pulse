@@ -107,7 +107,9 @@ class Publication(Base, TimestampMixin):
     scheduled_for: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
 
     #: The platform's own id and permalink, once it has one.
     external_id: Mapped[str | None] = mapped_column(String(200))
