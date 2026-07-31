@@ -209,9 +209,9 @@ class GitAdapter(Adapter):
         # Keywords help static-site generators (Astro, Hugo, Next.js) populate
         # <meta name="keywords"> and JSON-LD. The focus keyword is the primary
         # SEO target for this piece.
-        if getattr(request, "keywords", None):
+        if request.keywords:
             matter["keywords"] = request.keywords
-        if getattr(request, "focus_keyword", None):
+        if request.focus_keyword:
             matter["focusKeyword"] = request.focus_keyword
 
         # Reading time and word count — most blog themes display these.
@@ -272,6 +272,8 @@ class GitAdapter(Adapter):
                 headers=self._headers(token),
                 params=params,
             )
+        except CredentialError:
+            raise  # 401/403 must surface, not be silenced as "file not found"
         except PublishError:
             return None
         data = resp.json()

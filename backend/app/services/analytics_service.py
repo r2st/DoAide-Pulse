@@ -11,6 +11,7 @@ All of this is SQL over ``content_metrics``, which is append-only (see
 """
 from __future__ import annotations
 
+import dataclasses
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import timedelta
@@ -330,7 +331,7 @@ def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
 def overview(db: Session, user_id: int) -> dict:
     """Everything the analytics page needs, in one round trip."""
     return {
-        "totals": totals(db, user_id).__dict__,
+        "totals": dataclasses.asdict(totals(db, user_id)),
         "by_content_type": by_content_type(db, user_id),
         "by_platform": by_platform(db, user_id),
         "by_project": by_project(db, user_id),

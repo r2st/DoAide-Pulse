@@ -104,7 +104,7 @@ class WordPressAdapter(Adapter):
         meta: dict[str, str] = {}
         if request.meta_description:
             meta["_yoast_wpseo_metadesc"] = request.meta_description
-        focus = getattr(request, "focus_keyword", "") or ""
+        focus = request.focus_keyword or ""
         if focus:
             meta["_yoast_wpseo_focuskw"] = focus
         if request.canonical_url:

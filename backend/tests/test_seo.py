@@ -67,6 +67,43 @@ def test_audit_flags_a_skipped_heading_level_once():
     assert len(skips) == 1
 
 
+def test_headings_inside_code_fences_are_ignored():
+    """A Python comment like '# import os' inside a code block is not an H1."""
+    body = (
+        "## Real Heading\n\n"
+        + ("word " * 400)
+        + "\n\n```python\n# import os\n# This is a comment\n```\n"
+    )
+    issues = seo.audit(
+        title="Marketing automation for devs",
+        body_markdown=body,
+        meta_description="x" * 100,
+        keywords=["marketing automation"],
+    )
+    # No heading hierarchy issues — the code comments are not headings.
+    skips = [i for i in issues if "skip" in i.message.lower()]
+    assert len(skips) == 0
+
+
+def test_seo_score_ignores_code_fence_headings():
+    """seo_score should not count # comments in code as H1."""
+    body = (
+        "## How to automate\n\n"
+        + ("automate " * 300)
+        + "\n\n```bash\n# install deps\nnpm install\n```\n"
+    )
+    score = seo.seo_score(
+        title="How to automate marketing",
+        body_markdown=body,
+        meta_description="Learn how to automate your marketing workflow.",
+        keywords=["automate"],
+        focus_keyword="automate",
+        slug="how-to-automate-marketing",
+    )
+    # A good post should score above 50.
+    assert score >= 50
+
+
 def test_audit_is_clean_for_a_good_post():
     body = (
         "## Why Marketing Automation Matters\n\n"

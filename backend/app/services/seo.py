@@ -33,6 +33,15 @@ _CODE_FENCE = re.compile(r"```.*?```", re.S)
 _INLINE_MARKUP = re.compile(r"[*_`>\[\]()#]")
 
 
+def _find_headings(body_markdown: str) -> list[tuple[str, str]]:
+    """Find markdown headings, ignoring those inside fenced code blocks.
+
+    Without stripping fences first, a Python comment like ``# import os``
+    inside a code block is falsely detected as an H1.
+    """
+    return _HEADING.findall(_CODE_FENCE.sub(" ", body_markdown or ""))
+
+
 def strip_markdown(markdown: str) -> str:
     """Body text with fences, markup and link syntax removed.
 
@@ -239,7 +248,7 @@ def audit(
             )
 
         # Subheadings.
-        headings = _HEADING.findall(body_markdown)
+        headings = _find_headings(body_markdown)
         heading_texts = [text for _, text in headings]
         if heading_texts and not any(fk.lower() in h.lower() for h in heading_texts):
             issues.append(
@@ -273,7 +282,7 @@ def audit(
                     )
                 )
 
-    headings = _HEADING.findall(body_markdown)
+    headings = _find_headings(body_markdown)
     levels = [len(hashes) for hashes, _ in headings]
     if not levels:
         issues.append(
@@ -412,7 +421,7 @@ def seo_score(
             score -= 10
 
     # Subheadings (10 points).
-    headings = _HEADING.findall(body_markdown)
+    headings = _find_headings(body_markdown)
     heading_texts = [text for _, text in headings]
     if not heading_texts:
         score -= 10

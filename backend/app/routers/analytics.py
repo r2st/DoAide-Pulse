@@ -1,6 +1,8 @@
 """Analytics dashboard endpoints."""
 from __future__ import annotations
 
+import dataclasses
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -82,7 +84,7 @@ def dashboard(
     )
 
     return {
-        "totals": totals.__dict__,
+        "totals": dataclasses.asdict(totals),
         "needs_review": review_count,
         "failed_publications": [
             {
