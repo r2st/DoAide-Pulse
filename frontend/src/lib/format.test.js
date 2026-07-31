@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   formatCount,
+  formatDuration,
   formatRate,
+  formatReadLength,
   formatWhen,
   localDayKey,
   statusTone,
@@ -49,6 +51,31 @@ describe("formatRate", () => {
     expect(formatRate(0)).toBe("0.0%");
     expect(formatRate(null)).toBe("—");
     expect(formatRate(undefined)).toBe("—");
+  });
+});
+
+describe("formatDuration", () => {
+  it("scales the unit to the magnitude", () => {
+    expect(formatDuration(45)).toBe("45m");
+    expect(formatDuration(60)).toBe("1h");
+    expect(formatDuration(200)).toBe("3h 20m");
+    expect(formatDuration(1440)).toBe("1d");
+    expect(formatDuration(18420)).toBe("12d 19h");
+  });
+
+  it("keeps zero as an answer and unknown as a dash", () => {
+    // Nobody has read anything yet, versus no platform counting reads.
+    expect(formatDuration(0)).toBe("0m");
+    expect(formatDuration(null)).toBe("—");
+    expect(formatDuration(undefined)).toBe("—");
+    expect(formatDuration("nonsense")).toBe("—");
+  });
+});
+
+describe("formatReadLength", () => {
+  it("reads the way the piece would label itself", () => {
+    expect(formatReadLength(6)).toBe("6 min read");
+    expect(formatReadLength(null)).toBe("—");
   });
 });
 

@@ -150,6 +150,132 @@ def test_engagement_trend_sums_snapshots_captured_on_the_same_day(
     ).json()
 
 
+def test_engagement_trend_weights_reads_by_the_piece_they_belong_to(
+    client, auth, db, project
+):
+    """Reader-minutes are per-piece, not the day's reads times an average.
+
+    Two posts of very different lengths read on the same day: 10 reads of a
+    one-minute post and 2 reads of a long one. Multiplying 12 reads by the
+    average length would report attention nobody paid.
+    """
+    from app.models.metrics import ContentMetric
+    from app.models.mixins import utcnow
+
+    now = utcnow()
+    for slug, words, reads in (("short-one", 100, 10), ("long-one", 2200, 2)):
+        content = Content(
+            project_id=project.id,
+            content_type=ContentType.TUTORIAL,
+            title=slug,
+            slug=slug,
+            body_markdown=" ".join(["word"] * words),
+            status=ContentStatus.PUBLISHED,
+        )
+        db.add(content)
+        db.flush()
+        pub = Publication(
+            content_id=content.id,
+            platform=Platform.DEVTO,
+            status=PublicationStatus.PUBLISHED,
+        )
+        db.add(pub)
+        db.flush()
+        db.add(
+            ContentMetric(
+                publication_id=pub.id, captured_at=now, views=100, reads=reads
+            )
+        )
+    db.commit()
+
+    body = client.get("/api/v1/analytics/engagement-trend?days=1", headers=auth).json()
+    today = body[-1]
+    # 100 words -> 1 minute (floored), 2200 words -> 10 minutes.
+    assert today["reads"] == 12
+    assert today["reader_minutes"] == 10 * 1 + 2 * 10
+    assert all(day["reader_minutes"] == 0 for day in body[:-1])
+
+
+def test_engagement_trend_reader_minutes_ignore_platforms_that_dont_count_reads(
+    client, auth, db, project
+):
+    """A NULL read is unknown, not zero, and contributes nothing."""
+    from app.models.metrics import ContentMetric
+    from app.models.mixins import utcnow
+
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Toot",
+        slug="toot",
+        body_markdown=" ".join(["word"] * 2200),
+        status=ContentStatus.PUBLISHED,
+    )
+    db.add(content)
+    db.flush()
+    pub = Publication(
+        content_id=content.id,
+        platform=Platform.MASTODON,
+        status=PublicationStatus.PUBLISHED,
+    )
+    db.add(pub)
+    db.flush()
+    db.add(
+        ContentMetric(
+            publication_id=pub.id, captured_at=utcnow(), views=500, reads=None
+        )
+    )
+    db.commit()
+
+    today = client.get(
+        "/api/v1/analytics/engagement-trend?days=1", headers=auth
+    ).json()[-1]
+    assert today["views"] == 500
+    assert today["reader_minutes"] == 0
+
+
+def test_read_time_attributes_reader_minutes_to_the_length_band(
+    client, auth, db, project
+):
+    """The band breakdown carries its own share of the reading time."""
+    from app.models.metrics import ContentMetric
+    from app.models.mixins import utcnow
+
+    for slug, words, reads in (("brief", 100, 30), ("epic", 3300, 4)):
+        content = Content(
+            project_id=project.id,
+            content_type=ContentType.TUTORIAL,
+            title=slug,
+            slug=slug,
+            body_markdown=" ".join(["word"] * words),
+            status=ContentStatus.PUBLISHED,
+        )
+        db.add(content)
+        db.flush()
+        pub = Publication(
+            content_id=content.id,
+            platform=Platform.DEVTO,
+            status=PublicationStatus.PUBLISHED,
+        )
+        db.add(pub)
+        db.flush()
+        db.add(
+            ContentMetric(
+                publication_id=pub.id, captured_at=utcnow(), views=200, reads=reads
+            )
+        )
+    db.commit()
+
+    body = client.get("/api/v1/analytics/read-time", headers=auth).json()
+    bands = {band["band"]: band for band in body["by_length"]}
+    # 1-minute piece read 30 times; 15-minute piece read 4 times.
+    assert bands["short"]["reader_minutes"] == 30
+    assert bands["long"]["reader_minutes"] == 60
+    assert bands["medium"]["reader_minutes"] == 0
+    # The bands account for every minute the headline figure claims.
+    assert sum(b["reader_minutes"] for b in body["by_length"]) == body["reader_minutes"]
+
+
 def test_engagement_trend_days_out_of_range_is_rejected(client, auth):
     assert client.get(
         "/api/v1/analytics/engagement-trend?days=0", headers=auth

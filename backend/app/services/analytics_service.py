@@ -462,19 +462,34 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
     every metric snapshot captured on each day, so it tracks reader activity
     on posts that went out long before the window started. Every day is
     present, including zero days — see :func:`timeline` for why.
+
+    ``reader_minutes`` is each day's reads weighted by how long the piece they
+    belong to takes to read — the same quantity :func:`read_time` reports for
+    all time, resolved per day so the dashboard can chart it. Weighting has to
+    happen here rather than in the UI: a day's reads span pieces of different
+    lengths, and multiplying a daily total by an average reading time invents
+    attention that was never paid to any particular post.
     """
     since = utcnow() - timedelta(days=days)
     rows = db.execute(
-        select(ContentMetric)
+        # The Content join is needed for its own sake here, not just to reach
+        # Project: ``read_minutes`` is derived from the body.
+        select(ContentMetric, Content)
         .join(Publication, Publication.id == ContentMetric.publication_id)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
         .where(Project.user_id == user_id, ContentMetric.captured_at >= since)
-    ).scalars()
+    ).all()
 
     by_day: dict[str, dict[str, int]] = defaultdict(_blank_metrics)
-    for metric in rows:
-        _accumulate(by_day[metric.captured_at.date().isoformat()], metric)
+    reader_minutes: dict[str, int] = defaultdict(int)
+    for metric, content in rows:
+        day = metric.captured_at.date().isoformat()
+        _accumulate(by_day[day], metric)
+        # Reads, not views — see :func:`read_time` for why a bounce contributes
+        # nothing here.
+        if metric.reads is not None:
+            reader_minutes[day] += metric.reads * content.read_minutes
 
     start = since.date()
     out: list[dict] = []
@@ -489,6 +504,7 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
                     "reads": 0,
                     "clicks": 0,
                     "engagement": 0,
+                    "reader_minutes": 0,
                     "click_through_rate": None,
                     "read_rate": None,
                     "engagement_rate": None,
@@ -502,6 +518,7 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
                 "reads": bucket["reads"],
                 "clicks": bucket["clicks"],
                 "engagement": bucket["engagement"],
+                "reader_minutes": reader_minutes[day],
                 **_rates(bucket),
             }
         )
@@ -553,7 +570,12 @@ def read_time(db: Session, user_id: int) -> dict:
     ).all()
 
     bands: dict[str, dict] = {
-        name: {"publications": 0, "read_minutes": 0, **_blank_metrics()}
+        name: {
+            "publications": 0,
+            "read_minutes": 0,
+            "reader_minutes": 0,
+            **_blank_metrics(),
+        }
         for name, _ in _LENGTH_BANDS
     }
     reader_minutes = 0
@@ -571,6 +593,10 @@ def read_time(db: Session, user_id: int) -> dict:
             total_reads += metric.reads
             reads_reported += 1
             reader_minutes += metric.reads * content.read_minutes
+            # Per band as well as overall: where the output goes and where the
+            # attention goes are different distributions, and the gap between
+            # them is the interesting part.
+            bucket["reader_minutes"] += metric.reads * content.read_minutes
 
     return {
         "published_pieces": len(published),
@@ -600,6 +626,7 @@ def read_time(db: Session, user_id: int) -> dict:
                 "reads": bands[name]["reads"],
                 "clicks": bands[name]["clicks"],
                 "engagement": bands[name]["engagement"],
+                "reader_minutes": bands[name]["reader_minutes"],
                 "avg_views": round(
                     bands[name]["views"] / bands[name]["publications"], 1
                 )

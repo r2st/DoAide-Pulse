@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import ReadTimePanel from "../components/ReadTimePanel";
 import {
   Empty,
   ErrorBanner,
@@ -234,6 +235,9 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+
+      {/* Last on the page, and loaded on its own: analysis, not a to-do. */}
+      {!nothingYet && <ReadTimePanel />}
     </div>
   );
 }

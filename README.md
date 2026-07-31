@@ -18,7 +18,7 @@ destinations on a schedule, and tracks which pieces actually got read.
 | **SEO** | Meta description, keywords, tags and a heading-outline audit, applied deterministically rather than spent as a second model call. |
 | **Publishing** | Adapters per platform. Seven publish today — including a commit to your own blog repo — and two need an auth flow nobody can complete on a free tier (see [Platform support](#platform-support)). |
 | **Calendar** | Month grid with drag-to-reschedule, plus per-platform cadence guidance. |
-| **Analytics** | Views and engagement per post, per platform, per content type, per project. |
+| **Analytics** | Views and engagement per post, per platform, per content type, per project — plus reader-minutes over time and whether the long pieces earn their length. |
 | **Autopilot** | Watch repos, write when something ships, publish without review only when the model is confident and you've said it may. |
 
 ## Stack

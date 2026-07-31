@@ -63,6 +63,37 @@ export function formatRate(value, digits = 1) {
   return `${(number * 100).toFixed(digits)}%`;
 }
 
+/**
+ * A count of minutes as a duration: "45m", "3h 20m", "12d 4h".
+ *
+ * Reader-minutes reach five figures quickly, and "18,420" tells you nothing
+ * about whether that is a lot. "12d 19h" does. Zero stays "0m" rather than
+ * becoming "—": nobody having read anything yet is a real answer, and the
+ * unknown case is handled by the caller, which knows whether any platform
+ * reports reads at all.
+ */
+export function formatDuration(minutes) {
+  if (minutes === null || minutes === undefined) return "—";
+  const total = Math.round(Number(minutes));
+  if (Number.isNaN(total)) return "—";
+  if (total < 60) return `${total}m`;
+
+  const hours = Math.floor(total / 60);
+  if (hours < 24) {
+    const rest = total % 60;
+    return rest ? `${hours}h ${rest}m` : `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  const rest = hours % 24;
+  return rest ? `${days}d ${rest}h` : `${days}d`;
+}
+
+/** "6 min read", the way the piece itself would put it. */
+export function formatReadLength(minutes) {
+  if (minutes === null || minutes === undefined) return "—";
+  return `${Number(minutes).toLocaleString()} min read`;
+}
+
 /** "feature_spotlight" -> "Feature Spotlight". */
 export function titleize(value) {
   if (!value) return "";

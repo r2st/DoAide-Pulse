@@ -113,6 +113,11 @@ export const api = {
   // ---- analytics ----
   dashboard: () => request("/analytics/dashboard"),
   analytics: () => request("/analytics/overview"),
+  // Kept out of /analytics/dashboard on purpose: the read-time panel is one
+  // section far down the home page, and the dashboard payload is fetched on
+  // every navigation back to it.
+  readTime: () => request("/analytics/read-time"),
+  engagementTrend: (days) => request(`/analytics/engagement-trend${qs({ days })}`),
 
   // ---- settings ----
   platforms: () => request("/settings/platforms"),
