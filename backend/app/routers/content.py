@@ -4,8 +4,8 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -58,7 +58,7 @@ def _to_out(content: Content) -> ContentOut:
             for key in (
                 "id", "project_id", "content_type", "status", "title", "slug",
                 "excerpt", "meta_description", "keywords", "tags", "canonical_url",
-                "cover_image_url",
+                "cover_image_url", "focus_keyword",
                 "confidence", "generated_by_provider", "generated_by_model",
                 "source", "scheduled_for", "published_at", "created_at", "updated_at",
             )
@@ -114,6 +114,7 @@ def _commit_content(db: Session, content: Content) -> None:
 
 @router.get("", response_model=list[ContentOut])
 def list_content(
+    response: Response,
     project_id: int | None = None,
     status_filter: ContentStatus | None = Query(default=None, alias="status"),
     content_type: ContentType | None = None,
@@ -122,25 +123,36 @@ def list_content(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[ContentOut]:
-    query = (
+    # Base filter used by both the count and the data query.
+    base = (
         select(Content)
         .join(Project, Project.id == Content.project_id)
-        # ``_to_out`` reads ``content.project.name`` for every row. The join
-        # above only filters — it does not populate the relationship — so
-        # without this the default lazy load fires one SELECT per row, and this
-        # endpoint returns up to 500 of them.
-        .options(joinedload(Content.project))
         .where(Project.user_id == user.id)
+    )
+    if project_id is not None:
+        base = base.where(Content.project_id == project_id)
+    if status_filter is not None:
+        base = base.where(Content.status == status_filter)
+    if content_type is not None:
+        base = base.where(Content.content_type == content_type)
+
+    # Total count for the UI to render pagination controls.
+    total = db.scalar(
+        select(func.count()).select_from(base.with_only_columns(Content.id).subquery())
+    )
+    response.headers["X-Total-Count"] = str(total or 0)
+
+    # ``_to_out`` reads ``content.project.name`` for every row. The join
+    # above only filters — it does not populate the relationship — so
+    # without this the default lazy load fires one SELECT per row, and this
+    # endpoint returns up to 500 of them.
+    query = (
+        base
+        .options(joinedload(Content.project))
         .order_by(Content.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
-    if project_id is not None:
-        query = query.where(Content.project_id == project_id)
-    if status_filter is not None:
-        query = query.where(Content.status == status_filter)
-    if content_type is not None:
-        query = query.where(Content.content_type == content_type)
 
     return [_to_out(c) for c in db.scalars(query)]
 
@@ -283,6 +295,7 @@ def generate_content(
         meta_description=generated.meta_description,
         keywords=generated.keywords,
         tags=generated.tags,
+        focus_keyword=generated.focus_keyword,
         confidence=generated.confidence,
         generated_by_provider=generated.provider,
         generated_by_model=generated.model,
@@ -305,6 +318,7 @@ def create_content(
 ) -> ContentDetail:
     """Write a piece by hand."""
     project = owned_project(payload.project_id, db, user)
+    keywords = seo.normalize_keywords(payload.keywords)
     content = Content(
         project_id=project.id,
         content_type=payload.content_type,
@@ -315,8 +329,9 @@ def create_content(
         excerpt=payload.excerpt or seo.build_excerpt(payload.body_markdown),
         meta_description=payload.meta_description
         or seo.build_meta_description("", fallback_body=payload.body_markdown),
-        keywords=seo.normalize_keywords(payload.keywords),
+        keywords=keywords,
         tags=payload.tags,
+        focus_keyword=payload.focus_keyword or (keywords[0] if keywords else ""),
         canonical_url=payload.canonical_url,
         cover_image_url=payload.cover_image_url,
         source={"kind": "manual", "user_id": user.id},
@@ -346,6 +361,9 @@ def update_content(
         content.slug = unique_content_slug(db, content.project_id, data["title"])
     if "keywords" in data and data["keywords"] is not None:
         data["keywords"] = seo.normalize_keywords(data["keywords"])
+        # Keep focus_keyword in sync unless the caller set it explicitly.
+        if "focus_keyword" not in data and data["keywords"]:
+            data["focus_keyword"] = data["keywords"][0]
 
     for key, value in data.items():
         setattr(content, key, value)
@@ -548,6 +566,7 @@ def write_from_idea(
         meta_description=generated.meta_description,
         keywords=generated.keywords,
         tags=generated.tags,
+        focus_keyword=generated.focus_keyword,
         confidence=generated.confidence,
         generated_by_provider=generated.provider,
         generated_by_model=generated.model,

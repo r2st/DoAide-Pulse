@@ -57,6 +57,18 @@ def test_configured_origins_are_an_explicit_list(client):
     assert settings.cors_origins == ["http://localhost:5173", "http://localhost:3000"]
 
 
+def test_custom_headers_exposed_via_cors(client):
+    """X-Total-Count and X-Request-ID must be readable by the browser.
+
+    ``expose_headers`` is sent on *actual* responses (not the preflight
+    OPTIONS), so we check a simple GET with an Origin header.
+    """
+    resp = client.get("/api/v1/health", headers={"Origin": ALLOWED})
+    exposed = resp.headers.get("access-control-expose-headers", "")
+    for header in ("X-Total-Count", "X-Request-ID"):
+        assert header.lower() in exposed.lower(), f"{header} not exposed via CORS"
+
+
 def test_security_headers_present(client):
     """Every response should carry defence-in-depth security headers."""
     resp = client.get("/api/v1/health")

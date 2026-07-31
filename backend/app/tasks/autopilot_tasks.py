@@ -77,7 +77,7 @@ def _daily_count(db: Session, project_id: int) -> int:
     )
 
 
-@celery_app.task(name="app.tasks.autopilot_tasks.scan_project")
+@celery_app.task(name="app.tasks.autopilot_tasks.scan_project", soft_time_limit=180, time_limit=210)
 def scan_project(project_id: int) -> dict:
     """Run the autopilot loop for one project. Never raises."""
     db = SessionLocal()
@@ -268,7 +268,7 @@ def _publish_now(publication_id: int) -> None:
     publish_tasks.publish_one(publication_id)
 
 
-@celery_app.task(name="app.tasks.autopilot_tasks.scan_all_projects")
+@celery_app.task(name="app.tasks.autopilot_tasks.scan_all_projects", soft_time_limit=120, time_limit=150)
 def scan_all_projects() -> dict:
     """Beat task: scan every active project that has a repo."""
     db = SessionLocal()

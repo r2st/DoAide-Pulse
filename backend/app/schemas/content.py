@@ -54,6 +54,8 @@ class ContentCreate(BaseModel):
     tags: list[str] = Field(default=[], max_length=30)
     canonical_url: str | None = Field(default=None, max_length=700)
     cover_image_url: str | None = Field(default=None, max_length=700)
+    #: The primary SEO keyword. Defaults to the first keyword when omitted.
+    focus_keyword: str = Field(default="", max_length=100)
 
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
 
@@ -67,6 +69,7 @@ class ContentUpdate(BaseModel):
     tags: list[str] | None = Field(default=None, max_length=30)
     canonical_url: str | None = Field(default=None, max_length=700)
     cover_image_url: str | None = Field(default=None, max_length=700)
+    focus_keyword: str | None = Field(default=None, max_length=100)
     content_type: ContentType | None = None
     status: ContentStatus | None = None
     scheduled_for: datetime | None = None
@@ -127,6 +130,7 @@ class ContentOut(BaseModel):
     tags: list[str] = []
     canonical_url: str | None = None
     cover_image_url: str | None = None
+    focus_keyword: str = ""
     confidence: float | None = None
     generated_by_provider: str | None = None
     generated_by_model: str | None = None

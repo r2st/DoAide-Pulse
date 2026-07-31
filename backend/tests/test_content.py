@@ -190,6 +190,101 @@ def test_detail_includes_focus_keyword_seo_checks(client, auth, project):
     assert "cover_image_url" in fields_checked
 
 
+def test_create_content_sets_focus_keyword_from_first_keyword(client, auth, project):
+    """When no explicit focus_keyword is given, the first keyword is used."""
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Herald Marketing",
+            "body_markdown": "## Hi\n\n" + ("word " * 100),
+            "keywords": ["marketing automation", "developer tools"],
+        },
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["focus_keyword"] == "marketing automation"
+
+
+def test_create_content_explicit_focus_keyword(client, auth, project):
+    """An explicit focus_keyword overrides the default."""
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Herald Marketing",
+            "body_markdown": "## Hi\n\n" + ("word " * 100),
+            "keywords": ["marketing automation", "developer tools"],
+            "focus_keyword": "developer tools",
+        },
+    )
+    assert resp.status_code == 201
+    assert resp.json()["focus_keyword"] == "developer tools"
+
+
+def test_generate_content_sets_focus_keyword(client, auth, project):
+    """The generate endpoint must propagate focus_keyword from the engine."""
+    resp = client.post(
+        "/api/v1/content/generate",
+        headers=auth,
+        json={"project_id": project.id, "content_type": "announcement"},
+    )
+    assert resp.status_code == 201
+    body = resp.json()
+    # The template fallback uses the first project keyword as focus_keyword.
+    assert body["focus_keyword"] == "marketing automation"
+
+
+def test_update_keywords_syncs_focus_keyword(client, auth, project, db):
+    """Changing keywords should update focus_keyword to the new first keyword."""
+    db.add(
+        Content(
+            project_id=project.id,
+            content_type=ContentType.HOW_TO,
+            status=ContentStatus.DRAFT,
+            title="Test",
+            slug="test-sync",
+            focus_keyword="old",
+        )
+    )
+    db.commit()
+    content_id = db.query(Content).filter(Content.slug == "test-sync").first().id
+
+    resp = client.patch(
+        f"/api/v1/content/{content_id}",
+        headers=auth,
+        json={"keywords": ["new primary", "secondary"]},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["focus_keyword"] == "new primary"
+
+
+def test_list_content_total_count_header(client, auth, project, db):
+    """The X-Total-Count header reports the full count before pagination."""
+    for i in range(7):
+        db.add(
+            Content(
+                project_id=project.id,
+                content_type=ContentType.HOW_TO,
+                status=ContentStatus.DRAFT,
+                title=f"Post {i}",
+                slug=f"total-{i}",
+            )
+        )
+    db.commit()
+
+    resp = client.get("/api/v1/content?limit=3&offset=0", headers=auth)
+    assert resp.status_code == 200
+    assert len(resp.json()) == 3
+    assert resp.headers["X-Total-Count"] == "7"
+
+    # Filtered count should only count matching rows.
+    resp2 = client.get("/api/v1/content?limit=100&status=review", headers=auth)
+    assert resp2.headers["X-Total-Count"] == "0"
+
+
 def test_approve_moves_status(client, auth, project, db):
     content = Content(
         project_id=project.id,

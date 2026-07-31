@@ -17,7 +17,7 @@ from app.tasks.celery_app import celery_app
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="app.tasks.publish_tasks.publish_one")
+@celery_app.task(name="app.tasks.publish_tasks.publish_one", soft_time_limit=120, time_limit=150)
 def publish_one(publication_id: int) -> dict:
     """Publish one queued publication.
 
@@ -49,7 +49,7 @@ def publish_one(publication_id: int) -> dict:
         db.close()
 
 
-@celery_app.task(name="app.tasks.publish_tasks.publish_due")
+@celery_app.task(name="app.tasks.publish_tasks.publish_due", soft_time_limit=300, time_limit=360)
 def publish_due() -> dict:
     """Beat task: publish everything whose time has come.
 
@@ -78,7 +78,7 @@ def publish_due() -> dict:
     return {"dispatched": len(ids)}
 
 
-@celery_app.task(name="app.tasks.publish_tasks.cancel_publication")
+@celery_app.task(name="app.tasks.publish_tasks.cancel_publication", soft_time_limit=30, time_limit=60)
 def cancel_publication(publication_id: int) -> dict:
     """Stop a scheduled publication before it goes out."""
     db = SessionLocal()
