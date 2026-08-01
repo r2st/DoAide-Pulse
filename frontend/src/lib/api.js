@@ -148,6 +148,21 @@ export const api = {
   checkTrigger: (id) => request(`/triggers/${id}/check`, { method: "POST" }),
   triggerEvents: (id, params = {}) => request(`/triggers/${id}/events${qs(params)}`),
 
+  // ---- templates ----
+  templateBuiltins: () => request("/templates/builtins"),
+  listTemplates: (params = {}) => request(`/templates${qs(params)}`),
+  createTemplate: (payload) => request("/templates", { method: "POST", body: payload }),
+  updateTemplate: (id, payload) =>
+    request(`/templates/${id}`, { method: "PATCH", body: payload }),
+  deleteTemplate: (id) => request(`/templates/${id}`, { method: "DELETE" }),
+  // Renders without saving, and renders a half-filled template rather than
+  // refusing — the missing names come back in the response instead.
+  previewTemplate: (id, payload) =>
+    request(`/templates/${id}/preview`, { method: "POST", body: payload }),
+  // Writes a draft. Refuses on the missing values `preview` merely reports.
+  useTemplate: (id, payload) =>
+    request(`/templates/${id}/use`, { method: "POST", body: payload }),
+
   // ---- settings ----
   platforms: () => request("/settings/platforms"),
   saveConnection: (platform, credentials) =>

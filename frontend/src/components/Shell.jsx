@@ -4,12 +4,14 @@ import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import Logo from "./ui/Logo";
 
-// The six destinations, in the order the work happens: see where things stand,
-// register what to write about, write it, place it in time, ship it, configure.
+// The destinations, in the order the work happens: see where things stand,
+// register what to write about, decide what shape it takes, write it, place it
+// in time, ship it, configure.
 const TABS = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/projects", label: "Projects" },
   { to: "/triggers", label: "Triggers" },
+  { to: "/templates", label: "Templates" },
   { to: "/content", label: "Content" },
   { to: "/calendar", label: "Calendar" },
   { to: "/publish", label: "Publish" },
