@@ -103,13 +103,17 @@ export function titleize(value) {
     .join(" ");
 }
 
-/** Tailwind classes for a content or publication status pill. */
+/** Tailwind classes for a content, publication or trigger-event status pill. */
 export function statusTone(status) {
   switch (status) {
     case "published":
+    // A trigger event that reached a draft. The same green as a publication
+    // that landed: in both cases the machinery did its whole job.
+    case "generated":
       return "bg-good-wash text-good";
     case "approved":
     case "scheduled":
+    case "received":
       return "bg-brand-50 text-brand-600";
     case "review":
     case "publishing":

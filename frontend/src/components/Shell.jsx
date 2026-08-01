@@ -9,6 +9,7 @@ import Logo from "./ui/Logo";
 const TABS = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/projects", label: "Projects" },
+  { to: "/triggers", label: "Triggers" },
   { to: "/content", label: "Content" },
   { to: "/calendar", label: "Calendar" },
   { to: "/publish", label: "Publish" },

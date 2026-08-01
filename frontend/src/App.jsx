@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Projects from "./pages/Projects";
 import Publish from "./pages/Publish";
 import Settings from "./pages/Settings";
+import Triggers from "./pages/Triggers";
 
 function Loading() {
   return (
@@ -60,6 +61,14 @@ export default function App() {
         element={
           <Protected>
             <ContentEditor />
+          </Protected>
+        }
+      />
+      <Route
+        path="/triggers"
+        element={
+          <Protected>
+            <Triggers />
           </Protected>
         }
       />

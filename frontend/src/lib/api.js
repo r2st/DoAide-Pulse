@@ -131,6 +131,23 @@ export const api = {
   // full one, for the analytics page.
   alerts: (limit) => request(`/analytics/alerts${qs({ limit })}`),
 
+  // ---- triggers ----
+  triggerKinds: () => request("/triggers/kinds"),
+  listTriggers: (params = {}) => request(`/triggers${qs(params)}`),
+  // The response carries the signing secret, and no later read of the trigger
+  // ever will — same contract as an outbound webhook's.
+  createTrigger: (payload) => request("/triggers", { method: "POST", body: payload }),
+  updateTrigger: (id, payload) =>
+    request(`/triggers/${id}`, { method: "PATCH", body: payload }),
+  deleteTrigger: (id) => request(`/triggers/${id}`, { method: "DELETE" }),
+  rotateTriggerSecret: (id) =>
+    request(`/triggers/${id}/rotate-secret`, { method: "POST" }),
+  // Polls now, ignoring the schedule. Synchronous: the question the button asks
+  // is "does my feed URL work?", and an answer that turns up in a list a minute
+  // later does not answer it.
+  checkTrigger: (id) => request(`/triggers/${id}/check`, { method: "POST" }),
+  triggerEvents: (id, params = {}) => request(`/triggers/${id}/events${qs(params)}`),
+
   // ---- settings ----
   platforms: () => request("/settings/platforms"),
   saveConnection: (platform, credentials) =>

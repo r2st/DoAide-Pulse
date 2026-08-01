@@ -84,6 +84,16 @@ describe("statusTone", () => {
     expect(statusTone("published")).not.toBe(statusTone("failed"));
     expect(statusTone("anything-else")).toContain("ink");
   });
+
+  it("reads a trigger event that produced a draft as a success", () => {
+    // "generated" is the trigger-event equivalent of a publication landing.
+    expect(statusTone("generated")).toBe(statusTone("published"));
+  });
+
+  it("keeps a skipped firing quiet and a failed one loud", () => {
+    expect(statusTone("skipped")).toContain("ink");
+    expect(statusTone("failed")).not.toBe(statusTone("skipped"));
+  });
 });
 
 describe("localDayKey", () => {
