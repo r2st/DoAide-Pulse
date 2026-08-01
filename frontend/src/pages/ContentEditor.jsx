@@ -1,12 +1,32 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import SocialPreview from "../components/SocialPreview";
 import { Confidence, ErrorBanner, Skeleton, StatusBadge } from "../components/ui/Bits";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
+import * as draftStore from "../lib/draftStore";
+import { differs } from "../lib/draftStore";
 import { formatDateTime, formatWhen, titleize } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
+
+/** The server's copy, in the shape the editor's fields hold.
+ *
+ *  One function so `dirty`, the recovery comparison and the storage mirror all
+ *  agree on what "the same draft" means — three hand-rolled field lists would
+ *  drift, and the one that drifted would either nag about nothing or lose an
+ *  edit. */
+function draftFrom(content) {
+  return {
+    title: content.title,
+    body_markdown: content.body_markdown,
+    excerpt: content.excerpt,
+    meta_description: content.meta_description,
+    keywords: (content.keywords ?? []).join(", "),
+    tags: (content.tags ?? []).join(", "),
+    cover_image_url: content.cover_image_url ?? "",
+  };
+}
 
 /**
  * Edit one piece, see what SEO thinks of it, and send it somewhere.
@@ -30,37 +50,81 @@ export default function ContentEditor() {
   const [tab, setTab] = useState("write");
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // An unsaved draft found in local storage on arrival. Offered, never applied
+  // on its own: the server's copy is what the user last committed to, and
+  // silently replacing it with something a crashed tab left behind is the kind
+  // of help that loses work rather than saving it.
+  const [recovered, setRecovered] = useState(null);
+
+  const saved = useMemo(() => (data ? draftFrom(data) : null), [data]);
 
   useEffect(() => {
-    if (data) {
-      setDraft({
-        title: data.title,
-        body_markdown: data.body_markdown,
-        excerpt: data.excerpt,
-        meta_description: data.meta_description,
-        keywords: (data.keywords ?? []).join(", "),
-        tags: (data.tags ?? []).join(", "),
-        cover_image_url: data.cover_image_url ?? "",
-      });
-    }
-  }, [data]);
+    if (saved) setDraft(saved);
+  }, [saved]);
 
-  const dirty = useMemo(() => {
-    if (!data || !draft) return false;
-    return (
-      draft.title !== data.title ||
-      draft.body_markdown !== data.body_markdown ||
-      draft.excerpt !== data.excerpt ||
-      draft.meta_description !== data.meta_description ||
-      draft.keywords !== (data.keywords ?? []).join(", ") ||
-      draft.tags !== (data.tags ?? []).join(", ") ||
-      draft.cover_image_url !== (data.cover_image_url ?? "")
-    );
-  }, [data, draft]);
+  const dirty = useMemo(
+    () => Boolean(saved && draft && differs(draft, saved)),
+    [draft, saved],
+  );
 
   // A published piece is a record of what went out. Editing it here would
   // change nothing on the platforms, so the fields are read-only.
   const locked = data?.status === "published";
+
+  // Look for a recovery buffer once per piece, on arrival, and take the chance
+  // to drop everyone else's stale ones while we are here.
+  useEffect(() => {
+    draftStore.prune();
+    if (!saved || locked) return;
+    const stored = draftStore.load(contentId);
+    // Only interesting if it still says something the server does not. A
+    // buffer that matches what was since saved is noise.
+    setRecovered(stored && differs(stored.draft, saved) ? stored : null);
+  }, [contentId, saved, locked]);
+
+  // Mirror every edit. Cheap, synchronous, and cleared by `save` itself once
+  // the draft matches the server again.
+  //
+  // Suspended while an offer is on screen. On arrival `draft` is initialised to
+  // the server's copy, so mirroring it would immediately write "no difference"
+  // over the buffer and delete the very work the banner is pointing at —
+  // recovery would survive exactly one page load, and opening the editor would
+  // be what destroyed it.
+  useEffect(() => {
+    if (!draft || !saved || locked || recovered) return;
+    draftStore.save(contentId, draft, saved);
+  }, [contentId, draft, saved, locked, recovered]);
+
+  // ⌘S / Ctrl-S. Registered up here with the other effects, so it reads the
+  // current `save` through a ref rather than needing to be declared after it.
+  const saveRef = useRef(null);
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== "s" || !(event.metaKey || event.ctrlKey)) return;
+      // Only claim the shortcut when there is something to save. Otherwise the
+      // browser's own Save Page is the more useful thing to leave alone.
+      if (!saveRef.current) return;
+      event.preventDefault();
+      saveRef.current();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  // The one path local storage cannot cover: a reload or a close discards the
+  // React tree before anything can offer the buffer back, so the browser's own
+  // prompt is what gives the user the chance to stay.
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (event) => {
+      event.preventDefault();
+      // Browsers ignore custom text now, but returnValue must be set for the
+      // prompt to appear at all in some of them.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   if (loading && !data) return <Skeleton rows={6} />;
   if (error) return <ErrorBanner message={error} onRetry={reload} />;
@@ -86,6 +150,11 @@ export default function ContentEditor() {
         cover_image_url: draft.cover_image_url.trim() || null,
       });
       setData(updated);
+      // The server now holds this text, so the recovery buffer has nothing
+      // left to recover. Dropping it here rather than waiting for the mirror
+      // effect keeps a failed save from clearing it.
+      draftStore.clear(data.id);
+      setRecovered(null);
       toast.success("Saved");
     } catch (err) {
       toast.error(err.message);
@@ -93,6 +162,11 @@ export default function ContentEditor() {
       setSaving(false);
     }
   }
+
+  // Live, so the shortcut always saves the text on screen. Only wired up when
+  // there is something to write: a published piece is read-only, and a clean
+  // draft has nothing to send.
+  saveRef.current = !locked && dirty && !saving ? save : null;
 
   async function approve() {
     try {
@@ -117,6 +191,20 @@ export default function ContentEditor() {
 
   return (
     <div className="space-y-6">
+      {recovered && (
+        <RecoveryBanner
+          at={recovered.at}
+          onRestore={() => {
+            setDraft(recovered.draft);
+            setRecovered(null);
+          }}
+          onDiscard={() => {
+            draftStore.clear(data.id);
+            setRecovered(null);
+          }}
+        />
+      )}
+
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <Link to="/content" className="btn-quiet -ml-2.5">
@@ -733,6 +821,37 @@ function PublishDialog({ content, platforms, onClose, onDone, onError }) {
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * "You have unsaved work from earlier" — offered, never applied on its own.
+ *
+ * The server's copy is what the user last committed to. Silently replacing it
+ * with something a crashed tab left behind is the kind of help that loses work
+ * rather than saving it, so both outcomes are a deliberate click, and the
+ * timestamp is there because "which one is newer?" is the only question that
+ * decides it.
+ */
+function RecoveryBanner({ at, onRestore, onDiscard }) {
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn/25 bg-warn-wash px-4 py-3 text-sm text-warn"
+    >
+      <span className="min-w-0">
+        Unsaved edits from {formatWhen(at)} are still in this browser. They were
+        never saved to Herald.
+      </span>
+      <span className="flex shrink-0 items-center gap-2">
+        <button className="btn-quiet text-warn" onClick={onDiscard}>
+          Discard
+        </button>
+        <button className="btn-ghost" onClick={onRestore}>
+          Restore them
+        </button>
+      </span>
     </div>
   );
 }
