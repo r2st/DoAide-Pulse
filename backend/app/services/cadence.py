@@ -1,10 +1,14 @@
 """Posting cadence and timing suggestions for the calendar.
 
-Deliberately a table of constants rather than a model call or a learned
-schedule. Two reasons: the published guidance for these platforms is stable and
-boring, and a suggestion the user can predict is one they can override with
-confidence. When Herald has enough of the user's *own* metrics to beat the
-table, that belongs in the analytics service — not here.
+Deliberately a table of constants rather than a model call. Two reasons: the
+published guidance for these platforms is stable and boring, and a suggestion
+the user can predict is one they can override with confidence.
+
+This is now the *prior*, not the final answer. Once a user has enough of their
+own results on a platform, :mod:`app.services.learned_cadence` derives the
+hours from those and passes the result back through :func:`next_slot` as
+``using``. The table still stands for every platform where the evidence is thin,
+which is most of them for most of a project's life.
 
 Everything is UTC. The calendar renders in the browser's timezone.
 """
@@ -136,7 +140,11 @@ def cadence_for(platform: Platform | str) -> Cadence:
 
 
 def next_slot(
-    platform: Platform | str, *, after: datetime, taken: list[datetime] | None = None
+    platform: Platform | str,
+    *,
+    after: datetime,
+    taken: list[datetime] | None = None,
+    using: Cadence | None = None,
 ) -> datetime:
     """The next good time to post on *platform* after *after*.
 
@@ -145,8 +153,13 @@ def next_slot(
     Searches four weeks ahead and then gives up and returns the last candidate —
     a calendar that silently returns nothing is worse than one that suggests a
     crowded slot.
+
+    *using* substitutes a cadence for the table's, which is how
+    :mod:`app.services.learned_cadence` feeds this function hours derived from
+    the user's own results. The search itself is identical either way — only
+    the hour and the weekdays differ.
     """
-    cadence = cadence_for(platform)
+    cadence = using or cadence_for(platform)
     occupied = taken or []
     candidate = after
 
@@ -164,13 +177,17 @@ def next_slot(
 
 
 def suggest_schedule(
-    platform: Platform | str, *, count: int, start: datetime
+    platform: Platform | str,
+    *,
+    count: int,
+    start: datetime,
+    using: Cadence | None = None,
 ) -> list[datetime]:
     """*count* well-spaced slots for one platform, starting after *start*."""
     slots: list[datetime] = []
     cursor = start
     for _ in range(count):
-        slot = next_slot(platform, after=cursor, taken=slots)
+        slot = next_slot(platform, after=cursor, taken=slots, using=using)
         slots.append(slot)
         cursor = slot
     return slots

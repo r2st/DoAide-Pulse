@@ -9,6 +9,7 @@ import {
   StatusBadge,
 } from "../components/ui/Bits";
 import { useApi } from "../hooks/useApi";
+import { alertHref, alertLabel, alertTone, formatAlertRatio } from "../lib/alerts";
 import { api } from "../lib/api";
 import {
   formatCount,
@@ -46,8 +47,16 @@ export default function Dashboard() {
     );
   }
 
-  const { totals, needs_review, failed_publications, upcoming, recent_content, by_project } =
-    data;
+  const {
+    totals,
+    needs_review,
+    failed_publications,
+    upcoming,
+    recent_content,
+    by_project,
+    // Absent from an older cached response; an empty list renders as nothing.
+    alerts = [],
+  } = data;
   const nothingYet = totals.content_count === 0;
 
   return (
@@ -93,7 +102,7 @@ export default function Dashboard() {
       )}
 
       {/* ---- Things waiting on a human ---- */}
-      {(needs_review > 0 || failed_publications.length > 0) && (
+      {(needs_review > 0 || failed_publications.length > 0 || alerts.length > 0) && (
         <section className="space-y-3">
           <SectionHeader title="Needs you" />
           {needs_review > 0 && (
@@ -124,6 +133,45 @@ export default function Dashboard() {
                 </span>
               </span>
               <span className="shrink-0 text-sm text-brand-500">Fix →</span>
+            </Link>
+          ))}
+
+          {/* Below the failures on purpose: a publish that never went out is a
+              broken thing, and a post that went out quietly is only a
+              disappointing one. */}
+          {alerts.map((alert) => (
+            <Link
+              key={`${alert.publication_id}-${alert.kind}`}
+              to={alertHref(alert)}
+              className="panel flex items-start justify-between gap-4 px-5 py-4 transition-shadow hover:shadow-lift"
+            >
+              <span className="min-w-0 text-sm">
+                <span className="flex items-center gap-2">
+                  <span
+                    className={`chip ${
+                      alertTone(alert.severity) === "bad"
+                        ? "text-bad"
+                        : "text-ink-500"
+                    }`}
+                  >
+                    {alertLabel(alert.kind)}
+                  </span>
+                  <span className="truncate font-medium text-ink-900">
+                    {alert.title}
+                  </span>
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-ink-500">
+                  {alert.message}
+                </span>
+              </span>
+              <span className="shrink-0 text-right">
+                {formatAlertRatio(alert.ratio) && (
+                  <span className="block font-mono text-xs text-ink-400">
+                    {formatAlertRatio(alert.ratio)}
+                  </span>
+                )}
+                <span className="text-sm text-brand-500">Open →</span>
+              </span>
             </Link>
           ))}
         </section>

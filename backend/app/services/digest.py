@@ -34,7 +34,7 @@ from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
-from app.services import mailer
+from app.services import alerts, mailer
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +78,11 @@ class Digest:
     needs_review: int = 0
     failed: list[dict] = field(default_factory=list)
     upcoming: list[dict] = field(default_factory=list)
+    #: Posts doing worse than this user's own normal — see
+    #: :mod:`app.services.alerts`. Not counted by :attr:`is_empty`: an alert is
+    #: about something published weeks ago, and it alone is not news enough to
+    #: put an email in an otherwise silent week's inbox.
+    attention: list[dict] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -124,6 +129,7 @@ class Digest:
             "needs_review": self.needs_review,
             "failed": self.failed,
             "upcoming": self.upcoming,
+            "attention": self.attention,
         }
 
 
@@ -321,6 +327,9 @@ def build(
         needs_review=review_count,
         failed=failed,
         upcoming=upcoming,
+        # Three, not ten: the email is a prompt to open the dashboard, and a
+        # list long enough to scroll is one that gets archived unread.
+        attention=[a.as_dict() for a in alerts.build(db, user.id, limit=3, now=until)],
     )
 
 
@@ -363,6 +372,12 @@ def render_text(digest: Digest) -> str:
         lines.append("Most read this week:")
         for row in digest.top:
             lines.append(f"  - {row['title']} — {row['views']:,} views")
+        lines.append("")
+
+    if digest.attention:
+        lines.append("Worth a look:")
+        for row in digest.attention:
+            lines.append(f"  - {row['title']} — {row['message']}")
         lines.append("")
 
     if digest.needs_review:
@@ -422,6 +437,14 @@ def render_html(digest: Digest) -> str:
         parts.append("<h3>Most read this week</h3><ul>")
         for row in digest.top:
             parts.append(f"<li>{esc(row['title'])} — {row['views']:,} views</li>")
+        parts.append("</ul>")
+
+    if digest.attention:
+        parts.append("<h3>Worth a look</h3><ul>")
+        for row in digest.attention:
+            parts.append(
+                f"<li>{esc(row['title'])} — {esc(row['message'])}</li>"
+            )
         parts.append("</ul>")
 
     if digest.needs_review:

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.content import Content, ContentStatus
@@ -15,7 +16,7 @@ from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
 from app.schemas.content import CalendarEntry, CalendarOut, PublicationOut, ScheduleUpdate
-from app.services import cadence
+from app.services import cadence, learned_cadence, velocity
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -120,17 +121,23 @@ def get_calendar(
 
     connected = [Platform(p) for p in user.connected_platforms]
     taken = [as_aware(e.when) for e in entries if as_aware(e.when) >= utcnow()]
+    # One pass over the metric series for every connected platform, rather than
+    # one per platform inside the loop.
+    known = velocity.curves(db, user.id) if settings.learned_cadence_enabled else []
     suggested: list[datetime] = []
     for platform in connected:
+        learned = learned_cadence.learn(db, user.id, platform, known=known)
         suggested.extend(
             slot
-            for slot in cadence.suggest_schedule(platform, count=2, start=utcnow())
+            for slot in cadence.suggest_schedule(
+                platform, count=2, start=utcnow(), using=learned.cadence
+            )
             if all(abs((slot - as_aware(t)).total_seconds()) > 12 * 3600 for t in taken)
         )
 
     return CalendarOut(
         entries=entries,
-        cadence=[cadence.describe(p) for p in connected],
+        cadence=learned_cadence.describe_all(db, user.id, list(connected)),
         suggested_slots=sorted(set(suggested))[:6],
     )
 
@@ -196,10 +203,17 @@ def reschedule(
 @router.get("/cadence", response_model=list[dict])
 def cadence_guide(
     platform: Platform | None = Query(default=None),
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[dict]:
-    """Suggested posting rhythm — for the connected platforms, or one named one."""
-    if platform is not None:
-        return [cadence.describe(platform)]
-    connected = user.connected_platforms or [p.value for p in Platform]
-    return [cadence.describe(p) for p in connected]
+    """Suggested posting rhythm — for the connected platforms, or one named one.
+
+    Each entry carries ``source``: ``learned`` when the hours came from this
+    user's own results, ``table`` when there is not enough evidence yet and the
+    generic guidance stands. The UI shows which, because a suggestion the user
+    cannot interrogate is one they are right to ignore.
+    """
+    targets = [platform] if platform is not None else (
+        user.connected_platforms or [p.value for p in Platform]
+    )
+    return learned_cadence.describe_all(db, user.id, list(targets))

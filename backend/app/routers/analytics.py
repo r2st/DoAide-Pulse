@@ -1,7 +1,7 @@
 """Analytics dashboard endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -11,7 +11,7 @@ from app.models.content import Content, ContentStatus
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
-from app.services import analytics_service, digest, mailer
+from app.services import alerts, analytics_service, digest, mailer, velocity
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -40,6 +40,56 @@ def read_time(
 ) -> dict:
     """How long the published pieces are, and whether length pays off."""
     return analytics_service.read_time(db, user.id)
+
+
+@router.get("/velocity")
+def velocity_summary(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> dict:
+    """How fast posts found an audience, and which have stopped growing.
+
+    Read from the stored snapshot series rather than the latest row per
+    publication — see :mod:`app.services.velocity`.
+    """
+    return velocity.summary(db, user.id)
+
+
+@router.get("/velocity/{publication_id}")
+def velocity_curve(
+    publication_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """One publication's full growth curve, for the detail chart."""
+    for curve in velocity.curves(db, user.id):
+        if curve.publication_id == publication_id:
+            return {
+                **curve.as_dict(),
+                "points": [
+                    {
+                        "hours": round(p.hours, 2),
+                        "views": p.views,
+                        "engagement": p.engagement,
+                    }
+                    for p in curve.points
+                ],
+            }
+    # Also the answer for a publication belonging to someone else: the
+    # ownership filter is in the query, so "not yours" and "not there" are
+    # indistinguishable from here, which is the intended behaviour.
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
+    )
+
+
+@router.get("/alerts")
+def performance_alerts(
+    limit: int = Query(default=10, ge=1, le=50),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Posts doing measurably worse than this user's own normal."""
+    return alerts.summary(db, user.id, limit=limit)
 
 
 @router.get("/digest")
@@ -173,4 +223,7 @@ def dashboard(
         ],
         "by_project": analytics_service.by_project(db, user.id),
         "timeline": analytics_service.timeline(db, user.id, days=14),
+        # Capped tighter than the /alerts endpoint: this is the home page's
+        # "what needs attention" column, not the full list.
+        "alerts": [a.as_dict() for a in alerts.build(db, user.id, limit=5)],
     }

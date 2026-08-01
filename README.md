@@ -17,8 +17,10 @@ destinations on a schedule, and tracks which pieces actually got read.
 | **Content engine** | Five content types (tutorial, announcement, feature spotlight, comparison, how-to) × three tones, generated from the project record plus real commit and release data. |
 | **SEO** | Meta description, keywords, tags and a heading-outline audit, applied deterministically rather than spent as a second model call. |
 | **Publishing** | Adapters per platform. Seven publish today — including a commit to your own blog repo — and two need an auth flow nobody can complete on a free tier (see [Platform support](#platform-support)). |
-| **Calendar** | Month grid with drag-to-reschedule, plus per-platform cadence guidance. |
+| **Calendar** | Month grid with drag-to-reschedule, plus per-platform cadence guidance — learned from your own first-day views once there are enough of them, and the published guidance until then. |
 | **Analytics** | Views and engagement per post, per platform, per content type, per project — plus reader-minutes over time and whether the long pieces earn their length. |
+| **Velocity** | How fast each piece found its audience, read from the whole snapshot series rather than the latest number, and which posts have stopped growing. |
+| **Alerts** | Posts running far under *your own* median for that platform, flagged while a headline swap can still change the outcome. |
 | **Autopilot** | Watch repos, write when something ships, publish without review only when the model is confident and you've said it may. |
 
 ## Stack
@@ -220,9 +222,12 @@ backend/
       content_generator.py
       github_client.py   repo activity since a watermark
       seo.py             deterministic SEO hygiene + audit
-      cadence.py         per-platform posting rhythm
+      cadence.py         per-platform posting rhythm (the generic table)
+      learned_cadence.py the same, derived from your own results
       publishing_service.py
       analytics_service.py
+      velocity.py        growth curves over the snapshot series
+      alerts.py          posts under your own median for that platform
       publishers/        base, registry, formatting, one module per platform
     tasks/               celery app, publish, autopilot, metrics
     seed.py

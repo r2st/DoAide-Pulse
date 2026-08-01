@@ -10,10 +10,12 @@ was missing was everything around it. This module owns three jobs:
   for ``2026`` currently means "publish immediately", which is the one outcome
   somebody setting a date did not want.
 
-* **Choosing** a time when the user would rather not. The cadence table in
-  :mod:`app.services.cadence` already knows when each platform's audience is
-  awake; this asks it, and then makes sure the answer does not land on top of
-  something already scheduled.
+* **Choosing** a time when the user would rather not.
+  :mod:`app.services.learned_cadence` answers when this user's own audience has
+  shown up in the past, falling back to the generic table in
+  :mod:`app.services.cadence` where there is not enough evidence yet; this asks
+  it, and then makes sure the answer does not land on top of something already
+  scheduled.
 
 * **Ordering** a cross-post. When the project names a canonical platform, the
   copies are pushed behind the original by ``syndication_delay_seconds``, for
@@ -36,7 +38,7 @@ from app.models.content import Content
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
-from app.services import cadence
+from app.services import cadence, learned_cadence, velocity
 
 
 class ScheduleError(ValueError):
@@ -145,19 +147,24 @@ def optimal_slots(
     occupied = taken_slots(db, user_id, after=floor)
     chosen: list[Slot] = []
     syndication_floor: datetime | None = None
+    # One pass over the metric series for the whole batch, shared across every
+    # platform below — the learned hours come from the same curves each time.
+    known = velocity.curves(db, user_id) if settings.learned_cadence_enabled else []
 
     for platform in ordered:
         start = floor
         if syndication_floor is not None:
             start = max(start, syndication_floor)
-        when = cadence.next_slot(platform, after=start, taken=occupied)
+        # The user's own results where there are enough of them, the table
+        # where there are not. Which one answered is in the rationale, so a
+        # suggested time is never unexplained.
+        learned = learned_cadence.learn(db, user_id, platform, known=known)
+        when = cadence.next_slot(
+            platform, after=start, taken=occupied, using=learned.cadence
+        )
         occupied.append(when)
         chosen.append(
-            Slot(
-                platform=platform,
-                when=when,
-                rationale=cadence.cadence_for(platform).rationale,
-            )
+            Slot(platform=platform, when=when, rationale=learned.cadence.rationale)
         )
         if canonical is not None and platform == canonical:
             # Everything after this is a copy and must not overtake it.

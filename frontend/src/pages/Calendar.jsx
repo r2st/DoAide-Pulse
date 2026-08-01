@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ErrorBanner, Skeleton } from "../components/ui/Bits";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
+import { cadenceProvenance, isLearned } from "../lib/alerts";
 import { api } from "../lib/api";
 import { formatDateTime, localDayKey, statusTone, titleize } from "../lib/format";
 
@@ -230,8 +231,21 @@ export default function Calendar() {
               <ul className="space-y-3">
                 {data.cadence.map((item) => (
                   <li key={item.platform}>
-                    <p className="text-xs font-medium text-ink-900">
+                    <p className="flex items-center justify-between gap-2 text-xs font-medium text-ink-900">
                       {titleize(item.platform)}
+                      {/* Which of the two answered — the user's own results, or
+                          the generic table. A suggested time nobody can
+                          interrogate is one they are right to ignore. */}
+                      <span
+                        className={`chip ${isLearned(item) ? "text-brand-500" : "text-ink-400"}`}
+                        title={
+                          isLearned(item)
+                            ? "Derived from your own first-day views on this platform"
+                            : "Published guidance — not enough of your own posts yet"
+                        }
+                      >
+                        {cadenceProvenance(item)}
+                      </span>
                     </p>
                     <p className="mt-0.5 font-mono text-[11px] text-ink-500">
                       ≤{item.max_per_week}/week · {item.best_weekdays.join(", ")} ·{" "}

@@ -236,6 +236,37 @@ class Settings(BaseSettings):
     # changes under the user more often than they look at it is a nuisance.
     headline_auto_select_interval_seconds: int = 86400
 
+    # ---- Velocity and alerts ----
+    # The two early windows every post is measured over, in hours since it went
+    # live. The first is "did it land"; the second is the one posts are compared
+    # against, because a single day is short enough that one poll landing late
+    # skews it. Both must comfortably exceed metrics_scan_interval_seconds, or
+    # no poll will fall inside them.
+    velocity_early_window_hours: int = 24
+    velocity_benchmark_window_hours: int = 48
+    # Posts on a platform before its median is used to judge an individual one.
+    # Three is the smallest sample where a median is not just "the other post".
+    velocity_min_sample: int = 3
+    # Below this fraction of the platform median, a post is flagged. Half is
+    # deliberately far out: near-median variation is what content does, and an
+    # alert that fires on a normal week trains the user to ignore the panel.
+    underperformance_threshold: float = 0.5
+    # A post whose views over the trailing window fall to this fraction of its
+    # own best equivalent window has stopped growing.
+    velocity_stall_window_hours: int = 168  # one week
+    velocity_stall_ratio: float = 0.1
+
+    # ---- Learned posting times ----
+    # Replace the static cadence table with hours derived from the user's own
+    # results, once there is enough evidence. Off falls back to the table
+    # everywhere, which is exactly the behaviour that shipped before.
+    learned_cadence_enabled: bool = True
+    # Posts on a platform before any of its timing is learned, and posts sharing
+    # an hour before that hour can win. Both bars must clear: five posts spread
+    # over five hours support no conclusion about any of them.
+    learned_cadence_min_samples: int = 5
+    learned_cadence_min_bucket: int = 2
+
     # ---- Scheduling ----
     # How far into the past a requested publish time may fall before it is
     # refused. Small but non-zero: a client clock a minute behind the server
@@ -258,8 +289,14 @@ class Settings(BaseSettings):
     @field_validator(
         "access_token_expire_minutes",
         "autopilot_daily_content_limit",
+        "learned_cadence_min_bucket",
+        "learned_cadence_min_samples",
         "password_reset_token_ttl_minutes",
         "publish_max_retries",
+        "velocity_benchmark_window_hours",
+        "velocity_early_window_hours",
+        "velocity_min_sample",
+        "velocity_stall_window_hours",
         "webhook_disable_after_failures",
         "webhook_max_attempts",
     )
@@ -312,7 +349,12 @@ class Settings(BaseSettings):
             )
         return v
 
-    @field_validator("autopilot_auto_publish_confidence", "headline_winner_margin")
+    @field_validator(
+        "autopilot_auto_publish_confidence",
+        "headline_winner_margin",
+        "underperformance_threshold",
+        "velocity_stall_ratio",
+    )
     @classmethod
     def _unit_interval(cls, v: float) -> float:
         if not 0.0 <= v <= 1.0:

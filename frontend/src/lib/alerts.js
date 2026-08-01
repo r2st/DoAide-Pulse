@@ -1,0 +1,77 @@
+// Presenting performance alerts. Pure functions over what `/analytics/alerts`
+// and `/analytics/dashboard` send, so the rendering decisions are testable
+// without a DOM.
+//
+// The backend already decided *what* is worth saying and wrote the sentence
+// (see app/services/alerts.py) — it holds the medians and the windows, and a
+// second opinion computed in the browser from rounded numbers would drift from
+// the one in the weekly email. What is decided here is only how it looks and
+// where it points.
+
+/** Visual weight per severity. Unknown severities render as a plain notice. */
+export function alertTone(severity) {
+  return severity === "warning" ? "bad" : "muted";
+}
+
+/** Short label for the chip on an alert row. */
+export function alertLabel(kind) {
+  if (kind === "underperforming") return "Underperforming";
+  if (kind === "stalled") return "Stalled";
+  return "Attention";
+}
+
+/**
+ * Where clicking an alert should go.
+ *
+ * Both kinds are answered by editing the piece — a headline swap for one, a
+ * refresh or a re-share for the other — so both point at the editor rather
+ * than at an analytics view the user would have to navigate onward from.
+ */
+export function alertHref(alert) {
+  return `/content/${alert.content_id}`;
+}
+
+/**
+ * "27% of usual" for a comparison alert, or null when there is nothing to show.
+ *
+ * A ratio of exactly zero is a real answer — the post took no views at all —
+ * so this checks for null explicitly rather than leaning on falsiness.
+ */
+export function formatAlertRatio(ratio) {
+  if (ratio === null || ratio === undefined) return null;
+  return `${Math.round(ratio * 100)}% of usual`;
+}
+
+/**
+ * One line summarising a set of alerts, for a section subtitle.
+ *
+ * Returns an empty string for an empty set: the caller hides the section
+ * entirely rather than announcing that there is nothing to announce.
+ */
+export function summarizeAlerts(alerts = []) {
+  const warnings = alerts.filter((a) => a.severity === "warning").length;
+  const notices = alerts.length - warnings;
+  const parts = [];
+  if (warnings) parts.push(`${warnings} under your usual`);
+  if (notices) parts.push(`${notices} that stopped growing`);
+  return parts.join(" · ");
+}
+
+/**
+ * Whether a cadence entry's timing was learned from the user's own results.
+ *
+ * `source` is what the API sends; the fallback to "table" here matters because
+ * an older cached response has no `source` field at all, and an entry that
+ * silently claimed to be learned would be the one misleading answer in a panel
+ * whose whole job is to be interrogable.
+ */
+export function isLearned(cadenceEntry) {
+  return (cadenceEntry?.source ?? "table") === "learned";
+}
+
+/** "from 12 posts" / "generic guidance" — the provenance line under a cadence. */
+export function cadenceProvenance(cadenceEntry) {
+  if (!isLearned(cadenceEntry)) return "Generic guidance";
+  const sample = cadenceEntry.sample ?? 0;
+  return `Learned from ${sample} post${sample === 1 ? "" : "s"}`;
+}

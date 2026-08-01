@@ -118,6 +118,14 @@ export const api = {
   // every navigation back to it.
   readTime: () => request("/analytics/read-time"),
   engagementTrend: (days) => request(`/analytics/engagement-trend${qs({ days })}`),
+  // How fast pieces found an audience, read from the stored snapshot series
+  // rather than the latest number per publication.
+  velocity: () => request("/analytics/velocity"),
+  velocityCurve: (publicationId) =>
+    request(`/analytics/velocity/${publicationId}`),
+  // The dashboard payload already carries a capped list of these; this is the
+  // full one, for the analytics page.
+  alerts: (limit) => request(`/analytics/alerts${qs({ limit })}`),
 
   // ---- settings ----
   platforms: () => request("/settings/platforms"),
