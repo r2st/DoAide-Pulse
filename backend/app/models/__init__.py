@@ -15,6 +15,7 @@ from app.models.password_reset import PasswordResetToken
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.publication import Platform, Publication, PublicationStatus
+from app.models.template import ContentTemplate, TemplateMode
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.models.webhook import (
@@ -34,6 +35,7 @@ __all__ = [
     "ContentIdea",
     "ContentMetric",
     "ContentStatus",
+    "ContentTemplate",
     "ContentType",
     "DeliveryStatus",
     "PasswordResetToken",
@@ -42,6 +44,7 @@ __all__ = [
     "Project",
     "Publication",
     "PublicationStatus",
+    "TemplateMode",
     "Tone",
     "Trigger",
     "TriggerEvent",

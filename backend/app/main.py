@@ -22,6 +22,7 @@ from app.routers import (
     content,
     misc,
     projects,
+    templates,
     triggers,
     webhooks,
 )
@@ -187,6 +188,7 @@ def create_app() -> FastAPI:
     app.include_router(settings_router.router, prefix=prefix)
     app.include_router(webhooks.router, prefix=prefix)
     app.include_router(triggers.router, prefix=prefix)
+    app.include_router(templates.router, prefix=prefix)
 
     @app.get("/")
     def root() -> dict[str, str]:

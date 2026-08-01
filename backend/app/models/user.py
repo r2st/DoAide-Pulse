@@ -12,6 +12,7 @@ from app.models.mixins import TimestampMixin
 if TYPE_CHECKING:
     from app.models.platform_connection import PlatformConnection
     from app.models.project import Project
+    from app.models.template import ContentTemplate
 
 
 class User(Base, TimestampMixin):
@@ -35,6 +36,11 @@ class User(Base, TimestampMixin):
     )
     connections: Mapped[list[PlatformConnection]] = relationship(
         back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+    )
+    #: Reusable content shapes. Owned by the user rather than the project so one
+    #: template can serve every project — see ``app.models.template``.
+    templates: Mapped[list[ContentTemplate]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
     )
 
     @property
