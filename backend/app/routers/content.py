@@ -43,6 +43,7 @@ from app.schemas.content import (
 )
 from app.services import (
     content_generator,
+    formats,
     github_client,
     headlines,
     link_check,
@@ -83,6 +84,7 @@ def _to_out(content: Content) -> ContentOut:
         project_name=content.project.name if content.project else None,
         word_count=content.word_count,
         read_minutes=content.read_minutes,
+        content_format=formats.format_of(content.content_type).value,
         publications=[PublicationOut.model_validate(p) for p in content.publications],
     )
 
@@ -103,6 +105,7 @@ def _to_detail(content: Content) -> ContentDetail:
         seo_issues=[
             SeoIssueOut(level=i.level, field=i.field, message=i.message) for i in issues
         ],
+        format_issues=formats.problems(content.body_markdown, content.content_type),
     )
 
 

@@ -37,13 +37,21 @@ if TYPE_CHECKING:
 
 
 class ContentType(str, Enum):
-    """What kind of piece this is. Drives the prompt and the target length."""
+    """What kind of piece this is. Drives the prompt and the target length.
+
+    The first five are articles. The last two are not — see
+    :mod:`app.services.formats`, which maps a type to the *shape* it produces
+    and is what stops a thread from being written as a blog post with the
+    headings taken out.
+    """
 
     TUTORIAL = "tutorial"
     ANNOUNCEMENT = "announcement"
     FEATURE_SPOTLIGHT = "feature_spotlight"
     COMPARISON = "comparison"
     HOW_TO = "how_to"
+    SOCIAL_THREAD = "social_thread"
+    CHANGELOG = "changelog"
 
     @property
     def label(self) -> str:
@@ -76,6 +84,12 @@ TARGET_WORDS: dict[ContentType, int] = {
     ContentType.FEATURE_SPOTLIGHT: 700,
     ContentType.COMPARISON: 1000,
     ContentType.HOW_TO: 900,
+    # Not articles: these are a token budget rather than a target. A thread of
+    # eight 280-character posts is about 300 words, and a changelog is as long
+    # as the release was — the number here only has to be generous enough that
+    # the envelope is never cut off mid-JSON.
+    ContentType.SOCIAL_THREAD: 320,
+    ContentType.CHANGELOG: 400,
 }
 
 

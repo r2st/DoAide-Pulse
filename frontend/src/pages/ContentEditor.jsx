@@ -7,8 +7,24 @@ import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
 import * as draftStore from "../lib/draftStore";
 import { differs } from "../lib/draftStore";
-import { formatDateTime, formatWhen, titleize } from "../lib/format";
+import { editorStats } from "../lib/editorStats";
+import {
+  formatCount,
+  formatDateTime,
+  formatReadLength,
+  formatWhen,
+  titleize,
+} from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
+
+/**
+ * How long the typing has to stop before the draft is written.
+ *
+ * Long enough that a pause for thought mid-paragraph does not trigger a
+ * request, short enough that stepping away from the keyboard leaves the work
+ * saved rather than sitting in a tab.
+ */
+const AUTOSAVE_DELAY_MS = 2000;
 
 /** The server's copy, in the shape the editor's fields hold.
  *
@@ -55,12 +71,29 @@ export default function ContentEditor() {
   // silently replacing it with something a crashed tab left behind is the kind
   // of help that loses work rather than saving it.
   const [recovered, setRecovered] = useState(null);
+  // What the auto-save last did. `at` is kept through a failure so the status
+  // line can still say when the text was last known to be on the server —
+  // which is the thing you want to know when a save has just stopped working.
+  const [autoSave, setAutoSave] = useState({ status: "idle", at: null, error: null });
 
   const saved = useMemo(() => (data ? draftFrom(data) : null), [data]);
 
+  // Load the server's copy into the fields when the *piece* changes — not
+  // every time `data` does.
+  //
+  // The unconditional version of this clobbered anything typed while a save
+  // was in flight: the response lands, `data` changes, and every keystroke
+  // since the request went out is replaced by what the server was told a
+  // moment ago. Saving by hand made that a narrow window; saving every couple
+  // of seconds would make it a routine way to lose a sentence. Taking the
+  // server's copy after a save is `persist`'s job, and it only does so when
+  // the fields still hold the text it sent.
+  const loadedId = useRef(null);
   useEffect(() => {
-    if (saved) setDraft(saved);
-  }, [saved]);
+    if (!data || loadedId.current === data.id) return;
+    loadedId.current = data.id;
+    setDraft(draftFrom(data));
+  }, [data]);
 
   const dirty = useMemo(
     () => Boolean(saved && draft && differs(draft, saved)),
@@ -94,6 +127,23 @@ export default function ContentEditor() {
     if (!draft || !saved || locked || recovered) return;
     draftStore.save(contentId, draft, saved);
   }, [contentId, draft, saved, locked, recovered]);
+
+  // Auto-save, debounced from the last keystroke rather than run on a fixed
+  // interval — a save then lands in the pause between two sentences instead of
+  // halfway through a word, and a fast typist makes one request rather than one
+  // every two seconds.
+  //
+  // Same ref trick as ⌘S below: the effect belongs up here with the others, and
+  // the function it calls cannot be declared until after the early returns.
+  const autoSaveRef = useRef(null);
+  useEffect(() => {
+    if (!autoSaveRef.current) return undefined;
+    const timer = setTimeout(() => autoSaveRef.current?.(), AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+    // `draft` is a fresh object per keystroke, which is what restarts the
+    // countdown; the rest are the conditions that decide whether there is
+    // anything to save at all.
+  }, [draft, dirty, locked, recovered, saving]);
 
   // ⌘S / Ctrl-S. Registered up here with the other effects, so it reads the
   // current `save` through a ref rather than needing to be declared after it.
@@ -133,31 +183,77 @@ export default function ContentEditor() {
   const set = (key) => (event) =>
     setDraft((current) => ({ ...current, [key]: event.target.value }));
 
+  // Recomputed per render rather than memoised: it is two passes over a string
+  // that is already being re-rendered into a textarea on the same keystroke.
+  const stats = editorStats(draft.body_markdown);
+
   const splitList = (value) =>
     value
       .split(",")
       .map((item) => item.trim())
       .filter(Boolean);
 
+  /**
+   * Write the fields to the server.
+   *
+   * Shared by the button, ⌘S and the auto-save timer, so the three cannot
+   * disagree about what gets sent or what becomes of the recovery buffer.
+   * Throws on failure — how loudly to say so is the caller's decision, and the
+   * two callers want opposite things.
+   */
+  async function persist() {
+    const sent = draft;
+    const updated = await api.updateContent(data.id, {
+      ...sent,
+      keywords: splitList(sent.keywords),
+      tags: splitList(sent.tags),
+      // The API rejects a relative path and reads "" as "no image".
+      cover_image_url: sent.cover_image_url.trim() || null,
+    });
+    setData(updated);
+    // Take the server's copy — which may have normalised a keyword list or a
+    // trimmed URL — only if the fields still hold what was sent. Anything typed
+    // while the request was in flight is newer than the response, and is what
+    // the next save should carry.
+    setDraft((current) => (differs(current, sent) ? current : draftFrom(updated)));
+    // The server now holds this text, so the recovery buffer has nothing left
+    // to recover. Dropping it here rather than waiting for the mirror effect
+    // keeps a failed save from clearing it.
+    draftStore.clear(data.id);
+    setRecovered(null);
+  }
+
   async function save() {
     setSaving(true);
     try {
-      const updated = await api.updateContent(data.id, {
-        ...draft,
-        keywords: splitList(draft.keywords),
-        tags: splitList(draft.tags),
-        // The API rejects a relative path and reads "" as "no image".
-        cover_image_url: draft.cover_image_url.trim() || null,
-      });
-      setData(updated);
-      // The server now holds this text, so the recovery buffer has nothing
-      // left to recover. Dropping it here rather than waiting for the mirror
-      // effect keeps a failed save from clearing it.
-      draftStore.clear(data.id);
-      setRecovered(null);
+      await persist();
+      setAutoSave({ status: "saved", at: Date.now(), error: null });
       toast.success("Saved");
     } catch (err) {
+      setAutoSave((current) => ({ ...current, status: "error", error: err.message }));
       toast.error(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /**
+   * The timer's save: silent when it works, inline when it does not.
+   *
+   * No toast either way. A toast on every success would narrate something the
+   * user never asked for, and one on every failure would fire again on the next
+   * keystroke — for an offline laptop that is a stack of them. A failure leaves
+   * the text in the fields, in the recovery buffer, and behind the beforeunload
+   * prompt, so nothing is lost while it says so quietly.
+   */
+  async function autosave() {
+    setSaving(true);
+    setAutoSave((current) => ({ ...current, status: "saving", error: null }));
+    try {
+      await persist();
+      setAutoSave({ status: "saved", at: Date.now(), error: null });
+    } catch (err) {
+      setAutoSave((current) => ({ ...current, status: "error", error: err.message }));
     } finally {
       setSaving(false);
     }
@@ -167,6 +263,11 @@ export default function ContentEditor() {
   // there is something to write: a published piece is read-only, and a clean
   // draft has nothing to send.
   saveRef.current = !locked && dirty && !saving ? save : null;
+  // The same conditions, plus one: nothing writes to the server underneath a
+  // recovery offer. The buffer it is pointing at is unsaved work, and a save
+  // triggered before the user has answered would resolve the question for them
+  // by overwriting one of the two answers.
+  autoSaveRef.current = !locked && dirty && !saving && !recovered ? autosave : null;
 
   async function approve() {
     try {
@@ -216,8 +317,13 @@ export default function ContentEditor() {
           <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-ink-400">
             <span>{data.project_name}</span>
             <span>{titleize(data.content_type)}</span>
-            <span>{data.word_count} words</span>
-            <span>{data.read_minutes} min read</span>
+            {/* Counted from the textarea, not from `data` — the server's
+                figures describe the last save, and a length that only caught up
+                when you saved would be wrong for exactly as long as you were
+                writing. Same arithmetic as the server's, so the two agree the
+                moment it does save. */}
+            <span>{formatCount(stats.words)} words</span>
+            <span>{formatReadLength(stats.minutes)}</span>
             <span>updated {formatWhen(data.updated_at)}</span>
             {data.generated_by_model && (
               <span title="Which model wrote it">{data.generated_by_model}</span>
@@ -227,6 +333,7 @@ export default function ContentEditor() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={data.status} />
+          {!locked && <AutoSaveStatus state={autoSave} dirty={dirty} />}
           {!locked && (
             <button className="btn-ghost" onClick={save} disabled={!dirty || saving}>
               {saving ? "Saving…" : dirty ? "Save" : "Saved"}
@@ -823,6 +930,40 @@ function PublishDialog({ content, platforms, onClose, onDone, onError }) {
       </form>
     </div>
   );
+}
+
+/**
+ * What became of the last automatic save.
+ *
+ * Deliberately narrow. The Save button already says whether anything is
+ * outstanding and whether a write is in flight, so repeating that here would be
+ * two controls narrating one fact. What the button cannot say is *when* the text
+ * last reached the server, and that saving has quietly stopped working — the two
+ * things worth knowing after ten minutes of typing without touching anything.
+ */
+function AutoSaveStatus({ state, dirty }) {
+  if (state.status === "error") {
+    return (
+      <span
+        role="status"
+        className="font-mono text-[11px] text-bad"
+        // The server's own words, on hover. Too long for the header, and too
+        // specific to throw away — "disk full" and "session expired" want very
+        // different responses.
+        title={state.error}
+      >
+        Auto-save failed
+      </span>
+    );
+  }
+  if (!dirty && state.at) {
+    return (
+      <span role="status" className="font-mono text-[11px] text-ink-400">
+        Saved {formatWhen(state.at)}
+      </span>
+    );
+  }
+  return null;
 }
 
 /**

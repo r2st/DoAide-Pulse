@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 from app.models.content import TARGET_WORDS, ContentType
-from app.services import ai, content_generator, llm_router
+from app.services import ai, content_generator, formats, llm_router
 from app.services.github_client import Commit, RepoActivity
 
 
@@ -238,3 +238,169 @@ def test_coercion_survives_a_model_that_returns_wrong_types(project, stub_llm):
 
 def test_ai_error_is_what_callers_catch():
     assert issubclass(ai.AIError, RuntimeError)
+
+
+# --------------------------------------------------------------------------- #
+# Shapes that are not articles                                                 #
+# --------------------------------------------------------------------------- #
+
+
+def _prompt_of(stub_llm_state, monkeypatch, project, content_type):
+    """Generate once and hand back the user prompt the model was sent."""
+    seen = {}
+
+    def fake_complete(messages, *, model=None, temperature=0.7, max_tokens=1200, timeout=90.0):
+        import json
+
+        seen["prompt"] = messages[-1]["content"]
+        return llm_router.Completion(
+            text=json.dumps(stub_llm_state["payload"]), provider="stub", model="m"
+        )
+
+    monkeypatch.setattr(llm_router, "complete", fake_complete)
+    content_generator.generate(project, content_type)
+    return seen["prompt"]
+
+
+def test_a_thread_prompt_asks_for_posts_rather_than_a_word_count(
+    project, stub_llm, monkeypatch
+):
+    """A word count is what turns a thread into a blog post with line breaks."""
+    prompt = _prompt_of(stub_llm, monkeypatch, project, ContentType.SOCIAL_THREAD)
+
+    assert "one post per paragraph" in prompt
+    assert "under 280 characters" in prompt
+    assert "Length: about" not in prompt
+
+
+def test_a_changelog_prompt_names_the_sections_it_may_use(
+    project, stub_llm, monkeypatch
+):
+    prompt = _prompt_of(stub_llm, monkeypatch, project, ContentType.CHANGELOG)
+
+    assert "Added, Changed, Deprecated, Removed, Fixed, Security" in prompt
+    assert "No introduction, no conclusion" in prompt
+
+
+def test_an_article_prompt_is_unchanged(project, stub_llm, monkeypatch):
+    prompt = _prompt_of(stub_llm, monkeypatch, project, ContentType.TUTORIAL)
+
+    assert 'Start at "## " for section headings' in prompt
+    assert f"Length: about {TARGET_WORDS[ContentType.TUTORIAL]} words" in prompt
+
+
+def test_an_over_long_post_is_repaired_rather_than_failing_the_generation(
+    project, stub_llm
+):
+    """The whole point of the repair pass: a good thread with one long post."""
+    stub_llm["payload"] = good_payload(
+        body_markdown="A real hook that earns the thread.\n\n" + ("word " * 90)
+    )
+
+    result = content_generator.generate(project, ContentType.SOCIAL_THREAD)
+
+    assert result.is_fallback is False
+    posts = formats.parse_thread(result.body_markdown)
+    assert len(posts) > 2
+    assert all(len(post) <= formats.THREAD_POST_LIMIT for post in posts)
+
+
+def test_a_models_numbering_is_stripped_before_storage(project, stub_llm):
+    stub_llm["payload"] = good_payload(
+        body_markdown="1/ First idea here.\n\n2/ Second idea here.\n\n3/ Third one."
+    )
+
+    result = content_generator.generate(project, ContentType.SOCIAL_THREAD)
+
+    assert result.body_markdown == (
+        "First idea here.\n\nSecond idea here.\n\nThird one."
+    )
+
+
+def test_a_changelogs_synonym_headings_are_canonicalised_on_the_way_in(
+    project, stub_llm
+):
+    stub_llm["payload"] = good_payload(
+        body_markdown="## Bug Fixes\n\n- The parser crash\n\n## New Features\n\n- RSS triggers"
+    )
+
+    result = content_generator.generate(project, ContentType.CHANGELOG)
+
+    assert result.body_markdown == (
+        "## Added\n\n- RSS triggers\n\n## Fixed\n\n- The parser crash"
+    )
+
+
+def test_a_short_changelog_is_not_rejected_for_being_short(project, stub_llm):
+    """60 words is a sane floor for a blog post and absurd for a changelog."""
+    stub_llm["payload"] = good_payload(body_markdown="## Fixed\n\n- The parser crash")
+
+    result = content_generator.generate(project, ContentType.CHANGELOG)
+
+    assert result.is_fallback is False
+    assert result.body_markdown == "## Fixed\n\n- The parser crash"
+
+
+def test_a_genuinely_empty_changelog_still_falls_back(project, stub_llm):
+    stub_llm["payload"] = good_payload(body_markdown="Thanks for reading!")
+
+    result = content_generator.generate(project, ContentType.CHANGELOG)
+
+    assert result.is_fallback is True
+
+
+def test_the_changelog_fallback_is_built_from_the_commits_themselves(
+    project, monkeypatch
+):
+    """The one fallback worth publishing rather than merely worth rewriting."""
+    monkeypatch.setattr(
+        llm_router,
+        "complete",
+        lambda *a, **k: (_ for _ in ()).throw(ai.AIError("no providers")),
+    )
+    activity = RepoActivity(
+        full_name="r2st/Herald",
+        new_commits=[
+            Commit(
+                sha="a" * 40,
+                message="feat: add RSS triggers",
+                author="dev",
+                committed_at=None,
+                url="",
+            ),
+            Commit(
+                sha="b" * 40,
+                message="fix: stop the parser crash",
+                author="dev",
+                committed_at=None,
+                url="",
+            ),
+        ],
+    )
+
+    result = content_generator.generate(
+        project, ContentType.CHANGELOG, activity=activity
+    )
+
+    assert result.is_fallback is True
+    assert "## Added" in result.body_markdown
+    assert "- Add RSS triggers" in result.body_markdown
+    assert "- Stop the parser crash" in result.body_markdown
+    # No apology text: this one is publishable as it stands.
+    assert "no AI provider" not in result.body_markdown
+
+
+def test_the_thread_fallback_says_it_is_a_stub(project, monkeypatch):
+    """A hook is a writing problem; there is no honest way to assemble one."""
+    monkeypatch.setattr(
+        llm_router,
+        "complete",
+        lambda *a, **k: (_ for _ in ()).throw(ai.AIError("no providers")),
+    )
+
+    result = content_generator.generate(project, ContentType.SOCIAL_THREAD)
+
+    assert result.is_fallback is True
+    assert "Rewrite before posting" in result.body_markdown
+    posts = formats.parse_thread(result.body_markdown)
+    assert all(len(post) <= formats.THREAD_POST_LIMIT for post in posts)

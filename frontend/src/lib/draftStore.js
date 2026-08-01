@@ -1,11 +1,12 @@
 // Keeping unsaved edits when the tab does not survive.
 //
-// The editor saves explicitly — a piece is a record, and autosaving every
-// keystroke to the server would persist experiments the author has not
-// committed to and fight the `locked` rule for published work. But an explicit
-// Save means there is always a window where the work exists only in a React
-// state object, and a closed tab, a reload or a click on the nav loses a
-// morning's writing with no warning at all.
+// The editor auto-saves, but not on every keystroke: it waits for the typing to
+// stop (see AUTOSAVE_DELAY_MS in pages/ContentEditor.jsx), and it never writes a
+// published piece, which stays read-only. That leaves two windows where the work
+// exists only in a React state object — the seconds between the last keystroke
+// and the write, and however long a failing save keeps failing — and in both a
+// closed tab, a reload or a click on the nav loses it with no warning at all.
+// Offline, the second window is the whole session.
 //
 // So the draft is mirrored to localStorage and offered back on return. The
 // server's copy stays authoritative; this is a recovery buffer, never a source

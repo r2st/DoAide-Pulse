@@ -12,13 +12,21 @@
 // or malformed value rather than ignoring it, and `""` for `every_hours` is
 // malformed where "not set" is fine.
 
-/** Content types the generator understands. Mirrors `ContentType`. */
+/**
+ * Content types the generator understands. Mirrors `ContentType`.
+ *
+ * The last two are not articles — they produce a thread and a changelog. The
+ * shape a type takes is the server's to decide (`content_format` on the piece),
+ * so nothing here needs to know which is which.
+ */
 export const CONTENT_TYPES = [
   "announcement",
   "tutorial",
   "feature_spotlight",
   "comparison",
   "how_to",
+  "social_thread",
+  "changelog",
 ];
 
 /**

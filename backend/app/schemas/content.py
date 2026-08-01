@@ -141,6 +141,9 @@ class ContentOut(BaseModel):
     updated_at: datetime
     word_count: int = 0
     read_minutes: int = 1
+    #: The shape this piece takes — article, thread or changelog. Derived from
+    #: ``content_type`` rather than stored, so it can never disagree with it.
+    content_format: str = "article"
     publications: list[PublicationOut] = []
 
     model_config = {"from_attributes": True}
@@ -154,6 +157,10 @@ class ContentDetail(ContentOut):
 
     body_markdown: str = ""
     seo_issues: list[SeoIssueOut] = []
+    #: Everything wrong with this body *for its shape*: a post over the
+    #: character limit, a changelog section that is not one of the six. Empty
+    #: for an article, which has only SEO issues.
+    format_issues: list[str] = []
 
 
 class PublishRequestIn(BaseModel):

@@ -19,6 +19,8 @@ const TYPES = [
   "feature_spotlight",
   "comparison",
   "how_to",
+  "social_thread",
+  "changelog",
 ];
 
 /** Everything written, filterable, plus the button that writes something new. */

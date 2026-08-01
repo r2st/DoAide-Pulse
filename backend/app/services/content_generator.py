@@ -24,7 +24,7 @@ from typing import Any
 from app.config import settings
 from app.models.content import TARGET_WORDS, ContentType
 from app.models.project import Project, Tone
-from app.services import ai, seo
+from app.services import ai, formats, seo
 from app.services.github_client import RepoActivity
 from app.services.signals import TriggerSignal, from_repo_activity
 
@@ -75,6 +75,18 @@ _TYPE_GUIDANCE: dict[ContentType, str] = {
     ContentType.HOW_TO: (
         "A focused how-to answering one specific question. Get to the answer in "
         "the first two paragraphs, then explain it."
+    ),
+    ContentType.SOCIAL_THREAD: (
+        "A thread. The first post is the whole point in one sentence and must "
+        "work alone, because most readers see nothing else. Each post after it "
+        "carries exactly one idea. No thread-bait ('a 🧵 on...'), no numbering, "
+        "and nothing that only makes sense if you read the previous post."
+    ),
+    ContentType.CHANGELOG: (
+        "A changelog for this release. Only what actually changed, one change "
+        "per line, written from the reader's side: what they can now do, not "
+        "what was refactored to allow it. If the brief does not say a thing "
+        "changed, it does not go in."
     ),
 }
 
@@ -215,17 +227,25 @@ def _build_prompt(
     if instructions.strip():
         facts.append("Extra direction from the author: " + instructions.strip())
 
+    shape = formats.format_of(content_type)
+    # A thread is measured in posts and a changelog in entries; only an article
+    # has a word count worth asking for, and giving one to the other two is how
+    # you get a blog post with the headings taken out.
+    length = (
+        f"Length: about {target} words.\n"
+        if shape == formats.ContentFormat.ARTICLE
+        else ""
+    )
+
     user_prompt = f"""Write a {content_type.label.lower()} about this project.
 
 {chr(10).join(facts)}
 
 Format: {_TYPE_GUIDANCE[content_type]}
 Voice: {_TONE_GUIDANCE[tone]}
-Length: about {target} words.
-
+{length}
 Rules:
-- Markdown body. Start at "## " for section headings — the title is separate, so
-  the body must not repeat it as an H1.
+{formats.PROMPT_RULES[shape]}
 - Only claim what the brief supports. No invented metrics, users or quotes.
 - Weave the target keywords in naturally; do not stuff them.
 
@@ -263,6 +283,12 @@ def _fallback(
     """
     brief = project.brief()
     digest = _activity_digest(activity, max_commits=10, signal=signal)
+    shape = formats.format_of(content_type)
+
+    if shape != formats.ContentFormat.ARTICLE:
+        return _fallback_shaped(
+            shape, brief, content_type, _as_signal(activity, signal), digest
+        )
 
     sections = [
         f"## What {brief['name']} is",
@@ -285,6 +311,68 @@ def _fallback(
     keywords = seo.normalize_keywords(brief["keywords"])
     return GeneratedContent(
         title=title,
+        body_markdown=body,
+        excerpt=seo.build_excerpt(body),
+        meta_description=seo.build_meta_description("", fallback_body=body),
+        keywords=keywords,
+        tags=seo.normalize_keywords(brief["tech_stack"], extra=["devtools"])[:4],
+        focus_keyword=keywords[0] if keywords else "",
+        confidence=0.0,
+        is_fallback=True,
+    )
+
+
+def _fallback_shaped(
+    shape: formats.ContentFormat,
+    brief: dict[str, Any],
+    content_type: ContentType,
+    signal: TriggerSignal | None,
+    digest: str,
+) -> GeneratedContent:
+    """The provider-is-down draft for a thread or a changelog.
+
+    The changelog case is the one worth reading. Commit subjects already carry
+    their own classification — ``feat:``, ``fix:``, a leading verb — so a
+    changelog can be assembled from the signal alone with no model involved at
+    all, and the result is a real changelog rather than an obvious stub. It is
+    the one fallback in Herald that is worth publishing rather than merely
+    worth rewriting, which is exactly the point of having a shape that is a
+    list of facts rather than a piece of prose.
+
+    A thread is not so lucky: a hook is a writing problem, and there is no
+    honest way to assemble one from a project record. So that fallback stays a
+    stub and says so, in the post where it cannot be missed.
+    """
+    items = list(signal.items) if signal else []
+
+    if shape == formats.ContentFormat.CHANGELOG:
+        body = formats.changelog_from_items(items)
+        if not body and digest:
+            # No itemised changes, but something happened. One entry beats an
+            # empty changelog, and the prose is the signal's own.
+            body = formats.render_changelog(
+                [("Changed", [line.strip() for line in digest.split("\n") if line.strip()][:10])]
+            )
+        headline = signal.headline if signal else ""
+        title = f"{brief['name']} — {headline}" if headline else f"{brief['name']}: changelog"
+    else:
+        posts = [
+            (signal.headline if signal and signal.headline else f"{brief['name']}: an update."),
+            brief["description"] or f"{brief['name']} is a work in progress.",
+        ]
+        posts += [item for item in items[:5] if item.strip()]
+        if brief["live_url"]:
+            posts.append(f"See it at {brief['live_url']}")
+        posts.append(
+            "Drafted by Herald from the project record — no AI provider was "
+            "reachable. Rewrite before posting."
+        )
+        body = formats.normalize_thread(formats.render_thread(posts))
+        title = f"{brief['name']}: {content_type.label}"
+
+    keywords = seo.normalize_keywords(brief["keywords"])
+    return GeneratedContent(
+        title=seo.truncate_at_sentence(title, 300),
         body_markdown=body,
         excerpt=seo.build_excerpt(body),
         meta_description=seo.build_meta_description("", fallback_body=body),
@@ -371,14 +459,24 @@ def _assemble(
     body = ai.as_str(payload.get("body_markdown"))
     title = ai.as_str(payload.get("title"))
 
-    # A body that is chain-of-thought, or so short it cannot be a post, is a
-    # failed generation even though the request succeeded.
-    if not body or len(body.split()) < 60 or ai.looks_like_reasoning(body):
+    # Repair before judging. A thread with one 340-character post in it is a
+    # good thread that needs splitting, not a failed generation — see the
+    # module docstring in app.services.formats.
+    body = formats.normalize(body, content_type)
+
+    shape = formats.format_of(content_type)
+
+    # A body that is chain-of-thought, or too thin to be a piece of this shape,
+    # is a failed generation even though the request succeeded. "Too thin" is
+    # measured in the shape's own unit — see formats.too_thin_to_store.
+    reason = "empty" if not body else formats.too_thin_to_store(body, content_type)
+    if reason or ai.looks_like_reasoning(body):
         logger.warning(
-            "content generation for project %s returned unusable prose (%d words) "
+            "content generation for project %s returned unusable %s (%s) "
             "— using template",
             project.id,
-            len(body.split()),
+            shape.value,
+            reason or "reasoning transcript",
         )
         return _fallback(project, content_type, activity, signal)
 
