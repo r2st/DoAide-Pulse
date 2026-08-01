@@ -18,6 +18,7 @@ celery_app = Celery(
         "app.tasks.headline_tasks",
         "app.tasks.digest_tasks",
         "app.tasks.webhook_tasks",
+        "app.tasks.trigger_tasks",
     ],
 )
 
@@ -86,12 +87,22 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.webhook_tasks.deliver_due",
         "schedule": float(settings.webhook_scan_interval_seconds),
     },
+    "check-due-triggers": {
+        # RSS, GitHub and schedule triggers. Inbound webhooks are not swept —
+        # they fire on the request thread that carries them.
+        "task": "app.tasks.trigger_tasks.check_due_triggers",
+        "schedule": float(settings.trigger_scan_interval_seconds),
+    },
     "purge-expired-tokens": {
         "task": "app.tasks.maintenance_tasks.purge_expired_tokens",
         "schedule": 86400.0,  # once a day
     },
     "purge-old-webhook-deliveries": {
         "task": "app.tasks.maintenance_tasks.purge_old_webhook_deliveries",
+        "schedule": 86400.0,  # once a day
+    },
+    "purge-old-trigger-events": {
+        "task": "app.tasks.maintenance_tasks.purge_old_trigger_events",
         "schedule": 86400.0,  # once a day
     },
 }

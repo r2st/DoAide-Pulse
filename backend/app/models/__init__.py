@@ -15,6 +15,7 @@ from app.models.password_reset import PasswordResetToken
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.publication import Platform, Publication, PublicationStatus
+from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.models.webhook import (
     SUBSCRIBABLE_EVENTS,
@@ -42,6 +43,10 @@ __all__ = [
     "Publication",
     "PublicationStatus",
     "Tone",
+    "Trigger",
+    "TriggerEvent",
+    "TriggerEventStatus",
+    "TriggerKind",
     "User",
     "Webhook",
     "WebhookDelivery",

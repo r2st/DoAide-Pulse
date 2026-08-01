@@ -29,6 +29,7 @@ from app.models.publication import Platform
 
 if TYPE_CHECKING:
     from app.models.content import Content
+    from app.models.trigger import Trigger
     from app.models.user import User
 
 
@@ -148,6 +149,13 @@ class Project(Base, TimestampMixin):
 
     user: Mapped[User] = relationship(back_populates="projects")
     content: Mapped[list[Content]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    #: Everything that can make Herald write about this project. The repo
+    #: watermark columns above are the pre-trigger way of expressing one of
+    #: these; a ``github`` trigger keeps its own watermark in ``Trigger.state``
+    #: and takes the project out of the legacy scan.
+    triggers: Mapped[list[Trigger]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
 

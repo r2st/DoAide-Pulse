@@ -15,7 +15,16 @@ from starlette.responses import JSONResponse, Response
 
 from app.config import settings
 from app.ratelimit import limiter, rate_limit_exceeded_handler
-from app.routers import analytics, auth, calendar, content, misc, projects, webhooks
+from app.routers import (
+    analytics,
+    auth,
+    calendar,
+    content,
+    misc,
+    projects,
+    triggers,
+    webhooks,
+)
 from app.routers import settings as settings_router
 
 logger = logging.getLogger(__name__)
@@ -177,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)
     app.include_router(webhooks.router, prefix=prefix)
+    app.include_router(triggers.router, prefix=prefix)
 
     @app.get("/")
     def root() -> dict[str, str]:

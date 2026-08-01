@@ -26,6 +26,7 @@ from app.models.content import TARGET_WORDS, ContentType
 from app.models.project import Project, Tone
 from app.services import ai, seo
 from app.services.github_client import RepoActivity
+from app.services.signals import TriggerSignal, from_repo_activity
 
 logger = logging.getLogger(__name__)
 
@@ -144,33 +145,32 @@ def content_from_generated(
     )
 
 
-def _activity_digest(activity: RepoActivity | None, *, max_commits: int = 25) -> str:
-    """Repo activity as prompt-ready text, or "" when there is none.
+def _as_signal(
+    activity: RepoActivity | None, signal: TriggerSignal | None
+) -> TriggerSignal | None:
+    """Whichever of the two the caller supplied, as a signal.
 
-    Commits are summarized to their first line and capped: a model given 100
-    full commit messages writes about the noise at the end of the list rather
-    than the release at the top.
+    ``activity=`` predates the trigger system and stays supported: the GitHub
+    path is one trigger kind out of four now, not a special case, and the
+    conversion is cheap enough to do on every call rather than asking three
+    call sites to do it themselves.
     """
+    if signal is not None:
+        return signal
     if activity is None or not activity.has_news:
-        return ""
+        return None
+    return from_repo_activity(activity)
 
-    lines: list[str] = []
-    if activity.new_release:
-        release = activity.new_release
-        lines.append(f"New release {release.tag} — {release.name}")
-        if release.body.strip():
-            # Release notes are the highest-signal input there is; keep more of
-            # them than of any individual commit.
-            lines.append("Release notes:\n" + release.body.strip()[:3000])
 
-    if activity.new_commits:
-        total = len(activity.new_commits)
-        shown = activity.new_commits[:max_commits]
-        truncated = f" (showing the {len(shown)} most recent)" if len(shown) < total else ""
-        lines.append(f"{total} new commit(s){truncated}:")
-        lines.extend(f"- {c.summary}" for c in shown if c.summary)
-
-    return "\n".join(lines)
+def _activity_digest(
+    activity: RepoActivity | None,
+    *,
+    max_commits: int = 25,
+    signal: TriggerSignal | None = None,
+) -> str:
+    """What happened, as prompt-ready text, or "" when nothing did."""
+    resolved = _as_signal(activity, signal)
+    return resolved.digest(max_items=max_commits) if resolved else ""
 
 
 def _build_prompt(
@@ -179,6 +179,7 @@ def _build_prompt(
     *,
     activity: RepoActivity | None,
     instructions: str,
+    signal: TriggerSignal | None = None,
 ) -> list[dict[str, str]]:
     brief = project.brief()
     tone = project.tone if isinstance(project.tone, Tone) else Tone(project.tone)
@@ -199,9 +200,18 @@ def _build_prompt(
     if brief["keywords"]:
         facts.append(f"Target keywords: {', '.join(brief['keywords'])}")
 
-    digest = _activity_digest(activity)
+    resolved = _as_signal(activity, signal)
+    digest = _activity_digest(activity, signal=signal)
     if digest:
-        facts.append("Recent development activity:\n" + digest)
+        # Naming the source in the prompt matters: a model told "recent
+        # development activity" invents engineering detail when what it was
+        # actually handed is a status-page entry.
+        label = (
+            f"What just happened ({resolved.source})"
+            if resolved and resolved.source
+            else "What just happened"
+        )
+        facts.append(f"{label}:\n{digest}")
     if instructions.strip():
         facts.append("Extra direction from the author: " + instructions.strip())
 
@@ -241,7 +251,10 @@ a review queue, which is the correct outcome whenever the brief was thin."""
 
 
 def _fallback(
-    project: Project, content_type: ContentType, activity: RepoActivity | None
+    project: Project,
+    content_type: ContentType,
+    activity: RepoActivity | None,
+    signal: TriggerSignal | None = None,
 ) -> GeneratedContent:
     """A usable draft assembled from the record when every provider is down.
 
@@ -249,7 +262,7 @@ def _fallback(
     something that reads finished enough to publish by accident.
     """
     brief = project.brief()
-    digest = _activity_digest(activity, max_commits=10)
+    digest = _activity_digest(activity, max_commits=10, signal=signal)
 
     sections = [
         f"## What {brief['name']} is",
@@ -302,9 +315,14 @@ def generate(
     content_type: ContentType,
     *,
     activity: RepoActivity | None = None,
+    signal: TriggerSignal | None = None,
     instructions: str = "",
 ) -> GeneratedContent:
     """Draft one piece of content. Never raises — falls back to a template.
+
+    *activity* and *signal* are two spellings of "here is what happened":
+    the first is a GitHub scan, the second is any trigger at all (see
+    :mod:`app.services.signals`). Pass one; *signal* wins if both arrive.
 
     The long-form model is used for the types whose target length actually needs
     it; a 450-word announcement through the 120b model is slower for no gain.
@@ -319,7 +337,11 @@ def generate(
     max_tokens = int(target_words * 2.2) + _REASONING_ALLOWANCE_TOKENS
 
     messages = _build_prompt(
-        project, content_type, activity=activity, instructions=instructions
+        project,
+        content_type,
+        activity=activity,
+        instructions=instructions,
+        signal=signal,
     )
 
     try:
@@ -332,9 +354,9 @@ def generate(
             project.id,
             exc,
         )
-        return _fallback(project, content_type, activity)
+        return _fallback(project, content_type, activity, signal)
 
-    return _assemble(payload, completion, project, content_type, activity)
+    return _assemble(payload, completion, project, content_type, activity, signal)
 
 
 def _assemble(
@@ -343,6 +365,7 @@ def _assemble(
     project: Project,
     content_type: ContentType,
     activity: RepoActivity | None,
+    signal: TriggerSignal | None = None,
 ) -> GeneratedContent:
     """Coerce and clean the model's JSON into a :class:`GeneratedContent`."""
     body = ai.as_str(payload.get("body_markdown"))
@@ -357,7 +380,7 @@ def _assemble(
             project.id,
             len(body.split()),
         )
-        return _fallback(project, content_type, activity)
+        return _fallback(project, content_type, activity, signal)
 
     if not title or ai.looks_like_reasoning(title):
         title = f"{project.name}: {content_type.label}"
@@ -401,7 +424,11 @@ class Idea:
     rationale: str
 
 
-def _fallback_ideas(project: Project, activity: RepoActivity | None) -> list[Idea]:
+def _fallback_ideas(
+    project: Project,
+    activity: RepoActivity | None,
+    signal: TriggerSignal | None = None,
+) -> list[Idea]:
     """Ideas derivable without a model — the obvious ones, which are often right."""
     ideas: list[Idea] = []
     if activity and activity.new_release:
@@ -421,6 +448,17 @@ def _fallback_ideas(project: Project, activity: RepoActivity | None) -> list[Ide
                 f"{len(activity.new_commits)} commits since the last piece.",
             )
         )
+    if not ideas and signal is not None and signal.has_news:
+        # A non-GitHub trigger has no commits to count, but its headline is
+        # already a one-line statement of what happened — which is what an idea
+        # is. Reusing it beats inventing a generic placeholder.
+        ideas.append(
+            Idea(
+                signal.suggested_type,
+                signal.headline[:300] or f"What's new in {project.name}",
+                f"{signal.source} reported this and it has not been written about.",
+            )
+        )
     if not ideas:
         ideas.append(
             Idea(
@@ -433,11 +471,15 @@ def _fallback_ideas(project: Project, activity: RepoActivity | None) -> list[Ide
 
 
 def suggest_ideas(
-    project: Project, *, activity: RepoActivity | None = None, limit: int = 4
+    project: Project,
+    *,
+    activity: RepoActivity | None = None,
+    signal: TriggerSignal | None = None,
+    limit: int = 4,
 ) -> list[Idea]:
     """Subjects worth writing about for this project. Never raises."""
     brief = project.brief()
-    digest = _activity_digest(activity, max_commits=15)
+    digest = _activity_digest(activity, max_commits=15, signal=signal)
 
     prompt = f"""Suggest {limit} content ideas for this project.
 
@@ -468,7 +510,7 @@ Reply with exactly this JSON object:
         )
     except ai.AIError as exc:
         logger.info("idea generation for project %s fell back: %s", project.id, exc)
-        return _fallback_ideas(project, activity)[:limit]
+        return _fallback_ideas(project, activity, signal)[:limit]
 
     ideas: list[Idea] = []
     for raw in payload.get("ideas") or []:
@@ -485,7 +527,7 @@ Reply with exactly this JSON object:
             Idea(content_type, headline, ai.as_str(raw.get("rationale")))
         )
 
-    return ideas[:limit] or _fallback_ideas(project, activity)[:limit]
+    return ideas[:limit] or _fallback_ideas(project, activity, signal)[:limit]
 
 
 __all__ = ["GeneratedContent", "Idea", "generate", "suggest_ideas"]

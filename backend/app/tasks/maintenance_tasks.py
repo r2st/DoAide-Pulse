@@ -12,6 +12,7 @@ from sqlalchemy import delete
 from app.config import settings
 from app.database import SessionLocal
 from app.models.mixins import utcnow
+from app.models.trigger import TriggerEvent, TriggerEventStatus
 from app.models.webhook import DeliveryStatus, WebhookDelivery
 from app.services import password_reset
 from app.tasks.celery_app import celery_app
@@ -69,6 +70,42 @@ def purge_old_webhook_deliveries() -> dict:
         count = result.rowcount or 0
         if count:
             logger.info("purged %d settled webhook delivery row(s)", count)
+        return {"purged": count}
+    finally:
+        db.close()
+
+
+@celery_app.task(
+    name="app.tasks.maintenance_tasks.purge_old_trigger_events",
+    soft_time_limit=60,
+    time_limit=120,
+)
+def purge_old_trigger_events() -> dict:
+    """Drop settled trigger events older than the retention window.
+
+    Only settled ones. A ``received`` row is a firing whose outcome was never
+    recorded — a worker died mid-generation — and that is exactly the row worth
+    keeping until somebody has looked at it.
+    """
+    cutoff = utcnow() - timedelta(days=settings.trigger_event_retention_days)
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            delete(TriggerEvent).where(
+                TriggerEvent.status.in_(
+                    [
+                        TriggerEventStatus.GENERATED,
+                        TriggerEventStatus.SKIPPED,
+                        TriggerEventStatus.FAILED,
+                    ]
+                ),
+                TriggerEvent.created_at < cutoff,
+            )
+        )
+        db.commit()
+        count = result.rowcount or 0
+        if count:
+            logger.info("purged %d settled trigger event row(s)", count)
         return {"purged": count}
     finally:
         db.close()

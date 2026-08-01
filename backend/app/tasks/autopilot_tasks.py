@@ -27,19 +27,11 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
+from app.models.content import Content, ContentIdea, ContentType
 from app.models.mixins import utcnow
 from app.models.project import AutopilotMode, Project
-from app.models.webhook import WebhookEvent
-from app.services import (
-    content_generator,
-    github_client,
-    link_check,
-    publishing_service,
-    seo,
-    webhook_payloads,
-    webhooks,
-)
+from app.models.trigger import Trigger, TriggerKind
+from app.services import content_generator, content_pipeline, github_client
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -212,117 +204,19 @@ def _act_on(
     if _daily_count(db, project.id) >= settings.autopilot_daily_content_limit:
         return {"status": "daily_limit_reached"}
 
-    content_type = _pick_content_type(activity)
-    generated = content_generator.generate(project, content_type, activity=activity)
-
-    confident = generated.confidence >= settings.autopilot_auto_publish_confidence
-    auto = bool(mode == AutopilotMode.AUTO and confident and project.autopilot_platforms)
-
-    # An unreviewed publish is the one place a fabricated URL reaches an audience
-    # unchallenged, so it is the one place worth spending the requests. A dead
-    # link is not a failed generation — the piece is fine and one link is wrong —
-    # so it goes to review rather than being discarded.
-    dead_links: list[str] = []
-    if auto and settings.link_check_enabled:
-        dead_links = [
-            s.url
-            for s in link_check.broken(link_check.check_body(generated.body_markdown))
-        ]
-        if dead_links:
-            auto = False
-            logger.info(
-                "autopilot held %r back from auto-publish: %d dead link(s): %s",
-                generated.title,
-                len(dead_links),
-                ", ".join(dead_links),
-            )
-
-    # SEO quality gate: a post that would rank poorly should not go out
-    # unreviewed, even if the model is confident about accuracy.
-    score = seo.seo_score(
-        title=generated.title,
-        body_markdown=generated.body_markdown,
-        meta_description=generated.meta_description,
-        keywords=generated.keywords,
-        focus_keyword=generated.focus_keyword,
-        slug=unique_content_slug(db, project.id, generated.title),
-        cover_image_url=None,  # autopilot rarely has one
-    )
-    if auto and score < seo.SEO_SCORE_THRESHOLD:
-        auto = False
-        logger.info(
-            "autopilot held %r back from auto-publish: SEO score %d < %d",
-            generated.title,
-            score,
-            seo.SEO_SCORE_THRESHOLD,
-        )
-
-    content = content_generator.content_from_generated(
+    routed = content_pipeline.generate_and_route(
         db,
-        project_id=project.id,
-        content_type=content_type,
-        generated=generated,
-        status=ContentStatus.APPROVED if auto else ContentStatus.REVIEW,
+        project,
+        content_type=_pick_content_type(activity),
+        activity=activity,
         source={
             "kind": "autopilot",
             "trigger": "release" if activity.new_release else "commits",
             "release_tag": activity.new_release.tag if activity.new_release else None,
             "commit_count": len(activity.new_commits),
-            "fallback": generated.is_fallback,
-            "dead_links": dead_links,
-            "seo_score": score,
         },
     )
-    db.add(content)
-    db.flush()
-
-    if not auto:
-        db.commit()
-        # The review queue is only a queue if somebody knows it has something in
-        # it. This is the one moment the autopilot needs a human and cannot ask
-        # for one through the UI it isn't looking at.
-        webhooks.emit(
-            db,
-            user_id=project.user_id,
-            event=WebhookEvent.REVIEW_PENDING,
-            data={
-                "content": webhook_payloads.content_payload(content),
-                "confidence": generated.confidence,
-                "seo_score": score,
-                "dead_links": dead_links,
-                "review_url": f"{settings.frontend_url.rstrip('/')}/content/{content.id}",
-            },
-        )
-        return {
-            "status": "queued_for_review",
-            "content_id": content.id,
-            "confidence": generated.confidence,
-            "dead_links": dead_links,
-        }
-
-    publications = publishing_service.queue(db, content, list(project.autopilot_platforms))
-    db.commit()
-    for publication in publications:
-        _publish_now(publication.id)
-
-    return {
-        "status": "auto_published",
-        "content_id": content.id,
-        "platforms": [p.platform.value for p in publications],
-    }
-
-
-def _publish_now(publication_id: int) -> None:
-    """Hand a publication to a worker, or do it here if the broker is down."""
-    from app.tasks import publish_tasks
-
-    if settings.celery_enabled:
-        try:
-            publish_tasks.publish_one.delay(publication_id)
-            return
-        except Exception as exc:  # pragma: no cover - broker down
-            logger.warning("autopilot dispatch failed, publishing inline: %s", exc)
-    publish_tasks.publish_one(publication_id)
+    return routed.summary()
 
 
 @celery_app.task(
@@ -336,13 +230,24 @@ def _publish_now(publication_id: int) -> None:
     max_retries=2,
 )
 def scan_all_projects() -> dict:
-    """Beat task: scan every active project that has a repo."""
+    """Beat task: scan every active project that has a repo.
+
+    A project with an active ``github`` trigger is skipped: the trigger keeps
+    its own watermark and runs through the same pipeline, so scanning here as
+    well would write about every push twice. The project-level scan is what a
+    project gets until somebody sets a trigger up, not a competing mechanism.
+    """
     db = SessionLocal()
     try:
+        trigger_owned = select(Trigger.project_id).where(
+            Trigger.kind == TriggerKind.GITHUB, Trigger.is_active.is_(True)
+        )
         ids = list(
             db.scalars(
                 select(Project.id).where(
-                    Project.is_active.is_(True), Project.repo_url.is_not(None)
+                    Project.is_active.is_(True),
+                    Project.repo_url.is_not(None),
+                    Project.id.not_in(trigger_owned),
                 )
             )
         )

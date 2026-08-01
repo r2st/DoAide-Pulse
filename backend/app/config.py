@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: str = "http://localhost:5173,http://localhost:3000"
     frontend_url: str = "http://localhost:5173"
+    # Where this API is reachable from the outside, without the ``/api/v1``
+    # prefix. Only needed for URLs Herald hands to somebody else's system — an
+    # inbound trigger's webhook URL is pasted into GitHub or Zapier, so a
+    # localhost default would be worse than useless. Blank means "same origin as
+    # the frontend", which is true in production (Caddy proxies both) and false
+    # in local dev, where the API is on :8000 and this wants setting.
+    public_api_url: str = ""
 
     # ---- Security / JWT ----
     jwt_secret: str = "change-me-to-a-long-random-string"
@@ -161,6 +168,33 @@ class Settings(BaseSettings):
     # Maximum unused ideas kept per project. Oldest unused are pruned each scan.
     autopilot_ideas_cap: int = 50
 
+    # ---- Triggers ----
+    # How often the beat task sweeps polled triggers (RSS, GitHub, schedule) for
+    # ones whose interval has elapsed. Must be comfortably shorter than the
+    # shortest interval a trigger can ask for, or a trigger asking for hourly
+    # gets checked every other hour.
+    trigger_scan_interval_seconds: int = 600
+    # What a trigger's interval is when it does not name one.
+    trigger_default_interval_hours: float = 1.0
+    # Ceiling on pieces written for one project by triggers per day. Separate
+    # from the autopilot's own cap: a project can have five triggers, and an
+    # RSS-heavy setup should not be able to spend the whole budget in an hour.
+    trigger_daily_content_limit: int = 3
+    # Consecutive failed checks before a polled trigger is deactivated. A feed
+    # that has 404ed this many times running has moved or been deleted.
+    trigger_disable_after_failures: int = 20
+    # How long trigger event rows are kept before the maintenance sweep prunes
+    # them. Long enough to answer "why didn't my trigger fire last week?".
+    trigger_event_retention_days: int = 60
+    # Per-request budget for reading a user-supplied feed.
+    feed_timeout_seconds: float = 15.0
+    # New feed entries acted on in one poll. A backfill of forty entries is not
+    # forty pieces of news; the rest are still recorded as seen.
+    feed_max_new_entries: int = 3
+    # Inbound webhook triggers are unauthenticated by design — the token in the
+    # URL is the credential — so the endpoint carries its own rate limit.
+    rate_limit_trigger_inbound: str = "60/minute;1000/hour"
+
     # ---- Publishing ----
     # Requests to platform APIs. Publishing is a background task, so a generous
     # timeout is cheaper than a retry.
@@ -289,10 +323,14 @@ class Settings(BaseSettings):
     @field_validator(
         "access_token_expire_minutes",
         "autopilot_daily_content_limit",
+        "feed_max_new_entries",
         "learned_cadence_min_bucket",
         "learned_cadence_min_samples",
         "password_reset_token_ttl_minutes",
         "publish_max_retries",
+        "trigger_daily_content_limit",
+        "trigger_disable_after_failures",
+        "trigger_scan_interval_seconds",
         "velocity_benchmark_window_hours",
         "velocity_early_window_hours",
         "velocity_min_sample",
@@ -360,6 +398,11 @@ class Settings(BaseSettings):
         if not 0.0 <= v <= 1.0:
             raise ValueError("must be between 0 and 1")
         return v
+
+    @property
+    def api_base_url(self) -> str:
+        """Absolute base for URLs Herald gives to other systems, no trailing slash."""
+        return (self.public_api_url or self.frontend_url).rstrip("/")
 
     @property
     def cors_origins(self) -> list[str]:

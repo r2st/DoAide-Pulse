@@ -13,7 +13,7 @@ import pytest
 from app.config import settings
 from app.models.content import Content, ContentStatus
 from app.models.project import AutopilotMode, Project
-from app.services import github_client
+from app.services import content_pipeline, github_client
 from app.services.github_client import Commit, RepoActivity
 from app.tasks import autopilot_tasks
 
@@ -188,7 +188,7 @@ def test_a_confident_piece_with_a_dead_link_goes_to_review(
     stub_github["set"](make_activity(commits=1, release=True))
     _confident_generation(monkeypatch, "See the [docs](https://example.com/invented).")
     monkeypatch.setattr(
-        autopilot_tasks.link_check,
+        content_pipeline.link_check,
         "check_body",
         lambda body, **kw: [
             link_check.LinkStatus("https://example.com/invented", link_check.BROKEN, 404)
@@ -214,11 +214,13 @@ def test_a_confident_piece_with_live_links_publishes(
     db.commit()
     stub_github["set"](make_activity(commits=1, release=True))
     _confident_generation(monkeypatch, "See the [docs](https://example.com/real).")
-    monkeypatch.setattr(autopilot_tasks.link_check, "check_body", lambda body, **kw: [])
+    monkeypatch.setattr(content_pipeline.link_check, "check_body", lambda body, **kw: [])
     # Bypass the SEO quality gate — the stub content is deliberately minimal.
-    monkeypatch.setattr(autopilot_tasks.seo, "seo_score", lambda **kw: 100)
-    # The publish itself is not what this test is about.
-    monkeypatch.setattr(autopilot_tasks, "_publish_now", lambda publication_id: None)
+    monkeypatch.setattr(content_pipeline.seo, "seo_score", lambda **kw: 100)
+    # The publish itself is not what this test is about. Patched on the module
+    # that calls it: `generate_and_route` resolves `publish_now` as its own
+    # global, so an alias anywhere else would not intercept the dispatch.
+    monkeypatch.setattr(content_pipeline, "publish_now", lambda publication_id: None)
 
     result = autopilot_tasks.scan_project(project.id)
 
