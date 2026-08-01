@@ -31,12 +31,12 @@ from __future__ import annotations
 import base64
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
 from app.models.publication import Platform
-from app.services import seo
+from app.services import seo, social_cards
 from app.services.publishers import formatting
 from app.services.publishers.base import (
     Adapter,
@@ -159,7 +159,7 @@ class GitAdapter(Adapter):
         particular) as well as the flat ones.
         """
         template = str(credentials.get("path_template") or "").strip() or _DEFAULT_PATH
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Content always carries a slug; the fallback is for a request built by
         # hand, where writing to `post.md` beats writing to `.md`.
         slug = (request.slug or "").strip() or "post"
@@ -194,7 +194,7 @@ class GitAdapter(Adapter):
         matter: dict[str, object] = {
             "title": request.title,
             "description": request.meta_description or request.excerpt,
-            "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "date": datetime.now(UTC).isoformat(timespec="seconds"),
             "tags": formatting.normalize_tags(request.tags, limit=8, allow_spaces=True),
         }
         if request.as_draft:
@@ -213,6 +213,27 @@ class GitAdapter(Adapter):
             matter["keywords"] = request.keywords
         if request.focus_keyword:
             matter["focusKeyword"] = request.focus_keyword
+
+        # Open Graph / Twitter Card keys, so the link unfurls as a real card
+        # instead of a grey rectangle. These go in the front matter and not in
+        # the body: a crawler reads <head>, and a body-level <meta> is ignored
+        # by every one of them. The theme is what puts them in the head — which
+        # is why this emits the camel-cased keys the common themes look for
+        # rather than raw tags. See app.services.social_cards.
+        matter.update(
+            social_cards.front_matter_keys(
+                social_cards.meta_tags(
+                    title=request.title,
+                    url=request.canonical_url or "",
+                    meta_description=request.meta_description,
+                    excerpt=request.excerpt,
+                    body_markdown=request.body_markdown,
+                    cover_image_url=request.cover_image_url,
+                    site_name=request.project_name,
+                    tags=request.tags,
+                )
+            )
+        )
 
         # Reading time and word count — most blog themes display these.
         plain = seo.strip_markdown(request.body_markdown)
@@ -381,13 +402,13 @@ class GitAdapter(Adapter):
             return  # Already present, nothing to do.
 
         # Build updated sitemap.
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        now_iso = datetime.now(UTC).strftime("%Y-%m-%d")
         entries = [{"url": u} for u in sorted(existing_urls)]
         entries.append({"url": post_url, "lastmod": now_iso})
         sitemap_xml = seo.build_sitemap_xml(entries)
 
         payload: dict[str, Any] = {
-            "message": f"chore: update sitemap.xml",
+            "message": "chore: update sitemap.xml",
             "content": base64.b64encode(sitemap_xml.encode("utf-8")).decode("ascii"),
         }
         if branch:

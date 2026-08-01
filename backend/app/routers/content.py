@@ -39,6 +39,7 @@ from app.schemas.content import (
     ScheduleContentIn,
     SeoIssueOut,
     SlotOut,
+    SocialCardsOut,
 )
 from app.services import (
     content_generator,
@@ -50,6 +51,7 @@ from app.services import (
     repurpose,
     scheduling,
     seo,
+    social_cards,
 )
 
 logger = logging.getLogger(__name__)
@@ -361,6 +363,44 @@ def internal_link_suggestions(
         limit=limit,
     )
     return [InternalLinkSuggestionOut(**s) for s in suggestions]
+
+
+@router.get("/{content_id}/social", response_model=SocialCardsOut)
+def social_cards_preview(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SocialCardsOut:
+    """How this piece unfurls when its link is pasted into a feed.
+
+    GET and free: the service is pure, so unlike ``/repurpose`` there is no
+    model call to ration. The editor computes the same previews locally while
+    you type; this endpoint is the authority for the meta tags themselves,
+    which the editor offers for pasting into a hand-rolled site.
+    """
+    content = _owned_content(content_id, db, user)
+    # The address the card will actually carry: the canonical if the piece
+    # names one, otherwise wherever it first went live. Empty is fine — it
+    # only decides the domain line on the card.
+    live = next(
+        (
+            p.external_url
+            for p in content.publications
+            if p.status == PublicationStatus.PUBLISHED and p.external_url
+        ),
+        None,
+    )
+    result = social_cards.summary(
+        title=content.title,
+        url=content.canonical_url or live or "",
+        meta_description=content.meta_description,
+        excerpt=content.excerpt,
+        body_markdown=content.body_markdown,
+        cover_image_url=content.cover_image_url,
+        site_name=content.project.name if content.project else "",
+        tags=list(content.tags or []),
+    )
+    return SocialCardsOut(**result)
 
 
 @router.post("/{content_id}/repurpose", response_model=RepurposeOut)

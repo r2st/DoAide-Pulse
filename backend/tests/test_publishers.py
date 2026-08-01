@@ -206,6 +206,27 @@ def test_git_file_includes_json_ld(request_):
     assert parsed["headline"] == request_.title
 
 
+def test_git_file_carries_open_graph_keys_in_front_matter(request_):
+    # Front matter and not the body: a crawler reads <head>, so a body-level
+    # <meta> would be ignored — unlike the JSON-LD above it, which is not.
+    contents = GitAdapter().build_file(
+        replace(request_, cover_image_url="https://cdn.example.com/cover.png")
+    )
+
+    assert 'ogTitle: "Automating developer marketing"' in contents
+    assert 'ogImage: "https://cdn.example.com/cover.png"' in contents
+    assert 'twitterCard: "summary_large_image"' in contents
+    assert "<meta" not in contents
+
+
+def test_git_file_without_a_cover_downgrades_the_card_and_omits_the_image(request_):
+    contents = GitAdapter().build_file(request_)
+
+    assert 'twitterCard: "summary"' in contents
+    # An empty ogImage makes a theme render an empty <meta>.
+    assert "ogImage:" not in contents
+
+
 def test_git_draft_is_a_front_matter_flag_not_a_refusal(request_):
     contents = GitAdapter().build_file(replace(request_, as_draft=True))
     assert "draft: true" in contents

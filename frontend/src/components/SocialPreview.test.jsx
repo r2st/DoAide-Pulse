@@ -1,0 +1,162 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, expect, it, vi } from "vitest";
+import SocialPreview from "./SocialPreview";
+import { api } from "../lib/api";
+
+vi.mock("../lib/api", () => ({ api: { socialCards: vi.fn() } }));
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// Long enough to clip on every network, so switching tabs visibly changes the
+// rendered title rather than only the tab styling.
+const LONG_TITLE =
+  "How we cut our continuous integration pipeline from forty minutes down to " +
+  "under four using aggressive caching, a better runner, and far fewer steps";
+
+const GOOD_DESCRIPTION =
+  "A description that comfortably clears the fifty-character floor and reads like a real sentence.";
+
+function draft(overrides = {}) {
+  return {
+    title: "Shipping Herald v2",
+    body_markdown: "## Why\n\nA paragraph.",
+    excerpt: "",
+    meta_description: GOOD_DESCRIPTION,
+    cover_image_url: "https://cdn.example.com/cover.png",
+    ...overrides,
+  };
+}
+
+it("renders a tab per network with the first one selected", () => {
+  render(<SocialPreview draft={draft()} url="https://example.com/p" />);
+
+  const tabs = screen.getAllByRole("tab");
+  expect(tabs.map((tab) => tab.textContent)).toEqual([
+    "X / Twitter",
+    "LinkedIn",
+    "Facebook",
+    "Slack",
+  ]);
+  expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+});
+
+it("shows the title and the domain on the card", () => {
+  render(<SocialPreview draft={draft()} url="https://blog.example.com/post" />);
+
+  expect(screen.getByText("Shipping Herald v2")).toBeInTheDocument();
+  expect(screen.getByText("blog.example.com")).toBeInTheDocument();
+});
+
+it("shows a longer title on LinkedIn than on X", async () => {
+  // The reason the tabs exist: the same post is cut differently per network.
+  render(<SocialPreview draft={draft({ title: LONG_TITLE })} url="https://e.com/p" />);
+
+  const onX = screen.getByText(/^How we cut/).textContent;
+  await userEvent.click(screen.getByRole("tab", { name: "LinkedIn" }));
+  const onLinkedIn = screen.getByText(/^How we cut/).textContent;
+
+  expect(onLinkedIn.length).toBeGreaterThan(onX.length);
+});
+
+it("says in words when the title is cut, not only with an ellipsis", async () => {
+  render(<SocialPreview draft={draft({ title: LONG_TITLE })} url="https://e.com/p" />);
+
+  expect(screen.getByText(/title is cut here/i)).toBeInTheDocument();
+});
+
+it("says nothing about clipping when everything fits", () => {
+  render(<SocialPreview draft={draft()} url="https://e.com/p" />);
+
+  expect(screen.queryByText(/cut here/i)).not.toBeInTheDocument();
+});
+
+it("renders the cover image at the ratio the networks crop to", () => {
+  render(<SocialPreview draft={draft()} url="https://e.com/p" />);
+
+  const image = document.querySelector("img");
+  expect(image).toHaveAttribute("src", "https://cdn.example.com/cover.png");
+  expect(image.className).toContain("aspect-[1.91/1]");
+});
+
+it("falls back to the small text-only card when there is no cover", () => {
+  render(<SocialPreview draft={draft({ cover_image_url: "" })} url="https://e.com/p" />);
+
+  // No image element at all — the placeholder is an inline svg, which is what
+  // the networks actually draw.
+  expect(document.querySelector("img")).toBeNull();
+  expect(screen.getByText(/no cover image/i)).toBeInTheDocument();
+});
+
+it("treats a relative cover as no cover", () => {
+  // A crawler fetches from its own servers and cannot resolve it.
+  render(<SocialPreview draft={draft({ cover_image_url: "/img/c.png" })} url="https://e.com/p" />);
+
+  expect(document.querySelector("img")).toBeNull();
+  expect(screen.getByText(/relative path/i)).toBeInTheDocument();
+});
+
+it("reports a clean card when nothing is wrong", () => {
+  render(<SocialPreview draft={draft()} url="https://e.com/p" />);
+
+  expect(screen.getByText(/the card is complete/i)).toBeInTheDocument();
+});
+
+it("shows the placeholder title when the piece has none", () => {
+  render(<SocialPreview draft={draft({ title: "" })} url="https://e.com/p" />);
+
+  expect(screen.getByText(/untitled/i)).toBeInTheDocument();
+});
+
+it("does not fetch the meta tags until they are asked for", () => {
+  render(<SocialPreview draft={draft()} url="https://e.com/p" contentId={7} />);
+
+  expect(api.socialCards).not.toHaveBeenCalled();
+});
+
+it("fetches and shows the meta tags on request", async () => {
+  api.socialCards.mockResolvedValue({
+    meta_html: '<meta property="og:title" content="Shipping Herald v2">',
+  });
+  render(<SocialPreview draft={draft()} url="https://e.com/p" contentId={7} />);
+
+  await userEvent.click(screen.getByRole("button", { name: "Show" }));
+
+  await waitFor(() =>
+    expect(screen.getByLabelText(/meta tags/i)).toHaveValue(
+      '<meta property="og:title" content="Shipping Herald v2">',
+    ),
+  );
+  expect(api.socialCards).toHaveBeenCalledWith(7);
+});
+
+it("surfaces a failure to load the tags", async () => {
+  api.socialCards.mockRejectedValue(new Error("Network unreachable"));
+  render(<SocialPreview draft={draft()} url="https://e.com/p" contentId={7} />);
+
+  await userEvent.click(screen.getByRole("button", { name: "Show" }));
+
+  expect(await screen.findByText("Network unreachable")).toBeInTheDocument();
+});
+
+it("omits the meta tags section for an unsaved piece", () => {
+  // No id means nothing to fetch against.
+  render(<SocialPreview draft={draft()} url="https://e.com/p" />);
+
+  expect(screen.queryByText(/meta tags/i)).not.toBeInTheDocument();
+});
+
+it("updates when the draft changes", () => {
+  const { rerender } = render(
+    <SocialPreview draft={draft()} url="https://e.com/p" />,
+  );
+  expect(screen.getByText("Shipping Herald v2")).toBeInTheDocument();
+
+  rerender(<SocialPreview draft={draft({ title: "Renamed" })} url="https://e.com/p" />);
+
+  // The whole point of computing locally: it tracks the unsaved draft.
+  expect(screen.getByText("Renamed")).toBeInTheDocument();
+  expect(screen.queryByText("Shipping Herald v2")).not.toBeInTheDocument();
+});

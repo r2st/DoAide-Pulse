@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import SocialPreview from "../components/SocialPreview";
 import { Confidence, ErrorBanner, Skeleton, StatusBadge } from "../components/ui/Bits";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
@@ -226,6 +227,13 @@ export default function ContentEditor() {
             onChange={set}
             locked={locked}
           />
+          {/* Fed the live draft, not `data`: the point is to see the clip
+              while you are still editing the title that causes it. */}
+          <SocialPreview
+            draft={draft}
+            url={data.canonical_url || publishedUrl(data)}
+            contentId={data.id}
+          />
           <LinksPanel contentId={data.id} />
           <PublicationsPanel content={data} onChanged={reload} />
           {!locked && (
@@ -250,6 +258,20 @@ export default function ContentEditor() {
         />
       )}
     </div>
+  );
+}
+
+/** Where the piece actually went live, for the domain line on the link card.
+ *
+ *  Only a published publication counts: a scheduled one has an intended URL but
+ *  no page yet, and claiming it on the card would be a promise about something
+ *  that does not exist. Mirrors the same choice on the server side. */
+function publishedUrl(content) {
+  return (
+    content.publications?.find(
+      (publication) =>
+        publication.status === "published" && publication.external_url,
+    )?.external_url ?? ""
   );
 }
 

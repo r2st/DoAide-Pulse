@@ -181,6 +181,42 @@ class InternalLinkSuggestionOut(BaseModel):
     score: int
 
 
+class SocialPreviewOut(BaseModel):
+    """One network's rendering of the link card, as far as it is predictable."""
+
+    network: str
+    label: str
+    #: Already clipped to this network's limit — see app.services.social_cards.
+    title: str
+    description: str
+    title_clipped: bool = False
+    description_clipped: bool = False
+    domain: str = ""
+    image_url: str | None = None
+    #: "summary_large_image" or "summary". Decided entirely by whether there is
+    #: a usable cover image, and it changes the whole shape of the card.
+    card_type: str
+
+
+class MetaTagOut(BaseModel):
+    """One ``<meta>`` tag. A list, not a dict — ``article:tag`` repeats."""
+
+    key: str
+    value: str
+
+
+class SocialCardsOut(BaseModel):
+    """Everything the editor's social panel shows for one piece."""
+
+    previews: list[SocialPreviewOut] = []
+    #: Same shape and vocabulary as SeoIssueOut so the UI styles both alike.
+    issues: list[SeoIssueOut] = []
+    meta_tags: list[MetaTagOut] = []
+    #: The tags as a pasteable ``<head>`` block, fully escaped.
+    meta_html: str = ""
+    recommended_image: dict[str, int] = {}
+
+
 class RepurposeOut(BaseModel):
     """Social snippets derived from a long-form piece — nothing persisted."""
 

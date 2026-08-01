@@ -88,6 +88,10 @@ export const api = {
   // Makes outbound HTTP requests, so it is called on demand rather than with
   // every editor load.
   checkLinks: (id) => request(`/content/${id}/links`),
+  // The Open Graph / Twitter tags for a piece, as saved. The editor predicts
+  // the *card* locally while you type (lib/socialCards); this is the authority
+  // for the tags themselves, which you paste once into your own template.
+  socialCards: (id) => request(`/content/${id}/social`),
   generateContent: (payload) =>
     request("/content/generate", { method: "POST", body: payload }),
   createContent: (payload) => request("/content", { method: "POST", body: payload }),
