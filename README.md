@@ -45,9 +45,11 @@ docker compose up --build
 The API migrates on boot and serves at <http://localhost:8000>
 (<http://localhost:8000/docs> for the OpenAPI browser).
 
-Seed an account and Herald's own project record — this, not `/auth/register`, is
+Seed an account and the project records — this, not `/auth/register`, is
 how the account is created: registration is closed unless `REGISTRATION_ENABLED`
-says otherwise (see Configuration).
+says otherwise (see Configuration). The projects registered live in
+`SEED_PROJECTS` in `backend/app/seed.py`; re-running picks up any added there
+since the last run and leaves the existing ones alone.
 
 ```bash
 docker compose exec api python -m app.seed
