@@ -41,7 +41,25 @@ class Platform(str, Enum):
     Membership here is not the same as being implemented — see
     ``app.services.publishers.registry`` for which adapters can actually
     publish. The enum is the vocabulary; the registry is the capability.
+
+    Lookup is case-insensitive, so the member *name* resolves as well as its
+    value. ``autopilot_platforms`` is a plain JSON column rather than a typed
+    enum column, and rows exist that hold ``"DEVTO"`` — SQLAlchemy stores enum
+    names, so anything written through the ORM's enum machinery round-trips in
+    upper case while the API writes ``.value`` in lower case. Reading one of
+    those rows back through ``ProjectOut`` was a 500 on ``GET /projects``.
+    Accepting both spellings on the way in costs nothing; ``.value`` is still
+    the only spelling that ever goes out, which is what the frontend reads.
     """
+
+    @classmethod
+    def _missing_(cls, value: object) -> "Platform | None":
+        if isinstance(value, str):
+            folded = value.strip().lower()
+            for member in cls:
+                if member.value == folded:
+                    return member
+        return None
 
     MEDIUM = "medium"
     DEVTO = "devto"

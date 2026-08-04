@@ -159,3 +159,35 @@ def test_feed_is_public_and_lists_only_published_content(client, project, db):
 def test_feed_404s_for_a_nonexistent_project(client):
     resp = client.get("/api/v1/projects/999999/feed.xml")
     assert resp.status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Platform casing                                                              #
+# --------------------------------------------------------------------------- #
+
+
+def test_list_survives_uppercase_autopilot_platforms(client, auth, project, db):
+    """A regression guard for a 500 on ``GET /projects``.
+
+    ``autopilot_platforms`` is plain JSON, so whatever was written is what
+    comes back — and rows exist holding enum *names* (``"DEVTO"``) rather than
+    values. ``ProjectOut`` used to reject those and take the whole list
+    endpoint down with it.
+    """
+    project.autopilot_platforms = ["DEVTO", "BLUESKY"]
+    db.commit()
+
+    resp = client.get("/api/v1/projects", headers=auth)
+    assert resp.status_code == 200, resp.text
+    # Read tolerantly, write one spelling: the frontend only knows lower case.
+    assert resp.json()[0]["autopilot_platforms"] == ["devto", "bluesky"]
+
+
+def test_publish_accepts_either_platform_spelling(client, auth, project, db):
+    """The same tolerance on the way in, so a caller may send either casing."""
+    from app.models.publication import Platform
+
+    assert Platform("DEVTO") is Platform.DEVTO
+    assert Platform("devto") is Platform.DEVTO
+    with pytest.raises(ValueError):
+        Platform("not-a-platform")
