@@ -153,6 +153,38 @@ def test_share_url_falls_back_to_the_project_url(db, content):
     }
 
 
+def test_utm_content_is_capped_so_the_link_cannot_swallow_the_post(db, content):
+    """A 300-character title makes a 300-character slug, and it lands twice.
+
+    Once in the path and once in ``utm_content`` — which on Bluesky, where the
+    whole post is 300 characters and links are not shortened, is the entire
+    budget spent on the query string of the post's own link.
+    """
+    content.slug = "reconciling-gstr-2b-against-the-purchase-register-" + "x" * 250
+    db.commit()
+
+    request = publishing_service.build_request(content, platform=Platform.BLUESKY)
+    tagged = params_of(request.share_url)["utm_content"]
+
+    assert len(tagged) <= publishing_service._UTM_CONTENT_MAX
+    assert content.slug.startswith(tagged)
+    # Still long enough to tell two posts apart in a report.
+    assert tagged.startswith("reconciling-gstr-2b-against-the-purchase-register")
+
+
+def test_utm_content_never_ends_on_a_stray_hyphen(db, content):
+    content.slug = "a" * 59 + "-trailing-word"
+    db.commit()
+
+    request = publishing_service.build_request(content, platform=Platform.DEVTO)
+    assert not params_of(request.share_url)["utm_content"].endswith("-")
+
+
+def test_a_short_slug_is_left_exactly_as_it_is(db, content):
+    request = publishing_service.build_request(content, platform=Platform.DEVTO)
+    assert params_of(request.share_url)["utm_content"] == "shipping-fast"
+
+
 def test_the_medium_reflects_the_kind_of_platform(db, content):
     social = publishing_service.build_request(content, platform=Platform.TWITTER)
     assert params_of(social.share_url)["utm_medium"] == "social"

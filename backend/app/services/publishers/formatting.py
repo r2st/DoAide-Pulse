@@ -123,13 +123,35 @@ def clip(text: str, budget: int) -> str:
     Prefers a word boundary, falling back to a hard cut for text with no spaces
     in reach — a long identifier, or CJK, where every position is a boundary and
     ``rfind(" ")`` finds nothing.
+
+    A budget of zero or less returns nothing. That case is not hypothetical: it
+    is what a caller hands over once the link and the hashtag line have eaten
+    the whole post, and the obvious slice (``body[:budget - 1]``) quietly
+    returns *almost the entire string* for a non-positive budget — which is how
+    a 300-character Bluesky post came out at 470 and was rejected. Empty is the
+    only answer that fits.
     """
     body = re.sub(r"\s+", " ", text).strip()
+    if budget <= 0:
+        return ""
     if len(body) <= budget:
         return body
     clipped = body[: budget - 1]
     cut = clipped.rfind(" ")
     return (clipped[:cut] if cut > budget // 2 else clipped).rstrip(",;:.") + "…"
+
+
+def billed_length(text: str, *, url: str | None = None, url_cost: int | None = None) -> int:
+    """How long *text* is by the platform's own accounting.
+
+    Twitter and Mastodon rewrite a link and charge a flat rate for it however
+    long it really is, so ``len()`` is the wrong ruler there — it is the right
+    one on Bluesky, which charges what the URL actually costs. This is the ruler
+    the composers check themselves against.
+    """
+    if not url or url_cost is None or url not in text:
+        return len(text)
+    return len(text) - len(url) + url_cost
 
 
 def truncate_with_link(
@@ -142,11 +164,20 @@ def truncate_with_link(
     charges for a link regardless of its real length — 23 on Twitter and
     Mastodon, which rewrite them — and defaults to counting the characters,
     which is what platforms like Bluesky actually do.
+
+    The hook is what gives way when the two will not both fit, all the way to
+    nothing: a post that dropped its link to make room for prose has lost the
+    only part of itself that does any work. The one case this cannot rescue is
+    a URL longer than the whole limit, where the post goes out as the bare link
+    and over budget — a truncated URL is a dead link, so there is no better
+    answer here. Herald's own share links stay well clear of that; see the
+    ``utm_content`` cap in ``app.services.publishing_service``.
     """
     if not url:
         return clip(text, limit)
-    reserve = (len(url) if url_cost is None else url_cost) + 1
-    return f"{clip(text, limit - reserve)} {url}"
+    cost = len(url) if url_cost is None else url_cost
+    hook = clip(text, limit - cost - 1)
+    return f"{hook} {url}" if hook else url
 
 
 def truncate_for_tweet(text: str, *, url: str | None = None) -> str:
@@ -170,14 +201,26 @@ def compose_social(
     sit on their own line, and both are budgeted for *before* the hook is
     trimmed: a post that drops its link to make room for prose has lost the only
     part of itself that does any work.
+
+    There is a third thing that can give way, and it gives way last: the
+    hashtags themselves. A campaign-tagged share link runs to a couple of
+    hundred characters, and on Bluesky — which shortens nothing — the link plus
+    a hashtag line can leave no room for a hook at all. Dropping the hashtags
+    is the one cut that does not change what the post is *for*, so the result
+    is checked against the platform's own ruler and recomposed without them
+    rather than going out over the limit and being rejected.
     """
     hashtags = hashtagify(tags, limit=tag_limit)
-    # Every trailing block costs its own length plus the blank line above it.
-    reserve = len(hashtags) + 2 if hashtags else 0
-    hook = truncate_with_link(
-        text, url=url, limit=limit - reserve, url_cost=url_cost
-    )
-    return f"{hook}\n\n{hashtags}" if hashtags else hook
+    if hashtags:
+        # Every trailing block costs its own length plus the blank line above it.
+        reserve = len(hashtags) + 2
+        hook = truncate_with_link(
+            text, url=url, limit=limit - reserve, url_cost=url_cost
+        )
+        post = f"{hook}\n\n{hashtags}"
+        if billed_length(post, url=url, url_cost=url_cost) <= limit:
+            return post
+    return truncate_with_link(text, url=url, limit=limit, url_cost=url_cost)
 
 
 def truncate_for_linkedin(text: str, *, url: str | None = None) -> str:
@@ -232,6 +275,7 @@ __all__ = [
     "MASTODON_LINK_COST",
     "TCO_LENGTH",
     "TWEET_LIMIT",
+    "billed_length",
     "clip",
     "compose_social",
     "escape_attribute",

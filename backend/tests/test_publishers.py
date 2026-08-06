@@ -160,6 +160,95 @@ def test_bluesky_facets_are_empty_when_the_link_did_not_survive():
     assert bluesky.link_facets("no link here", "https://example.com") == []
 
 
+#: A share link the length a campaign-tagged one really reaches: the slug lands
+#: in the path and again in ``utm_content``, and Bluesky shortens neither. At
+#: this length the link alone is most of a Bluesky post, which is the situation
+#: the composer used to get wrong.
+_LONG_SHARE_URL = (
+    "https://gstbot.example.com/blog/2026/q3/"
+    "how-to-reconcile-your-gstr-2b-against-the-purchase-register-without-"
+    "quietly-losing-input-tax-credit"
+    "?utm_source=bluesky&utm_medium=social&utm_campaign=gstbot-2026-q3-launch"
+    "&utm_content=how-to-reconcile-your-gstr-2b-against-the-purchase-register"
+)
+
+
+def test_bluesky_post_fits_even_when_the_link_eats_the_whole_budget(request_):
+    """The regression: a long share link used to produce a 470-character post.
+
+    The hashtag line and the link together left ``clip`` a negative budget, and
+    a negative budget returned the entire text. Bluesky 400s anything over 300
+    and the publish then failed on every retry.
+    """
+    req = replace(request_, share_url=_LONG_SHARE_URL)
+    text = BlueskyAdapter().build_text(req)
+
+    assert len(text) <= formatting.BLUESKY_LIMIT
+    # The link is the payload — it survives, whole, whatever else is dropped.
+    assert _LONG_SHARE_URL in text
+
+
+def test_clip_returns_nothing_when_there_is_no_room_left():
+    # The slice `body[:budget - 1]` returns almost the whole string here.
+    assert formatting.clip("a fairly long sentence", 0) == ""
+    assert formatting.clip("a fairly long sentence", -12) == ""
+
+
+def test_compose_social_drops_hashtags_before_it_drops_the_link():
+    post = formatting.compose_social(
+        text="Reconciliation is four problems wearing one name.",
+        url=_LONG_SHARE_URL,
+        tags=["gst", "itc", "compliance"],
+        limit=formatting.BLUESKY_LIMIT,
+    )
+    assert len(post) <= formatting.BLUESKY_LIMIT
+    assert _LONG_SHARE_URL in post
+    assert "#gst" not in post
+
+
+def test_compose_social_keeps_hashtags_when_they_fit():
+    post = formatting.compose_social(
+        text="Short hook.",
+        url="https://example.com/p",
+        tags=["gst", "itc"],
+        limit=formatting.BLUESKY_LIMIT,
+    )
+    assert post.endswith("#gst #itc")
+    assert len(post) <= formatting.BLUESKY_LIMIT
+
+
+def test_compose_social_measures_a_shortened_link_at_what_it_costs():
+    """Mastodon charges 23 for a link however long it is.
+
+    Measuring the composed post with ``len`` would drop the hashtags off a post
+    that fits perfectly well — the fix must not overcorrect into that.
+    """
+    post = formatting.compose_social(
+        text="Reconciliation is four problems wearing one name.",
+        url=_LONG_SHARE_URL,
+        tags=["gst", "itc"],
+        limit=formatting.MASTODON_LIMIT,
+        url_cost=formatting.MASTODON_LINK_COST,
+    )
+    billed = formatting.billed_length(
+        post, url=_LONG_SHARE_URL, url_cost=formatting.MASTODON_LINK_COST
+    )
+    assert billed <= formatting.MASTODON_LIMIT
+    assert "#gst #itc" in post  # room to spare once the link is billed at 23
+
+
+def test_a_link_longer_than_the_whole_post_goes_out_whole():
+    """A truncated URL is a dead link, so the bare link is the honest answer."""
+    url = "https://example.com/" + "x" * 400
+    assert formatting.truncate_with_link("hook", url=url, limit=300) == url
+
+
+def test_billed_length_counts_a_link_at_face_value_by_default():
+    text = "read this https://example.com/a-very-long-path-indeed"
+    assert formatting.billed_length(text) == len(text)
+    assert formatting.billed_length(text, url="https://example.com") == len(text)
+
+
 # -- Git ------------------------------------------------------------------- #
 
 

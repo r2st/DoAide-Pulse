@@ -212,6 +212,24 @@ def build_request(
     )
 
 
+#: Cap on ``utm_content``. The slug it is built from is derived from the title,
+#: which the API allows up to 300 characters — and ``utm_content`` lands on the
+#: share link *twice over* once the slug is in the path as well. On Bluesky,
+#: which shortens nothing and allows 300 characters for the whole post, that is
+#: the entire budget spent on the query string of the post's own link.
+#:
+#: Sixty is enough to tell two posts apart in an analytics report, which is all
+#: this value is for. Two titles that differ only past character sixty collapse
+#: to the same label; that is a worse report than the alternative would be, and
+#: a far better one than a post that never went out.
+_UTM_CONTENT_MAX = 60
+
+
+def _utm_content(slug: str) -> str:
+    """A slug trimmed to something that belongs in a query string."""
+    return (slug or "")[:_UTM_CONTENT_MAX].rstrip("-")
+
+
 class _Campaign:
     """Applies one project's UTM parameters, for one platform.
 
@@ -234,7 +252,7 @@ class _Campaign:
                 "source": platform.value,
                 "medium": publishers.get_adapter(platform).utm_medium,
                 "campaign": project.campaign,
-                "content": content.slug,
+                "content": _utm_content(content.slug),
             }
             if self.active and platform and project
             else {}
