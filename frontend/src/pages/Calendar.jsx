@@ -5,6 +5,14 @@ import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { cadenceProvenance, isLearned } from "../lib/alerts";
 import { api } from "../lib/api";
+import {
+  UNROUTED,
+  bucketByDay,
+  filterEntries,
+  platformsIn,
+  summarize,
+  visibleEntries,
+} from "../lib/calendar";
 import { formatDateTime, localDayKey, statusTone, titleize } from "../lib/format";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -36,6 +44,13 @@ export default function Calendar() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [dragging, setDragging] = useState(null);
   const [hoverDay, setHoverDay] = useState(null);
+  // Null on either facet means "not filtering on this".
+  const [platform, setPlatform] = useState(null);
+  const [bucket, setBucket] = useState(null);
+  // The one day currently showing everything it holds. One rather than a set:
+  // expanding a day is a glance at it, and a month with six stretched rows is
+  // the ragged grid the cap exists to prevent.
+  const [expandedDay, setExpandedDay] = useState(null);
 
   const range = useMemo(() => {
     const days = monthGrid(anchor);
@@ -51,15 +66,16 @@ export default function Calendar() {
     [range.start, range.end],
   );
 
-  const byDay = useMemo(() => {
-    const buckets = new Map();
-    for (const entry of data?.entries ?? []) {
-      const key = localDayKey(entry.when);
-      if (!buckets.has(key)) buckets.set(key, []);
-      buckets.get(key).push(entry);
-    }
-    return buckets;
-  }, [data]);
+  const entries = data?.entries ?? [];
+  // Offered from the unfiltered set, so choosing a platform never removes the
+  // chip you would need to get back.
+  const platforms = useMemo(() => platformsIn(entries), [entries]);
+  const shown = useMemo(
+    () => filterEntries(entries, { platform, bucket }),
+    [entries, platform, bucket],
+  );
+  const byDay = useMemo(() => bucketByDay(shown), [shown]);
+  const counts = useMemo(() => summarize(entries), [entries]);
 
   async function drop(day) {
     setHoverDay(null);
@@ -102,7 +118,18 @@ export default function Calendar() {
         <div>
           <h1 className="page-title">Calendar</h1>
           <p className="mt-1 text-sm text-ink-500">
-            Drag a scheduled item to another day to move it.
+            {/* What the window holds, so "is anything going out?" does not mean
+                scanning 42 squares for a coloured chip. */}
+            {counts.total === 0
+              ? "Nothing on the calendar in this window."
+              : [
+                  `${counts.upcoming} going out`,
+                  `${counts.published} published`,
+                  counts.failed > 0 ? `${counts.failed} failed` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+            . Drag a scheduled item to another day to move it.
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -135,6 +162,53 @@ export default function Calendar() {
 
       <ErrorBanner message={error} onRetry={reload} />
 
+      {counts.total > 0 && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <FilterRow
+            label="Status"
+            value={bucket}
+            onChange={setBucket}
+            options={[
+              { value: "upcoming", label: "Going out", count: counts.upcoming },
+              { value: "published", label: "Published", count: counts.published },
+              // Only offered when there is one. A chip that always filters to
+              // nothing teaches the user to ignore the row.
+              ...(counts.failed > 0
+                ? [{ value: "failed", label: "Failed", count: counts.failed }]
+                : []),
+            ]}
+          />
+          {platforms.length > 1 && (
+            <FilterRow
+              label="Platform"
+              value={platform}
+              onChange={setPlatform}
+              options={platforms.map((value) => ({
+                value,
+                label: value === UNROUTED ? "Not routed" : titleize(value),
+              }))}
+            />
+          )}
+        </div>
+      )}
+
+      {counts.total > 0 && shown.length === 0 && (
+        // An empty grid with a filter on looks identical to an empty month.
+        <p className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm text-ink-500">
+          Nothing in this month matches the filter.{" "}
+          <button
+            className="text-brand-500 hover:underline"
+            onClick={() => {
+              setPlatform(null);
+              setBucket(null);
+            }}
+          >
+            Clear it
+          </button>
+          .
+        </p>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
         {loading && !data ? (
           <Skeleton rows={6} />
@@ -150,7 +224,9 @@ export default function Calendar() {
             <div className="grid grid-cols-7">
               {range.days.map((day) => {
                 const key = localDayKey(day);
-                const entries = byDay.get(key) ?? [];
+                const { shown: dayEntries, hidden } = visibleEntries(byDay.get(key), {
+                  expanded: expandedDay === key,
+                });
                 const inMonth = day.getMonth() === anchor.getMonth();
                 return (
                   <div
@@ -183,7 +259,7 @@ export default function Calendar() {
                       </span>
                     </div>
                     <div className="space-y-1">
-                      {entries.map((entry) => (
+                      {dayEntries.map((entry) => (
                         <CalendarChip
                           key={`${entry.content_id}-${entry.publication_id ?? "none"}`}
                           entry={entry}
@@ -194,6 +270,22 @@ export default function Calendar() {
                           }}
                         />
                       ))}
+                      {hidden > 0 && (
+                        <button
+                          className="block w-full rounded px-1.5 py-0.5 text-left text-[11px] text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
+                          onClick={() => setExpandedDay(key)}
+                        >
+                          +{hidden} more
+                        </button>
+                      )}
+                      {expandedDay === key && (
+                        <button
+                          className="block w-full rounded px-1.5 py-0.5 text-left text-[11px] text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
+                          onClick={() => setExpandedDay(null)}
+                        >
+                          Show less
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -260,6 +352,43 @@ export default function Calendar() {
             )}
           </div>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One facet of the filter row, as toggle chips.
+ *
+ * Clicking the active chip clears it rather than doing nothing — "All" is the
+ * absence of a filter, not a fourth option, and a row that needs a separate
+ * reset control for two chips is a row with three chips in it.
+ */
+function FilterRow({ label, value, onChange, options }) {
+  return (
+    <div className="flex items-center gap-2" role="group" aria-label={label}>
+      <span className="eyebrow">{label}</span>
+      <div className="flex flex-wrap gap-1">
+        {options.map((option) => {
+          const active = value === option.value;
+          return (
+            <button
+              key={option.value}
+              aria-pressed={active}
+              onClick={() => onChange(active ? null : option.value)}
+              className={`rounded-md px-2 py-1 font-mono text-[11px] transition-colors ${
+                active
+                  ? "bg-brand-50 text-brand-600"
+                  : "text-ink-400 hover:bg-ink-900/[0.04] hover:text-ink-700"
+              }`}
+            >
+              {option.label}
+              {option.count !== undefined && (
+                <span className="ml-1.5 text-ink-400">{option.count}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
