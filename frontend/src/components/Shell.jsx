@@ -6,7 +6,7 @@ import Logo from "./ui/Logo";
 
 // The destinations, in the order the work happens: see where things stand,
 // register what to write about, decide what shape it takes, write it, place it
-// in time, ship it, configure.
+// in time, ship it, find out whether it landed, configure.
 const TABS = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/projects", label: "Projects" },
@@ -15,6 +15,7 @@ const TABS = [
   { to: "/content", label: "Content" },
   { to: "/calendar", label: "Calendar" },
   { to: "/publish", label: "Publish" },
+  { to: "/analytics", label: "Analytics" },
   { to: "/settings", label: "Settings" },
 ];
 

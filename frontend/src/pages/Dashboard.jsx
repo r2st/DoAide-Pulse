@@ -63,9 +63,16 @@ export default function Dashboard() {
     <div className="stagger space-y-8">
       <div className="flex items-end justify-between gap-4">
         <h1 className="page-title">Dashboard</h1>
-        <Link to="/content" className="btn-primary">
-          Write something
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* The read-time panel at the bottom of this page is a taste of the
+              analytics; this is where the rest of them live. */}
+          <Link to="/analytics" className="btn-quiet">
+            Analytics
+          </Link>
+          <Link to="/content" className="btn-primary">
+            Write something
+          </Link>
+        </div>
       </div>
 
       {nothingYet ? (

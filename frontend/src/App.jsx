@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Shell from "./components/Shell";
 import { useAuth } from "./hooks/useAuth";
+import Analytics from "./pages/Analytics";
 import Calendar from "./pages/Calendar";
 import ContentEditor from "./pages/ContentEditor";
 import ContentList from "./pages/ContentList";
@@ -94,6 +95,14 @@ export default function App() {
         element={
           <Protected>
             <Publish />
+          </Protected>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <Protected>
+            <Analytics />
           </Protected>
         }
       />
