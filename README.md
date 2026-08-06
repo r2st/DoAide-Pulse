@@ -89,11 +89,18 @@ Without them, publishing still works — the API falls back to running it inline
 ### Tests
 
 ```bash
+backend/.venv/bin/python -m pytest          # everything, from the repo root
 cd backend  && .venv/bin/python -m pytest && .venv/bin/ruff check app tests
 cd frontend && npm test && npm run build
 ```
 
-78 backend tests and 16 frontend tests, no external services required.
+The Python suite is 1056 tests across two roots — 996 under `backend/tests` and
+60 under `marketing/tests` — and needs no external services. The root
+`pytest.ini` is what makes one command cover both; `backend/pyproject.toml`
+still configures a run started from `backend/`, so that keeps working as it did.
+
+Coverage (`--cov=app`, `--cov=campaign --cov=herald_client`) sits at 88% for the
+backend and 86% for the campaign runner.
 
 ---
 

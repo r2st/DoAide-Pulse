@@ -44,9 +44,17 @@ class HeraldClient:
         base_url: str = DEFAULT_BASE_URL,
         *,
         timeout: float = 60.0,
+        transport: httpx.BaseTransport | None = None,
     ) -> None:
+        """*transport* exists so the tests can answer requests without a network.
+
+        Nothing in production passes it. It is the only injection point in this
+        module, and it is here rather than a mocked-out ``httpx.request`` so the
+        tests exercise the real client — the form encoding on login, the header
+        handling, the 204 case — instead of a stand-in for it.
+        """
         self.base_url = base_url.rstrip("/")
-        self._http = httpx.Client(timeout=timeout)
+        self._http = httpx.Client(timeout=timeout, transport=transport)
         self._token: str | None = None
 
     # ----------------------------------------------------------------- #

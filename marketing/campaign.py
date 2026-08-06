@@ -26,7 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -59,7 +59,8 @@ _PROJECT_SYNC_FIELDS = (
     "utm_campaign",
 )
 
-#: Content fields compared against the plan on every sync.
+#: Content fields compared against the plan on every sync — but only the ones an
+#: article actually states. See :func:`_declared`.
 _CONTENT_SYNC_FIELDS = (
     "body_markdown",
     "excerpt",
@@ -111,6 +112,37 @@ class Plan:
                 raise SystemExit(f"article {key!r} names unknown series {series!r}")
             if not self.body_path(article).exists():
                 raise SystemExit(f"article {key!r}: missing body {self.body_path(article)}")
+        self._validate_series()
+
+    def _validate_series(self) -> None:
+        """Every series must number 1..n with nothing missing.
+
+        :meth:`title` puts "(Part 2)" in a headline so a reader arriving from a
+        search result knows there is a part 1. That promise runs both ways: a
+        lone "(Part 1)" sends every reader looking for a part 2 that was never
+        written, and a jump from 1 to 3 reads as a piece that got lost. Both are
+        plan mistakes, and both are invisible until the post is public — which
+        is exactly the kind of thing an offline check is for.
+        """
+        for key in self.series:
+            parts = sorted(
+                article["part"]
+                for article in self.articles
+                if article.get("series") == key and article.get("part")
+            )
+            if not parts:
+                continue
+            if parts != list(range(1, len(parts) + 1)):
+                raise SystemExit(
+                    f"series {key!r} is numbered {parts} — parts must run "
+                    "1..n with no gaps and no repeats"
+                )
+            if len(parts) == 1:
+                raise SystemExit(
+                    f"series {key!r} has only part 1. A '(Part 1)' in the "
+                    "headline promises a part 2 — add it, or drop the series "
+                    "and part from the article."
+                )
 
     def body_path(self, article: dict) -> Path:
         return (self.content_root / article["body_file"]).resolve()
@@ -188,18 +220,34 @@ def _campaign_key(plan: Plan, article: dict) -> str:
     return f"{plan.path.stem}/{article['key']}"
 
 
+def _declared(plan: Plan, article: dict) -> dict:
+    """The content fields this article actually states.
+
+    The distinction between "not stated" and "stated as empty" is the whole
+    point, and it only bites on the *second* run. Herald fills in a missing
+    excerpt and meta description from the body at creation time. Sending
+    ``excerpt: ""`` back for an article that never named one does not mean "no
+    excerpt" — it means "replace the one Herald wrote with nothing", which is
+    an idempotent sync quietly destroying data it did not author.
+
+    ``body_markdown`` is always declared: it comes from ``body_file``, which
+    every article has, and it is the field the runner exists to keep in step.
+    """
+    declared = {
+        field: article[field] for field in _CONTENT_SYNC_FIELDS if field in article
+    }
+    declared["body_markdown"] = plan.body(article)
+    return declared
+
+
 def _content_payload(plan: Plan, article: dict, project_id: int) -> dict:
+    """The create body: everything declared, plus what Herald needs up front."""
     return {
         "project_id": project_id,
         "content_type": article.get("content_type", "tutorial"),
         "title": plan.title(article),
-        "body_markdown": plan.body(article),
-        "excerpt": article.get("excerpt", ""),
-        "meta_description": article.get("meta_description", ""),
-        "keywords": article.get("keywords", []),
-        "tags": article.get("tags", []),
-        "focus_keyword": article.get("focus_keyword", ""),
         "campaign_key": _campaign_key(plan, article),
+        **_declared(plan, article),
     }
 
 
@@ -257,10 +305,11 @@ def sync_articles(
 
         # The list shape omits the body, so compare against the detail.
         detail = client.get_content(current["id"])
+        declared = _declared(plan, article)
         drift = {
-            field: payload[field]
-            for field in _CONTENT_SYNC_FIELDS
-            if payload[field] != detail.get(field)
+            field: value
+            for field, value in declared.items()
+            if value != detail.get(field)
         }
         if current["status"] != want_status:
             drift["status"] = want_status
@@ -270,10 +319,34 @@ def sync_articles(
         if dry_run:
             print(f"  ~ {article['key']} would update: {', '.join(sorted(drift))}")
             continue
-        client.update_content(current["id"], drift)
+        updated = client.update_content(current["id"], drift)
         print(f"  ~ {article['key']} updated: {', '.join(sorted(drift))}")
+        _warn_if_not_converged(article["key"], drift, updated)
 
     return ids
+
+
+def _warn_if_not_converged(key: str, sent: dict, stored: dict) -> None:
+    """Say so when Herald stored something other than what the plan asked for.
+
+    Herald normalises several of these fields — keywords are lowercased,
+    deduplicated and capped at eight — so a plan can ask for something the API
+    will never echo back. Nothing errors: the PATCH succeeds, the next run sees
+    the same difference, and the runner reports an update forever while the
+    stored value never moves. One line here turns a silent loop into a fixable
+    complaint about the plan.
+    """
+    resisted = sorted(
+        field
+        for field, value in sent.items()
+        if field != "status" and field in stored and stored[field] != value
+    )
+    if resisted:
+        print(
+            f"      note: {key}: Herald normalised {', '.join(resisted)} — the "
+            "plan and the stored value will differ on every run until the plan "
+            "matches"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -378,6 +451,10 @@ def schedule(
 
 def status(client: HeraldClient, plan: Plan) -> None:
     projects = {p["name"].lower(): p for p in client.list_projects()}
+    # One listing per *project*, not one per article. A campaign is mostly
+    # several articles against the same handful of projects, so fetching inside
+    # the loop asked Herald for the same list a dozen times to render one table.
+    listings: dict[int, list[dict]] = {}
     print(f"{'article':<42} {'status':<10} publications")
     print("-" * 78)
     for article in plan.articles:
@@ -387,7 +464,9 @@ def status(client: HeraldClient, plan: Plan) -> None:
             print(f"{article['key']:<42} {'no project':<10}")
             continue
         key = _campaign_key(plan, article)
-        listed = client.list_content(project_id=project["id"])
+        if project["id"] not in listings:
+            listings[project["id"]] = client.list_content(project_id=project["id"])
+        listed = listings[project["id"]]
         match = next(
             (c for c in listed if (c.get("source") or {}).get("campaign_key") == key),
             None,
@@ -413,6 +492,45 @@ def _parse_start(value: str) -> datetime:
         raise SystemExit(f"--start must be ISO 8601, got {value!r}") from exc
 
 
+def _check_schedule_args(args: argparse.Namespace) -> None:
+    """Refuse an unworkable schedule before anything has been written.
+
+    All of this used to be caught late or not at all, and "late" is the
+    problem: the check for a missing ``--start`` sat *after* the sync, so a
+    mistyped flag created or updated a dozen articles and then bailed. Worse,
+    ``--every 0`` was not checked anywhere — it stacked the whole campaign on
+    one instant — and a negative value walked backwards into the past, where
+    Herald refuses each publish in turn, leaving half the campaign scheduled.
+    """
+    if args.optimize:
+        if args.start is not None:
+            raise SystemExit(
+                "--optimize and --start are mutually exclusive: either Herald "
+                "picks the times or you do."
+            )
+        return
+
+    if args.start is None:
+        raise SystemExit("schedule needs --start (with --every) or --optimize")
+    if args.every < 1:
+        raise SystemExit(
+            f"--every must be at least 1 day, got {args.every}. Zero would put "
+            "the whole campaign out in the same instant."
+        )
+
+    # A naive --start is read as UTC by Herald, so compare in UTC too rather
+    # than against a local clock that would be wrong by the offset.
+    start = args.start
+    now = datetime.now(UTC)
+    if start.tzinfo is None:
+        now = now.replace(tzinfo=None)
+    if start < now:
+        raise SystemExit(
+            f"--start {start.isoformat()} is in the past — Herald refuses a "
+            "publish dated backwards, so this would fail article by article."
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Drive a Herald content campaign from a declarative plan."
@@ -423,7 +541,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("campaign", type=Path)
     parser.add_argument("--base-url", default=None, help="overrides the campaign file")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--start", type=_parse_start, help="ISO time of the first slot")
+    parser.add_argument(
+        "--start",
+        type=_parse_start,
+        help="ISO time of the first slot. Read as UTC unless it carries an offset.",
+    )
     parser.add_argument("--every", type=int, default=3, help="days between articles")
     parser.add_argument(
         "--optimize",
@@ -431,6 +553,11 @@ def main(argv: list[str] | None = None) -> int:
         help="let Herald pick each platform's slot instead of --start/--every",
     )
     args = parser.parse_args(argv)
+
+    # Argument checking before the plan is even loaded, and long before
+    # anything is written: a bad flag must not cost a sync first.
+    if args.command == "schedule":
+        _check_schedule_args(args)
 
     plan = Plan(args.campaign)
     base_url = args.base_url or plan.base_url
@@ -466,10 +593,6 @@ def main(argv: list[str] | None = None) -> int:
                 return 1 if broken else 0
 
             if args.command == "schedule":
-                if not args.optimize and args.start is None:
-                    raise SystemExit(
-                        "schedule needs --start (with --every) or --optimize"
-                    )
                 schedule(
                     client,
                     plan,

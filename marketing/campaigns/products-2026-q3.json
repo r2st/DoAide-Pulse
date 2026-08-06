@@ -203,8 +203,6 @@
     {
       "key": "gstbot-gstr2b-reconciliation",
       "project": "gstbot",
-      "series": "ai-tax-compliance",
-      "part": 1,
       "content_type": "tutorial",
       "title": "GSTR-2B Reconciliation: Where ITC Actually Leaks",
       "focus_keyword": "gstr-2b reconciliation",
