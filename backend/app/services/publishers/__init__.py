@@ -21,6 +21,7 @@ from app.services.publishers.base import (
     PublishResult,
 )
 from app.services.publishers.bluesky import BlueskyAdapter
+from app.services.publishers.buttondown import ButtondownAdapter
 from app.services.publishers.devto import DevToAdapter
 from app.services.publishers.git import GitAdapter
 from app.services.publishers.hashnode import HashnodeAdapter
@@ -40,6 +41,7 @@ _ADAPTERS: dict[Platform, Adapter] = {
     Platform.MASTODON: MastodonAdapter(),
     Platform.BLUESKY: BlueskyAdapter(),
     Platform.GIT: GitAdapter(),
+    Platform.BUTTONDOWN: ButtondownAdapter(),
 }
 
 

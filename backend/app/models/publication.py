@@ -53,7 +53,7 @@ class Platform(str, Enum):
     """
 
     @classmethod
-    def _missing_(cls, value: object) -> "Platform | None":
+    def _missing_(cls, value: object) -> Platform | None:
         if isinstance(value, str):
             folded = value.strip().lower()
             for member in cls:
@@ -73,6 +73,10 @@ class Platform(str, Enum):
     #: built from. Usually the one that should own the canonical URL, since it
     #: is the only copy on a domain the user controls.
     GIT = "git"
+    #: Email. The only destination Herald publishes to that cannot be taken
+    #: back, which is why its adapter treats a send and a draft as genuinely
+    #: different operations rather than one flag on the same call.
+    BUTTONDOWN = "buttondown"
 
 
 class PublicationStatus(str, Enum):

@@ -137,5 +137,6 @@ def test_health_detail_reports_capabilities(client, auth, redis_up):
         "mastodon",
         "bluesky",
         "git",
+        "buttondown",
     }
     assert body["github_configured"] is False

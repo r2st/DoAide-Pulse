@@ -102,6 +102,16 @@ CADENCES: dict[Platform, Cadence] = {
         "more than on algorithmic feeds. Weekday afternoons UTC "
         "see the most activity.",
     ),
+    Platform.BUTTONDOWN: Cadence(
+        platform=Platform.BUTTONDOWN,
+        max_per_week=1,
+        best_weekdays=(1, 3),
+        best_hour_utc=14,
+        rationale="The only channel where posting too often costs you the "
+        "audience permanently — a feed is ignored, an inbox "
+        "unsubscribes. Once a week, Tuesday or Thursday morning "
+        "US Eastern, is the newsletter consensus.",
+    ),
     Platform.GIT: Cadence(
         platform=Platform.GIT,
         max_per_week=3,
