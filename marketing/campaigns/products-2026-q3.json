@@ -1,0 +1,557 @@
+{
+  "base_url": "https://herald.aiknol.com/api/v1",
+  "_notes": [
+    "canonical_platform is devto on every product project: Dev.to publishes",
+    "first, Herald adopts its URL as the piece's canonical, and the Bluesky",
+    "copy then goes out linking back to it rather than duplicating the body.",
+    "That is what makes the cross-post a referral instead of a competitor for",
+    "the same search query.",
+    "Dev.to accepts at most 4 tags, so tags are capped at 4 here."
+  ],
+  "projects": [
+    {
+      "key": "gstbot",
+      "name": "GSTBot",
+      "description": "GSTBot is an AI GST compliance assistant for Indian SMBs. It takes bulk invoice intake by PDF, photo or Excel with AI extraction of vendor, GSTIN, invoice number, amount, tax rate and HSN code; reconciles the purchase register against GSTR-2B with configurable tolerances rather than exact string matching; classifies every exception with a recommended action; tracks Rule 37, 42 and 43 reversals; scores supplier filing health from history; and prepares GSTR-1 and GSTR-3B data for the portal. It exists because reconciliation tools that work properly are priced for enterprises and the tools priced for small businesses mostly do filing.",
+      "repo_url": null,
+      "live_url": "https://gstbot.aiknol.com",
+      "tech_stack": [
+        "FastAPI",
+        "Python",
+        "PostgreSQL",
+        "Redis",
+        "Celery",
+        "React",
+        "Vite"
+      ],
+      "target_audience": "Finance and accounts staff at Indian SMBs who reconcile GSTR-2B by hand every month, and the CAs who file for them.",
+      "keywords": [
+        "gst reconciliation software",
+        "gstr-2b reconciliation",
+        "input tax credit",
+        "itc reconciliation",
+        "gst software for small business india",
+        "gst compliance automation"
+      ],
+      "tone": "technical",
+      "is_active": true,
+      "autopilot_mode": "off",
+      "autopilot_platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "auto_canonical": true,
+      "canonical_platform": "devto",
+      "utm_enabled": true,
+      "utm_campaign": "gstbot-2026q3"
+    },
+    {
+      "key": "caflow",
+      "name": "CAFlow",
+      "description": "CAFlow is AI practice management for Indian Chartered Accountants. It carries a pre-loaded statutory compliance calendar with per-client derived applicability and computed due dates across GST, TDS, income tax, ROC and audit; generates tasks from obligations with assignment and workload views; runs a passwordless client portal with AI-categorised document intake; sends escalating reminders keyed to what is actually blocking a filing; and bills service-wise off the same records. Built for firms currently running on spreadsheets, WhatsApp groups and the senior partner's memory.",
+      "repo_url": null,
+      "live_url": "https://caflow.aiknol.com",
+      "tech_stack": [
+        "FastAPI",
+        "SQLAlchemy",
+        "PostgreSQL",
+        "Alembic",
+        "Celery",
+        "Redis",
+        "React",
+        "Vite",
+        "nginx"
+      ],
+      "target_audience": "Practising Indian Chartered Accountants and small CA firms managing statutory compliance for dozens to hundreds of clients.",
+      "keywords": [
+        "ca practice management software",
+        "compliance calendar india",
+        "gst tds due date tracking",
+        "chartered accountant software india",
+        "client document collection portal"
+      ],
+      "tone": "technical",
+      "is_active": true,
+      "autopilot_mode": "off",
+      "autopilot_platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "auto_canonical": true,
+      "canonical_platform": "devto",
+      "utm_enabled": true,
+      "utm_campaign": "caflow-2026q3"
+    },
+    {
+      "key": "n409",
+      "name": "N409",
+      "description": "N409 is a production rebuild of the 409.ai AI-assisted valuation platform, covering IRC 409A, ASC 718/820, gifts, QSBS and EMI/CSOP. Uploaded company financials - cap tables, income statements, balance sheets, projections and decks - are extracted and normalized by an AI layer, public comparables are selected, and an R-based quant engine (Black-Scholes OPM, income/market/asset approaches) computes the valuation. Analysts review and override any computed value, with the original preserved for audit, and the deliverable report is drafted, edited, versioned and published as a PDF. A partner channel lets accounting firms and cap-table platforms resell under their own branding.",
+      "repo_url": "https://github.com/r2st/N409",
+      "live_url": "https://n409.aiknol.com",
+      "tech_stack": [
+        "TypeScript",
+        "Node.js",
+        "PostgreSQL",
+        "Redis",
+        "Terraform",
+        "R",
+        "OpenTelemetry"
+      ],
+      "target_audience": "Valuation firms, accounting practices and cap-table platforms that deliver 409A and related valuations to startup clients.",
+      "keywords": [
+        "409a valuation",
+        "ai valuation platform",
+        "asc 718",
+        "white-label valuation",
+        "audit-ready valuation report"
+      ],
+      "tone": "marketing",
+      "is_active": true,
+      "autopilot_mode": "off",
+      "autopilot_platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "auto_canonical": true,
+      "canonical_platform": "devto",
+      "utm_enabled": true,
+      "utm_campaign": "n409-2026q3"
+    },
+    {
+      "key": "talentping",
+      "name": "TalentPing",
+      "description": "TalentPing is AI-powered job-application automation that skips the ATS spray-and-pray: it finds recruiter and hiring-manager contacts, writes personalised outreach, sends it from the user's own Gmail over OAuth so SPF, DKIM and DMARC align by construction, applies warm-up ramping and throttling with randomised timing, then classifies the replies and drafts responses.",
+      "repo_url": "https://github.com/r2st/TalentPing",
+      "live_url": "https://talentping.aiknol.com",
+      "tech_stack": [
+        "FastAPI",
+        "SQLAlchemy",
+        "PostgreSQL",
+        "Celery",
+        "Redis",
+        "React",
+        "Gmail API"
+      ],
+      "target_audience": "Job seekers and career changers who want targeted recruiter outreach rather than volume applications, especially in tech.",
+      "keywords": [
+        "ai job application",
+        "ghost job detection",
+        "recruiter outreach automation",
+        "ats job search",
+        "personalized cold email"
+      ],
+      "tone": "technical",
+      "is_active": true,
+      "autopilot_mode": "off",
+      "autopilot_platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "auto_canonical": true,
+      "canonical_platform": "devto",
+      "utm_enabled": true,
+      "utm_campaign": "talentping-2026q3"
+    },
+    {
+      "key": "herald",
+      "name": "Herald",
+      "description": "Herald is an AI-powered marketing automation tool for developers who ship more than they write about. It watches your project repos, drafts blog posts and social copy when something meaningful lands, runs them past you, and publishes to Dev.to, Medium and the rest on a schedule — then tracks which pieces actually got read.",
+      "repo_url": "https://github.com/r2st/Herald",
+      "live_url": "https://herald.aiknol.com",
+      "tech_stack": [
+        "FastAPI",
+        "SQLAlchemy",
+        "PostgreSQL",
+        "Celery",
+        "Redis",
+        "React",
+        "Vite",
+        "Tailwind CSS"
+      ],
+      "target_audience": "Indie developers and small teams who ship side projects and want them promoted without hiring a marketer.",
+      "keywords": [
+        "marketing automation",
+        "developer marketing",
+        "ai content generation",
+        "devto api",
+        "content calendar"
+      ],
+      "tone": "technical",
+      "is_active": true,
+      "autopilot_mode": "auto",
+      "autopilot_platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "auto_canonical": true,
+      "canonical_platform": "devto",
+      "utm_enabled": true,
+      "utm_campaign": "herald-2026q3"
+    }
+  ],
+  "series": [
+    {
+      "key": "ai-tax-compliance",
+      "title": "AI in Tax Compliance"
+    },
+    {
+      "key": "409a-guide",
+      "title": "409A Valuation Guide"
+    }
+  ],
+  "articles": [
+    {
+      "key": "gstbot-gstr2b-reconciliation",
+      "project": "gstbot",
+      "series": "ai-tax-compliance",
+      "part": 1,
+      "content_type": "tutorial",
+      "title": "GSTR-2B Reconciliation: Where ITC Actually Leaks",
+      "focus_keyword": "gstr-2b reconciliation",
+      "keywords": [
+        "gstr-2b reconciliation",
+        "input tax credit reconciliation",
+        "itc mismatch gstr-2b",
+        "rule 37 itc reversal",
+        "gst purchase register matching",
+        "supplier gst filing compliance"
+      ],
+      "tags": [
+        "india",
+        "tax",
+        "automation",
+        "ai"
+      ],
+      "excerpt": "Reconciliation is four different problems wearing one name. Here is where ITC actually leaks — mismatch classes, matching with tolerances, Rule 37/42/43 reversals, and why supplier filing history is a leading indicator.",
+      "meta_description": "A practical guide to GSTR-2B reconciliation: the four mismatch classes, why exact invoice-number matching fails, the Rule 37/42/43 reversals nobody tracks, and what to automate first.",
+      "body_file": "gstbot-gstr2b-reconciliation.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "gstbot-software-comparison",
+      "project": "gstbot",
+      "content_type": "comparison",
+      "title": "Best GST Software for Indian SMBs: A Buyer's Framework",
+      "focus_keyword": "best gst software for indian smbs",
+      "keywords": [
+        "best gst software for indian smbs",
+        "gst reconciliation software comparison",
+        "gst software small business india",
+        "cleartax alternative",
+        "gst compliance tools"
+      ],
+      "tags": [
+        "india",
+        "tax",
+        "saas",
+        "startup"
+      ],
+      "excerpt": "The four categories of GST software, the seven questions that actually separate them, and an honest note on where our own tool is the wrong answer.",
+      "meta_description": "Choosing the best GST software for Indian SMBs: the four product categories, the seven questions that actually separate them, and where a focused reconciliation tool is the wrong answer.",
+      "body_file": "gstbot-software-comparison.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "n409-409a-valuation-explained",
+      "project": "n409",
+      "series": "409a-guide",
+      "part": 1,
+      "content_type": "tutorial",
+      "title": "409A Valuation for Founders, Explained",
+      "focus_keyword": "409a valuation",
+      "keywords": [
+        "409a valuation",
+        "409a safe harbor",
+        "fair market value common stock",
+        "liquidation preference waterfall",
+        "discount for lack of marketability",
+        "startup stock options tax"
+      ],
+      "tags": [
+        "startup",
+        "finance",
+        "founders",
+        "valuation"
+      ],
+      "excerpt": "Why common stock is worth so much less than the preferred your investors just bought, what safe harbor actually buys you, and the six things that genuinely move a 409A number.",
+      "meta_description": "What a 409A valuation requires, why the independent-appraisal safe harbor is really about burden of proof, why common stock prices below preferred, and the six things that move the number.",
+      "body_file": "n409-409a-valuation-explained.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "n409-opm-backsolve-pwerm",
+      "project": "n409",
+      "series": "409a-guide",
+      "part": 2,
+      "content_type": "tutorial",
+      "title": "The Option Pricing Model, Backsolve and PWERM",
+      "focus_keyword": "option pricing model",
+      "keywords": [
+        "option pricing model 409a",
+        "opm backsolve method",
+        "pwerm valuation",
+        "black-scholes equity allocation",
+        "cap table breakpoints",
+        "409a allocation methods"
+      ],
+      "tags": [
+        "finance",
+        "valuation",
+        "startup",
+        "python"
+      ],
+      "excerpt": "Every class of equity above a preference stack is a call option on enterprise value. Here is how breakpoints, Black-Scholes allocation, the backsolve root-find and PWERM fit together — and where the bugs live.",
+      "meta_description": "How the option pricing model, the OPM backsolve and PWERM allocate enterprise value across a cap table: breakpoint discovery, Black-Scholes call spreads, and implementation notes.",
+      "body_file": "n409-opm-backsolve-pwerm.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "talentping-outreach-deliverability",
+      "project": "talentping",
+      "content_type": "how_to",
+      "title": "Cold Email Deliverability for Automated Job Outreach",
+      "focus_keyword": "cold email deliverability",
+      "keywords": [
+        "cold email deliverability",
+        "spf dkim dmarc setup",
+        "dmarc alignment",
+        "email warm up schedule",
+        "job application automation",
+        "gmail postmaster tools"
+      ],
+      "tags": [
+        "email",
+        "automation",
+        "career",
+        "devops"
+      ],
+      "excerpt": "Your replies did not stop because the message got worse. They stopped because your sender reputation did. Authentication, alignment, warm-up curves and the sending behaviour that keeps you in the inbox.",
+      "meta_description": "A cold email deliverability guide for automated job-search outreach: SPF, DKIM and DMARC alignment, a realistic warm-up ramp, sending behaviour that does not read as a bot, and the signals to watch.",
+      "body_file": "talentping-outreach-deliverability.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "caflow-compliance-calendar-automation",
+      "project": "caflow",
+      "content_type": "how_to",
+      "title": "Automating the Indian CA Compliance Calendar",
+      "focus_keyword": "ca compliance calendar",
+      "keywords": [
+        "ca practice management software india",
+        "compliance calendar automation",
+        "gst tds due date tracking",
+        "chartered accountant practice software",
+        "client document collection",
+        "statutory compliance india"
+      ],
+      "tags": [
+        "india",
+        "automation",
+        "productivity",
+        "saas"
+      ],
+      "excerpt": "A recurring calendar reminder is the wrong model for statutory compliance. The data model that works: compliance types with derived applicability, generated obligation instances, and 'blocked' as a first-class status.",
+      "meta_description": "How to model the Indian CA compliance calendar as data rather than reminders: derived applicability, due-date rules with holiday shifting and extensions, and why document collection is the real bottleneck.",
+      "body_file": "caflow-compliance-calendar-automation.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "n409-india-startups-409a",
+      "project": "n409",
+      "content_type": "tutorial",
+      "title": "Why Indian Startups Need Professional 409A Valuations",
+      "focus_keyword": "409a valuation for indian startups",
+      "keywords": [
+        "409a valuation for indian startups",
+        "delaware flip 409a",
+        "esop valuation india",
+        "merchant banker valuation esop",
+        "409a safe harbor",
+        "cross border startup valuation"
+      ],
+      "tags": [
+        "startup",
+        "finance",
+        "india",
+        "valuation"
+      ],
+      "excerpt": "A 409A binds US taxpayers, not Indian companies — which means the answer depends on whether you have flipped, who holds your options, and where you are headed. What triggers the requirement, what the Indian equivalent is, and why one report does not cover both.",
+      "meta_description": "When an Indian startup actually needs a 409A valuation: the Delaware flip and US-grantee triggers, why Rule 11UA and merchant-banker valuations are a separate requirement, and what the safe harbor really buys.",
+      "body_file": "n409-india-startups-409a.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "gstbot-ai-gst-compliance",
+      "project": "gstbot",
+      "content_type": "tutorial",
+      "title": "AI-Powered GST Compliance: How GSTBot Simplifies Tax Filing for Indian SMBs",
+      "focus_keyword": "ai gst compliance",
+      "keywords": [
+        "ai gst compliance",
+        "gst invoice data extraction",
+        "gst automation for smbs",
+        "gst filing software india",
+        "invoice ocr gst",
+        "gst exception management"
+      ],
+      "tags": [
+        "india",
+        "ai",
+        "tax",
+        "automation"
+      ],
+      "excerpt": "Almost none of the hours in GST compliance go into filing. They go into turning inconsistent documents into structured data — which is exactly where AI helps, and exactly where the tax arithmetic must stay deterministic.",
+      "meta_description": "Where AI genuinely helps in GST compliance for Indian SMBs — document extraction, exception classification, supplier risk — and where deterministic code and human approval have to stay in charge.",
+      "body_file": "gstbot-ai-gst-compliance.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "caflow-ai-practice-management",
+      "project": "caflow",
+      "content_type": "feature_spotlight",
+      "title": "How AI is Transforming Chartered Accountant Practice Management",
+      "focus_keyword": "ai for chartered accountants",
+      "keywords": [
+        "ai for chartered accountants",
+        "ca practice management",
+        "document collection automation",
+        "ca firm workflow software",
+        "client portal for ca firms",
+        "practice capacity planning"
+      ],
+      "tags": [
+        "india",
+        "ai",
+        "productivity",
+        "saas"
+      ],
+      "excerpt": "Filing is not the constraint. Document collection, capacity allocation, client communication and billing leakage are — and only some of those are improved by pointing a model at them.",
+      "meta_description": "Where AI actually changes a CA practice: document categorisation, drafted reminders, anomaly detection — and why judgement, sign-off and unattended filing stay with a human.",
+      "body_file": "caflow-ai-practice-management.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "talentping-smart-job-search-2026",
+      "project": "talentping",
+      "content_type": "how_to",
+      "title": "Smart Job Search in 2026: Let AI Handle Your Applications",
+      "focus_keyword": "ai job search",
+      "keywords": [
+        "ai job search",
+        "job application automation",
+        "hiring manager outreach",
+        "ghost job postings",
+        "ats application strategy",
+        "job search follow up"
+      ],
+      "tags": [
+        "career",
+        "ai",
+        "automation",
+        "productivity"
+      ],
+      "excerpt": "Applying to more roles is the wrong lever. The strategy that works is expensive by hand, which is the actual problem worth automating — and there is a short list of things you must not hand over.",
+      "meta_description": "Why volume applications stopped working, the arithmetic favouring researched outreach, and exactly which parts of a job search to automate — contacts, research, follow-up — and which to keep.",
+      "body_file": "talentping-smart-job-search-2026.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "herald-free-marketing-for-saas",
+      "project": "herald",
+      "content_type": "how_to",
+      "title": "Free Marketing for SaaS: Content Strategies That Actually Work",
+      "focus_keyword": "free marketing for saas",
+      "keywords": [
+        "free marketing for saas",
+        "saas content strategy",
+        "content syndication canonical",
+        "developer content marketing",
+        "bootstrapped saas growth",
+        "seo for small saas"
+      ],
+      "tags": [
+        "marketing",
+        "saas",
+        "seo",
+        "startup"
+      ],
+      "excerpt": "Nothing here is free — it is paid in founder attention, which is why most content strategies die in March. What survives that constraint: three kinds of post, one canonical rule, and a cadence of one piece a month.",
+      "meta_description": "Content strategies that survive a small SaaS team's actual budget: what to stop doing, the three kinds of post that compound, the canonical URL rule that decides whether syndication helps or hurts.",
+      "body_file": "herald-free-marketing-for-saas.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    },
+    {
+      "key": "herald-marketing-as-build-artifact",
+      "project": "herald",
+      "content_type": "feature_spotlight",
+      "title": "Developer Marketing as a Build Artifact",
+      "focus_keyword": "developer marketing",
+      "keywords": [
+        "developer marketing automation",
+        "automated content publishing",
+        "devto api cross posting",
+        "canonical url syndication",
+        "bluesky at protocol api",
+        "release notes automation"
+      ],
+      "tags": [
+        "devto",
+        "automation",
+        "marketing",
+        "opensource"
+      ],
+      "excerpt": "Your CI builds, tests, signs, deploys — then stops, and everything downstream of 'the code is live' happens by hand or not at all. On automating the pipeline while keeping the one decision that matters.",
+      "meta_description": "Why small teams ship in silence, what changed in publishing APIs and drafting, and the distinction that separates developer marketing automation from a spam cannon: automate the mechanics, keep the approval.",
+      "body_file": "herald-marketing-as-build-artifact.md",
+      "platforms": [
+        "devto",
+        "bluesky"
+      ],
+      "status": "review"
+    }
+  ]
+}
