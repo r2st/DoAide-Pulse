@@ -7,7 +7,8 @@ engine must always produce a draft.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+
+from sqlalchemy import select
 
 from app.models.content import Content, ContentStatus, ContentType, unique_content_slug
 
@@ -383,15 +384,13 @@ def test_publish_records_as_draft_on_the_publication(client, auth, project, db, 
     assert resp.json()[0]["as_draft"] is True
 
 
-def test_slug_collision_retries_with_random_suffix(client, auth, project, db):
-    """If a concurrent insert grabs the same slug, the retry path kicks in."""
-    from sqlalchemy.exc import IntegrityError as _IE
+def test_a_taken_slug_is_incremented_before_it_is_ever_inserted(client, auth, project, db):
+    """The ordinary collision never reaches the database.
 
-    original_commit = db.commit.__func__ if hasattr(db.commit, '__func__') else None
-    call_count = {"n": 0}
-
-    # Pre-create a content row with slug "shipping-herald" so the first commit
-    # hits the unique constraint.
+    ``unique_content_slug`` queries for the base slug first, so a second piece
+    with the same title is numbered rather than rejected. This is the common
+    path; the constraint below it only catches the race.
+    """
     db.add(Content(
         project_id=project.id,
         content_type=ContentType.HOW_TO,
@@ -411,8 +410,55 @@ def test_slug_collision_retries_with_random_suffix(client, auth, project, db):
         },
     )
     assert resp.status_code == 201, resp.text
-    # The _unique_slug function should have incremented to shipping-herald-2
-    assert resp.json()["slug"] != "shipping-herald"
+    assert resp.json()["slug"] == "shipping-herald-2"
+
+
+def test_a_slug_that_is_taken_between_the_check_and_the_insert_still_lands(
+    client, auth, project, db, monkeypatch
+):
+    """The race the pre-check cannot win, and the retry that covers it.
+
+    Two concurrent requests can both read "shipping-herald" as free and both
+    try to insert it; the unique constraint catches the loser. Forcing the
+    pre-check to hand back a slug that is already taken reproduces exactly that
+    state, and the retry has to turn a would-be 500 into a created row.
+    """
+    db.add(Content(
+        project_id=project.id,
+        content_type=ContentType.HOW_TO,
+        status=ContentStatus.DRAFT,
+        title="Shipping Herald",
+        slug="shipping-herald",
+    ))
+    db.commit()
+
+    # Stand in for the concurrent insert: the check reports the taken slug as
+    # free, so the commit below is the one that discovers otherwise.
+    monkeypatch.setattr(
+        "app.routers.content.unique_content_slug",
+        lambda db, project_id, title: "shipping-herald",
+    )
+
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Shipping Herald",
+            "body_markdown": "## Hello\n\n" + ("word " * 100),
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    slug = resp.json()["slug"]
+    # A random suffix rather than a number: the retry cannot re-run the count
+    # query without risking the same race a second time.
+    assert slug.startswith("shipping-herald-")
+    assert slug != "shipping-herald"
+    # And it is a real row, not an uncommitted object that happens to serialise.
+    assert db.scalar(
+        select(Content.id).where(Content.project_id == project.id, Content.slug == slug)
+    )
 
 
 def test_publish_to_an_unfinished_adapter_is_refused(client, auth, project, db):
@@ -627,7 +673,9 @@ def test_apply_headline_404s_for_content_owned_by_someone_else(client, auth, db)
     from app.security import hash_password
 
     other = User(
-        email="other2@example.com", full_name="Other", hashed_password=hash_password("hunter2hunter2")
+        email="other2@example.com",
+        full_name="Other",
+        hashed_password=hash_password("hunter2hunter2"),
     )
     db.add(other)
     db.commit()

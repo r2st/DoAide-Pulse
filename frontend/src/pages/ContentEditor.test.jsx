@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ContentEditor from "./ContentEditor";
 import { api } from "../lib/api";
 import * as draftStore from "../lib/draftStore";
@@ -212,5 +212,224 @@ describe("the save affordance", () => {
     await screen.findByDisplayValue("Saved title");
     await userEvent.keyboard("{Meta>}s{/Meta}");
     expect(api.updateContent).not.toHaveBeenCalled();
+  });
+});
+
+describe("length figures", () => {
+  it("counts the text on screen, not the last thing saved", async () => {
+    // `data.word_count` stays 2 throughout: nothing is saved here. A figure
+    // that only caught up on save would be wrong for as long as you were
+    // writing, which is all of the time it is being looked at.
+    draw();
+    const body = await screen.findByLabelText(/^Body/i);
+    expect(screen.getByText("2 words")).toBeInTheDocument();
+
+    await userEvent.type(body, " and then some more");
+    expect(screen.getByText("6 words")).toBeInTheDocument();
+    expect(api.updateContent).not.toHaveBeenCalled();
+  });
+
+  it("reads a long piece the way the server will", async () => {
+    // 990 words is exactly 4.5 minutes at 220wpm, where the server's Python
+    // round() gives 4 and a naive Math.round would print 5. The byline on the
+    // published post says 4, so this has to as well.
+    const long = Array.from({ length: 990 }, (_, i) => `w${i}`).join(" ");
+    api.getContent.mockResolvedValue(content({ body_markdown: long }));
+    draw();
+
+    expect(await screen.findByText("990 words")).toBeInTheDocument();
+    expect(screen.getByText("4 min read")).toBeInTheDocument();
+  });
+});
+
+
+describe("auto-save", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * Take over the clock.
+   *
+   * Called *after* the editor has loaded rather than in a `beforeEach`:
+   * installing fake timers before mount stalls the initial fetch, because the
+   * poll that `findBy*` waits on never gets a chance to run.
+   */
+  function useClock() {
+    vi.useFakeTimers();
+  }
+
+  /**
+   * Put a value in a field.
+   *
+   * `fireEvent` rather than `userEvent` because these tests run on a faked
+   * clock, and userEvent's own inter-keystroke delays deadlock against it.
+   * What is under test here is the debounce, not the keyboard.
+   */
+  function typeInto(field, value) {
+    fireEvent.change(field, { target: { value } });
+  }
+
+  /** Let the debounce elapse and the resulting request settle. */
+  async function settle(ms = 2000) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  it("writes the draft once the typing stops", async () => {
+    api.updateContent.mockResolvedValue(content({ title: "Saved title!" }));
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved title!");
+    expect(api.updateContent).not.toHaveBeenCalled();
+
+    await settle();
+    expect(api.updateContent).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ title: "Saved title!" }),
+    );
+  });
+
+  it("restarts the countdown on every keystroke rather than saving mid-word", async () => {
+    api.updateContent.mockResolvedValue(content());
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved titl");
+    await settle(1500);
+    typeInto(title, "Saved title!");
+    await settle(1500);
+    expect(api.updateContent).not.toHaveBeenCalled();
+
+    await settle(600);
+    expect(api.updateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("says when the text last reached the server", async () => {
+    api.updateContent.mockResolvedValue(content({ title: "Saved title!" }));
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved title!");
+    await settle();
+
+    expect(screen.getByText(/Saved just now/)).toBeInTheDocument();
+  });
+
+  it("reports a failure inline rather than as a toast", async () => {
+    // A toast per failed attempt is a stack of them for an offline laptop, and
+    // the user never asked for the save that produced them.
+    api.updateContent.mockRejectedValue(new Error("Service unavailable"));
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved title!");
+    await settle();
+
+    expect(screen.getByText("Auto-save failed")).toBeInTheDocument();
+    expect(toast.error).not.toHaveBeenCalled();
+    // Nothing is lost while it says so: the buffer still holds the text.
+    expect(draftStore.load(3)?.draft.title).toBe("Saved title!");
+  });
+
+  it("does not retry a failed save until there is something new to send", async () => {
+    api.updateContent.mockRejectedValue(new Error("Service unavailable"));
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved title!");
+    await settle();
+    expect(api.updateContent).toHaveBeenCalledTimes(1);
+
+    // Ten more seconds of nothing happening is not a reason to ask again.
+    await settle(10000);
+    expect(api.updateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps what was typed while the save was in flight", async () => {
+    // The regression this guards: the response lands, `data` changes, and an
+    // unconditional reset replaces every keystroke since the request went out
+    // with what the server was told a moment ago.
+    let release;
+    api.updateContent.mockImplementation(
+      () => new Promise((resolve) => { release = resolve; }),
+    );
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved title!");
+    await settle();
+    expect(api.updateContent).toHaveBeenCalledTimes(1);
+
+    // Still typing while the request is out.
+    typeInto(title, "Saved title!?");
+    await act(async () => {
+      release(content({ title: "Saved title!" }));
+    });
+
+    expect(title).toHaveValue("Saved title!?");
+  });
+
+  it("takes the server's copy when nothing was typed while it was in flight", async () => {
+    // The other half of the merge: a normalised keyword list has to land in the
+    // fields, or the editor stays permanently dirty and saves in a loop.
+    api.updateContent.mockResolvedValue(
+      content({ title: "Saved title!", keywords: ["herald", "seo"] }),
+    );
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved title!");
+    await settle();
+
+    expect(screen.getByLabelText(/^Keywords/i)).toHaveValue("herald, seo");
+    await settle(10000);
+    expect(api.updateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("never writes a published piece", async () => {
+    api.getContent.mockResolvedValue(content({ status: "published" }));
+    draw();
+    await screen.findByDisplayValue("Saved title");
+    useClock();
+
+    await settle(10000);
+    expect(api.updateContent).not.toHaveBeenCalled();
+  });
+
+  it("does not write underneath a recovery offer", async () => {
+    // Saving here would answer the question the banner is asking, by
+    // overwriting one of the two answers before the user picked either.
+    storeBuffer({ title: "Rescued title" });
+    draw();
+    await screen.findByText(/Unsaved edits/);
+    useClock();
+
+    await settle(10000);
+    expect(api.updateContent).not.toHaveBeenCalled();
+  });
+
+  it("saves what was restored, once the offer is answered", async () => {
+    api.updateContent.mockResolvedValue(content({ title: "Rescued title" }));
+    storeBuffer({ title: "Rescued title" });
+    draw();
+    await screen.findByText(/Unsaved edits/);
+    useClock();
+    fireEvent.click(screen.getByRole("button", { name: "Restore them" }));
+
+    await settle();
+    expect(api.updateContent).toHaveBeenCalledWith(
+      3,
+      expect.objectContaining({ title: "Rescued title" }),
+    );
   });
 });
