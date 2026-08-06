@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
-
 from sqlalchemy import update
 from sqlalchemy.exc import OperationalError
 
@@ -131,7 +130,9 @@ def publish_due() -> dict:
     return {"dispatched": len(ids)}
 
 
-@celery_app.task(name="app.tasks.publish_tasks.cancel_publication", soft_time_limit=30, time_limit=60)
+@celery_app.task(
+    name="app.tasks.publish_tasks.cancel_publication", soft_time_limit=30, time_limit=60
+)
 def cancel_publication(publication_id: int) -> dict:
     """Stop a scheduled publication before it goes out."""
     db = SessionLocal()

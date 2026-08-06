@@ -149,7 +149,7 @@ class HashnodeAdapter(Adapter):
                 str(error.get("message") or error) for error in errors
             )
             codes = {
-                str(((error.get("extensions") or {}).get("code") or "")).upper()
+                str((error.get("extensions") or {}).get("code") or "").upper()
                 for error in errors
             }
             if codes & _AUTH_CODES:

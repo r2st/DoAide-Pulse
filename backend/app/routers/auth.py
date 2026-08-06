@@ -102,10 +102,14 @@ def register(
         db.commit()
     except IntegrityError:
         db.rollback()
+        # `from None`, not `from exc`: the unique-constraint violation is the
+        # expected outcome of a duplicate signup, not an internal fault, and
+        # chaining it puts the database's own message in the traceback of a
+        # response the user is meant to read as "pick another address".
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
-        )
+        ) from None
     db.refresh(user)
     return user
 

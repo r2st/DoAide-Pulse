@@ -49,18 +49,18 @@ _cfg.get_settings.cache_clear()
 _cfg.settings = _cfg.get_settings()
 
 import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-from sqlalchemy import create_engine, event  # noqa: E402
-from sqlalchemy.orm import sessionmaker  # noqa: E402
-from sqlalchemy.pool import StaticPool  # noqa: E402
-
-from app import ratelimit  # noqa: E402
 
 # Rebuild the limiter with the test settings. If any module imported
 # ``app.ratelimit`` before conftest ran (transitive import from app.main during
 # pytest collection), the limiter was created with the production .env values
 # (e.g. Redis storage URI). Replacing it here guarantees in-memory storage.
 import slowapi  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, event  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
+
+from app import ratelimit  # noqa: E402
 
 ratelimit.limiter = slowapi.Limiter(
     key_func=ratelimit.client_key,

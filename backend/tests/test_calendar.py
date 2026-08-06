@@ -5,16 +5,14 @@ These tests verify the filtering, movability flags, and reschedule behaviour.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
-import pytest
+from datetime import UTC, datetime, timedelta
 
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.publication import Platform, Publication, PublicationStatus
 
 
 def _now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def test_empty_calendar(client, auth):

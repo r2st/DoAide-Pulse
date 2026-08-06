@@ -6,11 +6,6 @@ calling any platform API — the adapter is stubbed.
 """
 from __future__ import annotations
 
-from unittest.mock import patch
-
-import pytest
-
-from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform
 from app.services.publishers.base import CredentialError, CredentialField
 

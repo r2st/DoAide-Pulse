@@ -112,9 +112,11 @@ def _to_detail(content: Content) -> ContentDetail:
 def _commit_content(db: Session, content: Content) -> None:
     """Add and commit, retrying once on a slug collision.
 
-    ``_unique_slug`` prevents most collisions, but two concurrent requests can
-    race past the check. The database-level unique constraint catches the
-    loser; we regenerate the slug and retry rather than surfacing a 500.
+    ``unique_content_slug`` prevents most collisions, but two concurrent
+    requests can race past the check. The database-level unique constraint
+    catches the loser; we regenerate the slug and retry rather than surfacing a
+    500. The retry appends random hex rather than re-running the count query,
+    which would be open to the same race a second time.
     """
     db.add(content)
     try:

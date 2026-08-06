@@ -12,18 +12,16 @@ Covers:
 from __future__ import annotations
 
 import time
+from datetime import UTC
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import select
 
 from app.config import settings
 from app.models.publication import Platform
-from app.models.user import User
 from app.routers import misc
 from app.security import hash_password
 from app.services import cadence
-
 
 # --------------------------------------------------------------------------- #
 # Login timing side-channel                                                    #
@@ -173,9 +171,9 @@ def test_cadence_describe_works_for_all_platforms():
 
 
 def test_cadence_suggest_schedule_for_bluesky():
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    now = datetime(2026, 7, 31, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 7, 31, 12, 0, tzinfo=UTC)
     slots = cadence.suggest_schedule(Platform.BLUESKY, count=3, start=now)
     assert len(slots) == 3
     for slot in slots:

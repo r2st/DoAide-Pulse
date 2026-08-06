@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import jwt
-import pytest
 
 from app.config import settings
 from app.security import (

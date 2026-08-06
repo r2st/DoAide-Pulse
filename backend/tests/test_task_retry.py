@@ -13,7 +13,6 @@ from app.tasks.autopilot_tasks import scan_all_projects, scan_project
 from app.tasks.metrics_tasks import collect_all_metrics, collect_one
 from app.tasks.publish_tasks import publish_due, publish_one
 
-
 RETRYABLE_TASKS = [
     publish_one,
     publish_due,

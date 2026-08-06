@@ -47,11 +47,14 @@ def test_plaintext_fallback_in_dev(no_key):
 
 def test_refuses_plaintext_in_production(no_key, monkeypatch):
     from unittest.mock import PropertyMock, patch
+
     from app.config import Settings
 
-    with patch.object(Settings, "is_production", new_callable=PropertyMock, return_value=True):
-        with pytest.raises(CredentialEncryptionError, match="production"):
-            encrypt_credentials({"token": "abc"})
+    with (
+        patch.object(Settings, "is_production", new_callable=PropertyMock, return_value=True),
+        pytest.raises(CredentialEncryptionError, match="production"),
+    ):
+        encrypt_credentials({"token": "abc"})
 
 
 def test_decrypt_with_wrong_key(fernet_key, monkeypatch):
@@ -70,11 +73,14 @@ def test_decrypt_empty_returns_empty_dict(fernet_key):
 def test_decrypt_encrypted_without_key(fernet_key):
     stored = encrypt_credentials({"k": "v"})
     # Remove the key
-    from app.services import crypto
     from unittest.mock import patch
-    with patch.object(crypto.settings, "token_encryption_key", ""):
-        with pytest.raises(CredentialEncryptionError, match="not set"):
-            decrypt_credentials(stored)
+
+    from app.services import crypto
+    with (
+        patch.object(crypto.settings, "token_encryption_key", ""),
+        pytest.raises(CredentialEncryptionError, match="not set"),
+    ):
+        decrypt_credentials(stored)
 
 
 def test_decrypt_corrupted_plaintext(no_key):

@@ -26,7 +26,7 @@ API: https://docs.bsky.app/docs/api/com-atproto-repo-create-record
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.models.publication import Platform
@@ -149,7 +149,7 @@ class BlueskyAdapter(Adapter):
             "$type": _COLLECTION,
             "text": text,
             # An RFC-3339 stamp with a Z suffix; Bluesky rejects a naive one.
-            "createdAt": datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+            "createdAt": datetime.now(UTC).isoformat(timespec="seconds").replace(
                 "+00:00", "Z"
             ),
             "langs": ["en"],

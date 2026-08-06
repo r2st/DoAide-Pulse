@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 #: Google truncates meta descriptions around 155-160 characters. We aim under
@@ -203,15 +203,14 @@ def audit(
         issues.append(
             SeoIssue("warn", "keywords", "No keywords set — nothing to optimise for.")
         )
-    elif fk and title:
-        if fk.lower() not in title.lower():
-            issues.append(
-                SeoIssue(
-                    "warn",
-                    "title",
-                    f'Focus keyword "{fk}" does not appear in the title.',
-                )
+    elif fk and title and fk.lower() not in title.lower():
+        issues.append(
+            SeoIssue(
+                "warn",
+                "title",
+                f'Focus keyword "{fk}" does not appear in the title.',
             )
+        )
 
     # Focus keyword checks.
     plain = strip_markdown(body_markdown)
@@ -390,9 +389,9 @@ def seo_score(
     # Meta description (15 points).
     if not meta_description.strip():
         score -= 15
-    elif len(meta_description) < META_DESCRIPTION_MIN:
-        score -= 5
-    elif fk and fk.lower() not in meta_description.lower():
+    elif len(meta_description) < META_DESCRIPTION_MIN or (
+        fk and fk.lower() not in meta_description.lower()
+    ):
         score -= 5
 
     # Keywords presence (5 points).
@@ -486,7 +485,7 @@ def build_json_ld(
     """
     plain = strip_markdown(body_markdown)
     word_count = len(plain.split())
-    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_iso = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     schema: dict[str, object] = {
         "@context": "https://schema.org",
