@@ -639,6 +639,18 @@ def generate_content(
     return _to_detail(content)
 
 
+def _manual_source(user: User, campaign_key: str | None) -> dict:
+    """The ``source`` blob for a hand-written piece.
+
+    ``campaign_key`` is only present when the caller supplied one, so a piece
+    written in the UI keeps exactly the shape it always had.
+    """
+    source: dict = {"kind": "manual", "user_id": user.id}
+    if campaign_key:
+        source["campaign_key"] = campaign_key
+    return source
+
+
 @router.post("", response_model=ContentDetail, status_code=status.HTTP_201_CREATED)
 def create_content(
     payload: ContentCreate,
@@ -663,7 +675,7 @@ def create_content(
         focus_keyword=payload.focus_keyword or (keywords[0] if keywords else ""),
         canonical_url=payload.canonical_url,
         cover_image_url=payload.cover_image_url,
-        source={"kind": "manual", "user_id": user.id},
+        source=_manual_source(user, payload.campaign_key),
     )
     _commit_content(db, content)
     return _to_detail(content)

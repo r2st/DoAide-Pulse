@@ -56,6 +56,15 @@ class ContentCreate(BaseModel):
     cover_image_url: str | None = Field(default=None, max_length=700)
     #: The primary SEO keyword. Defaults to the first keyword when omitted.
     focus_keyword: str = Field(default="", max_length=100)
+    #: A caller's own stable identifier for this piece, stored on ``source``.
+    #:
+    #: Exists for scripted callers that have to find their own content again on
+    #: the next run. Without one the only handle is the title, and a title is
+    #: the single field an editing pass is most likely to change — so a
+    #: headline edit orphans the old row and the next sync creates a duplicate
+    #: instead of updating it. ``ContentOut`` already returns ``source``, so a
+    #: caller that sets this can match on it with no extra endpoint.
+    campaign_key: str | None = Field(default=None, max_length=200)
 
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
 

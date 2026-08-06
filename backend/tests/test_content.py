@@ -201,6 +201,53 @@ def test_detail_includes_focus_keyword_seo_checks(client, auth, project):
     assert "cover_image_url" in fields_checked
 
 
+def test_campaign_key_survives_a_title_change(client, auth, project):
+    """A scripted caller can find its own piece again after editing the title.
+
+    This is the whole point of the field: the title is what an editing pass is
+    most likely to change, so a caller matching on the title would orphan the
+    row and create a duplicate on its next run.
+    """
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "First headline",
+            "body_markdown": "## Hi\n\n" + ("word " * 100),
+            "campaign_key": "q3-launch/gstr2b",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    content_id = resp.json()["id"]
+    assert resp.json()["source"]["campaign_key"] == "q3-launch/gstr2b"
+
+    client.patch(
+        f"/api/v1/content/{content_id}", headers=auth, json={"title": "Second headline"}
+    )
+
+    listed = client.get("/api/v1/content", headers=auth).json()
+    matched = [c for c in listed if c["source"].get("campaign_key") == "q3-launch/gstr2b"]
+    assert [c["id"] for c in matched] == [content_id]
+    assert matched[0]["title"] == "Second headline"
+
+
+def test_create_content_without_campaign_key_keeps_the_plain_source(client, auth, project):
+    """A piece written in the UI carries no campaign key at all."""
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Written by hand",
+            "body_markdown": "## Hi\n\n" + ("word " * 100),
+        },
+    )
+    assert resp.status_code == 201
+    assert "campaign_key" not in resp.json()["source"]
+    assert resp.json()["source"]["kind"] == "manual"
+
+
 def test_create_content_sets_focus_keyword_from_first_keyword(client, auth, project):
     """When no explicit focus_keyword is given, the first keyword is used."""
     resp = client.post(
