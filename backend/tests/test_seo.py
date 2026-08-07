@@ -141,6 +141,74 @@ def test_audit_flags_low_keyword_density():
     assert len(density_issues) == 1
 
 
+def test_density_counts_whole_words_not_substrings():
+    """"api" inside "rapid" and "capital" is not a mention of the API.
+
+    ``str.count`` found it anyway, which on a post that never discusses the API
+    was enough on its own to clear the 0.5% floor — an audit note nobody could
+    act on, because the occurrences it counted were not there.
+    """
+    body = "rapid capital rapids capitalise " * 25  # 100 words, zero real hits
+    assert seo._keyword_occurrences(body, "api") == 0
+    assert seo._keyword_density(body, "api") == 0.0
+
+    real = "the api is documented " + ("filler " * 96)  # 1 hit in 100 words
+    assert seo._keyword_occurrences(real, "api") == 1
+
+
+def test_density_matches_a_keyword_that_ends_a_sentence():
+    """Word edges, not whitespace: "the API." is still a mention."""
+    assert seo._keyword_occurrences("We ship the API. Then the API, again.", "api") == 2
+
+
+def test_density_matches_a_keyword_with_punctuation_in_it():
+    """A developer audience's keywords include "c++" and ".net".
+
+    A plain ``\\b`` on either side of the escaped keyword finds neither: the
+    boundary it wants is a word/non-word transition, and there is none after
+    the ``+`` of "c++" or before the ``.`` of ".net".
+    """
+    assert seo._keyword_occurrences("Written in c++ by hand.", "c++") == 1
+    assert seo._keyword_occurrences("Targets .net and nothing else", ".net") == 1
+    # And still not a substring: ".net" is not a mention of "asp.netcore".
+    assert seo._keyword_occurrences("We use asp.netcore here", ".net") == 0
+
+
+def test_density_counts_a_multi_word_keyword_for_its_own_length():
+    """Two mentions of a two-word phrase is 4% of a hundred words, not 2%.
+
+    Dividing phrase hits by a word count understated every multi-word focus
+    keyword by exactly the number of words in it, so they always read as
+    under-optimised no matter how often they appeared.
+    """
+    body = "content marketing " + ("filler " * 96) + "content marketing"
+    assert seo._keyword_occurrences(body, "content marketing") == 2
+    assert seo._keyword_density(body, "content marketing") == 4.0
+
+
+def test_density_matches_a_phrase_across_a_line_break():
+    body = "a piece about content\nmarketing and nothing else"
+    assert seo._keyword_occurrences(body, "content marketing") == 1
+
+
+def test_a_stuffed_substring_no_longer_reads_as_stuffing():
+    """The same bug in the other direction: a false >3% "stuffing" warning."""
+    body = (
+        "## Rapid capital\n\n"
+        + ("rapid capital rapids capitalise " * 100)
+        + "\n\nThe api is mentioned once.\n"
+    )
+    issues = seo.audit(
+        title="Api notes",
+        body_markdown=body,
+        meta_description="Notes on the api and how it is put together here.",
+        keywords=["api"],
+        focus_keyword="api",
+        cover_image_url="https://cdn.example.com/cover.png",
+    )
+    assert not [i for i in issues if "stuffing" in i.message]
+
+
 def test_audit_flags_missing_focus_keyword_in_first_paragraph():
     body = "## Why Marketing Automation\n\nThis paragraph talks about something else entirely " \
            "and has enough words to be real.\n\n" + ("marketing automation " * 200) + "\n"

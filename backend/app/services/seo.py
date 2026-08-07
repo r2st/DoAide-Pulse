@@ -132,13 +132,47 @@ SEO_SCORE_THRESHOLD = 70
 _IMG_ALT = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
 
 
+#: Characters that end a word for density purposes. ``\b`` alone is wrong at the
+#: edges of a keyword that starts or ends with punctuation ("c++", ".net"), and
+#: those are exactly the keywords a developer audience uses.
+_WORD_EDGE = r"(?<![0-9A-Za-z]){body}(?![0-9A-Za-z])"
+
+
+def _keyword_occurrences(plain_text: str, keyword: str) -> int:
+    """How many times *keyword* appears in *plain_text* as a whole word.
+
+    Whole word, not substring. ``str.count`` was counting "api" inside "rapid",
+    "capital" and "apis" — which on a post that never mentions the API at all
+    can clear the 0.5% floor on its own, and on a post that does mention it can
+    push a perfectly normal piece over the 3% "that reads as stuffing" line.
+    Both directions produce an audit note the author cannot act on, because the
+    occurrences it is counting are not there.
+
+    Whitespace inside the keyword matches any run of whitespace, so "content
+    marketing" still matches across a line break.
+    """
+    parts = [re.escape(part) for part in keyword.lower().split()]
+    if not parts:
+        return 0
+    pattern = _WORD_EDGE.format(body=r"\s+".join(parts))
+    return len(re.findall(pattern, plain_text.lower()))
+
+
 def _keyword_density(plain_text: str, keyword: str) -> float:
-    """Percentage of *keyword* occurrences relative to total words."""
+    """Percentage of the body's words that are part of *keyword*.
+
+    A multi-word keyword counts for its own length: two mentions of "content
+    marketing" in a hundred words is 4% of the text, not 2%. Dividing phrase
+    hits by a word count was understating every multi-word focus keyword by
+    exactly the number of words in it, which is why they always read as
+    under-optimised no matter how often they appeared.
+    """
     words = plain_text.split()
-    if not words or not keyword:
+    if not words or not keyword.strip():
         return 0.0
-    count = plain_text.lower().count(keyword.lower())
-    return (count / len(words)) * 100
+    keyword_words = len(keyword.split()) or 1
+    count = _keyword_occurrences(plain_text, keyword)
+    return (count * keyword_words / len(words)) * 100
 
 
 def _first_paragraph(body_markdown: str) -> str:
