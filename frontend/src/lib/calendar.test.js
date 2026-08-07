@@ -3,6 +3,8 @@ import {
   DAY_ENTRY_CAP,
   UNROUTED,
   bucketByDay,
+  canDropOn,
+  dropTarget,
   filterEntries,
   platformsIn,
   statusBucket,
@@ -164,5 +166,59 @@ describe("summarize", () => {
 
   it("counts an empty calendar as empty", () => {
     expect(summarize([])).toEqual({ published: 0, upcoming: 0, failed: 0, total: 0 });
+  });
+});
+
+describe("dropTarget", () => {
+  it("changes the date and keeps the time of day", () => {
+    // 13:00 UTC — read back in local time, whatever that is here.
+    const original = new Date("2026-08-04T13:00:00Z");
+    const target = dropTarget(entry(), new Date(2026, 7, 6));
+
+    expect(target.getFullYear()).toBe(2026);
+    expect(target.getMonth()).toBe(7);
+    expect(target.getDate()).toBe(6);
+    expect(target.getHours()).toBe(original.getHours());
+    expect(target.getMinutes()).toBe(original.getMinutes());
+  });
+
+  it("zeroes the seconds so a move is not a fraction off its slot", () => {
+    const target = dropTarget(entry({ when: "2026-08-04T13:00:37Z" }), new Date(2026, 7, 6));
+    expect(target.getSeconds()).toBe(0);
+    expect(target.getMilliseconds()).toBe(0);
+  });
+});
+
+describe("canDropOn", () => {
+  const now = new Date(2026, 7, 4, 12, 0, 0);
+
+  it("accepts a day in the future", () => {
+    expect(canDropOn(entry(), new Date(2026, 7, 20), { now })).toBe(true);
+  });
+
+  it("refuses a day in the past", () => {
+    // The API refuses this too — a schedule behind "now" is a publish on the
+    // next sweep wearing a date. Refusing here means the browser shows its own
+    // "no drop" cursor instead of a red toast after a round-trip.
+    expect(canDropOn(entry(), new Date(2026, 6, 20), { now })).toBe(false);
+  });
+
+  it("judges the resulting moment, not the day", () => {
+    // Dropping a 09:00 post onto today at noon still lands in the past; a rule
+    // that only compared dates would wave it through.
+    const morning = entry({ when: new Date(2026, 7, 4, 9, 0, 0).toISOString() });
+    const evening = entry({ when: new Date(2026, 7, 4, 18, 0, 0).toISOString() });
+    expect(canDropOn(morning, new Date(2026, 7, 4), { now })).toBe(false);
+    expect(canDropOn(evening, new Date(2026, 7, 4), { now })).toBe(true);
+  });
+
+  it("refuses anything the calendar already marks unmovable", () => {
+    const published = entry({ movable: false });
+    expect(canDropOn(published, new Date(2026, 7, 20), { now })).toBe(false);
+  });
+
+  it("refuses when there is nothing being dragged", () => {
+    expect(canDropOn(null, new Date(2026, 7, 20), { now })).toBe(false);
+    expect(canDropOn(undefined, new Date(2026, 7, 20), { now })).toBe(false);
   });
 });

@@ -8,6 +8,8 @@ import { api } from "../lib/api";
 import {
   UNROUTED,
   bucketByDay,
+  canDropOn,
+  dropTarget,
   filterEntries,
   platformsIn,
   summarize,
@@ -85,14 +87,11 @@ export default function Calendar() {
 
     // Preserve the time of day, change only the date.
     const original = new Date(entry.when);
-    const target = new Date(day);
-    target.setHours(
-      original.getHours(),
-      original.getMinutes(),
-      0,
-      0,
-    );
+    const target = dropTarget(entry, day);
     if (target.getTime() === original.getTime()) return;
+    // Belt and braces: the cell should not have accepted the drop, but a
+    // long drag can outlive the moment that made it legal.
+    if (!canDropOn(entry, day)) return;
 
     try {
       await api.reschedule(entry.content_id, {
@@ -228,20 +227,31 @@ export default function Calendar() {
                   expanded: expandedDay === key,
                 });
                 const inMonth = day.getMonth() === anchor.getMonth();
+                // Only while something is being dragged: a day that cannot
+                // receive *this* entry is not a day that is broken, and dimming
+                // the past unprompted would be noise on a calendar whose whole
+                // left-hand side is history.
+                const rejects = dragging !== null && !canDropOn(dragging, day);
                 return (
                   <div
                     key={key}
                     onDragOver={(event) => {
-                      if (!dragging) return;
+                      if (!dragging || rejects) return;
+                      // Not calling preventDefault is what makes the browser
+                      // show its own "no drop" cursor — a self-explanatory
+                      // refusal, rather than a round-trip that comes back as a
+                      // red toast saying the time is in the past.
                       event.preventDefault();
                       setHoverDay(key);
                     }}
                     onDragLeave={() => setHoverDay((c) => (c === key ? null : c))}
                     onDrop={() => drop(day)}
+                    aria-disabled={rejects || undefined}
                     className={[
                       "min-h-[104px] border-b border-r border-line p-1.5 transition-colors",
                       inMonth ? "bg-paper" : "bg-canvas/60",
                       hoverDay === key ? "bg-brand-50 ring-1 ring-inset ring-brand-300" : "",
+                      rejects ? "opacity-50" : "",
                     ].join(" ")}
                   >
                     <div className="mb-1 flex items-center justify-between px-1">

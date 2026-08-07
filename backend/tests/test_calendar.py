@@ -133,6 +133,97 @@ def test_reschedule_published_is_409(client, auth, db, project):
     assert resp.status_code == 409
 
 
+def _movable(db, project, *, title, status=PublicationStatus.PENDING):
+    """A piece with one publication in *status*, ready to be dragged."""
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.FEATURE_SPOTLIGHT,
+        title=title,
+        slug=title.lower().replace(" ", "-"),
+        status=ContentStatus.APPROVED,
+    )
+    db.add(content)
+    db.flush()
+    pub = Publication(content_id=content.id, platform=Platform.DEVTO, status=status)
+    db.add(pub)
+    db.commit()
+    db.refresh(pub)
+    return content, pub
+
+
+def test_reschedule_refuses_a_time_in_the_past(client, auth, db, project):
+    """Dropping a card behind "now" is a publish on the next sweep, not a plan.
+
+    The publish and schedule endpoints have always refused this; drag-and-drop
+    lands here instead and was the one surface without the guard.
+    """
+    content, pub = _movable(db, project, title="Dragged back")
+
+    resp = client.patch(
+        f"/api/v1/calendar/content/{content.id}",
+        headers=auth,
+        json={"scheduled_for": (_now() - timedelta(days=3)).isoformat()},
+    )
+    assert resp.status_code == 422
+    assert "in the past" in resp.json()["detail"]
+
+    db.refresh(pub)
+    assert pub.scheduled_for is None
+    assert pub.status == PublicationStatus.PENDING
+
+
+def test_reschedule_refuses_a_mistyped_year(client, auth, db, project):
+    """2126 for 2026 parks a post for a century rather than scheduling it."""
+    content, _ = _movable(db, project, title="Dragged far")
+
+    resp = client.patch(
+        f"/api/v1/calendar/content/{content.id}",
+        headers=auth,
+        json={"scheduled_for": (_now() + timedelta(days=365 * 100)).isoformat()},
+    )
+    assert resp.status_code == 422
+    assert "check the year" in resp.json()["detail"]
+
+
+def test_reschedule_accepts_clearing_the_time(client, auth, db, project):
+    """A null is "go out on the next sweep", which normalize passes through."""
+    content, pub = _movable(db, project, title="Cleared")
+    pub.status = PublicationStatus.SCHEDULED
+    pub.scheduled_for = _now() + timedelta(days=2)
+    db.commit()
+
+    resp = client.patch(
+        f"/api/v1/calendar/content/{content.id}",
+        headers=auth,
+        json={"scheduled_for": None},
+    )
+    assert resp.status_code == 200
+    assert resp.json()[0]["status"] == "pending"
+
+
+def test_reschedule_refuses_a_publication_already_going_out(client, auth, db, project):
+    """A row a worker has claimed must not be re-armed underneath it.
+
+    Moving a PUBLISHING row back to SCHEDULED means the next sweep picks up a
+    publication that is about to succeed — and posts it a second time. The
+    calendar already reports these as ``movable=False``.
+    """
+    content, pub = _movable(
+        db, project, title="In flight", status=PublicationStatus.PUBLISHING
+    )
+
+    resp = client.patch(
+        f"/api/v1/calendar/content/{content.id}",
+        headers=auth,
+        json={"scheduled_for": (_now() + timedelta(days=1)).isoformat()},
+    )
+    assert resp.status_code == 409
+    assert "going out now" in resp.json()["detail"]
+
+    db.refresh(pub)
+    assert pub.status == PublicationStatus.PUBLISHING
+
+
 def test_reschedule_nonexistent_content_is_404(client, auth):
     resp = client.patch(
         "/api/v1/calendar/content/9999",

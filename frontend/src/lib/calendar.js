@@ -95,6 +95,37 @@ export function visibleEntries(entries, { expanded = false, cap = DAY_ENTRY_CAP 
 }
 
 /**
+ * Where an entry lands if it is dropped on `day`.
+ *
+ * The date changes, the time of day does not: a post scheduled for 1pm Tuesday
+ * that you drag to Thursday should be 1pm Thursday, not midnight.
+ */
+export function dropTarget(entry, day) {
+  const original = new Date(entry.when);
+  const target = new Date(day);
+  target.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  return target;
+}
+
+/**
+ * Whether `entry` may be dropped on `day` at all.
+ *
+ * The API refuses a schedule behind "now" — a time in the past is not a plan,
+ * it is a publish on the next sweep wearing a date. Asking the same question
+ * here means an impossible drop shows the browser's own "no drop" cursor
+ * instead of a round-trip that comes back as a red toast, and the two answers
+ * cannot drift because both are "would the resulting moment be in the future".
+ *
+ * Note the check is on the *resulting moment*, not the day: dragging a 9am post
+ * onto today at 3pm is still a move into the past, and a rule that only
+ * compared dates would wave it through.
+ */
+export function canDropOn(entry, day, { now = new Date() } = {}) {
+  if (!entry?.movable) return false;
+  return dropTarget(entry, day).getTime() > now.getTime();
+}
+
+/**
  * Counts for the header line — what this window actually holds.
  *
  * Answers "is anything going out this month?" without making the user scan 42

@@ -16,7 +16,7 @@ from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
 from app.schemas.content import CalendarEntry, CalendarOut, PublicationOut, ScheduleUpdate
-from app.services import cadence, learned_cadence, velocity
+from app.services import cadence, learned_cadence, scheduling, velocity
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -154,12 +154,26 @@ def reschedule(
     Without ``publication_id`` the whole piece moves — every platform it is
     queued for. With one, only that platform moves, which is how you stagger a
     cross-post across a week.
+
+    The requested time goes through :func:`app.services.scheduling.normalize`,
+    exactly as it does on the publish and schedule endpoints. Drag-and-drop
+    reaches this route rather than those, and without the same guard the one
+    validation that matters most is missing from the one surface where a
+    mis-drop is easiest: a slot behind "now" is not a schedule at all, it is a
+    publish on the next sweep wearing a date.
     """
     content = db.get(Content, content_id)
     if content is None or content.project.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Content not found"
         )
+
+    try:
+        when = scheduling.normalize(payload.scheduled_for)
+    except scheduling.ScheduleError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
 
     targets = [
         p
@@ -171,20 +185,25 @@ def reschedule(
             status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
         )
 
-    already_live = [p for p in targets if p.status == PublicationStatus.PUBLISHED]
-    if already_live:
+    # PUBLISHING as well as PUBLISHED: a row a worker has already claimed is
+    # mid-flight, and moving it back to SCHEDULED re-arms a publication that is
+    # about to succeed — the next sweep then posts it a second time. This is
+    # the same pair the calendar itself reports as ``movable=False``, so an
+    # attempt to move one is a client racing the worker rather than a user
+    # doing something reasonable.
+    settled = {PublicationStatus.PUBLISHED, PublicationStatus.PUBLISHING}
+    in_flight = [p for p in targets if p.status in settled]
+    if in_flight:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot reschedule something already published on "
-            + ", ".join(p.platform.value for p in already_live),
+            detail="Cannot reschedule something already published or going out "
+            "now on " + ", ".join(p.platform.value for p in in_flight),
         )
 
     for publication in targets:
-        publication.scheduled_for = payload.scheduled_for
+        publication.scheduled_for = when
         publication.status = (
-            PublicationStatus.SCHEDULED
-            if payload.scheduled_for
-            else PublicationStatus.PENDING
+            PublicationStatus.SCHEDULED if when else PublicationStatus.PENDING
         )
         # A move is a fresh start: a row that had burned two retries should not
         # arrive at its new slot with one left.
@@ -192,7 +211,7 @@ def reschedule(
         publication.error = None
 
     if payload.publication_id is None:
-        content.scheduled_for = payload.scheduled_for
+        content.scheduled_for = when
 
     db.commit()
     for publication in targets:
