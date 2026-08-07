@@ -542,3 +542,79 @@ def test_every_score_deduction_for_the_title_has_an_audit_issue_behind_it():
     assert docked > 0
     # Whatever the score took off, the panel names at least one thing to do.
     assert seo.audit(**kwargs)
+
+
+def test_the_near_miss_density_band_is_named_rather_than_only_charged_for():
+    """0.5-1% and 2.5-3% cost five points, and used to cost them silently.
+
+    `seo_score` has three density bands and `audit` had two. A piece sitting in
+    the middle one showed a clean panel and a score of 95 — the same
+    unactionable number the focus-keyword-in-title fix was about, in the check
+    immediately below it.
+    """
+    body = "## Celery retries in practice\n\nCelery retries are the subject here. " + (
+        "word " * 600
+    )
+    kwargs = dict(
+        title="Celery retries, explained",
+        body_markdown=body,
+        meta_description="How celery retries work, at length, in a description long "
+        "enough to clear the minimum the audit enforces.",
+        keywords=["celery retries"],
+        focus_keyword="celery retries",
+        slug="celery-retries-explained",
+        cover_image_url="https://example.com/cover.png",
+    )
+
+    # Squarely inside the band the score charges for and nothing else.
+    density = seo._keyword_density(seo.strip_markdown(body), "celery retries")
+    assert 0.5 <= density < 1.0
+    assert seo.seo_score(**kwargs) == 95
+
+    body_issues = [i for i in seo.audit(**kwargs) if i.field == "body"]
+    assert len(body_issues) == 1
+    assert "0.7%" in body_issues[0].message
+
+
+def test_a_density_inside_the_target_range_is_still_silent():
+    """The band that scores full marks says nothing — otherwise the panel is noise."""
+    body = "## Celery retries in practice\n\nCelery retries are the subject here, and "
+    body += "celery retries again. " + ("word " * 300)
+    kwargs = dict(
+        title="Celery retries, explained",
+        body_markdown=body,
+        meta_description="How celery retries work, at length, in a description long "
+        "enough to clear the minimum the audit enforces.",
+        keywords=["celery retries"],
+        focus_keyword="celery retries",
+        slug="celery-retries-explained",
+        cover_image_url="https://example.com/cover.png",
+    )
+
+    density = seo._keyword_density(seo.strip_markdown(body), "celery retries")
+    assert 1.0 <= density <= 2.5, density
+    assert seo.seo_score(**kwargs) == 100
+    assert seo.audit(**kwargs) == []
+
+
+def test_every_density_band_the_score_charges_for_has_an_audit_issue_behind_it():
+    """The invariant, swept across the whole range rather than at one point."""
+    base = dict(
+        title="Celery retries, explained",
+        meta_description="How celery retries work, at length, in a description long "
+        "enough to clear the minimum the audit enforces.",
+        keywords=["celery retries"],
+        focus_keyword="celery retries",
+        slug="celery-retries-explained",
+        cover_image_url="https://example.com/cover.png",
+    )
+    for mentions in range(1, 12):
+        body = "## Celery retries in practice\n\n"
+        body += "Celery retries. " * mentions
+        body += "word " * 300
+        kwargs = {**base, "body_markdown": body}
+
+        if seo.seo_score(**kwargs) < 100:
+            assert [i for i in seo.audit(**kwargs) if i.field == "body"], (
+                f"{mentions} mentions: score docked, panel silent"
+            )

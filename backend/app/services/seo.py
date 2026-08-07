@@ -274,6 +274,21 @@ def audit(
                     "as stuffing. Aim for 1-2%.",
                 )
             )
+        elif density < 1.0 or density > 2.5:
+            # The near-miss band. :func:`seo_score` takes five points off here,
+            # and said so nowhere: a piece at 0.7% showed a clean panel and a
+            # score of 95, which is the missing-ten problem this module already
+            # has one fix for. Advisory wording, because unlike the bands above
+            # this one is a nudge rather than a fault.
+            issues.append(
+                SeoIssue(
+                    "warn",
+                    "body",
+                    f'Focus keyword "{fk}" density is {density:.1f}% — inside the '
+                    "range that still works, but 1-2% is where it scores full "
+                    "marks.",
+                )
+            )
 
         # First paragraph.
         first_para = _first_paragraph(body_markdown)
