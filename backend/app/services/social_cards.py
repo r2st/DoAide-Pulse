@@ -123,6 +123,24 @@ def domain_of(url: str) -> str:
     return host[4:] if host.startswith("www.") else host
 
 
+def card_image(cover_image_url: str | None) -> str | None:
+    """*cover_image_url* if a crawler could actually fetch it, else ``None``.
+
+    The one place that decision is made. :func:`previews` and :func:`meta_tags`
+    both need it and used to answer it separately: the preview refused a
+    relative path (correctly — see :data:`_ABSOLUTE_URL`) while ``meta_tags``
+    emitted it anyway, together with ``twitter:card: summary_large_image``. That
+    pairing is the worst of the three outcomes, and it is the one Herald
+    *published*: :meth:`app.services.publishers.git.GitAdapter.build_file`
+    writes these keys into a real page's front matter, so the crawler was told
+    to lay out the large card and handed an image it cannot resolve — the grey
+    rectangle this module exists to prevent, promised by the panel as the tidy
+    small card instead.
+    """
+    cover = (cover_image_url or "").strip()
+    return cover if cover and _ABSOLUTE_URL.match(cover) else None
+
+
 def _card_description(meta_description: str, excerpt: str, body_markdown: str) -> str:
     """The description a crawler would end up with, in the order it is tried.
 
@@ -169,6 +187,10 @@ def meta_tags(
     """
     description = _card_description(meta_description, excerpt, body_markdown)
     clean_title = _clean(title)
+    # Not ``cover_image_url`` itself: a relative path is not a card image, and
+    # claiming the large layout for one is what produces the blank card. See
+    # :func:`card_image`.
+    image = card_image(cover_image_url)
 
     tags_out: list[tuple[str, str]] = [
         ("og:type", "article"),
@@ -180,9 +202,9 @@ def meta_tags(
     if site_name:
         tags_out.append(("og:site_name", site_name))
 
-    if cover_image_url:
+    if image:
         tags_out += [
-            ("og:image", cover_image_url),
+            ("og:image", image),
             # Dimensions let a crawler lay the card out before the image
             # finishes downloading, which is the difference between a card that
             # appears instantly and one that pops in. We publish the
@@ -194,7 +216,7 @@ def meta_tags(
             # an omitted one makes some crawlers reuse the title as alt text.
             ("og:image:alt", clean_title),
             ("twitter:card", "summary_large_image"),
-            ("twitter:image", cover_image_url),
+            ("twitter:image", image),
         ]
     else:
         # Without an image the large card renders as a title over dead space.
@@ -307,9 +329,9 @@ def previews(
     description = _card_description(meta_description, excerpt, body_markdown)
     clean_title = _clean(title)
     domain = domain_of(url)
-    # A relative URL is not a card image — see _ABSOLUTE_URL. Showing it in the
-    # preview would promise an image the crawler will never fetch.
-    image = cover_image_url if cover_image_url and _ABSOLUTE_URL.match(cover_image_url) else None
+    # A relative URL is not a card image — see :func:`card_image`. Showing it in
+    # the preview would promise an image the crawler will never fetch.
+    image = card_image(cover_image_url)
 
     out = []
     for network in NETWORKS:
@@ -496,6 +518,7 @@ __all__ = [
     "CardIssue",
     "Preview",
     "audit",
+    "card_image",
     "clip",
     "domain_of",
     "front_matter_keys",

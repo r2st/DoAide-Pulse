@@ -391,3 +391,78 @@ def test_summary_bundles_everything_the_panel_needs():
     assert result["meta_html"].startswith("<meta ")
     assert {"key": "og:site_name", "value": "Herald"} in result["meta_tags"]
     assert result["recommended_image"] == {"width": 1200, "height": 630}
+
+
+# --------------------------------------------------------------------------- #
+# The tags and the preview have to agree about the image                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_relative_cover_produces_no_image_tags_and_the_small_card():
+    """The preview refused a relative path; the tags emitted it anyway.
+
+    That pairing — `summary_large_image` plus an `og:image` no crawler can
+    resolve — is the grey rectangle this module exists to prevent, and it is
+    the one Herald published: `GitAdapter.build_file` writes these keys into a
+    real page's front matter.
+    """
+    tags = dict(
+        social_cards.meta_tags(
+            title="A post",
+            url="https://example.com/blog/post",
+            meta_description="A" * 80,
+            cover_image_url="/images/cover.png",
+        )
+    )
+
+    assert tags["twitter:card"] == "summary"
+    assert "og:image" not in tags
+    assert "twitter:image" not in tags
+
+
+def test_an_absolute_cover_still_gets_the_large_card():
+    tags = dict(
+        social_cards.meta_tags(
+            title="A post",
+            url="https://example.com/blog/post",
+            meta_description="A" * 80,
+            cover_image_url="https://cdn.example.com/cover.png",
+        )
+    )
+
+    assert tags["twitter:card"] == "summary_large_image"
+    assert tags["og:image"] == "https://cdn.example.com/cover.png"
+    assert tags["twitter:image"] == "https://cdn.example.com/cover.png"
+
+
+def test_the_git_front_matter_never_claims_an_image_it_cannot_resolve():
+    """What actually lands on disk, for the destination Herald controls."""
+    keys = social_cards.front_matter_keys(
+        social_cards.meta_tags(
+            title="A post",
+            url="https://example.com/blog/post",
+            meta_description="A" * 80,
+            cover_image_url="images/cover.png",
+        )
+    )
+
+    assert "ogImage" not in keys
+    assert keys["twitterCard"] == "summary"
+
+
+@pytest.mark.parametrize(
+    "cover", ["/images/cover.png", "images/cover.png", "  ", None, "ftp://x/c.png"]
+)
+def test_the_card_type_is_the_same_in_the_tags_and_in_every_preview(cover):
+    """The invariant, not the one example: one decision, read in two places."""
+    tags = dict(
+        social_cards.meta_tags(
+            title="A post", url="https://example.com/p", cover_image_url=cover
+        )
+    )
+    shown = social_cards.previews(
+        title="A post", url="https://example.com/p", cover_image_url=cover
+    )
+
+    assert {p.card_type for p in shown} == {tags["twitter:card"]}
+    assert {p.image_url for p in shown} == {tags.get("og:image")}
