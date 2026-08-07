@@ -225,10 +225,23 @@ def update_me(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Change account preferences — the display name and the weekly digest."""
-    for field_, value in payload.model_dump(exclude_unset=True).items():
-        if value is not None:
-            setattr(current_user, field_, value)
+    """Change account preferences — the display name and the weekly digest.
+
+    ``exclude_unset`` is what makes this a PATCH: a field the client did not
+    send is left alone. A field it *did* send as ``null`` is a different
+    request, and for the one nullable column here it is the only way to say
+    "clear my display name" — dropping every null meant a name, once set, could
+    be changed but never removed. ``weekly_digest_enabled`` is ``NOT NULL``, so
+    an explicit null there is refused rather than written.
+    """
+    fields = payload.model_dump(exclude_unset=True)
+    if fields.get("weekly_digest_enabled", True) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="weekly_digest_enabled must be true or false, not null.",
+        )
+    for field_, value in fields.items():
+        setattr(current_user, field_, value)
     db.commit()
     db.refresh(current_user)
     return current_user

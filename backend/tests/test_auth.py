@@ -146,3 +146,58 @@ def test_registration_with_invite_token(client, monkeypatch):
         },
     )
     assert resp.status_code == 201
+
+
+# --------------------------------------------------------------------------- #
+# Account preferences                                                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_display_name_can_be_cleared(client, auth, db, user):
+    """PATCH semantics: a field sent as null is an instruction, not an omission.
+
+    Dropping every null meant a name, once set, could be changed but never
+    removed — the account page offered an empty box that silently did nothing.
+    """
+    user.full_name = "Given Name"
+    db.commit()
+
+    resp = client.patch("/api/v1/auth/me", headers=auth, json={"full_name": None})
+    assert resp.status_code == 200
+    assert resp.json()["full_name"] is None
+
+    db.refresh(user)
+    assert user.full_name is None
+
+
+def test_an_omitted_field_is_still_left_alone(client, auth, db, user):
+    """The other half of PATCH: not sending a field must not clear it."""
+    user.full_name = "Keep Me"
+    db.commit()
+
+    resp = client.patch(
+        "/api/v1/auth/me", headers=auth, json={"weekly_digest_enabled": False}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["full_name"] == "Keep Me"
+    assert resp.json()["weekly_digest_enabled"] is False
+
+
+def test_the_digest_flag_can_be_turned_off_and_back_on(client, auth, db, user):
+    for wanted in (False, True):
+        resp = client.patch(
+            "/api/v1/auth/me", headers=auth, json={"weekly_digest_enabled": wanted}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["weekly_digest_enabled"] is wanted
+
+
+def test_a_null_digest_flag_is_refused_rather_than_written(client, auth, db, user):
+    """The column is NOT NULL — writing the null would be a 500, not a 422."""
+    resp = client.patch(
+        "/api/v1/auth/me", headers=auth, json={"weekly_digest_enabled": None}
+    )
+    assert resp.status_code == 422
+
+    db.refresh(user)
+    assert user.weekly_digest_enabled is True
