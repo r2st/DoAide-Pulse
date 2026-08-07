@@ -30,9 +30,26 @@ async function request(path, { method = "GET", body, form, auth = true } = {}) {
   if (res.status === 401) setToken(null);
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  // Not everything that answers this fetch is Herald. A gateway timeout, a
+  // proxy's request-too-large page and a stray HTML error page all arrive here
+  // as text, and `JSON.parse` on them throws a SyntaxError whose message is
+  // "Unexpected token '<'" — which is what the user then sees in the toast
+  // instead of the status that would tell them what happened. Parse failure is
+  // "no structured body", not an error in its own right.
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
   if (!res.ok) {
-    const detail = data?.detail ?? res.statusText;
+    // `||` on the status text, not `??`: fetch reports an absent reason phrase
+    // as `""`, and HTTP/2 has no reason phrase at all, so an empty string is
+    // the common case rather than the odd one — and "Error: " with nothing
+    // after it tells the user less than the bare status code does.
+    const detail = data?.detail ?? (res.statusText || `HTTP ${res.status}`);
     // FastAPI validation errors arrive as a list of {loc, msg} objects.
     const message = Array.isArray(detail)
       ? detail.map((d) => d.msg).join(", ")
