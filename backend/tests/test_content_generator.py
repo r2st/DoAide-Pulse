@@ -31,10 +31,16 @@ def stub_llm(monkeypatch):
     """Make the chain return whatever the test sets, and record the request."""
     state = {"payload": good_payload(), "calls": []}
 
-    def fake_complete(messages, *, model=None, temperature=0.7, max_tokens=1200, timeout=90.0):
+    def fake_complete(messages, *, model=None, fallback_models=(), **_kwargs):
         import json
 
-        state["calls"].append({"model": model, "max_tokens": max_tokens})
+        state["calls"].append(
+            {
+                "model": model,
+                "fallback_models": tuple(fallback_models),
+                "max_tokens": _kwargs.get("max_tokens", 1200),
+            }
+        )
         text = state["payload"]
         return llm_router.Completion(
             text=text if isinstance(text, str) else json.dumps(text),
@@ -249,7 +255,7 @@ def _prompt_of(stub_llm_state, monkeypatch, project, content_type):
     """Generate once and hand back the user prompt the model was sent."""
     seen = {}
 
-    def fake_complete(messages, *, model=None, temperature=0.7, max_tokens=1200, timeout=90.0):
+    def fake_complete(messages, **_kwargs):
         import json
 
         seen["prompt"] = messages[-1]["content"]
@@ -404,3 +410,24 @@ def test_the_thread_fallback_says_it_is_a_stub(project, monkeypatch):
     assert "Rewrite before posting" in result.body_markdown
     posts = formats.parse_thread(result.body_markdown)
     assert all(len(post) <= formats.THREAD_POST_LIMIT for post in posts)
+
+
+def test_the_generator_names_its_sibling_model(stub_llm, project):
+    """Free-tier quota is metered per model, so the other configured OpenRouter
+    model is a real second chance on a key whose first one is spent — and a
+    better one than the next provider, whose key may not be set at all.
+
+    Wrong-sized rather than absent is the trade: the alternative when both are
+    exhausted is a template with confidence 0.0, which can never auto-publish.
+    """
+    from app.config import settings
+
+    content_generator.generate(project, ContentType.TUTORIAL)
+    long_form = stub_llm["calls"][-1]
+    assert long_form["model"] == settings.openrouter_long_form_model
+    assert long_form["fallback_models"] == (settings.openrouter_model,)
+
+    content_generator.generate(project, ContentType.ANNOUNCEMENT)
+    short_form = stub_llm["calls"][-1]
+    assert short_form["model"] == settings.openrouter_model
+    assert short_form["fallback_models"] == (settings.openrouter_long_form_model,)

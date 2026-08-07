@@ -114,8 +114,15 @@ def consume(db: Session, raw_token: str, new_password: str) -> User | None:
     if user is None or not user.is_active:
         return None
 
+    now = utcnow()
     user.hashed_password = hash_password(new_password)
-    row.used_at = utcnow()
+    # Every access token issued before this moment stops working. Without it a
+    # reset changes what the *next* sign-in needs and nothing else, so somebody
+    # resetting because their account was taken leaves the attacker's bearer
+    # token live for the rest of its lifetime — see
+    # :attr:`app.models.user.User.tokens_valid_from`.
+    user.tokens_valid_from = now
+    row.used_at = now
     # Any other link that was issued before this one must not survive the reset.
     revoke_all(db, user.id)
     db.commit()

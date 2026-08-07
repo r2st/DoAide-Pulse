@@ -33,7 +33,7 @@ def _content(db, project, **overrides) -> Content:
 def stub_llm(monkeypatch):
     state = {"payload": None}
 
-    def fake_complete(messages, *, model=None, temperature=0.7, max_tokens=1200, timeout=90.0):
+    def fake_complete(messages, *, model=None, **_kwargs):
         text = state["payload"]
         return llm_router.Completion(
             text=text if isinstance(text, str) else json.dumps(text),

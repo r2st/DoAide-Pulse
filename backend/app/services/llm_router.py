@@ -6,11 +6,17 @@ flaky upstream must never turn into a silent product failure: a draft either
 gets written by *some* model, or the caller falls back to a deterministic
 template — but it is never empty and never a stack trace.
 
-Three things make that work:
+Four things make that work:
 
 * **One dialect.** All four providers speak OpenAI's ``/chat/completions``, so
   they differ only in base URL, key and model name. A provider with no API key
   configured is skipped rather than attempted-and-failed.
+* **A second sweep, but only when a sweep would help.** A 429 is the upstream
+  saying *come back*; a 400 or a 401 is it saying *never*. When — and only
+  when — an entire pass over the chain failed on rate limits alone, the chain
+  waits and sweeps again. Waiting is deferred until every provider has been
+  asked so that a working one is never delayed by a rate-limited one ahead of
+  it. See :func:`_pause_before_retrying`.
 * **A circuit breaker.** After ``llm_breaker_threshold`` consecutive failures a
   provider is skipped for ``llm_breaker_cooldown_seconds``. Without it a dead
   upstream costs a full timeout on *every* request, and the chain's latency is
@@ -21,6 +27,30 @@ Three things make that work:
   call site owns a *specific* fallback that beats anything this module could
   invent, and the chain's job is to say "you're on your own now".
 
+**Rate limits are the failure mode this module is really for.** The free tiers
+Herald runs on meter two different things, and the two want opposite responses:
+
+* a *per-minute* limit clears in seconds, so the right answer is to wait the few
+  seconds and ask again. Falling straight through to the next provider — and
+  eventually to a confidence-0 template that can never auto-publish — throws
+  away a request that would have succeeded on the second attempt;
+* a *per-day* quota does not clear at all today, so the right answer is to stop
+  asking. A provider whose 429 carries a long ``Retry-After`` opens its breaker
+  for exactly that long (capped at ``llm_breaker_max_cooldown_seconds``) rather
+  than for the default five minutes, which would otherwise mean paying one
+  refused request every five minutes until midnight.
+
+Telling them apart is what ``Retry-After`` is for, and the free tiers do send
+it. When they do not, :data:`_DEFAULT_RATE_LIMIT_PAUSE` assumes the per-minute
+case, because that is both the common one and the one where guessing wrong is
+cheap.
+
+The last resort inside a single provider is a **different model on the same
+key**. Free-tier quotas are metered per model, so a key that has spent its
+budget on ``gpt-oss-20b:free`` still has one for ``gpt-oss-120b:free``; trying
+the sibling costs one request and succeeds far more often than moving to a
+provider whose key may not be configured at all. See :func:`_model_chain`.
+
 The breaker state is per-process, in-memory. With several workers that means
 each learns about a dead provider independently — fine, since the cost of
 learning is one timeout and the alternative (shared state in Redis) buys little
@@ -28,10 +58,13 @@ for how rarely this fires.
 """
 from __future__ import annotations
 
+import email.utils
 import logging
+import random
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import httpx
 
@@ -39,9 +72,43 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+#: How long to wait out a rate limit that arrived without a ``Retry-After``.
+#: Assumes the per-minute case — see the module docstring.
+_DEFAULT_RATE_LIMIT_PAUSE = 20.0
+
+#: Statuses that mean "come back later" rather than "this request is wrong".
+#: 408 and 409 are in for completeness; 429 and the 5xx family are what the free
+#: tiers actually send.
+_RETRYABLE_STATUSES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
 
 class LLMError(RuntimeError):
-    """A single provider call failed."""
+    """A single provider call failed.
+
+    ``retryable`` is whether asking this provider this question again, *without
+    moving on first*, could plausibly work. True only when the provider is up
+    and answering and has effectively said "later": a 429, or a 5xx. False for a
+    malformed request or a rejected key, where a replay spends the budget twice
+    for the same answer — and false for a transport failure, where the provider
+    chain itself is the better retry.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
+
+class LLMRateLimited(LLMError):
+    """The provider refused the request and may have said when to come back.
+
+    ``retry_after`` is the provider's own answer in seconds, or ``None`` when it
+    declined to give one. It drives both the in-process backoff and — when it is
+    long enough to mean a spent daily quota — how long the breaker stays open.
+    """
+
+    def __init__(self, message: str, *, retry_after: float | None = None) -> None:
+        super().__init__(message, retryable=True)
+        self.retry_after = retry_after
 
 
 @dataclass(frozen=True)
@@ -54,6 +121,9 @@ class Provider:
     model: str
     # OpenRouter wants attribution headers; nobody else needs extras.
     extra_headers: dict[str, str] = field(default_factory=dict)
+    #: Other models on this same key, tried in order once the primary is
+    #: rate-limited or refuses. See :func:`_model_chain`.
+    fallback_models: tuple[str, ...] = ()
 
     @property
     def url(self) -> str:
@@ -65,6 +135,11 @@ class Provider:
             "Content-Type": "application/json",
             **self.extra_headers,
         }
+
+
+def _configured_models(raw: str) -> tuple[str, ...]:
+    """Parse a comma-separated ``*_FALLBACK_MODELS`` setting."""
+    return tuple(part.strip() for part in (raw or "").split(",") if part.strip())
 
 
 def _providers() -> list[Provider]:
@@ -83,24 +158,28 @@ def _providers() -> list[Provider]:
                 "HTTP-Referer": settings.openrouter_app_url,
                 "X-Title": settings.openrouter_app_title,
             },
+            fallback_models=_configured_models(settings.openrouter_fallback_models),
         ),
         Provider(
             name="gemini",
             api_key=settings.gemini_api_key,
             base_url=settings.gemini_base_url,
             model=settings.gemini_model,
+            fallback_models=_configured_models(settings.gemini_fallback_models),
         ),
         Provider(
             name="groq",
             api_key=settings.groq_api_key,
             base_url=settings.groq_base_url,
             model=settings.groq_model,
+            fallback_models=_configured_models(settings.groq_fallback_models),
         ),
         Provider(
             name="cerebras",
             api_key=settings.cerebras_api_key,
             base_url=settings.cerebras_base_url,
             model=settings.cerebras_model,
+            fallback_models=_configured_models(settings.cerebras_fallback_models),
         ),
     ]
     return [p for p in candidates if p.api_key]
@@ -155,6 +234,21 @@ class CircuitBreaker:
                 return True
             return False
 
+    def open_for(self, name: str, seconds: float, *, now: float | None = None) -> None:
+        """Skip *name* for *seconds*, whatever its failure count.
+
+        For the one case the consecutive-failure counter reads wrong: a provider
+        that answered 429 with a long ``Retry-After`` has told us its quota is
+        spent, and there is nothing to learn from the two further failures the
+        threshold would otherwise wait for. Never shortens a window already
+        open — a later, vaguer refusal must not undo a definite one.
+        """
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            state = self._state.setdefault(name, _BreakerState())
+            state.open_until = max(state.open_until, now + max(0.0, seconds))
+            state.failures = 0
+
     def record_success(self, name: str) -> None:
         with self._lock:
             self._state.pop(name, None)
@@ -206,20 +300,153 @@ class Completion:
     model: str
 
 
+#: Phrases a provider uses when the refusal is a quota rather than a fault.
+#: Matched against the *message* because the compat layers that answer 200 with
+#: an error body frequently omit the numeric code as well.
+_RATE_LIMIT_PHRASES = (
+    "rate limit",
+    "rate-limit",
+    "ratelimit",
+    "quota",
+    "too many requests",
+    "resource_exhausted",
+    "resource exhausted",
+)
+
+
+def _retry_after(headers) -> float | None:
+    """Seconds to wait, from a ``Retry-After`` header. ``None`` if unusable.
+
+    Two shapes are legal (RFC 9110 §10.2.3) and both are in the wild: a delay in
+    seconds, and an HTTP-date. A date already in the past reads as "no
+    guidance" rather than as a negative wait.
+    """
+    raw = ""
+    try:
+        raw = (headers.get("Retry-After") or headers.get("retry-after") or "").strip()
+    except AttributeError:  # pragma: no cover - a mapping-less test double
+        return None
+    if not raw:
+        return None
+
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        pass
+
+    try:
+        when = email.utils.parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    if when is None:  # pragma: no cover - parsedate_to_datetime raises instead
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=UTC)
+    return max(0.0, (when - datetime.now(UTC)).total_seconds())
+
+
+def _looks_rate_limited(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(phrase in lowered for phrase in _RATE_LIMIT_PHRASES)
+
+
+def _status_error(provider: Provider, resp: httpx.Response) -> LLMError:
+    """The error a non-2xx deserves.
+
+    A 401/403 is a key problem and a 400 is a request problem; neither improves
+    on a second attempt, and retrying a bad key across four providers is how one
+    misconfiguration becomes sixteen requests.
+    """
+    body = _short(getattr(resp, "text", "") or "")
+    status = resp.status_code
+
+    if status == 429 or (status in _RETRYABLE_STATUSES and _looks_rate_limited(body)):
+        return LLMRateLimited(
+            f"{provider.name} rate-limited the request ({status}): {body}",
+            retry_after=_retry_after(resp.headers),
+        )
+    return LLMError(
+        f"{provider.name} returned {status}: {body}",
+        retryable=status in _RETRYABLE_STATUSES,
+    )
+
+
+def _body_error(provider: Provider, data: dict) -> LLMError:
+    """The error a 200-with-no-choices deserves.
+
+    OpenRouter's free tier answers a spent quota with exactly this: HTTP 200,
+    no ``choices``, and ``error.message`` reading "Rate limit exceeded:
+    free-models-per-day". Read as a plain failure it costs the chain a provider
+    it could have come back to; read as a rate limit it opens the breaker for as
+    long as the provider asked for and stops the next fifty requests bothering.
+    """
+    error = data.get("error")
+    error = error if isinstance(error, dict) else {}
+    detail = str(error.get("message") or "no choices returned")
+    code = error.get("code")
+
+    metadata = error.get("metadata")
+    headers = metadata.get("headers") if isinstance(metadata, dict) else None
+    retry_after = _retry_after(headers) if isinstance(headers, dict) else None
+
+    if code in (429, "429", "rate_limit_exceeded") or _looks_rate_limited(detail):
+        return LLMRateLimited(
+            f"{provider.name} rate-limited the request: {detail}",
+            retry_after=retry_after,
+        )
+    return LLMError(f"{provider.name} request failed: {detail}")
+
+
+def _short(text: str, limit: int = 200) -> str:
+    """A response body trimmed to something that belongs in a log line."""
+    collapsed = " ".join((text or "").split())
+    return collapsed[:limit] + ("…" if len(collapsed) > limit else "")
+
+
+def _sleep(seconds: float) -> None:
+    """Indirection so tests can exercise the backoff without waiting for it."""
+    time.sleep(seconds)
+
+
+def _model_chain(provider: Provider, override: str | None,
+                 extra: tuple[str, ...] = ()) -> list[str]:
+    """Which models to try on *provider*, in order.
+
+    The primary is the caller's override where it applies, otherwise the
+    provider's configured model. Anything after it is a second bite at the same
+    key — see the module docstring on why that beats moving providers.
+
+    An explicit per-call override only makes sense for the provider it was
+    written for; everyone else gets their own configured model. Same for the
+    caller's *extra* fallbacks.
+    """
+    own = provider.name == "openrouter"
+    primary = override if (override and own) else provider.model
+
+    chain: list[str] = []
+    for candidate in (primary, *(extra if own else ()), *provider.fallback_models):
+        if candidate and candidate not in chain:
+            chain.append(candidate)
+    return chain
+
+
 def _call(
     provider: Provider,
     messages: list[dict[str, str]],
     *,
-    model: str | None,
+    model: str,
     temperature: float,
     max_tokens: int,
     timeout: float,
 ) -> str:
-    """One provider attempt. Raises :class:`LLMError` on any failure."""
+    """One provider attempt with one model. Raises :class:`LLMError` on failure.
+
+    *model* is already resolved — :func:`_model_chain` decides which of a
+    provider's models this attempt is for, so this function never has to know
+    whose override it is holding.
+    """
     payload = {
-        # An explicit per-call model override only makes sense for the provider
-        # it was written for; everyone else gets their own configured model.
-        "model": model if (model and provider.name == "openrouter") else provider.model,
+        "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
@@ -229,16 +456,30 @@ def _call(
         resp = httpx.post(
             provider.url, json=payload, headers=provider.headers(), timeout=timeout
         )
-        resp.raise_for_status()
-        data = resp.json()
-    except (httpx.HTTPError, ValueError) as exc:
+    except httpx.HTTPError as exc:
+        # Not retried here, deliberately. A provider that cannot be reached at
+        # all has three more behind it, and the chain gets to a working one
+        # faster by moving on than by sleeping in front of a dead socket. The
+        # in-process retry exists for the opposite case — a provider that is up
+        # and answering, and has said to come back in a moment.
         raise LLMError(f"{provider.name} request failed: {exc}") from exc
 
+    if resp.status_code >= 400:
+        raise _status_error(provider, resp)
+
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise LLMError(
+            f"{provider.name} returned a body that is not JSON: {exc}"
+        ) from exc
+
     # OpenRouter (and Gemini's compat layer) report upstream errors as a 200
-    # with an `error` body rather than a non-2xx status.
+    # with an `error` body rather than a non-2xx status. A rate limit arrives
+    # this way far more often than as a real 429, so the body has to be read as
+    # carefully as the status line — see :func:`_body_error`.
     if isinstance(data, dict) and "choices" not in data:
-        detail = (data.get("error") or {}).get("message", "no choices returned")
-        raise LLMError(f"{provider.name} request failed: {detail}")
+        raise _body_error(provider, data)
 
     try:
         choice = data["choices"][0]
@@ -271,15 +512,169 @@ def _call(
     return text.strip()
 
 
+def _note_failure(provider: Provider, model: str, exc: LLMError) -> None:
+    """Record one exhausted (provider, model) against the breaker.
+
+    A rate limit that named a window *longer than this request is willing to
+    wait for* is treated as authoritative — a spent daily quota, in practice.
+    The provider has already said in seconds when it will serve us again, so
+    nothing is learned by asking twice more to satisfy the failure threshold,
+    and the breaker is opened on that one answer.
+
+    A *short* wait is deliberately not stood down for. It is the per-minute case
+    the second sweep exists to ride out, and opening the breaker for it would
+    make the next sweep skip the very provider that is about to come back.
+    """
+    if isinstance(exc, LLMRateLimited) and exc.retry_after is not None:
+        cooldown = min(
+            exc.retry_after, float(settings.llm_breaker_max_cooldown_seconds)
+        )
+        if exc.retry_after > float(settings.llm_retry_max_backoff_seconds):
+            breaker.open_for(provider.name, cooldown)
+            logger.warning(
+                "llm provider %s rate-limited on %s for longer than this request "
+                "will wait; skipping it for %.0fs: %s",
+                provider.name,
+                model,
+                cooldown,
+                exc,
+            )
+            return
+
+    tripped = breaker.record_failure(provider.name)
+    logger.warning(
+        "llm provider %s failed on %s (%s)%s",
+        provider.name,
+        model,
+        exc,
+        " — circuit opened" if tripped else "",
+    )
+
+
+@dataclass
+class _Pass:
+    """What one sweep of the whole chain produced, when it produced no text."""
+
+    errors: list[str] = field(default_factory=list)
+    #: Waits named by the providers that refused. Empty when nobody was
+    #: rate-limited, which is the signal that waiting would achieve nothing.
+    rate_limit_waits: list[float | None] = field(default_factory=list)
+    #: True when at least one provider failed for a reason that is not a rate
+    #: limit — a bad key, a 400, a dead host. Sleeping does not fix any of them.
+    other_failure: bool = False
+
+
+def _sweep(
+    providers: list[Provider],
+    messages: list[dict[str, str]],
+    *,
+    model: str | None,
+    fallback_models: tuple[str, ...],
+    temperature: float,
+    max_tokens: int,
+    timeout: float,
+) -> Completion | _Pass:
+    """One pass over every provider and every model. No sleeping."""
+    outcome = _Pass()
+
+    for provider in providers:
+        if breaker.is_open(provider.name):
+            logger.debug("llm provider %s skipped (breaker open)", provider.name)
+            outcome.errors.append(f"{provider.name}: skipped, circuit open")
+            continue
+
+        for candidate in _model_chain(provider, model, fallback_models):
+            started = time.monotonic()
+            try:
+                text = _call(
+                    provider,
+                    messages,
+                    model=candidate,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=timeout,
+                )
+            except LLMError as exc:
+                _note_failure(provider, candidate, exc)
+                outcome.errors.append(str(exc))
+                if isinstance(exc, LLMRateLimited):
+                    outcome.rate_limit_waits.append(exc.retry_after)
+                else:
+                    outcome.other_failure = True
+                # A provider that has just named a cool-down has nothing more to
+                # give this request, whichever model we ask for next.
+                if breaker.is_open(provider.name):
+                    break
+                continue
+
+            breaker.record_success(provider.name)
+            logger.info(
+                "llm served by %s (%s) in %.2fs",
+                provider.name,
+                candidate,
+                time.monotonic() - started,
+            )
+            return Completion(text=text, provider=provider.name, model=candidate)
+
+    return outcome
+
+
+def _pause_before_retrying(outcome: _Pass, providers: list[Provider]) -> float | None:
+    """How long to wait before sweeping the chain again, or ``None``.
+
+    ``None`` — do not sweep again — in three cases, and each is one where a nap
+    changes nothing:
+
+    * nobody was rate-limited, so the failures are not about timing;
+    * something failed for a *different* reason as well, which the wait would
+      not address and which the caller's template handles just as well now as in
+      thirty seconds;
+    * every remaining provider is behind an open breaker, so the next sweep
+      would make no requests at all.
+
+    Otherwise it is the shortest wait any refusing provider named — the first
+    moment one of them will serve us — defaulting to
+    :data:`_DEFAULT_RATE_LIMIT_PAUSE` where none said, and clamped so a worker
+    is never held for longer than ``llm_retry_max_backoff_seconds``. Jittered
+    for the reason :func:`_backoff_delay` gives.
+    """
+    if outcome.other_failure or not outcome.rate_limit_waits:
+        return None
+    if all(breaker.is_open(provider.name) for provider in providers):
+        return None
+
+    named = [wait for wait in outcome.rate_limit_waits if wait is not None]
+    wait = min(named) if named else _DEFAULT_RATE_LIMIT_PAUSE
+    wait = min(wait, float(settings.llm_retry_max_backoff_seconds))
+    if wait <= 0:
+        return None
+    return random.uniform(wait / 2, wait)
+
+
 def complete(
     messages: list[dict[str, str]],
     *,
     model: str | None = None,
+    fallback_models: tuple[str, ...] | list[str] = (),
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
 ) -> Completion:
     """Try each configured provider in order; return the first success.
+
+    Within a provider, each model in its chain is tried before moving on —
+    free-tier quota is per model, so the sibling is a real second chance.
+
+    A sweep that fails *entirely* because of rate limits, and for no other
+    reason, is slept on and repeated up to ``llm_max_attempts`` times. The
+    ordering matters: nothing is slept on until every provider has been asked,
+    so a working provider is never delayed by a rate-limited one ahead of it,
+    and the wait is only ever paid in the situation it fixes — every free tier
+    refusing at once, which otherwise means a confidence-0 template and an
+    auto-publish that cannot happen.
+
+    *fallback_models* lets a caller name siblings of its own *model* override;
+    they apply to the same provider the override does.
 
     Raises :class:`AllProvidersFailed` when none of them produce usable text —
     the signal for the caller to use its own static template.
@@ -291,42 +686,36 @@ def complete(
             "GEMINI_API_KEY, GROQ_API_KEY or CEREBRAS_API_KEY"
         )
 
+    sweeps = max(1, int(settings.llm_max_attempts))
     errors: list[str] = []
-    for provider in providers:
-        if breaker.is_open(provider.name):
-            logger.debug("llm provider %s skipped (breaker open)", provider.name)
-            errors.append(f"{provider.name}: skipped, circuit open")
-            continue
 
-        started = time.monotonic()
-        try:
-            text = _call(
-                provider,
-                messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=timeout,
-            )
-        except LLMError as exc:
-            tripped = breaker.record_failure(provider.name)
-            logger.warning(
-                "llm provider %s failed (%s)%s",
-                provider.name,
-                exc,
-                " — circuit opened" if tripped else "",
-            )
-            errors.append(str(exc))
-            continue
-
-        breaker.record_success(provider.name)
-        logger.info(
-            "llm served by %s (%s) in %.2fs",
-            provider.name,
-            provider.model,
-            time.monotonic() - started,
+    for sweep in range(1, sweeps + 1):
+        outcome = _sweep(
+            providers,
+            messages,
+            model=model,
+            fallback_models=tuple(fallback_models),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
         )
-        return Completion(text=text, provider=provider.name, model=provider.model)
+        if isinstance(outcome, Completion):
+            return outcome
+
+        errors = outcome.errors
+        if sweep >= sweeps:
+            break
+        pause = _pause_before_retrying(outcome, providers)
+        if pause is None:
+            break
+        logger.info(
+            "every llm provider is rate-limited; sweeping again in %.1fs "
+            "(pass %d of %d)",
+            pause,
+            sweep,
+            sweeps,
+        )
+        _sleep(pause)
 
     raise AllProvidersFailed("All LLM providers failed: " + "; ".join(errors))
 
@@ -336,6 +725,7 @@ __all__ = [
     "CircuitBreaker",
     "Completion",
     "LLMError",
+    "LLMRateLimited",
     "Provider",
     "breaker",
     "complete",

@@ -149,6 +149,7 @@ def chat_completion_detailed(
     messages: list[dict[str, str]],
     *,
     model: str | None = None,
+    fallback_models: tuple[str, ...] | list[str] = (),
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
@@ -158,11 +159,17 @@ def chat_completion_detailed(
     Use this over :func:`chat_completion` when the caller wants to record which
     model produced a piece of text — content rows do, so the analytics page can
     answer "does the 120b model actually write better posts?".
+
+    *fallback_models* names siblings of *model* to try on the same provider
+    before moving to the next one. Free-tier quotas are metered per model, so a
+    caller that has a second acceptable model should say so — see
+    :mod:`app.services.llm_router`.
     """
     try:
         return llm_router.complete(
             messages,
             model=model,
+            fallback_models=fallback_models,
             temperature=temperature,
             max_tokens=max_tokens,
             timeout=timeout,
@@ -175,6 +182,7 @@ def chat_completion(
     messages: list[dict[str, str]],
     *,
     model: str | None = None,
+    fallback_models: tuple[str, ...] | list[str] = (),
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
@@ -187,6 +195,7 @@ def chat_completion(
     return chat_completion_detailed(
         messages,
         model=model,
+        fallback_models=fallback_models,
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=timeout,
@@ -197,6 +206,7 @@ def json_completion(
     messages: list[dict[str, str]],
     *,
     model: str | None = None,
+    fallback_models: tuple[str, ...] | list[str] = (),
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
@@ -209,6 +219,7 @@ def json_completion(
     completion = chat_completion_detailed(
         messages,
         model=model,
+        fallback_models=fallback_models,
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=timeout,

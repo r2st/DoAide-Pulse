@@ -420,6 +420,14 @@ def generate(
     model = (
         settings.openrouter_long_form_model if long_form else settings.openrouter_model
     )
+    # The other configured OpenRouter model is the cheapest fallback there is:
+    # free-tier quotas are metered per model, so a key that has spent its budget
+    # on one of these still has one for the other. Wrong-sized rather than
+    # absent is a trade worth making — the alternative when both are exhausted
+    # is a template with confidence 0.0, which can never auto-publish.
+    sibling = (
+        settings.openrouter_model if long_form else settings.openrouter_long_form_model
+    )
     # ~2.2 tokens per word covers the prose plus its JSON escaping; the flat
     # allowance covers the reasoning scratchpad. See the constant above.
     max_tokens = int(target_words * 2.2) + _REASONING_ALLOWANCE_TOKENS
@@ -434,7 +442,11 @@ def generate(
 
     try:
         payload, completion = ai.json_completion(
-            messages, model=model, temperature=0.7, max_tokens=max_tokens
+            messages,
+            model=model,
+            fallback_models=(sibling,),
+            temperature=0.7,
+            max_tokens=max_tokens,
         )
     except ai.AIError as exc:
         logger.warning(

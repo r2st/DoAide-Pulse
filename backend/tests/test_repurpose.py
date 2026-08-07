@@ -37,7 +37,7 @@ def stub_llm(monkeypatch):
     """Make the chain return whatever the test sets, and count calls."""
     state = {"payload": None, "calls": 0}
 
-    def fake_complete(messages, *, model=None, temperature=0.7, max_tokens=1200, timeout=90.0):
+    def fake_complete(messages, *, model=None, fallback_models=(), **_kwargs):
         state["calls"] += 1
         text = state["payload"]
         return llm_router.Completion(

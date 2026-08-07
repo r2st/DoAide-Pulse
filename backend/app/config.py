@@ -135,11 +135,38 @@ class Settings(BaseSettings):
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
     cerebras_model: str = "llama-3.3-70b"
 
+    # Extra models to try on the *same* provider before moving to the next one,
+    # comma-separated. Worth setting on the free tiers, where the quota is per
+    # model rather than per key: a second model on a key that has exhausted its
+    # first is a request that succeeds, and moving providers is not.
+    openrouter_fallback_models: str = ""
+    gemini_fallback_models: str = ""
+    groq_fallback_models: str = ""
+    cerebras_fallback_models: str = ""
+
     # Circuit breaker: after this many consecutive failures a provider is
     # skipped entirely for the cool-down, so one dead upstream costs a timeout
     # once rather than on every request.
     llm_breaker_threshold: int = 3
     llm_breaker_cooldown_seconds: int = 300
+    # A provider that answers 429 with a `Retry-After` gets that as its
+    # cool-down instead, capped here. The free tiers hand out day-long windows
+    # when a daily quota is spent, and skipping for the default five minutes
+    # means paying a refused request every five minutes until midnight.
+    llm_breaker_max_cooldown_seconds: int = 3600
+
+    # How many times the whole provider chain is swept before giving up. A
+    # second sweep only happens when the first one failed on rate limits and
+    # nothing else — see ``app.services.llm_router``. The per-minute free-tier
+    # limits are what this exists for: they clear in seconds, and falling
+    # through to a template because of one is the difference between a
+    # published post and a blocked auto-publish.
+    llm_max_attempts: int = 3
+    # The longest a single request will be held waiting for a rate limit to
+    # clear. Also the line between "wait for it" and "stand this provider
+    # down": a provider asking for longer than this is treated as having spent
+    # a daily quota rather than a per-minute one.
+    llm_retry_max_backoff_seconds: float = 30.0
 
     # ---- GitHub (project change monitoring) ----
     # A classic or fine-grained PAT with `repo` read. Optional: without it the

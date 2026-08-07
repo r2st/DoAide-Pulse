@@ -60,7 +60,19 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str | int, expires_minutes: int | None = None) -> str:
-    """Create a signed JWT whose ``sub`` claim is the user id."""
+    """Create a signed JWT whose ``sub`` claim is the user id.
+
+    ``iat`` is written as a float, keeping the microseconds. RFC 7519's
+    NumericDate is "a JSON numeric value" and explicitly allows non-integer
+    values; PyJWT would truncate a ``datetime`` to whole seconds.
+
+    The precision is load-bearing, not decoration. :func:`app.deps.get_current_user`
+    refuses tokens issued before the account's ``tokens_valid_from``, and at
+    one-second resolution the token minted just *before* a password reset and
+    the one minted by the sign-in just *after* it carry the same ``iat`` — the
+    check could not tell the attacker's session from the owner's, and would
+    have to either keep the attacker in or lock the owner out.
+    """
     now = datetime.now(UTC)
     expire = now + timedelta(
         minutes=expires_minutes or settings.access_token_expire_minutes
@@ -68,18 +80,48 @@ def create_access_token(subject: str | int, expires_minutes: int | None = None) 
     payload: dict[str, Any] = {
         "sub": str(subject),
         "exp": expire,
-        "iat": now,
+        "iat": now.timestamp(),
         "type": "access",
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def decode_access_token(token: str) -> str | None:
-    """Return the subject (user id) of a valid token, or ``None`` if invalid."""
+def decode_access_token_claims(token: str) -> dict[str, Any] | None:
+    """Return the claims of a valid access token, or ``None`` if invalid.
+
+    Callers that need more than the subject use this: ``iat`` is what
+    :func:`app.deps.get_current_user` checks against the user's
+    ``tokens_valid_from`` so a password reset ends the sessions that were open
+    when it happened.
+    """
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except jwt.InvalidTokenError:
         return None
     if payload.get("type") != "access":
         return None
-    return payload.get("sub")
+    return payload
+
+
+def decode_access_token(token: str) -> str | None:
+    """Return the subject (user id) of a valid token, or ``None`` if invalid."""
+    claims = decode_access_token_claims(token)
+    return claims.get("sub") if claims else None
+
+
+def issued_at(claims: dict[str, Any]) -> datetime | None:
+    """The token's ``iat`` as an aware datetime, or ``None`` if it has none.
+
+    A token with no ``iat`` cannot be placed in time, so it cannot be shown to
+    predate a password change. Every token Herald mints carries one — see
+    :func:`create_access_token` — so the only tokens this returns ``None`` for
+    are ones minted by something else, and those are refused rather than
+    trusted (see :func:`app.deps.get_current_user`).
+    """
+    raw = claims.get("iat")
+    if raw is None:
+        return None
+    try:
+        return datetime.fromtimestamp(float(raw), tz=UTC)
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None

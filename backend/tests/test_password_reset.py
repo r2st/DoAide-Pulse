@@ -254,3 +254,120 @@ def test_purge_expired_clears_spent_and_stale_rows(client, db, user, outbox):
     assert db.scalar(select(PasswordResetToken)) is not None
     assert password_reset.purge_expired(db) == 1
     assert db.scalar(select(PasswordResetToken)) is None
+
+
+# --------------------------------------------------------------------------- #
+# Ending the sessions the reset was performed to end                          #
+# --------------------------------------------------------------------------- #
+#
+# The threat this answers is the ordinary one: somebody resets their password
+# *because* the account has been taken. Herald's access tokens are stateless
+# JWTs with no revocation list, so before `tokens_valid_from` the reset changed
+# what the next sign-in needed and nothing else — the attacker's bearer token
+# went on working for the rest of ACCESS_TOKEN_EXPIRE_MINUTES.
+
+
+def test_a_reset_stops_the_tokens_that_were_already_out(client, user, auth, outbox):
+    """The whole point: a token that worked a moment ago must stop working."""
+    assert client.get("/api/v1/auth/me", headers=auth).status_code == 200
+
+    _request_reset(client, user.email)
+    resp = client.post(
+        CONFIRM,
+        json={"token": _token_from(outbox[0]), "new_password": NEW_PASSWORD},
+    )
+    assert resp.status_code == 200
+
+    refused = client.get("/api/v1/auth/me", headers=auth)
+    assert refused.status_code == 401
+    assert refused.json()["detail"] == "Could not validate credentials"
+
+
+def test_the_reset_does_not_lock_out_the_person_who_did_it(client, user, outbox):
+    """The session opened *after* the reset has to work, or the fix is a lockout.
+
+    The subtle half, and the reason `iat` is minted with microseconds rather
+    than the whole seconds PyJWT writes by default: at one-second resolution
+    this token and the one the previous test refuses carry the same `iat`, and
+    no comparison can pass one without passing the other.
+    """
+    _request_reset(client, user.email)
+    client.post(
+        CONFIRM,
+        json={"token": _token_from(outbox[0]), "new_password": NEW_PASSWORD},
+    )
+
+    fresh = client.post(LOGIN, data={"username": user.email, "password": NEW_PASSWORD})
+    assert fresh.status_code == 200
+    header = {"Authorization": f"Bearer {fresh.json()['access_token']}"}
+    assert client.get("/api/v1/auth/me", headers=header).status_code == 200
+
+
+def test_an_unrelated_account_keeps_its_session(client, db, user, auth, outbox):
+    """One user's reset must not sign anybody else out."""
+    from app.models.user import User
+    from app.security import hash_password
+
+    other = User(
+        email="someone@example.com",
+        full_name="Someone",
+        hashed_password=hash_password("hunter2hunter2"),
+    )
+    db.add(other)
+    db.commit()
+    other_login = client.post(
+        LOGIN, data={"username": other.email, "password": "hunter2hunter2"}
+    )
+    other_auth = {"Authorization": f"Bearer {other_login.json()['access_token']}"}
+
+    _request_reset(client, user.email)
+    client.post(
+        CONFIRM,
+        json={"token": _token_from(outbox[0]), "new_password": NEW_PASSWORD},
+    )
+
+    assert client.get("/api/v1/auth/me", headers=auth).status_code == 401
+    assert client.get("/api/v1/auth/me", headers=other_auth).status_code == 200
+
+
+def test_an_account_that_never_reset_accepts_its_tokens(client, user, auth, db):
+    """NULL means "never changed", not "nothing is valid".
+
+    The default for every row that predates the column, and getting it wrong
+    signs the whole install out on deploy.
+    """
+    assert user.tokens_valid_from is None
+    assert client.get("/api/v1/auth/me", headers=auth).status_code == 200
+
+
+def test_a_token_with_no_iat_is_refused_once_a_reset_has_happened(client, user, db):
+    """A token Herald did not mint cannot be placed in time, so it cannot be
+    shown to postdate the reset — and is refused rather than trusted."""
+    import jwt
+
+    from app.config import settings as app_settings
+
+    user.tokens_valid_from = utcnow()
+    db.commit()
+
+    forged = jwt.encode(
+        # Signature is good and it has not expired; only `iat` is missing.
+        {"sub": str(user.id), "type": "access", "exp": utcnow() + timedelta(hours=1)},
+        app_settings.jwt_secret,
+        algorithm=app_settings.jwt_algorithm,
+    )
+    resp = client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {forged}"}
+    )
+    assert resp.status_code == 401
+
+
+def test_consume_stamps_the_cutoff(db, user):
+    """The service records it, not just the endpoint — the trigger is the
+    password changing, wherever that is driven from."""
+    before = utcnow()
+    raw = password_reset.issue(db, user)
+    assert password_reset.consume(db, raw, NEW_PASSWORD) is not None
+    db.refresh(user)
+    assert user.tokens_valid_from is not None
+    assert user.tokens_valid_from.timestamp() >= before.timestamp() - 1

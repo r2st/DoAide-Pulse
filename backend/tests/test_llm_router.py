@@ -21,10 +21,25 @@ def _reset_breaker():
 
 
 class _FakeResponse:
-    """Just enough of httpx.Response for :func:`llm_router._call`."""
+    """Just enough of httpx.Response for :func:`llm_router._call`.
 
-    def __init__(self, payload: dict) -> None:
+    Carries a status and headers as well as a body: the router reads the status
+    line to tell "come back later" from "never", and ``Retry-After`` to tell a
+    per-minute limit from a spent daily quota.
+    """
+
+    def __init__(
+        self,
+        payload: dict,
+        *,
+        status_code: int = 200,
+        headers: dict | None = None,
+        text: str = "",
+    ) -> None:
         self._payload = payload
+        self.status_code = status_code
+        self.headers = headers or {}
+        self.text = text or ""
 
     def raise_for_status(self) -> None:
         return None
@@ -265,3 +280,329 @@ def test_coercion_helpers_tolerate_loose_model_output():
     # Off the scale is not the top of the scale: see `as_float`. A model that
     # answered 5 to a 0.0-1.0 question was answering a different question.
     assert ai.as_float(5, default=0.5) == 0.5
+
+
+# --------------------------------------------------------------------------- #
+# Rate limits                                                                  #
+# --------------------------------------------------------------------------- #
+#
+# The free tiers meter two different things and the two want opposite answers:
+# a per-minute limit clears in seconds and is worth waiting out, a per-day quota
+# does not clear today and is worth standing down from. Getting this wrong is
+# what turns a rate limit into a confidence-0 template and a blocked
+# auto-publish, which is the whole reason this section exists.
+
+
+@pytest.fixture
+def no_sleeping(monkeypatch):
+    """Record what the chain would have slept for instead of sleeping."""
+    slept: list[float] = []
+    monkeypatch.setattr(llm_router, "_sleep", slept.append)
+    return slept
+
+
+def _rate_limited(retry_after: str | None = None) -> _FakeResponse:
+    """A real 429, with the platform's own answer to "when?"."""
+    headers = {"Retry-After": retry_after} if retry_after else {}
+    return _FakeResponse({}, status_code=429, headers=headers, text="slow down")
+
+
+def test_a_429_does_not_delay_a_provider_that_would_have_worked(
+    all_keys, no_sleeping, monkeypatch
+):
+    """The ordering rule: sweep the whole chain before sleeping on any of it.
+
+    OpenRouter refusing is not a reason to make the caller wait when Gemini is
+    sitting there ready to answer.
+    """
+
+    def fake_post(url, *, json, headers, timeout):
+        if "openrouter.ai" in url:
+            return _rate_limited("30")
+        return _FakeResponse(_completion("gemini wrote this"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    result = llm_router.complete([{"role": "user", "content": "hi"}])
+    assert result.provider == "gemini"
+    assert no_sleeping == []
+
+
+def test_a_whole_chain_of_429s_is_waited_out_rather_than_given_up_on(
+    all_keys, no_sleeping, monkeypatch
+):
+    """The case the user actually hits: every free tier refusing at once.
+
+    Falling through to the caller's template here produces a draft with
+    confidence 0.0, which the autopilot will never publish. A per-minute limit
+    clears in seconds, so one wait is the difference between a published post
+    and a blocked auto-publish.
+    """
+    attempts = {"n": 0}
+
+    def fake_post(url, *, json, headers, timeout):
+        attempts["n"] += 1
+        # Everything refuses on the first sweep; the second one goes through.
+        if attempts["n"] <= 3:
+            return _rate_limited("5")
+        return _FakeResponse(_completion("second time lucky"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    result = llm_router.complete([{"role": "user", "content": "hi"}])
+    assert result.text == "second time lucky"
+    assert len(no_sleeping) == 1
+    # Never longer than the shortest wait a refusing provider named.
+    assert 0 < no_sleeping[0] <= 5
+
+
+def test_the_wait_is_the_shortest_one_any_provider_named(
+    all_keys, no_sleeping, monkeypatch
+):
+    """Whoever frees up first is when there is a point in asking again."""
+    waits = iter(["600", "5", "300"])
+
+    def fake_post(url, *, json, headers, timeout):
+        return _rate_limited(next(waits, "300"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+    assert no_sleeping
+    assert all(0 < wait <= 5 for wait in no_sleeping)
+
+
+def test_a_rate_limit_with_no_retry_after_is_treated_as_a_per_minute_one(
+    all_keys, no_sleeping, monkeypatch
+):
+    """Guessing wrong in this direction costs one short nap; the other costs a post."""
+    monkeypatch.setattr(
+        llm_router.httpx, "post", lambda *a, **kw: _rate_limited(None)
+    )
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+    assert no_sleeping
+    assert all(0 < wait <= llm_router._DEFAULT_RATE_LIMIT_PAUSE for wait in no_sleeping)
+
+
+def test_a_failure_that_is_not_a_rate_limit_is_not_slept_on(
+    all_keys, no_sleeping, monkeypatch
+):
+    """A dead host does not become reachable because we waited thirty seconds."""
+    monkeypatch.setattr(
+        llm_router.httpx,
+        "post",
+        lambda *a, **kw: (_ for _ in ()).throw(httpx.ConnectError("down")),
+    )
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+    assert no_sleeping == []
+
+
+def test_a_bad_key_is_not_retried(all_keys, no_sleeping, monkeypatch):
+    """A 401 is the provider saying "never", not "later"."""
+    calls: list[str] = []
+
+    def fake_post(url, *, json, headers, timeout):
+        calls.append(url)
+        return _FakeResponse({}, status_code=401, text="invalid api key")
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+    # One request per provider and no more: three keys, three calls.
+    assert len(calls) == 3
+    assert no_sleeping == []
+
+
+def test_openrouters_200_with_a_rate_limit_body_is_read_as_a_rate_limit(
+    all_keys, no_sleeping, monkeypatch
+):
+    """OpenRouter's free tier answers a spent quota with HTTP 200.
+
+    Read as a plain failure this costs the chain a provider it could come back
+    to, and costs the request the one wait that would have rescued it.
+    """
+    attempts = {"n": 0}
+
+    def fake_post(url, *, json, headers, timeout):
+        attempts["n"] += 1
+        if attempts["n"] <= 3:
+            return _FakeResponse(
+                {"error": {"message": "Rate limit exceeded: free-models-per-day"}}
+            )
+        return _FakeResponse(_completion("after the wait"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    assert llm_router.complete([{"role": "user", "content": "hi"}]).text == (
+        "after the wait"
+    )
+    assert len(no_sleeping) == 1
+
+
+def test_a_long_retry_after_stands_the_provider_down_for_that_long(
+    all_keys, no_sleeping, monkeypatch
+):
+    """A spent daily quota should cost one refused request, not one per sweep.
+
+    Without this the breaker's three-consecutive-failures rule keeps asking a
+    provider that has already said, in seconds, when it will next say yes.
+    """
+    monkeypatch.setattr(
+        llm_router.httpx,
+        "post",
+        lambda *a, **kw: _rate_limited("1800"),
+    )
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+
+    # One refusal was enough — no waiting for the failure threshold.
+    assert llm_router.breaker.is_open("openrouter")
+    assert llm_router.breaker.is_open("gemini")
+    assert llm_router.breaker.is_open("groq")
+
+
+def test_a_stood_down_provider_is_not_swept_again(all_keys, no_sleeping, monkeypatch):
+    """Nothing to gain from a second sweep when every provider is standing down."""
+    calls: list[str] = []
+
+    def fake_post(url, *, json, headers, timeout):
+        calls.append(url)
+        return _rate_limited("1800")
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+    assert len(calls) == 3
+
+
+def test_the_breaker_cooldown_from_a_retry_after_is_capped(all_keys, monkeypatch):
+    """A provider asking for a week does not get a week."""
+    monkeypatch.setattr(settings, "llm_breaker_max_cooldown_seconds", 60)
+    monkeypatch.setattr(llm_router, "_sleep", lambda _s: None)
+    monkeypatch.setattr(
+        llm_router.httpx, "post", lambda *a, **kw: _rate_limited("604800")
+    )
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+
+    snapshot = llm_router.breaker.snapshot()
+    assert snapshot["openrouter"]["seconds_until_retry"] <= 60
+
+
+def test_retry_after_accepts_an_http_date(monkeypatch):
+    """RFC 9110 allows a date as well as a delay, and providers send both."""
+    from email.utils import format_datetime
+    from datetime import UTC, datetime, timedelta
+
+    later = datetime.now(UTC) + timedelta(seconds=120)
+    assert 100 < llm_router._retry_after({"Retry-After": format_datetime(later)}) < 130
+    # A date already gone reads as no guidance, not as a negative wait.
+    gone = datetime.now(UTC) - timedelta(seconds=120)
+    assert llm_router._retry_after({"Retry-After": format_datetime(gone)}) == 0.0
+    assert llm_router._retry_after({}) is None
+    assert llm_router._retry_after({"Retry-After": "not a date"}) is None
+
+
+# --------------------------------------------------------------------------- #
+# Model fallback within one provider                                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_rate_limited_model_falls_back_to_its_sibling_on_the_same_key(
+    all_keys, no_sleeping, monkeypatch
+):
+    """Free-tier quota is metered per model, so the sibling is a real second go.
+
+    And it is a *better* second go than the next provider, whose key may not be
+    configured at all.
+    """
+    monkeypatch.setattr(settings, "openrouter_fallback_models", "openai/other:free")
+    models: list[str] = []
+
+    def fake_post(url, *, json, headers, timeout):
+        models.append(json["model"])
+        if json["model"] == settings.openrouter_model:
+            # No Retry-After: a per-model minute limit, not a spent day.
+            return _rate_limited(None)
+        return _FakeResponse(_completion("the sibling answered"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    result = llm_router.complete([{"role": "user", "content": "hi"}])
+    assert result.provider == "openrouter"
+    assert result.model == "openai/other:free"
+    assert models == [settings.openrouter_model, "openai/other:free"]
+    # The sibling answered on the first sweep, so nobody waited.
+    assert no_sleeping == []
+
+
+def test_a_caller_can_name_its_own_sibling_model(all_keys, no_sleeping, monkeypatch):
+    """What content_generator does: the long-form and short-form models are
+    each other's fallback, and both are already configured and free."""
+    models: list[str] = []
+
+    def fake_post(url, *, json, headers, timeout):
+        models.append(json["model"])
+        if json["model"] == settings.openrouter_model:
+            return _rate_limited(None)
+        return _FakeResponse(_completion("the other model answered"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    result = llm_router.complete(
+        [{"role": "user", "content": "hi"}],
+        model=settings.openrouter_model,
+        fallback_models=(settings.openrouter_long_form_model,),
+    )
+    assert result.model == settings.openrouter_long_form_model
+    assert models[:2] == [
+        settings.openrouter_model,
+        settings.openrouter_long_form_model,
+    ]
+
+
+def test_a_caller_named_sibling_does_not_leak_to_another_provider(
+    all_keys, no_sleeping, monkeypatch
+):
+    """An OpenRouter model id means nothing to Gemini — it would 400."""
+    models: list[str] = []
+
+    def fake_post(url, *, json, headers, timeout):
+        models.append(json["model"])
+        if "openrouter.ai" in url:
+            return _rate_limited(None)
+        return _FakeResponse(_completion("gemini wrote this"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    result = llm_router.complete(
+        [{"role": "user", "content": "hi"}],
+        model=settings.openrouter_model,
+        fallback_models=(settings.openrouter_long_form_model,),
+    )
+    assert result.provider == "gemini"
+    assert models[-1] == settings.gemini_model
+
+
+def test_a_spent_daily_quota_skips_the_sibling_too(all_keys, no_sleeping, monkeypatch):
+    """A key-wide daily limit is not a per-model one — do not spend a request
+    proving that on every model in the chain."""
+    monkeypatch.setattr(settings, "openrouter_fallback_models", "openai/other:free")
+    models: list[str] = []
+
+    def fake_post(url, *, json, headers, timeout):
+        models.append(json["model"])
+        if "openrouter.ai" in url:
+            return _rate_limited("3600")
+        return _FakeResponse(_completion("gemini wrote this"))
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    assert llm_router.complete([{"role": "user", "content": "hi"}]).provider == "gemini"
+    assert models.count(settings.openrouter_model) == 1
+    assert "openai/other:free" not in models

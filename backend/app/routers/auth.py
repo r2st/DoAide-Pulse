@@ -204,10 +204,11 @@ def confirm_password_reset(
 ) -> MessageOut:
     """Spend a reset token and set the new password.
 
-    Note what this does *not* do: existing access tokens keep working until they
-    expire. Herald's JWTs are stateless and there is no revocation list, so
-    "reset the password to lock someone out" is not something this endpoint can
-    honestly promise. ACCESS_TOKEN_EXPIRE_MINUTES is the bound.
+    Every access token issued before this call stops working, which is what
+    makes "reset the password to lock someone out" true rather than merely
+    plausible. Herald's JWTs are stateless and there is no revocation list, so
+    the mechanism is a timestamp on the user row and a comparison against the
+    token's ``iat`` — see :attr:`app.models.user.User.tokens_valid_from`.
     """
     user = password_reset.consume(db, payload.token, payload.new_password)
     if user is None:
