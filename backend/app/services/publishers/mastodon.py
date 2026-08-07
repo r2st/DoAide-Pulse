@@ -48,6 +48,10 @@ class MastodonAdapter(Adapter):
     # scope beyond the one used to post it.
     supports_metrics = True
     utm_medium = "social"
+    # The whole point of the platform is that the server is the user's choice,
+    # so `instance_url` is an address an account holder aims Herald at. See
+    # `Adapter._send`.
+    user_supplied_host = True
     credential_fields = (
         CredentialField(
             key="instance_url",

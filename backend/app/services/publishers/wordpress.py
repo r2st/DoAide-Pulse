@@ -43,6 +43,9 @@ class WordPressAdapter(Adapter):
     # The REST API reports no view counts — those live in Jetpack Stats or
     # whatever analytics the site runs, neither of which is core.
     supports_metrics = False
+    # `site_url` is typed into the settings form, so every request this adapter
+    # makes is one an account holder chose the address of. See `Adapter._send`.
+    user_supplied_host = True
     caveat = (
         "Self-hosted WordPress with the REST API at /wp-json. Uses an "
         "application password (Users → Profile → Application Passwords), not "

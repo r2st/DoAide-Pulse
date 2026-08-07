@@ -21,7 +21,19 @@ blips that resolve in seconds — a dropped connection, a 503 from a load
 balancer rolling. Above it, the publication row is re-armed by the beat sweep
 for anything that outlives them. The inner layer only retries what is *safe* to
 retry: see :func:`_is_retryable`, which is deliberately conservative about
-POSTs, because a duplicate article is worse than a failed one.
+POSTs, because a duplicate article is worse than a failed one, and which hands a
+long ``Retry-After`` upwards rather than sleeping through a fraction of it.
+
+**Three adapters are pointed at a host the user typed.** WordPress, Mastodon and
+Bluesky are all "tell me where your server is" platforms, so their base URL
+arrives from a settings form and Herald's own process is what opens it —
+``http://169.254.169.254/`` is a valid site URL, and the reply comes back to the
+caller inside the error message. Those adapters set
+:attr:`Adapter.user_supplied_host`, which makes :meth:`Adapter._request` resolve
+the host and refuse loopback, private and link-local space before connecting,
+and follow redirects by hand so a public host cannot bounce the request inside
+the network. It is the same guard :mod:`app.services.link_check` applies to
+outbound webhooks, for the same reason.
 """
 from __future__ import annotations
 
@@ -38,6 +50,7 @@ import httpx
 
 from app.config import settings
 from app.models.publication import Platform
+from app.services import link_check
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +67,10 @@ _REJECTED_WITHOUT_PROCESSING = frozenset({429, 503})
 #: the write may well have landed — so :func:`_is_retryable` only replays them
 #: for idempotent methods.
 _TRANSIENT_STATUSES = frozenset({429, 500, 502, 503, 504})
+
+#: How many hops a user-supplied host is allowed to bounce the request through
+#: before Herald stops following. Matches ``link_check``'s budget.
+_MAX_REDIRECTS = 10
 
 
 class PublishError(RuntimeError):
@@ -88,6 +105,16 @@ class NotImplementedAdapter(PublishError):
     A distinct type so the API can answer "why can't I publish here?" with
     something better than a generic failure, and so the registry can report
     capabilities without special-casing.
+    """
+
+
+class RefusedHost(CredentialError):
+    """The adapter was pointed somewhere Herald will not send a request.
+
+    A subclass of :class:`CredentialError` because the two answers a caller needs
+    are the same: stop retrying, and tell the user to fix the connection. The
+    distinct type exists so the settings page can say *why* — "that address is
+    inside the network" is a different fix from "that token expired".
     """
 
 
@@ -213,6 +240,10 @@ class Adapter(ABC):
     #: surfaced verbatim in the UI. Used for platforms whose API access is
     #: restricted or deprecated.
     caveat: str = ""
+    #: True when this adapter's base URL comes from a credential field rather
+    #: than being a constant in the source. Those are the requests an outsider
+    #: can aim, so :meth:`_request` guards them — see the module docstring.
+    user_supplied_host: bool = False
     #: ``utm_medium`` for links published here. Declared per adapter because the
     #: distinction that matters downstream is what *kind* of channel this is —
     #: a full article syndicated to another blog behaves nothing like a 300
@@ -288,14 +319,8 @@ class Adapter(ABC):
             error: PublishError
             response: httpx.Response | None = None
             try:
-                response = httpx.request(
-                    method,
-                    url,
-                    headers=headers,
-                    json=json_body,
-                    params=params,
-                    timeout=settings.publish_timeout_seconds,
-                    follow_redirects=True,
+                response = self._send(
+                    method, url, headers=headers, json_body=json_body, params=params
                 )
             except httpx.HTTPError as exc:
                 error = PublishError(f"{self.display_name} request failed: {exc}")
@@ -321,6 +346,88 @@ class Adapter(ABC):
                 delay,
             )
             _sleep(delay)
+
+    def _send(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None,
+        json_body: Any,
+        params: dict | None,
+    ) -> httpx.Response:
+        """One HTTP exchange, with redirects handled according to the host.
+
+        For an adapter whose base URL is a constant, httpx follows redirects
+        itself — the destination is Dev.to, and Dev.to is allowed to move its
+        own endpoints around.
+
+        For an adapter pointed at a host the user typed, every hop is resolved
+        and checked first. Letting httpx follow would hand the choice of final
+        address to a ``Location`` header: a site that passes the pre-flight can
+        answer ``302 → http://169.254.169.254/``, and the guard would have
+        checked a host that never received the request.
+        """
+        def call(target: str, follow: bool) -> httpx.Response:
+            return httpx.request(
+                method,
+                target,
+                headers=headers,
+                json=json_body,
+                params=params,
+                timeout=settings.publish_timeout_seconds,
+                follow_redirects=follow,
+            )
+
+        if not self.user_supplied_host:
+            return call(url, True)
+
+        current = url
+        for _ in range(_MAX_REDIRECTS):
+            self._require_public_url(current)
+            response = call(current, False)
+            if not response.is_redirect:
+                return response
+            # httpx builds the next request even when it is not following, and
+            # it is the better source: it applies the method and body changes a
+            # 303 requires. Joining the header is the fallback for a transport
+            # that does not.
+            following = response.next_request
+            location = response.headers.get("location", "")
+            if following is None and not location:
+                # A 3xx with nowhere to go. Hand it back and let _translate
+                # judge it rather than inventing a destination.
+                return response
+            current = (
+                str(following.url)
+                if following is not None
+                else str(httpx.URL(current).join(location))
+            )
+
+        raise PublishError(
+            f"{self.display_name} redirected more than {_MAX_REDIRECTS} times — "
+            "point the connection at the final address."
+        )
+
+    def _require_public_url(self, url: str) -> None:
+        """Refuse a URL that is not an outward-facing http(s) address.
+
+        ``link_check.unreachable_reason`` does the resolving: one private,
+        loopback or link-local answer among a host's addresses is enough to
+        refuse it, because nothing says httpx would pick the same record this
+        check looked at.
+        """
+        if not url.lower().startswith(("http://", "https://")):
+            raise RefusedHost(
+                f"{self.display_name} needs an http:// or https:// address — "
+                f"got {url[:80]!r}."
+            )
+        reason = link_check.unreachable_reason(url)
+        if reason:
+            raise RefusedHost(
+                f"Herald will not send {self.display_name} requests to that "
+                f"address — {reason}"
+            )
 
     def _translate(self, resp: httpx.Response) -> PublishError | None:
         """The error a response deserves, or ``None`` when it is a success."""
@@ -435,5 +542,6 @@ __all__ = [
     "PublishRequest",
     "PublishResult",
     "RateLimited",
+    "RefusedHost",
     "UnsupportedOption",
 ]
