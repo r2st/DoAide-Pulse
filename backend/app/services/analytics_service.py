@@ -19,7 +19,7 @@ from __future__ import annotations
 import dataclasses
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -455,13 +455,118 @@ def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
     ]
 
 
-def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
-    """Views and engagement recorded per day over the trailing window.
+#: The fields a daily gain is computed for. ``engagement`` is derived rather
+#: than stored, so it is read off the metric's own property.
+_TREND_FIELDS = ("views", "reads", "clicks", "engagement")
 
-    Distinct from :func:`timeline`, which counts *publish events*: this sums
-    every metric snapshot captured on each day, so it tracks reader activity
-    on posts that went out long before the window started. Every day is
-    present, including zero days — see :func:`timeline` for why.
+
+def _field_of(metric: ContentMetric, field_: str) -> int | None:
+    """One trend field off a snapshot. ``engagement`` is a property, not a column."""
+    if field_ == "engagement":
+        return metric.engagement
+    return getattr(metric, field_)
+
+
+def _daily_gains(
+    snapshots: list[ContentMetric], *, baseline: ContentMetric | None = None
+) -> dict[str, dict[str, int]]:
+    """One publication's series reduced to what it *gained* on each day.
+
+    The counters are cumulative (see the module docstring), so a day's activity
+    is a subtraction between the last reading of that day and the last reading
+    before it — never a sum over the readings in between, which counts the same
+    views once per poll.
+
+    A counter that goes backwards is clamped to its previous value rather than
+    recorded as a negative gain, for the reason
+    :class:`app.services.velocity.Curve` gives: nothing the author did made
+    those views un-happen, and a purge or a rescrape must not read as a day
+    when the audience shrank.
+
+    *baseline* is the last reading from **before** the window, and without it
+    the first day inside the window would be handed the post's entire lifetime
+    as that day's gain — which is how a chart of "the last 30 days" opens with
+    a spike that is really eight months of accumulation.
+
+    A day is absent from a field entirely when no reading that day reported it,
+    which is what keeps "Mastodon counts no reads" out of the read rate rather
+    than turning it into a read rate of zero.
+    """
+    opening: dict[str, int] = {}
+    if baseline is not None:
+        for field_ in _TREND_FIELDS:
+            value = _field_of(baseline, field_)
+            if value is not None:
+                opening[field_] = int(value)
+
+    # Where each field's cumulative counter stood when each observed day closed.
+    running = dict(opening)
+    closing: dict[str, dict[str, int]] = {}
+    for metric in sorted(snapshots, key=lambda m: (m.captured_at, m.id)):
+        day = metric.captured_at.date().isoformat()
+        for field_ in _TREND_FIELDS:
+            value = _field_of(metric, field_)
+            if value is None:
+                continue
+            running[field_] = max(running.get(field_, 0), int(value))
+            closing.setdefault(day, {})[field_] = running[field_]
+
+    per_day: dict[str, dict[str, int]] = {}
+    previous = dict(opening)
+    for day in sorted(closing):
+        gains: dict[str, int] = {}
+        for field_, end in closing[day].items():
+            gains[field_] = end - previous.get(field_, 0)
+            previous[field_] = end
+        per_day[day] = gains
+    return per_day
+
+
+def _pre_window_readings(
+    db: Session, since: datetime, publication_ids: list[int]
+) -> dict[int, ContentMetric]:
+    """The last reading before *since*, per publication.
+
+    The baseline every first-day-in-window gain is measured against. ``MAX(id)``
+    rather than ``MAX(captured_at)`` for the reason
+    :func:`_latest_metric_subquery` gives: ids are unique and monotonic, so this
+    cannot tie.
+    """
+    if not publication_ids:
+        return {}
+    newest_before = (
+        select(func.max(ContentMetric.id).label("metric_id"))
+        .where(
+            ContentMetric.publication_id.in_(publication_ids),
+            ContentMetric.captured_at < since,
+        )
+        .group_by(ContentMetric.publication_id)
+        .subquery()
+    )
+    rows = db.scalars(
+        select(ContentMetric).join(
+            newest_before, newest_before.c.metric_id == ContentMetric.id
+        )
+    )
+    return {row.publication_id: row for row in rows}
+
+
+def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
+    """Views and engagement *gained* per day over the trailing window.
+
+    Distinct from :func:`timeline`, which counts *publish events*: this tracks
+    reader activity, including on posts that went out long before the window
+    started. Every day is present, including zero days — see :func:`timeline`
+    for why.
+
+    The counters the platforms report are cumulative, so a day's number is the
+    difference between where a publication's series ended that day and where it
+    ended the day before — the same subtraction :mod:`app.services.velocity`
+    makes, and for the same reason the module docstring gives at the top of this
+    file. Summing the snapshots instead, which is what this did, multiplied
+    every day by the poll frequency *and* re-counted each post's whole lifetime
+    on every day it was polled: six-hourly polling turned one post with 1,000
+    lifetime views into 4,000 views a day, every day, for ever.
 
     ``reader_minutes`` is each day's reads weighted by how long the piece they
     belong to takes to read — the same quantity :func:`read_time` reports for
@@ -481,15 +586,35 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
         .where(Project.user_id == user_id, ContentMetric.captured_at >= since)
     ).all()
 
+    # Group by publication first: a gain is only meaningful against the same
+    # post's own previous reading.
+    series: dict[int, list[ContentMetric]] = defaultdict(list)
+    read_minutes: dict[int, int] = {}
+    for metric, content in rows:
+        series[metric.publication_id].append(metric)
+        read_minutes[metric.publication_id] = content.read_minutes
+
+    baselines = _pre_window_readings(db, since, list(series))
+
     by_day: dict[str, dict[str, int]] = defaultdict(_blank_metrics)
     reader_minutes: dict[str, int] = defaultdict(int)
-    for metric, content in rows:
-        day = metric.captured_at.date().isoformat()
-        _accumulate(by_day[day], metric)
-        # Reads, not views — see :func:`read_time` for why a bounce contributes
-        # nothing here.
-        if metric.reads is not None:
-            reader_minutes[day] += metric.reads * content.read_minutes
+    for publication_id, snapshots in series.items():
+        gains_by_day = _daily_gains(
+            snapshots, baseline=baselines.get(publication_id)
+        )
+        for day, gains in gains_by_day.items():
+            bucket = by_day[day]
+            bucket["views"] += gains.get("views") or 0
+            bucket["engagement"] += gains.get("engagement") or 0
+            if "reads" in gains:
+                bucket["reads"] += gains["reads"]
+                bucket["reads_reported"] += 1
+                # Reads, not views — see :func:`read_time` for why a bounce
+                # contributes nothing here.
+                reader_minutes[day] += gains["reads"] * read_minutes[publication_id]
+            if "clicks" in gains:
+                bucket["clicks"] += gains["clicks"]
+                bucket["clicks_reported"] += 1
 
     start = since.date()
     out: list[dict] = []

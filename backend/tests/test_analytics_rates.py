@@ -7,8 +7,11 @@ user their best channel is dead.
 """
 from __future__ import annotations
 
+from datetime import timedelta
+
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.metrics import ContentMetric
+from app.models.mixins import utcnow
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import analytics_service
 
@@ -163,6 +166,100 @@ def test_trend_carries_clicks_and_a_daily_rate(db, user, project):
     # A day with no snapshots has no rate — not a rate of zero.
     assert trend[0]["views"] == 0
     assert trend[0]["click_through_rate"] is None
+
+
+def test_trend_reports_each_day_gain_not_the_running_total(db, user, project):
+    """A cumulative counter charted raw is a staircase, not a trend.
+
+    Dev.to's ``page_views_count`` is lifetime views, so a post sitting at 1,000
+    on Tuesday and 1,200 on Wednesday gained 200 on Wednesday — it did not have
+    a 1,200-view Wednesday on top of a 1,000-view Tuesday.
+    """
+    content = _published(db, project, title="Climbing")
+    pub = Publication(
+        content_id=content.id,
+        platform=Platform.DEVTO,
+        status=PublicationStatus.PUBLISHED,
+    )
+    db.add(pub)
+    db.flush()
+    now = utcnow()
+    db.add_all(
+        [
+            ContentMetric(
+                publication_id=pub.id,
+                captured_at=now - timedelta(days=2),
+                views=1000,
+                clicks=10,
+            ),
+            ContentMetric(
+                publication_id=pub.id,
+                captured_at=now - timedelta(days=1),
+                views=1200,
+                clicks=14,
+            ),
+            ContentMetric(
+                publication_id=pub.id, captured_at=now, views=1250, clicks=15
+            ),
+        ]
+    )
+    db.commit()
+
+    trend = {row["date"]: row for row in analytics_service.engagement_trend(db, user.id)}
+    two_days_ago = (now - timedelta(days=2)).date().isoformat()
+    yesterday = (now - timedelta(days=1)).date().isoformat()
+    today = now.date().isoformat()
+
+    assert trend[two_days_ago]["views"] == 1000  # first reading, nothing before it
+    assert trend[yesterday]["views"] == 200
+    assert trend[today]["views"] == 50
+    assert trend[yesterday]["clicks"] == 4
+    assert trend[today]["clicks"] == 1
+
+
+def test_trend_measures_the_first_day_against_the_reading_before_the_window(
+    db, user, project
+):
+    """Otherwise "the last 7 days" opens with the post's whole lifetime.
+
+    A piece published months ago carries thousands of views into the window.
+    Charting them as day one's activity is a spike that never happened.
+    """
+    content = _published(db, project, title="Old and steady")
+    pub = Publication(
+        content_id=content.id,
+        platform=Platform.DEVTO,
+        status=PublicationStatus.PUBLISHED,
+    )
+    db.add(pub)
+    db.flush()
+    now = utcnow()
+    db.add_all(
+        [
+            # Well outside a 7-day window.
+            ContentMetric(
+                publication_id=pub.id, captured_at=now - timedelta(days=40), views=8000
+            ),
+            ContentMetric(publication_id=pub.id, captured_at=now, views=8120),
+        ]
+    )
+    db.commit()
+
+    trend = analytics_service.engagement_trend(db, user.id, days=7)
+    assert trend[-1]["views"] == 120
+    assert sum(row["views"] for row in trend) == 120
+
+
+def test_trend_leaves_a_platform_that_reports_no_reads_out_of_the_read_rate(
+    db, user, project
+):
+    """A NULL read is unknown, and unknown must not average in as zero."""
+    content = _published(db, project, title="Federated")
+    _publish_to(db, content, Platform.MASTODON, views=400, reads=None)
+
+    today = analytics_service.engagement_trend(db, user.id, days=1)[-1]
+    assert today["views"] == 400
+    assert today["read_rate"] is None
 
 
 # --------------------------------------------------------------------------- #

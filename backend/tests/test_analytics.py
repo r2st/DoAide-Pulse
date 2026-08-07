@@ -106,9 +106,15 @@ def test_engagement_trend_empty_covers_every_day(client, auth):
     assert all(day["views"] == 0 and day["engagement"] == 0 for day in body)
 
 
-def test_engagement_trend_sums_snapshots_captured_on_the_same_day(
+def test_engagement_trend_does_not_re_count_a_day_once_per_poll(
     client, auth, db, project
 ):
+    """Two polls of one post on one day describe one post, not two.
+
+    The counters the platforms report are cumulative, so the day's number is
+    where the series ended, not the sum of every reading taken along the way.
+    Summing them multiplied every day by the poll frequency.
+    """
     from app.models.metrics import ContentMetric
     from app.models.mixins import utcnow
 
@@ -130,10 +136,10 @@ def test_engagement_trend_sums_snapshots_captured_on_the_same_day(
     db.add_all(
         [
             ContentMetric(
-                publication_id=pub.id, captured_at=now, views=100, reactions=5, comments=2
+                publication_id=pub.id, captured_at=now, views=60, reactions=3, comments=1
             ),
             ContentMetric(
-                publication_id=pub.id, captured_at=now, views=50, reactions=1, comments=0
+                publication_id=pub.id, captured_at=now, views=100, reactions=5, comments=2
             ),
         ]
     )
@@ -143,11 +149,47 @@ def test_engagement_trend_sums_snapshots_captured_on_the_same_day(
     assert resp.status_code == 200
     body = resp.json()
     today = body[-1]
-    assert today["views"] == 150
-    assert today["engagement"] == 8  # (5+2) + (1+0)
+    assert today["views"] == 100  # where the series ended, not 60 + 100
+    assert today["engagement"] == 7  # 5 + 2, not (3+1) + (5+2)
     assert "engagement_trend" in client.get(
         "/api/v1/analytics/overview", headers=auth
     ).json()
+
+
+def test_engagement_trend_clamps_a_counter_that_went_backwards(
+    client, auth, db, project
+):
+    """A purge or a rescrape must not read as a day the audience shrank."""
+    from app.models.metrics import ContentMetric
+    from app.models.mixins import utcnow
+
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Rescraped",
+        slug="rescraped",
+        status=ContentStatus.PUBLISHED,
+    )
+    db.add(content)
+    db.flush()
+    pub = Publication(
+        content_id=content.id, platform=Platform.DEVTO, status=PublicationStatus.PUBLISHED
+    )
+    db.add(pub)
+    db.flush()
+    now = utcnow()
+    db.add_all(
+        [
+            ContentMetric(publication_id=pub.id, captured_at=now, views=100),
+            ContentMetric(publication_id=pub.id, captured_at=now, views=40),
+        ]
+    )
+    db.commit()
+
+    today = client.get(
+        "/api/v1/analytics/engagement-trend?days=1", headers=auth
+    ).json()[-1]
+    assert today["views"] == 100
 
 
 def test_engagement_trend_weights_reads_by_the_piece_they_belong_to(
