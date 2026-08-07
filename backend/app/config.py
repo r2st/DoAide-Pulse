@@ -242,6 +242,15 @@ class Settings(BaseSettings):
     # occasionally answer Retry-After with something enormous, and a post that
     # silently disappears for a day looks like a bug rather than a queue.
     publish_rate_limit_max_defer_seconds: int = 3600
+    # How long a row may sit in `publishing` before the sweep assumes the worker
+    # that claimed it is gone and re-arms it. `publish_one` claims the row and
+    # then commits, so a worker killed between the two (OOM, a deploy restart,
+    # SIGKILL) leaves the row claimed forever: `due_publications` only looks at
+    # pending and scheduled, and the redelivered task's own claim finds the row
+    # already `publishing` and skips. Must comfortably exceed publish_one's hard
+    # time limit — inside that window the task is still alive and re-arming it
+    # would post twice.
+    publish_stuck_after_seconds: int = 900
 
     # ---- Outbound webhooks ----
     # Per-request budget for a user's own endpoint. Short: a webhook is a
@@ -355,6 +364,7 @@ class Settings(BaseSettings):
         "learned_cadence_min_samples",
         "password_reset_token_ttl_minutes",
         "publish_max_retries",
+        "publish_stuck_after_seconds",
         "trigger_daily_content_limit",
         "trigger_disable_after_failures",
         "trigger_scan_interval_seconds",

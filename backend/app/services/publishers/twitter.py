@@ -34,6 +34,7 @@ class TwitterAdapter(Adapter):
     display_name = "Twitter / X"
     implemented = False
     utm_medium = "social"
+    hosts_canonical = False
     supports_metrics = False
     caveat = (
         "Needs OAuth 1.0a signing (or 3-legged OAuth 2.0) and a paid API tier "

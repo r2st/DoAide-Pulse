@@ -12,6 +12,7 @@ failing makes the content itself a failure.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -46,7 +47,7 @@ class NotConnected(PublishError):
 def queue(
     db: Session,
     content: Content,
-    platforms: list[Platform | str],
+    platforms: Sequence[Platform | str],
     *,
     scheduled_for: datetime | None = None,
     as_draft: bool = False,
@@ -57,9 +58,8 @@ def queue(
     second row — the unique constraint on (content, platform) makes that the
     only correct behaviour, and "retry this one" is the common case.
 
-    When the project names a canonical platform and this batch contains both it
-    and somewhere else to syndicate to, the copies are held back — see
-    :func:`_syndication_schedule`.
+    When this batch contains both the piece's original and somewhere else to
+    syndicate to, the copies are held back — see :func:`_syndication_schedule`.
     """
     existing = {p.platform: p for p in content.publications}
     out: list[Publication] = []
@@ -90,10 +90,29 @@ def queue(
 
     db.flush()
     # Canonical first, so a caller that dispatches in order gives the original a
-    # head start even when the delay is switched off.
+    # head start even when the delay is switched off. Then the destinations that
+    # host the article, ahead of the ones that only carry a link to it: when no
+    # canonical platform is named, whichever publishes first becomes the piece's
+    # canonical, and a plain alphabetical order handed that to Bluesky.
     canonical = _canonical_platform(content)
-    out.sort(key=lambda p: (p.platform != canonical, p.platform.value))
+    out.sort(key=lambda p: (p.platform != canonical, *_original_rank(p.platform)))
     return out
+
+
+def _original_rank(platform: Platform) -> tuple[bool, bool, str]:
+    """Sort key deciding which destination is a piece's original.
+
+    Used both to order a batch and to pick the implicit original in
+    :func:`_original_platform`, so the two cannot disagree about which URL a
+    copy will end up pointing at.
+
+    The order is: somewhere that hosts the article at all, then the user's own
+    domain ahead of somebody else's platform, then alphabetically so the answer
+    does not depend on the order the caller listed them in. Plain alphabetical
+    was the whole of it before, which handed the canonical to Bluesky.
+    """
+    adapter = publishers.get_adapter(platform)
+    return (not adapter.hosts_canonical, not adapter.owns_domain, platform.value)
 
 
 def _canonical_platform(content: Content) -> Platform | None:
@@ -104,9 +123,34 @@ def _canonical_platform(content: Content) -> Platform | None:
     return project.canonical_platform
 
 
+def _original_platform(content: Content, wanted: set[Platform]) -> Platform | None:
+    """The destination in *wanted* whose URL this piece will call its original.
+
+    The project's named canonical platform when it has one and this batch
+    contains it. Otherwise the *implicit* original: with no platform named,
+    ``_adopt_canonical`` gives the title to whichever publishes first that hosts
+    articles, so the first such platform by :func:`_original_rank` — the same
+    order ``queue`` dispatches in — is the one everything else is a copy of.
+
+    ``None`` when nothing here can hold a canonical URL — a batch of social
+    posts has no original among it, and staggering them would delay posts that
+    have nothing to wait for.
+    """
+    named = _canonical_platform(content)
+    if named is not None:
+        return named if named in wanted else None
+    if content.project is None or not content.project.auto_canonical:
+        return None
+    hosts = sorted(
+        (p for p in wanted if publishers.get_adapter(p).hosts_canonical),
+        key=_original_rank,
+    )
+    return hosts[0] if hosts else None
+
+
 def _syndication_schedule(
     content: Content,
-    platforms: list[Platform | str],
+    platforms: Sequence[Platform | str],
     *,
     base: datetime | None,
 ) -> dict[Platform, datetime | None]:
@@ -115,23 +159,32 @@ def _syndication_schedule(
     Publishing the original and its copies in the same instant loses the point
     of a canonical URL twice over: the copies are dispatched before the original
     has an ``external_url`` to be canonical *to*, and a crawler has no reason to
-    believe the original came first. So when the project designates a canonical
-    platform and this batch also contains somewhere else, the rest wait
-    ``syndication_delay_seconds`` behind it.
+    believe the original came first. So when this batch contains both the
+    original and somewhere else, the rest wait ``syndication_delay_seconds``
+    behind it.
+
+    "The original" is the project's named canonical platform when it has one,
+    and the article-hosting destination that will win the race when it does not
+    — see :func:`_original_platform`. Only honouring the named case left the
+    default project (auto-canonical on, no platform named) publishing everywhere
+    at once, which is the configuration every autopilot project on the box
+    actually has.
 
     Returns a mapping for the platforms whose time differs from *base*; anything
     absent keeps the caller's own schedule. An empty dict means "nothing to
     stagger", which covers the ordinary single-platform publish.
     """
-    canonical = _canonical_platform(content)
     delay = settings.syndication_delay_seconds
-    if canonical is None or delay <= 0:
+    if delay <= 0:
         return {}
 
     wanted = {p if isinstance(p, Platform) else Platform(p) for p in platforms}
     # Nothing to order: the original is not in this batch (so its URL either
     # already exists or is not coming), or there is nothing to syndicate.
-    if canonical not in wanted or len(wanted) < 2:
+    if len(wanted) < 2:
+        return {}
+    canonical = _original_platform(content, wanted)
+    if canonical is None:
         return {}
     # The original already has its URL — the copies can go out immediately.
     if content.canonical_url:
@@ -397,13 +450,20 @@ def _adopt_canonical(
     that: publish somewhere, and everywhere afterwards is told where the real one
     lives.
 
-    Four things stop it firing, and each is a case where guessing would be worse
+    Five things stop it firing, and each is a case where guessing would be worse
     than leaving the field empty:
 
     * the project opted out, or a human already typed a canonical URL — an
       explicit answer beats an inferred one;
     * the project names a canonical platform and this is not it, so this URL is
       itself a copy;
+    * the destination does not host articles — see
+      :attr:`app.services.publishers.base.Adapter.hosts_canonical`. A project
+      with no canonical platform named lets whichever platform publishes first
+      win, and ``queue`` orders an untitled race alphabetically, so Bluesky beat
+      Dev.to every time and the article's canonical became a 300-character post
+      linking to it. A crawler reading that is told the microblog post is the
+      original and the article is the copy;
     * the post was staged as a draft, whose URL is a private editor link that
       would 404 for a crawler;
     * the platform did not return an absolute ``http(s)`` URL to use.
@@ -412,6 +472,8 @@ def _adopt_canonical(
     if project is None or not project.auto_canonical or content.canonical_url:
         return
     if project.canonical_platform and publication.platform != project.canonical_platform:
+        return
+    if not publishers.get_adapter(publication.platform).hosts_canonical:
         return
     if publication.as_draft:
         return
@@ -495,6 +557,62 @@ def _sync_content_status(content: Content) -> None:
             content.published_at = utcnow()
     elif all(p.is_terminal for p in publications):
         content.status = ContentStatus.FAILED
+
+
+def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
+    """Re-arm publications abandoned mid-publish. Returns how many. Commits.
+
+    ``publish_tasks.publish_one`` claims a row by moving it to ``publishing``
+    and committing before it calls :func:`execute`. That is what stops two
+    workers publishing the same row — and it is also a one-way door if the
+    worker never comes back. A process killed between the claim and the outcome
+    (OOM, a deploy restarting the service, SIGKILL) leaves the row ``publishing``
+    with nothing running: :func:`due_publications` only looks at ``pending`` and
+    ``scheduled``, and Celery's redelivery of the task finds the row already
+    claimed and skips it. The publication is then stuck forever, with no error
+    on it to say so.
+
+    The cutoff is what keeps this from double-posting. ``publish_one``'s hard
+    time limit is under three minutes and its soft limit already returns the row
+    to ``pending``, so a row untouched for ``publish_stuck_after_seconds`` has no
+    live task behind it. ``updated_at`` is the clock — it moves on the claim, so
+    it measures the age of *this* claim rather than of the row.
+
+    The attempt is counted: it is genuinely spent, and a publish that reliably
+    kills its worker should exhaust its retries and be looked at by a human
+    rather than cycling forever.
+    """
+    cutoff = (now or utcnow()) - timedelta(seconds=settings.publish_stuck_after_seconds)
+    stuck = list(
+        db.scalars(
+            select(Publication).where(
+                Publication.status == PublicationStatus.PUBLISHING,
+                Publication.updated_at <= cutoff,
+            )
+        )
+    )
+    for publication in stuck:
+        logger.warning(
+            "publication %s to %s was left mid-publish; re-arming (attempt %d)",
+            publication.id,
+            publication.platform.value,
+            publication.attempts,
+        )
+        if publication.attempts >= settings.publish_max_retries:
+            publication.status = PublicationStatus.FAILED
+            publication.error = (
+                "The worker publishing this stopped before it finished, and the "
+                "retries are spent. Retry it by hand once the cause is known."
+            )
+            _sync_content_status(publication.content)
+        else:
+            publication.status = PublicationStatus.PENDING
+            publication.error = (
+                "The worker publishing this stopped before it finished — retrying."
+            )
+    if stuck:
+        db.commit()
+    return len(stuck)
 
 
 def due_publications(db: Session, *, now: datetime | None = None) -> list[Publication]:
@@ -604,4 +722,5 @@ __all__ = [
     "due_publications",
     "execute",
     "queue",
+    "reclaim_stuck",
 ]

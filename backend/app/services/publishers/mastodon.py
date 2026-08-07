@@ -48,6 +48,8 @@ class MastodonAdapter(Adapter):
     # scope beyond the one used to post it.
     supports_metrics = True
     utm_medium = "social"
+    # A status, not an article — see `Adapter.hosts_canonical`.
+    hosts_canonical = False
     # The whole point of the platform is that the server is the user's choice,
     # so `instance_url` is an address an account holder aims Herald at. See
     # `Adapter._send`.

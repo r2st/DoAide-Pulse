@@ -250,6 +250,26 @@ class Adapter(ABC):
     #: character post with a link on it, and lumping both under "referral"
     #: throws away the only free segmentation available.
     utm_medium: str = "referral"
+    #: Whether a URL from this platform can stand as the piece's canonical — the
+    #: address every syndicated copy points at as the original.
+    #:
+    #: True for anywhere that hosts the *article*: the project's own blog, Dev.to,
+    #: Medium, Hashnode, WordPress. False for the channels that carry a link to it
+    #: instead — a Bluesky post is 300 characters and a URL, and a Buttondown
+    #: archive page is an issue of a newsletter. Naming one of those as the
+    #: canonical tells a crawler the microblog post *is* the article and the real
+    #: one is the copy, which is the opposite of what syndication is for.
+    #:
+    #: Separate from :attr:`utm_medium` deliberately, though today they agree:
+    #: one is an analytics label the user can reasonably want to change, the
+    #: other decides what ``rel=canonical`` says.
+    hosts_canonical: bool = True
+    #: Whether this destination publishes to an address the *user* controls,
+    #: rather than to somebody else's platform. Only used to break the tie when
+    #: a project names no canonical platform and a batch contains more than one
+    #: article destination: the copy on the user's own domain is the original,
+    #: and the one on Dev.to is the syndicated copy, never the other way round.
+    owns_domain: bool = False
 
     @abstractmethod
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:

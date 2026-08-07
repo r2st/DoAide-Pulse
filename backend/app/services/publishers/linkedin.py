@@ -30,6 +30,7 @@ class LinkedInAdapter(Adapter):
     display_name = "LinkedIn"
     implemented = False
     utm_medium = "social"
+    hosts_canonical = False
     supports_metrics = False
     caveat = (
         "Needs a registered LinkedIn app and a three-legged OAuth token "

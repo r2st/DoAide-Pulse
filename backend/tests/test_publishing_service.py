@@ -54,7 +54,11 @@ def connected(db, user):
 def test_queue_creates_one_row_per_platform(db, content):
     publications = publishing_service.queue(db, content, ["devto", "medium"])
     assert {p.platform for p in publications} == {Platform.DEVTO, Platform.MEDIUM}
-    assert all(p.status == PublicationStatus.PENDING for p in publications)
+    # Only the original goes out now — the copy waits behind it, so that it can
+    # carry a canonical link to a URL that exists. See test_canonical.py.
+    by_platform = {p.platform: p for p in publications}
+    assert by_platform[Platform.DEVTO].status == PublicationStatus.PENDING
+    assert by_platform[Platform.MEDIUM].status == PublicationStatus.SCHEDULED
 
 
 def test_requeue_rearms_rather_than_duplicating(db, content):

@@ -60,6 +60,8 @@ class ButtondownAdapter(Adapter):
     # channel the reader opted into, and folding that in with a link on a social
     # post throws away the only segmentation Herald gets for free.
     utm_medium = "email"
+    # The archive page is an issue of a newsletter, not the article's home.
+    hosts_canonical = False
     # Buttondown reports opens and clicks in its own dashboard, but the shape of
     # the analytics on the email object is undocumented. Reporting nothing is
     # honest; reporting a guessed zero would make every issue look unread.

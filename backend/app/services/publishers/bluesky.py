@@ -77,6 +77,8 @@ class BlueskyAdapter(Adapter):
     implemented = True
     supports_metrics = True
     utm_medium = "social"
+    # A post, not an article: 300 characters carrying a link to the real thing.
+    hosts_canonical = False
     # `service_url` defaults to bsky.social but exists so a self-hosted PDS can
     # be named, which makes it an address an account holder chooses. See
     # `Adapter._send`.

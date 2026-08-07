@@ -70,6 +70,10 @@ class GitAdapter(Adapter):
     # is the source of truth, which is exactly what the UTM tagging feeds.
     supports_metrics = False
     utm_medium = "owned"
+    # The only destination on a domain the user controls, which is what makes it
+    # the original when no canonical platform is named. See
+    # `Adapter.owns_domain`.
+    owns_domain = True
     caveat = (
         "Commits Markdown to a branch. Leave the token blank to use Herald's "
         "GITHUB_TOKEN, which needs write access to the repo — the one used for "
