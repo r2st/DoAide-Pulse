@@ -477,3 +477,68 @@ def test_suggest_internal_links_includes_canonical_url():
     ]
     out = seo.suggest_internal_links(keywords=["docker"], candidates=candidates)
     assert out[0]["url"] == "https://example.com/x"
+
+
+# --------------------------------------------------------------------------- #
+# The audit and the score have to agree                                        #
+# --------------------------------------------------------------------------- #
+#
+# Every deduction ``seo_score`` makes should be findable in ``audit``. The panel
+# is the only place an author can see *what* to fix; a number that drops for a
+# reason the panel never states is a number they cannot act on.
+
+
+def _fields(issues) -> set[str]:
+    return {issue.field for issue in issues}
+
+
+def test_a_focus_keyword_missing_from_the_title_is_reported_without_a_keyword_list():
+    """An explicit focus keyword is checked whether or not `keywords` is set.
+
+    The two checks used to be chained, so a piece carrying `focus_keyword` and an
+    empty `keywords` list reported only "no keywords set" — while `seo_score`
+    docked ten points for the title on its own. Panel clean, score 90, nothing to
+    click.
+    """
+    issues = seo.audit(
+        title="Shipping faster with less ceremony",
+        body_markdown="## Intro\n\n" + ("word " * 400),
+        meta_description="A description of the thing, long enough to pass the floor "
+        "that the audit applies to meta descriptions.",
+        keywords=[],
+        focus_keyword="celery retries",
+    )
+
+    assert "keywords" in _fields(issues)
+    title_issues = [i for i in issues if i.field == "title"]
+    assert any("celery retries" in i.message for i in title_issues)
+
+
+def test_the_title_check_is_silent_when_the_focus_keyword_is_in_the_title():
+    issues = seo.audit(
+        title="Celery retries, explained",
+        body_markdown="## Celery retries\n\n" + ("celery retries " * 20) + ("word " * 300),
+        meta_description="How celery retries work, at length, in a description long "
+        "enough to clear the minimum the audit enforces.",
+        keywords=[],
+        focus_keyword="celery retries",
+    )
+
+    assert not [i for i in issues if i.field == "title"]
+
+
+def test_every_score_deduction_for_the_title_has_an_audit_issue_behind_it():
+    """The regression stated as the invariant, not as one example."""
+    kwargs = dict(
+        title="Shipping faster with less ceremony",
+        body_markdown="## Intro\n\n" + ("word " * 400),
+        meta_description="A description of the thing, long enough to pass the floor "
+        "that the audit applies to meta descriptions.",
+        keywords=[],
+        focus_keyword="celery retries",
+    )
+
+    docked = 100 - seo.seo_score(**kwargs)
+    assert docked > 0
+    # Whatever the score took off, the panel names at least one thing to do.
+    assert seo.audit(**kwargs)

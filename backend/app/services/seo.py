@@ -237,7 +237,13 @@ def audit(
         issues.append(
             SeoIssue("warn", "keywords", "No keywords set — nothing to optimise for.")
         )
-    elif fk and title and fk.lower() not in title.lower():
+    # Independent of the check above, not an ``elif`` on it. A piece can carry an
+    # explicit ``focus_keyword`` and an empty ``keywords`` list, and chaining the
+    # two hid the title issue in exactly that case — while :func:`seo_score`,
+    # which checks the focus keyword unconditionally, still docked ten points for
+    # it. An editor looking at a clean panel and a score of 90 has no way to find
+    # the missing ten.
+    if fk and title and fk.lower() not in title.lower():
         issues.append(
             SeoIssue(
                 "warn",
