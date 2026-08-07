@@ -364,3 +364,45 @@ def test_a_two_post_thread_is_enough_however_few_words():
 
 def test_a_one_post_thread_is_not_a_thread():
     assert formats.too_thin_to_store("Just the one post.", ContentType.SOCIAL_THREAD)
+
+
+# --------------------------------------------------------------------------- #
+# The changelog panel has to be able to say what is wrong                      #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_heading_that_names_no_section_is_reported():
+    """`parse_changelog` canonicalises headings, so the branch looking for an
+    unknown name in its output could never fire.
+
+    An author writing `## Enhancements` got a clean panel while their entries
+    were already being read as `Changed`.
+    """
+    body = "## Enhancements\n\n- Faster startup\n\n## Fixed\n\n- The parser crash"
+
+    problems = formats.changelog_problems(body)
+
+    assert len(problems) == 1
+    assert "Enhancements" in problems[0]
+    # And it says what is happening to the entries, not just that the name is wrong.
+    assert "Changed" in problems[0]
+
+
+def test_the_reported_heading_is_the_one_the_author_typed():
+    body = "### Bits and bobs\n\n- A thing"
+    assert "Bits and bobs" in formats.changelog_problems(body)[0]
+
+
+def test_an_alias_heading_is_not_reported():
+    """`Bug Fixes` means Fixed, and the panel should stay quiet about it."""
+    assert formats.changelog_problems("## Bug Fixes\n\n- The parser crash") == []
+
+
+def test_canonical_headings_are_not_reported():
+    body = "## Added\n\n- RSS triggers\n\n## Fixed\n\n- The parser crash"
+    assert formats.changelog_problems(body) == []
+
+
+def test_each_unrecognised_heading_is_named_once():
+    body = "## Enhancements\n\n- One\n\n## Enhancements\n\n- Two\n\n## Notes\n\n- Three"
+    assert formats.unrecognised_headings(body) == ["Enhancements", "Notes"]

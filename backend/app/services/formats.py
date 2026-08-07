@@ -386,6 +386,29 @@ def normalize_changelog(body: str) -> str:
     return render_changelog(parse_changelog(body))
 
 
+def unrecognised_headings(body: str) -> list[str]:
+    """Headings in *body* that name no changelog section, in document order.
+
+    Read off the body rather than off :func:`parse_changelog`, which is where
+    the information goes to die: that function resolves every heading through
+    :func:`canonical_section` and files whatever it cannot place under
+    ``Changed``, so by the time it returns, the name the author actually typed
+    is gone. ``changelog_problems`` looked for unknown names in its output and
+    therefore could never find one — the branch was unreachable, and an author
+    who wrote ``## Enhancements`` got a clean panel while their entries were
+    quietly being read as ``Changed``.
+    """
+    out: list[str] = []
+    for line in (body or "").split("\n"):
+        heading = _HEADING.match(line)
+        if not heading:
+            continue
+        name = heading.group(1).strip()
+        if name and canonical_section(name) is None and name not in out:
+            out.append(name)
+    return out
+
+
 def changelog_problems(body: str) -> list[str]:
     """What is wrong with this changelog, in the words the editor shows."""
     sections = parse_changelog(body)
@@ -393,10 +416,11 @@ def changelog_problems(body: str) -> list[str]:
         return ["A changelog needs at least one entry under a heading like ## Fixed."]
 
     problems = []
-    unknown = [name for name, _ in sections if name not in CHANGELOG_SECTIONS]
+    unknown = unrecognised_headings(body)
     if unknown:
         problems.append(
-            f"{', '.join(unknown)} is not a changelog section. Use one of: "
+            f"{', '.join(unknown)} is not a changelog section, so anything under "
+            f"it is being read as Changed. Use one of: "
             f"{', '.join(CHANGELOG_SECTIONS)}."
         )
     for name, entries in sections:
@@ -541,4 +565,5 @@ __all__ = [
     "split_post",
     "thread_problems",
     "too_thin_to_store",
+    "unrecognised_headings",
 ]
