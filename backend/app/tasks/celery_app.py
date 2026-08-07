@@ -58,6 +58,13 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.publish_tasks.publish_due",
         "schedule": float(settings.publish_scan_interval_seconds),
     },
+    "release-approved-content": {
+        # The backstop for an approved piece nothing ever queued. Rare by
+        # design, so it runs an order of magnitude less often than the publish
+        # sweep it feeds.
+        "task": "app.tasks.publish_tasks.release_approved_content",
+        "schedule": float(settings.publish_scan_interval_seconds) * 10,
+    },
     "scan-project-repos": {
         "task": "app.tasks.autopilot_tasks.scan_all_projects",
         "schedule": float(settings.autopilot_scan_interval_seconds),

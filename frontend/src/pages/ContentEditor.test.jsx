@@ -433,3 +433,42 @@ describe("auto-save", () => {
     );
   });
 });
+
+describe("approving", () => {
+  it("says where it is going when approving queued it", async () => {
+    // On a project set to publish on its own, approving is the publish. The
+    // toast has to say so — "ready to publish" points at a button the user no
+    // longer needs to press.
+    api.getContent.mockResolvedValue(content({ status: "review" }));
+    api.approveContent.mockResolvedValue(
+      content({
+        status: "approved",
+        publications: [
+          { id: 1, platform: "devto", status: "pending" },
+          { id: 2, platform: "bluesky", status: "scheduled" },
+        ],
+      }),
+    );
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(toast.success).toHaveBeenCalledWith(
+      "Approved — publishing to devto, bluesky",
+    );
+  });
+
+  it("still says 'ready to publish' when nothing was queued", async () => {
+    api.getContent.mockResolvedValue(content({ status: "review" }));
+    api.approveContent.mockResolvedValue(
+      content({ status: "approved", publications: [] }),
+    );
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(toast.success).toHaveBeenCalledWith("Approved — ready to publish");
+  });
+});

@@ -271,9 +271,18 @@ export default function ContentEditor() {
 
   async function approve() {
     try {
-      await api.approveContent(data.id);
+      // The response says what approving actually did. On a project set to
+      // publish on its own, approving queues it — telling the user it is
+      // "ready to publish" would be describing a button they no longer need to
+      // press, on a piece that is already on its way out.
+      const approved = await api.approveContent(data.id);
       reload();
-      toast.success("Approved — ready to publish");
+      const queued = approved?.publications ?? [];
+      toast.success(
+        queued.length
+          ? `Approved — publishing to ${queued.map((p) => p.platform).join(", ")}`
+          : "Approved — ready to publish",
+      );
     } catch (err) {
       toast.error(err.message);
     }

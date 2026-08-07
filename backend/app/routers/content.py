@@ -43,6 +43,7 @@ from app.schemas.content import (
 )
 from app.services import (
     content_generator,
+    content_pipeline,
     formats,
     github_client,
     headlines,
@@ -252,9 +253,15 @@ def bulk_approve_content(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> BulkResultOut:
-    """Approve many review-queue pieces in one call, skipping any that can't be."""
+    """Approve many review-queue pieces in one call, skipping any that can't be.
+
+    Each approved piece is released exactly as the single-item endpoint releases
+    it — the two must not disagree about what Approve means, and the batch is
+    the button the review queue actually offers.
+    """
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
+    approved: list[Content] = []
     for content_id in payload.content_ids:
         content = db.get(Content, content_id)
         if content is None or content.project.user_id != user.id:
@@ -266,8 +273,13 @@ def bulk_approve_content(
             )
             continue
         content.status = ContentStatus.APPROVED
+        approved.append(content)
         succeeded.append(content_id)
     db.commit()
+    # After the commit, so a release that dispatches a worker cannot hand it a
+    # row this request has not written yet.
+    for content in approved:
+        content_pipeline.release_approved(db, content)
     return BulkResultOut(succeeded=succeeded, failed=failed)
 
 
@@ -698,6 +710,20 @@ def update_content(
             "change what is live on the platforms.",
         )
 
+    # The one status a published piece may take. Moving it back to draft or
+    # review says it is not published when it is still live everywhere it went,
+    # and the analytics and the calendar both read this column. Archiving is
+    # different: it means "stop showing me this", not "this never went out".
+    if (
+        content.status == ContentStatus.PUBLISHED
+        and data.get("status") not in (None, ContentStatus.ARCHIVED)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is live on the platforms. Archive it to hide it "
+            "from Herald, or unpublish it there first.",
+        )
+
     if "title" in data and data["title"] != content.title:
         content.slug = unique_content_slug(db, content.project_id, data["title"])
     if "keywords" in data and data["keywords"] is not None:
@@ -710,6 +736,11 @@ def update_content(
         setattr(content, key, value)
 
     db.commit()
+    # Approving through here means the same thing as approving through the
+    # button — a scripted caller that PATCHes the status should not need to know
+    # about a second endpoint to get its piece published.
+    if data.get("status") == ContentStatus.APPROVED:
+        content_pipeline.release_approved(db, content)
     db.refresh(content)
     return _to_detail(content)
 
@@ -736,11 +767,15 @@ def approve_content(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentOut:
-    """Mark a piece approved, and release anything already queued for it.
+    """Mark a piece approved, and release it if the project publishes on its own.
 
-    Approving is what un-blocks publication: a piece queued while still in
-    review sits as ``pending`` until this happens, which is what makes the
-    review queue meaningful rather than advisory.
+    Approving is what un-blocks publication for a project on ``auto``: the
+    autopilot would have published this itself and only diverted it to review
+    because a quality gate failed, so a human saying yes is that gate clearing.
+    See :func:`app.services.content_pipeline.release_approved` for the
+    conditions — nothing is queued for a project on ``off`` or ``draft``, or for
+    a piece that already has publications, and approving stays a status change
+    there.
     """
     content = _owned_content(content_id, db, user)
     if content.status == ContentStatus.PUBLISHED:
@@ -749,6 +784,7 @@ def approve_content(
         )
     content.status = ContentStatus.APPROVED
     db.commit()
+    content_pipeline.release_approved(db, content)
     db.refresh(content)
     return _to_out(content)
 

@@ -10,13 +10,16 @@ from __future__ import annotations
 import logging
 
 from celery.exceptions import SoftTimeLimitExceeded
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal
+from app.models.content import Content, ContentStatus
 from app.models.mixins import utcnow
+from app.models.project import AutopilotMode, Project
 from app.models.publication import Publication, PublicationStatus
-from app.services import publishing_service
+from app.models.user import User
+from app.services import content_pipeline, publishing_service
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -136,6 +139,10 @@ def publish_due() -> dict:
     """
     db = SessionLocal()
     try:
+        # Before the query, not after: a row abandoned mid-publish is re-armed
+        # to `pending` and picked up by this same pass rather than waiting for
+        # the next one.
+        reclaimed = publishing_service.reclaim_stuck(db)
         due = publishing_service.due_publications(db)
         ids = [p.id for p in due]
     finally:
@@ -152,7 +159,67 @@ def publish_due() -> dict:
 
     if ids:
         logger.info("publish_due dispatched %d publication(s)", len(ids))
-    return {"dispatched": len(ids)}
+    return {"dispatched": len(ids), "reclaimed": reclaimed}
+
+
+@celery_app.task(
+    name="app.tasks.publish_tasks.release_approved_content",
+    soft_time_limit=300,
+    time_limit=360,
+    autoretry_for=(OperationalError, ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=2,
+)
+def release_approved_content() -> dict:
+    """Beat task: queue approved pieces that nothing ever queued.
+
+    ``publish_due`` sweeps the publications table, so a piece with no
+    publication row is invisible to it however long it has been waiting — and
+    approving one did not create a row until
+    :func:`app.routers.content.approve_content` learned to. This is the backstop
+    for everything that approved a piece another way: the rows already sitting
+    ``approved`` before that fix shipped, an API client that PATCHes the status,
+    a future endpoint that forgets.
+
+    :func:`app.services.content_pipeline.release_approved` decides — it queues
+    only for an active project on ``auto`` with destinations configured, and
+    only for a piece that has no publications at all.
+    """
+    db = SessionLocal()
+    try:
+        stuck = list(
+            db.scalars(
+                select(Content)
+                .join(Project, Project.id == Content.project_id)
+                .join(User, User.id == Project.user_id)
+                .outerjoin(Publication, Publication.content_id == Content.id)
+                .where(
+                    Content.status == ContentStatus.APPROVED,
+                    Project.is_active.is_(True),
+                    User.is_active.is_(True),
+                    Project.autopilot_mode == AutopilotMode.AUTO,
+                    Publication.id.is_(None),
+                )
+            )
+        )
+        released = 0
+        for content in stuck:
+            try:
+                if content_pipeline.release_approved(db, content):
+                    released += 1
+            except Exception:
+                # One unpublishable piece must not stop the sweep reaching the
+                # rest — the row keeps its status and comes back next pass.
+                logger.exception("could not release approved content %s", content.id)
+                db.rollback()
+    finally:
+        db.close()
+
+    if released:
+        logger.info("released %d approved piece(s) that had nothing queued", released)
+    return {"found": len(stuck), "released": released}
 
 
 @celery_app.task(
