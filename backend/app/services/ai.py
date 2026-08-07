@@ -261,9 +261,28 @@ def as_str_list(value: Any, *, limit: int | None = None) -> list[str]:
 
 
 def as_float(value: Any, default: float, *, low: float = 0.0, high: float = 1.0) -> float:
-    """Coerce and clamp a numeric field, falling back to *default*."""
+    """Coerce a numeric field to the ``[low, high]`` scale, or give up on it.
+
+    A value *inside* the range is taken as written. A value outside it is not
+    clamped to the nearest end — it is discarded for *default*, because a number
+    off the scale is evidence the model was not answering on the scale at all,
+    and both directions of clamping invent an answer nobody gave.
+
+    The direction that matters is up. ``confidence`` gates unreviewed publishing
+    (see :func:`app.services.content_generator._assemble`), and free models
+    answer the 0.0–1.0 question on a 1–10 or 0–100 scale often enough to be
+    worth handling: clamping turned ``"confidence": 3`` — a model saying *do not
+    publish this* — into 1.0, the highest possible confidence, and sent it
+    straight out. Falling back to *default* puts it in the review queue instead,
+    which is the correct outcome for a piece whose self-assessment could not be
+    read.
+    """
     try:
         number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return default
-    return max(low, min(high, number))
+    # NaN fails both comparisons and lands on the default, which is right: it is
+    # the least readable answer of all.
+    if not low <= number <= high:
+        return default
+    return number

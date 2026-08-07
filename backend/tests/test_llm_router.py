@@ -262,4 +262,6 @@ def test_coercion_helpers_tolerate_loose_model_output():
     assert ai.as_str_list(["a"] * 10, limit=3) == ["a"]
     assert ai.as_float("0.9", default=0.5) == 0.9
     assert ai.as_float("not a number", default=0.5) == 0.5
-    assert ai.as_float(5, default=0.5) == 1.0  # clamped
+    # Off the scale is not the top of the scale: see `as_float`. A model that
+    # answered 5 to a 0.0-1.0 question was answering a different question.
+    assert ai.as_float(5, default=0.5) == 0.5
