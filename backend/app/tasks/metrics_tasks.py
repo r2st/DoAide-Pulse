@@ -52,9 +52,18 @@ def collect_all_metrics() -> dict:
             )
         )
         recorded = 0
+        # Shared across the whole sweep: once a platform rate-limits one
+        # account, the rest of that account's posts there are skipped without a
+        # request. See ``publishing_service.collect_metrics``.
+        rate_limited: set[publishing_service.RateLimitKey] = set()
         for publication in publications:
             try:
-                if publishing_service.collect_metrics(db, publication) is not None:
+                if (
+                    publishing_service.collect_metrics(
+                        db, publication, rate_limited=rate_limited
+                    )
+                    is not None
+                ):
                     recorded += 1
             except SoftTimeLimitExceeded:
                 logger.warning(

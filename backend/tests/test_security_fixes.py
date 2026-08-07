@@ -216,7 +216,7 @@ def test_metrics_task_isolates_failures():
 
     call_count = {"n": 0}
 
-    def mock_collect(db, pub):
+    def mock_collect(db, pub, *, rate_limited=None):
         call_count["n"] += 1
         if pub.id == 2:
             raise RuntimeError("platform API exploded")

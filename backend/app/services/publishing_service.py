@@ -517,12 +517,34 @@ def due_publications(db: Session, *, now: datetime | None = None) -> list[Public
     )
 
 
-def collect_metrics(db: Session, publication: Publication) -> ContentMetric | None:
+#: The key a platform's rate limit applies to. A limit is enforced against the
+#: credential that made the request, so two users publishing to Dev.to have
+#: their own budgets and must not stand each other down.
+RateLimitKey = tuple[int, Platform]
+
+
+def collect_metrics(
+    db: Session,
+    publication: Publication,
+    *,
+    rate_limited: set[RateLimitKey] | None = None,
+) -> ContentMetric | None:
     """Poll one published post for engagement. Returns the new row, or ``None``.
 
     Quiet about failure on purpose: metrics are a nice-to-have, and a platform
     having a bad day should not fill the log with errors or mark anything
     invalid.
+
+    *rate_limited* is the sweep's memory, and it is what stops the poller
+    answering a 429 by making the next request. The numbers are cumulative
+    counters read once every few hours, so a platform that has just said "stop"
+    has nothing to tell us that waiting for the next sweep would lose — while a
+    caller that keeps going makes one refused request per post on that account,
+    which is how a rate limit becomes a block. Pass a set to
+    :func:`app.tasks.metrics_tasks.collect_all_metrics`'s loop and every
+    publication sharing the refused (user, platform) is skipped without a
+    request. Omit it and each call stands alone, which is what the single-post
+    refresh button wants.
     """
     if publication.status != PublicationStatus.PUBLISHED or not publication.external_id:
         return None
@@ -531,11 +553,31 @@ def collect_metrics(db: Session, publication: Publication) -> ContentMetric | No
     if not adapter.supports_metrics:
         return None
 
-    try:
-        credentials = _credentials_for(
-            db, publication.content.project.user_id, publication.platform
+    user_id = publication.content.project.user_id
+    key: RateLimitKey = (user_id, publication.platform)
+    if rate_limited is not None and key in rate_limited:
+        logger.debug(
+            "metrics poll for publication %s skipped: %s is rate-limiting this "
+            "account for the rest of the sweep",
+            publication.id,
+            publication.platform.value,
         )
+        return None
+
+    try:
+        credentials = _credentials_for(db, user_id, publication.platform)
         snapshot = adapter.fetch_metrics(publication.external_id, credentials)
+    except RateLimited as exc:
+        if rate_limited is not None:
+            rate_limited.add(key)
+        logger.info(
+            "metrics poll for publication %s hit %s's rate limit; standing down "
+            "for this account until the next sweep: %s",
+            publication.id,
+            publication.platform.value,
+            exc,
+        )
+        return None
     except (PublishError, NotConnected) as exc:
         logger.info("metrics poll for publication %s skipped: %s", publication.id, exc)
         return None
@@ -556,6 +598,7 @@ def collect_metrics(db: Session, publication: Publication) -> ContentMetric | No
 
 __all__ = [
     "NotConnected",
+    "RateLimitKey",
     "build_request",
     "collect_metrics",
     "due_publications",
