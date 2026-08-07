@@ -14,6 +14,7 @@ from sqlalchemy import update
 from sqlalchemy.exc import OperationalError
 
 from app.database import SessionLocal
+from app.models.mixins import utcnow
 from app.models.publication import Publication, PublicationStatus
 from app.services import publishing_service
 from app.tasks.celery_app import celery_app
@@ -44,6 +45,20 @@ def publish_one(publication_id: int) -> dict:
         # Atomic claim: only the first worker to transition the row from a
         # dispatchable state to PUBLISHING wins.  A concurrent publish_one
         # for the same id will see rowcount=0 and skip.
+        #
+        # ``scheduled_for`` is part of the claim, not just of the beat sweep's
+        # query. A row parked in the future is not dispatchable however it got
+        # here, and two callers hand this task ids that include such rows:
+        # ``routers.content._queue_publish`` and
+        # ``services.content_pipeline.generate_and_route`` both dispatch every
+        # publication in a batch, and a cross-post batch contains the syndicated
+        # copies that ``publishing_service._syndication_schedule`` deliberately
+        # pushed behind the canonical. Claiming on status alone published those
+        # copies in the same instant as the original — which is the exact
+        # outcome the stagger exists to prevent, since a copy that goes out
+        # before the original has a URL cannot carry a canonical link to it.
+        # Rate-limited rows parked by ``publishing_service._defer`` were open to
+        # the same early pickup.
         claimed = db.execute(
             update(Publication)
             .where(
@@ -51,8 +66,17 @@ def publish_one(publication_id: int) -> dict:
                 Publication.status.in_(
                     [PublicationStatus.PENDING, PublicationStatus.SCHEDULED]
                 ),
+                (Publication.scheduled_for.is_(None))
+                | (Publication.scheduled_for <= utcnow()),
             )
             .values(status=PublicationStatus.PUBLISHING)
+            # The default, "evaluate", re-runs this WHERE clause in Python
+            # against whatever is already in the identity map — and a datetime
+            # comparison there raises rather than matching, because SQLite hands
+            # back a naive value for a column ``utcnow()`` answers with an aware
+            # one. Nothing needs synchronising: the commit below expires the
+            # session and the row is read back with ``db.get``.
+            .execution_options(synchronize_session=False)
         ).rowcount
         db.commit()
 
@@ -61,7 +85,8 @@ def publish_one(publication_id: int) -> dict:
             logger.warning("publish_one: publication %s is gone", publication_id)
             return {"publication_id": publication_id, "status": "missing"}
         if not claimed:
-            # Another worker already claimed it, or it's in a terminal state.
+            # Another worker already claimed it, it is in a terminal state, or
+            # its time has not come. The beat sweep comes back for the last.
             return {
                 "publication_id": publication_id,
                 "status": publication.status.value,

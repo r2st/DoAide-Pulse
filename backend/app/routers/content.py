@@ -830,8 +830,13 @@ def _queue_publish(
     db.commit()
 
     # Nothing scheduled goes out now. Scheduled work waits for the beat task.
+    #
+    # "Nothing scheduled" is per publication, not per request: an immediate
+    # cross-post still leaves the syndicated copies parked behind the canonical
+    # by ``publishing_service._syndication_schedule``, and dispatching those
+    # here would ask a worker to publish them the moment the original went out.
     if when is None:
-        _dispatch([p.id for p in publications])
+        _dispatch([p.id for p in publications if p.scheduled_for is None])
 
     for publication in publications:
         db.refresh(publication)

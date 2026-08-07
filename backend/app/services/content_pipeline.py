@@ -192,8 +192,13 @@ def generate_and_route(
         db, content, list(project.autopilot_platforms)
     )
     db.commit()
+    # Only the rows whose time has come. A project with a canonical platform and
+    # more than one autopilot destination has its syndicated copies parked behind
+    # the original by ``publishing_service._syndication_schedule``; the beat sweep
+    # picks those up when the delay is up.
     for publication in publications:
-        publish_now(publication.id)
+        if publication.scheduled_for is None:
+            publish_now(publication.id)
 
     return RoutedContent(
         content=content,
