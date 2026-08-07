@@ -31,6 +31,7 @@ from app.models.content import ContentType
 from app.models.mixins import as_aware, utcnow
 from app.models.project import AutopilotMode, Project
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
+from app.models.user import User
 from app.services import content_pipeline, feeds, signals
 from app.services.crypto import (
     CredentialEncryptionError,
@@ -294,13 +295,22 @@ def is_due(trigger: Trigger, *, moment: Any = None) -> bool:
 
 
 def due_triggers(db: Session, *, limit: int = 200) -> list[Trigger]:
-    """Active polled triggers on active projects, oldest check first."""
+    """Active polled triggers on active projects of active users, oldest first.
+
+    The user's own flag matters as much as the project's. Deactivating an
+    account stops it signing in (:func:`app.deps.get_current_user`) but stopped
+    nothing it had already set running: its triggers kept polling, writing and
+    publishing with its stored platform credentials, on a schedule nobody could
+    log in to change.
+    """
     rows = db.scalars(
         select(Trigger)
         .join(Project, Project.id == Trigger.project_id)
+        .join(User, User.id == Project.user_id)
         .where(
             Trigger.is_active.is_(True),
             Project.is_active.is_(True),
+            User.is_active.is_(True),
             Trigger.kind != TriggerKind.WEBHOOK,
         )
         .order_by(Trigger.last_checked_at.is_(None).desc(), Trigger.last_checked_at)
@@ -383,6 +393,12 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
 
     project = db.get(Project, trigger.project_id)
     if project is None or not project.is_active:
+        return _skip(db, event, "The project is paused.")
+    # The inbound endpoint is unauthenticated — the token in the URL is the
+    # credential — so this is the only place a deactivated account's webhook
+    # trigger can be stopped. Same wording as the paused project: a caller
+    # holding the URL learns that nothing was written, not why.
+    if project.user is None or not project.user.is_active:
         return _skip(db, event, "The project is paused.")
 
     mode = (

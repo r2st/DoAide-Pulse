@@ -31,6 +31,7 @@ from app.models.content import Content, ContentIdea, ContentType
 from app.models.mixins import utcnow
 from app.models.project import AutopilotMode, Project
 from app.models.trigger import Trigger, TriggerKind
+from app.models.user import User
 from app.services import content_generator, content_pipeline, github_client
 from app.tasks.celery_app import celery_app
 
@@ -90,6 +91,13 @@ def scan_project(project_id: int) -> dict:
     try:
         project = db.get(Project, project_id)
         if project is None or not project.is_active:
+            return {"project_id": project_id, "status": "skipped"}
+        # A deactivated account stops signing in but stopped nothing it had
+        # already set running — its projects kept being scanned, written for and
+        # published with its stored platform credentials. Checked here as well
+        # as in ``scan_all_projects``'s query, because this task is also called
+        # by id from elsewhere.
+        if project.user is None or not project.user.is_active:
             return {"project_id": project_id, "status": "skipped"}
 
         full_name = project.repo_full_name
@@ -244,8 +252,11 @@ def scan_all_projects() -> dict:
         )
         ids = list(
             db.scalars(
-                select(Project.id).where(
+                select(Project.id)
+                .join(User, User.id == Project.user_id)
+                .where(
                     Project.is_active.is_(True),
+                    User.is_active.is_(True),
                     Project.repo_url.is_not(None),
                     Project.id.not_in(trigger_owned),
                 )
