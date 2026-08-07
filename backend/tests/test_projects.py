@@ -191,3 +191,99 @@ def test_publish_accepts_either_platform_spelling(client, auth, project, db):
     assert Platform("devto") is Platform.DEVTO
     with pytest.raises(ValueError):
         Platform("not-a-platform")
+
+
+# --------------------------------------------------------------------------- #
+# Standing settings only name platforms Herald can actually publish to         #
+# --------------------------------------------------------------------------- #
+#
+# ``POST /content/{id}/publish`` has always checked the adapter registry and
+# answered 400 for an unfinished one. The two *standing* settings took any enum
+# member, and the autopilot is where that bites: an auto-published piece routed
+# to an unfinished adapter is written, approved, queued, and failed terminally
+# by NotImplementedAdapter — which drives the content row to ``failed`` rather
+# than into the review queue. Nobody reviews it and nobody publishes it, once
+# per scan.
+
+
+def _payload(**overrides) -> dict:
+    body = {"name": "TalentPing", "description": "AI recruiter outreach."}
+    body.update(overrides)
+    return body
+
+
+def test_autopilot_cannot_be_pointed_at_an_unfinished_adapter(client, auth):
+    resp = client.post(
+        "/api/v1/projects",
+        headers=auth,
+        json=_payload(autopilot_platforms=["devto", "twitter"]),
+    )
+    assert resp.status_code == 422, resp.text
+    # The message names what does work, like the publish endpoint's does.
+    assert "devto" in resp.text
+    assert "twitter" in resp.text
+
+
+def test_the_canonical_platform_cannot_be_an_unfinished_adapter(client, auth):
+    resp = client.post(
+        "/api/v1/projects",
+        headers=auth,
+        json=_payload(canonical_platform="linkedin"),
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_a_patch_is_guarded_the_same_way(client, auth, project):
+    resp = client.patch(
+        f"/api/v1/projects/{project.id}",
+        headers=auth,
+        json={"autopilot_platforms": ["linkedin"]},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+def test_finished_adapters_still_go_through(client, auth):
+    resp = client.post(
+        "/api/v1/projects",
+        headers=auth,
+        json=_payload(
+            autopilot_platforms=["devto", "bluesky"], canonical_platform="devto"
+        ),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["autopilot_platforms"] == ["devto", "bluesky"]
+
+
+def test_a_repeated_platform_is_stored_once(client, auth):
+    """Two rows for one platform is impossible anyway — the config should say so."""
+    resp = client.post(
+        "/api/v1/projects",
+        headers=auth,
+        json=_payload(autopilot_platforms=["devto", "devto", "bluesky"]),
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["autopilot_platforms"] == ["devto", "bluesky"]
+
+
+def test_clearing_the_canonical_platform_is_still_allowed(client, auth, project):
+    resp = client.patch(
+        f"/api/v1/projects/{project.id}",
+        headers=auth,
+        json={"canonical_platform": None},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["canonical_platform"] is None
+
+
+def test_a_project_holding_a_stale_platform_is_still_readable(client, auth, project, db):
+    """The check guards the way in only.
+
+    A row written before it existed must stay readable, or the endpoint the user
+    would fix it through is the endpoint that breaks.
+    """
+    project.autopilot_platforms = ["twitter"]
+    db.commit()
+
+    resp = client.get(f"/api/v1/projects/{project.id}", headers=auth)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["autopilot_platforms"] == ["twitter"]
