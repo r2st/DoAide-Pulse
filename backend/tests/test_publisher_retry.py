@@ -239,15 +239,41 @@ def test_the_platforms_own_wait_beats_our_backoff(probe, transport, no_waiting):
     assert no_waiting == [7.0]
 
 
-def test_a_huge_retry_after_is_capped_at_the_backoff_ceiling(
+def test_a_wait_longer_than_the_ceiling_is_handed_upwards_not_slept_through(
     probe, transport, no_waiting
 ):
-    transport(_response(429, headers={"Retry-After": "99999"}), _response(200))
-    probe._request("GET", _URL)
+    """A long ``Retry-After`` ends this loop rather than being clamped into it.
 
+    Clamping is the failure worth naming: it slept thirty seconds against a
+    platform that said "come back in a day", retried anyway, and burned the
+    publication's whole retry budget doing it — so the row arrived at ``_defer``
+    with nothing left and failed outright. Raising instead lets
+    ``publishing_service`` park it until the platform's own time.
+    """
+    calls = transport(_response(429, headers={"Retry-After": "99999"}), _response(200))
+
+    with pytest.raises(RateLimited) as caught:
+        probe._request("GET", _URL)
+
+    assert caught.value.retry_after == 99999.0
+    assert len(calls) == 1
+    assert no_waiting == []
+
+
+def test_a_wait_inside_the_ceiling_is_still_honoured_in_process(
+    probe, transport, no_waiting
+):
+    """The other side of the line: a short wait is exactly what this loop is for."""
     from app.config import settings
 
-    assert no_waiting == [settings.publish_retry_max_backoff_seconds]
+    wait = settings.publish_retry_max_backoff_seconds
+    calls = transport(
+        _response(429, headers={"Retry-After": str(wait)}), _response(200)
+    )
+    assert probe._request("GET", _URL).status_code == 200
+
+    assert len(calls) == 2
+    assert no_waiting == [wait]
 
 
 def test_backoff_grows_and_stays_inside_its_window(probe, transport, no_waiting):

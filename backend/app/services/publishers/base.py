@@ -464,8 +464,24 @@ def _is_retryable(
 
     A read timeout on a POST fails all three, and deliberately: the request was
     sent, and nobody knows whether it landed.
+
+    One case is useful but *not this layer's job*: a rate limit whose
+    ``Retry-After`` is longer than the in-process backoff ceiling. Sleeping the
+    ceiling and going again means coming back before the platform said to, which
+    is precisely how a soft limit becomes a ban — and it burns the retry budget
+    doing it, so the publication reaches
+    :func:`app.services.publishing_service._defer` with nothing left. Handing it
+    upwards instead parks the row until the platform's own time, which can be an
+    hour rather than the thirty seconds this loop can hold a worker for.
     """
     if isinstance(error, CredentialError | NotImplementedAdapter | UnsupportedOption):
+        return False
+
+    if (
+        isinstance(error, RateLimited)
+        and error.retry_after is not None
+        and error.retry_after > settings.publish_retry_max_backoff_seconds
+    ):
         return False
 
     if method.upper() in _IDEMPOTENT_METHODS:
@@ -482,9 +498,12 @@ def _backoff_delay(attempt: int, error: PublishError) -> float:
     """How long to wait before retry number *attempt* (1-based).
 
     A ``Retry-After`` from the platform wins outright — guessing shorter than
-    what it asked for is how a soft limit becomes a ban. Otherwise exponential
-    backoff with full jitter, so several publications failing at once do not
-    come back in lockstep.
+    what it asked for is how a soft limit becomes a ban. It is never clamped
+    down to the ceiling here: :func:`_is_retryable` has already declined
+    anything longer than the ceiling, so a wait that reaches this function is
+    one the loop can honour in full. Otherwise exponential backoff with full
+    jitter, so several publications failing at once do not come back in
+    lockstep.
     """
     ceiling = settings.publish_retry_max_backoff_seconds
     if isinstance(error, RateLimited) and error.retry_after is not None:
