@@ -496,8 +496,8 @@ def test_the_breaker_cooldown_from_a_retry_after_is_capped(all_keys, monkeypatch
 
 def test_retry_after_accepts_an_http_date(monkeypatch):
     """RFC 9110 allows a date as well as a delay, and providers send both."""
-    from email.utils import format_datetime
     from datetime import UTC, datetime, timedelta
+    from email.utils import format_datetime
 
     later = datetime.now(UTC) + timedelta(seconds=120)
     assert 100 < llm_router._retry_after({"Retry-After": format_datetime(later)}) < 130
