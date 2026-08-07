@@ -137,6 +137,64 @@ def test_a_counter_going_backwards_never_credits_a_negative(db, piece, publicati
     assert window.views == 500
 
 
+def test_a_counter_that_dips_and_recovers_is_not_credited_twice(db, piece, publication):
+    """The dip must not become the new baseline.
+
+    Clamping the *gain* at zero but storing the dip means the recovery reads as
+    fresh growth on the next poll: 500 → 200 → 500 is 500 views total, not 800.
+    """
+    start = piece.created_at
+    _snapshot(db, publication, at=start + timedelta(days=1), views=500)
+    _snapshot(db, publication, at=start + timedelta(days=2), views=200)
+    _snapshot(db, publication, at=start + timedelta(days=3), views=500)
+
+    window = headlines.performance(piece, db)[0]
+    assert window.views == 500
+
+
+def test_a_snapshot_reporting_no_engagement_does_not_reset_the_baseline(
+    db, piece, publication
+):
+    """An empty reading is "nothing to see", not "the counter went to zero".
+
+    Bluesky's ``getPosts`` returns no post at all while one is unavailable, and
+    the adapter records that honestly as a snapshot with every field ``None`` —
+    whose ``engagement`` property coalesces to 0. Storing that as the baseline
+    handed the piece's whole lifetime engagement to the next poll.
+    """
+    start = piece.created_at
+    _snapshot(db, publication, at=start + timedelta(days=1), views=10, engagement=40)
+    # The blank reading: no views, no reactions, nothing.
+    db.add(
+        ContentMetric(
+            publication_id=publication.id, captured_at=start + timedelta(days=2)
+        )
+    )
+    db.commit()
+    _snapshot(db, publication, at=start + timedelta(days=3), views=10, engagement=40)
+
+    window = headlines.performance(piece, db)[0]
+    assert window.engagement == 40
+    assert window.views == 10
+
+
+def test_a_dip_does_not_leak_gain_into_the_next_headline(db, piece, publication):
+    """The double count is worst across a swap: it credits the wrong headline."""
+    start = piece.created_at
+    _snapshot(db, publication, at=start + timedelta(days=1), views=1000)
+    # The reading that goes missing, moments before the swap.
+    _snapshot(db, publication, at=start + timedelta(days=9), views=0)
+
+    _swap(db, piece, "Challenger headline", at=start + timedelta(days=10))
+
+    _snapshot(db, publication, at=start + timedelta(days=11), views=1000)
+
+    first, current = headlines.performance(piece, db)
+    assert first.views == 1000
+    # Not 1000 again. The challenger earned nothing while it was up.
+    assert current.views == 0
+
+
 def test_two_platforms_are_differenced_separately(db, piece, publication):
     """A delta only means something against the same platform's last reading."""
     other = Publication(

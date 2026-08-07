@@ -221,6 +221,15 @@ def performance(content: Content, db: Session) -> list[HeadlineWindow]:
     headline was live when the later one was taken. A platform whose counter
     goes backwards (a purge, a rescrape) contributes zero rather than a
     negative, since no headline made views disappear.
+
+    The running baseline is clamped to the *high-water mark*, not to the last
+    reading, which is the same rule :mod:`app.services.velocity` applies to the
+    same series. Storing the dip instead would credit the recovery as fresh
+    gain on the next poll: a Bluesky post that ``getPosts`` briefly stops
+    returning writes an all-``None`` snapshot whose ``engagement`` property
+    coalesces to zero, and the poll after it would then hand the piece's entire
+    lifetime engagement to whichever headline happened to be live — the same
+    once-per-poll double count the append-only series exists to avoid.
     """
     history = list(content.headline_history or [])
     windows = [
@@ -255,12 +264,14 @@ def performance(content: Content, db: Session) -> list[HeadlineWindow]:
             continue
 
         last_views, last_engagement = previous.get(metric.publication_id, (0, 0))
-        views_now = metric.views if metric.views is not None else last_views
-        engagement_now = metric.engagement
+        views_now = max(
+            last_views, metric.views if metric.views is not None else last_views
+        )
+        engagement_now = max(last_engagement, metric.engagement)
         previous[metric.publication_id] = (views_now, engagement_now)
 
-        window.views += max(0, views_now - last_views)
-        window.engagement += max(0, engagement_now - last_engagement)
+        window.views += views_now - last_views
+        window.engagement += engagement_now - last_engagement
         window.snapshots += 1
 
     return windows
