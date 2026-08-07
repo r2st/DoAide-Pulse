@@ -29,6 +29,7 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 import secrets
 from datetime import timedelta
 from typing import Any
@@ -63,6 +64,9 @@ DELIVERY_HEADER = "X-Herald-Delivery"
 
 #: The prefix a signature's version field carries.
 SIGNATURE_VERSION = "v1"
+
+#: What a ``v1=`` value is allowed to look like. See :func:`verify`.
+_HEX = re.compile(r"[0-9a-fA-F]{64}")
 
 
 class WebhookUrlError(ValueError):
@@ -125,17 +129,30 @@ def sign(secret: str, timestamp: int, body: str) -> str:
 def verify(secret: str, header: str, body: str, *, tolerance_seconds: int = 300) -> bool:
     """Whether *header* is a valid, recent signature for *body*.
 
-    Herald never receives its own webhooks, so this is not on any request path.
-    It exists so the contract is executable: the test suite verifies what a
-    receiver would, and anyone writing a handler can read one function instead
-    of inferring the scheme from a docstring.
+    Used two ways. Herald never receives its own webhooks, so for the *outbound*
+    scheme this exists to make the contract executable — the test suite verifies
+    what a receiver would, and anyone writing a handler can read one function
+    instead of inferring the scheme from a docstring. But it is also what
+    ``POST /triggers/inbound/{token}`` checks a signed inbound request with, and
+    that is an unauthenticated endpoint reached by anybody holding the URL.
+
+    So every input is treated as hostile, and the function's contract is that it
+    returns ``False`` rather than raising for *any* header a caller can send. The
+    hex check is what makes that true: ``hmac.compare_digest`` raises TypeError
+    on a string with a non-ASCII character in it, so a signature of ``v1=café``
+    would otherwise take a 401 and turn it into a 500 — an unauthenticated
+    request choosing which error the server returns.
     """
     parts = dict(
-        piece.split("=", 1) for piece in header.split(",") if "=" in piece
+        piece.split("=", 1) for piece in (header or "").split(",") if "=" in piece
     )
-    signature = parts.get(SIGNATURE_VERSION, "")
+    signature = parts.get(SIGNATURE_VERSION, "").strip()
+    # A real signature is SHA-256 hex and nothing else. Anything that is not
+    # cannot match, and comparing it is what breaks.
+    if not signature or not _HEX.fullmatch(signature):
+        return False
     try:
-        timestamp = int(parts.get("t", ""))
+        timestamp = int(parts.get("t", "").strip())
     except ValueError:
         return False
     if abs(int(utcnow().timestamp()) - timestamp) > tolerance_seconds:
