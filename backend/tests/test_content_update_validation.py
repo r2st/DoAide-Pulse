@@ -1,0 +1,172 @@
+"""What ``PATCH /content/{id}`` is allowed to write.
+
+Two fields on ``ContentUpdate`` took anything the enum or the column allowed:
+
+* ``status`` accepted ``published`` and ``failed``, which are *derived* from a
+  piece's publications. Setting either by hand makes the content row disagree
+  with what is live — a piece counted in the analytics as published with nothing
+  behind it, or one marked failed while a publication is still in flight — and
+  the next successful publish silently overwrites the lie.
+* ``canonical_url`` accepted any string under 700 characters. It is sent
+  verbatim as ``rel=canonical`` by every adapter that supports one, so a
+  relative path resolves against the syndicating platform's host and points the
+  crawler at dev.to.
+"""
+from __future__ import annotations
+
+import pytest
+
+from app.models.content import Content, ContentStatus, ContentType
+from app.models.project import AutopilotMode
+from app.models.publication import Publication
+
+
+@pytest.fixture
+def content(db, project) -> Content:
+    row = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Herald 1.0",
+        slug="herald-1-0",
+        body_markdown="word " * 200,
+        excerpt="x",
+        meta_description="x",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _patch(client, auth, content, body):
+    return client.patch(f"/api/v1/content/{content.id}", headers=auth, json=body)
+
+
+# --------------------------------------------------------------------------- #
+# status                                                                       #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("value", ["published", "failed"])
+def test_a_derived_status_cannot_be_set_by_hand(client, auth, db, content, value):
+    resp = _patch(client, auth, content, {"status": value})
+
+    assert resp.status_code == 422
+    db.refresh(content)
+    assert content.status == ContentStatus.DRAFT
+
+
+@pytest.mark.parametrize("value", ["draft", "review", "approved", "archived"])
+def test_the_editorial_statuses_still_work(client, auth, db, content, value):
+    resp = _patch(client, auth, content, {"status": value})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == value
+
+
+def test_a_published_piece_cannot_be_moved_back_to_draft(client, auth, db, content):
+    """It is still live everywhere it went — saying otherwise helps nobody."""
+    content.status = ContentStatus.PUBLISHED
+    db.commit()
+
+    resp = _patch(client, auth, content, {"status": "draft"})
+
+    assert resp.status_code == 409
+    db.refresh(content)
+    assert content.status == ContentStatus.PUBLISHED
+
+
+def test_a_published_piece_can_still_be_archived(client, auth, db, content):
+    """Archiving means "stop showing me this", not "this never went out"."""
+    content.status = ContentStatus.PUBLISHED
+    db.commit()
+
+    resp = _patch(client, auth, content, {"status": "archived"})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "archived"
+
+
+def test_approving_through_the_patch_releases_it_too(
+    client, auth, db, project, monkeypatch
+):
+    """A scripted caller should not need to know about a second endpoint."""
+    from app.services import content_pipeline
+
+    monkeypatch.setattr(content_pipeline, "publish_now", lambda pid: None)
+    project.autopilot_mode = AutopilotMode.AUTO
+    project.autopilot_platforms = ["devto"]
+    db.commit()
+    row = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Ship it",
+        slug="ship-it",
+        body_markdown="word " * 200,
+        excerpt="x",
+        meta_description="x",
+        status=ContentStatus.REVIEW,
+    )
+    db.add(row)
+    db.commit()
+
+    resp = client.patch(
+        f"/api/v1/content/{row.id}", headers=auth, json={"status": "approved"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert db.query(Publication).count() == 1
+
+
+# --------------------------------------------------------------------------- #
+# canonical_url                                                                #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "/blog/herald-1-0",
+        "herald.example.com/blog",
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+    ],
+)
+def test_a_canonical_that_is_not_an_absolute_http_url_is_refused(
+    client, auth, content, value
+):
+    resp = _patch(client, auth, content, {"canonical_url": value})
+    assert resp.status_code == 422
+
+
+def test_an_absolute_canonical_is_accepted(client, auth, content):
+    resp = _patch(
+        client, auth, content, {"canonical_url": "https://herald.example.com/blog/x"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["canonical_url"] == "https://herald.example.com/blog/x"
+
+
+def test_clearing_the_canonical_still_works(client, auth, db, content):
+    content.canonical_url = "https://herald.example.com/blog/x"
+    db.commit()
+
+    resp = _patch(client, auth, content, {"canonical_url": ""})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["canonical_url"] is None
+
+
+def test_creating_with_a_relative_canonical_is_refused(client, auth, project):
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Hand written",
+            "body_markdown": "x",
+            "canonical_url": "/blog/hand-written",
+        },
+    )
+    assert resp.status_code == 422

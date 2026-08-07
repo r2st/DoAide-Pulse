@@ -29,6 +29,46 @@ def _absolute_image_url(value: str | None) -> str | None:
     return url
 
 
+def _absolute_canonical_url(value: str | None) -> str | None:
+    """Accept an absolute http(s) URL, or nothing.
+
+    This value is sent verbatim as ``rel=canonical`` by every adapter that
+    supports one, and a canonical that is not a resolvable absolute URL is worse
+    than none: a relative path resolves against the *syndicating* platform's own
+    host, so "/blog/post" on Dev.to points the crawler at dev.to. Anything that
+    is not http(s) — ``javascript:``, ``data:`` — has no business in a link tag
+    at all. The URL Herald adopts on its own already has to pass this check (see
+    ``publishing_service._adopt_canonical``); a hand-typed one did not.
+    """
+    if value is None:
+        return None
+    url = value.strip()
+    if not url:
+        return None
+    if not url.lower().startswith(("http://", "https://")):
+        raise ValueError(
+            "must be an absolute http(s) URL — it is sent to the platforms as "
+            "rel=canonical, and anything else resolves against their host"
+        )
+    return url
+
+
+#: The statuses a caller may set directly. ``published`` and ``failed`` are
+#: derived from the piece's publications by
+#: :func:`app.services.publishing_service._sync_content_status`, and setting
+#: either by hand makes the content row disagree with what is actually live —
+#: a piece counted as published in the analytics with nothing behind it, or one
+#: marked failed while a publication is still in flight.
+_SETTABLE_STATUSES = frozenset(
+    {
+        ContentStatus.DRAFT,
+        ContentStatus.REVIEW,
+        ContentStatus.APPROVED,
+        ContentStatus.ARCHIVED,
+    }
+)
+
+
 class GenerateRequest(BaseModel):
     """Ask the engine for a new draft."""
 
@@ -67,6 +107,7 @@ class ContentCreate(BaseModel):
     campaign_key: str | None = Field(default=None, max_length=200)
 
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
+    _check_canonical = field_validator("canonical_url")(_absolute_canonical_url)
 
 
 class ContentUpdate(BaseModel):
@@ -84,6 +125,18 @@ class ContentUpdate(BaseModel):
     scheduled_for: datetime | None = None
 
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
+    _check_canonical = field_validator("canonical_url")(_absolute_canonical_url)
+
+    @field_validator("status")
+    @classmethod
+    def _settable(cls, value: ContentStatus | None) -> ContentStatus | None:
+        if value is not None and value not in _SETTABLE_STATUSES:
+            allowed = ", ".join(sorted(s.value for s in _SETTABLE_STATUSES))
+            raise ValueError(
+                f"'{value.value}' follows from this piece's publications and "
+                f"cannot be set directly. Settable statuses: {allowed}."
+            )
+        return value
 
 
 class PublicationOut(BaseModel):
