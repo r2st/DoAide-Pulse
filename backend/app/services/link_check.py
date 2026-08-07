@@ -111,6 +111,16 @@ def _unreachable_for_a_reader(url: str) -> str | None:
     the checker into a probe of Herald's own network. Refusing those is both the
     correct editorial verdict — the link is broken for everyone who is not on
     this box — and the right thing to do with a URL a language model wrote.
+
+    **One private address is enough to refuse the host.** A name is allowed to
+    carry several A/AAAA records, and nothing says the client will pick the same
+    one this function looked at: ``evil.example`` publishing ``93.184.216.34``
+    *and* ``169.254.169.254`` is a two-line zone file, and a check that only
+    refused when *every* address was private would wave it through and leave
+    httpx to choose. So the verdict is taken over any address, not all of them.
+    A legitimate split-horizon name loses its link check to this; a metadata
+    endpoint reached by a webhook does not lose anything, because it was never
+    supposed to be reachable.
     """
     host = (urlsplit(url).hostname or "").strip()
     if not host:
@@ -123,10 +133,11 @@ def _unreachable_for_a_reader(url: str) -> str | None:
         # as a domain that does not exist. Left for the request to settle.
         return None
 
-    if addresses and all(_is_private(address) for address in addresses):
+    private = sorted(address for address in addresses if _is_private(address))
+    if private:
         return (
-            f"Resolves to a private or loopback address ({host}) — nobody outside "
-            "this machine can open it."
+            f"Resolves to a private or loopback address ({host} → "
+            f"{', '.join(private)}) — nobody outside this machine can open it."
         )
     return None
 

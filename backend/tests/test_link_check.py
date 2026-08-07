@@ -195,6 +195,64 @@ def test_a_loopback_link_is_broken_without_a_request(monkeypatch):
     assert "private or loopback" in status.detail
 
 
+def test_one_private_record_is_enough_to_refuse_the_host(monkeypatch):
+    """A name may carry several A records, and the client picks, not us.
+
+    ``evil.example. A 93.184.216.34`` / ``A 169.254.169.254`` is a two-line
+    zone file. Refusing only when *every* address is private waves that
+    through and leaves httpx to choose which one it connects to.
+    """
+    monkeypatch.undo()  # drop the _no_dns override
+    monkeypatch.setattr(
+        link_check.socket,
+        "getaddrinfo",
+        lambda host, port: [
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("169.254.169.254", 0)),
+        ],
+    )
+
+    def _explode(request):  # pragma: no cover - must never run
+        raise AssertionError("a host with a private record must not be requested")
+
+    with _client(_explode) as client:
+        status = link_check.check_url("https://split.example/x", client=client)
+
+    assert status.status == link_check.BROKEN
+    assert "169.254.169.254" in status.detail
+
+
+def test_a_wholly_public_host_still_passes_the_pre_flight(monkeypatch):
+    """The guard above must not refuse every host with more than one record."""
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        link_check.socket,
+        "getaddrinfo",
+        lambda host, port: [
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("93.184.216.35", 0)),
+        ],
+    )
+    assert link_check._unreachable_for_a_reader("https://public.example/x") is None
+
+
+def test_a_webhook_url_with_one_private_record_is_refused(monkeypatch):
+    """The same guard, through the door outbound webhooks come in by."""
+    from app.services import webhooks
+
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        link_check.socket,
+        "getaddrinfo",
+        lambda host, port: [
+            (2, 1, 6, "", ("93.184.216.34", 0)),
+            (2, 1, 6, "", ("127.0.0.1", 0)),
+        ],
+    )
+    with pytest.raises(webhooks.WebhookUrlError, match="127.0.0.1"):
+        webhooks.validate_url("https://split.example/hook")
+
+
 def test_redirect_to_private_ip_is_blocked(monkeypatch):
     """A redirect that targets a private address must be caught (SSRF)."""
     monkeypatch.undo()  # drop the _no_dns override
