@@ -6,8 +6,10 @@ import logging
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import joinedload
 
 from app.database import SessionLocal
+from app.models.content import Content
 from app.models.publication import Publication, PublicationStatus
 from app.services import publishers, publishing_service
 from app.tasks.celery_app import celery_app
@@ -44,11 +46,19 @@ def collect_all_metrics() -> dict:
     try:
         publications = list(
             db.scalars(
-                select(Publication).where(
+                select(Publication)
+                .where(
                     Publication.status == PublicationStatus.PUBLISHED,
                     Publication.platform.in_(metric_platforms),
                     Publication.external_id.is_not(None),
                 )
+                # ``collect_metrics`` reads ``publication.content.project.user_id``
+                # to find whose credentials to use, and both hops were lazy: two
+                # SELECTs per publication, on a sweep that walks every published
+                # post on the install. Loaded up front they cost nothing extra —
+                # the rows are all needed, and the join reads them in the query
+                # that finds the publications.
+                .options(joinedload(Publication.content).joinedload(Content.project))
             )
         )
         recorded = 0
