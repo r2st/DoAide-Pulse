@@ -6,7 +6,9 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.content import ContentStatus, ContentType
+from app.models.project import Tone
 from app.models.publication import Platform, PublicationStatus
+from app.services import inline_edit
 
 
 def _absolute_image_url(value: str | None) -> str | None:
@@ -324,6 +326,47 @@ class RepurposeOut(BaseModel):
     #: True when no AI provider was usable and this is the mechanical fallback
     #: (paragraph-split thread, excerpt-based LinkedIn post).
     is_fallback: bool = False
+
+
+class InlineEditIn(BaseModel):
+    """One passage of a draft, and what to do to it.
+
+    ``selection`` is the passage itself rather than a pair of offsets. Offsets
+    would be smaller to send and impossible to validate: the editor's copy of
+    the body drifts from the stored one the moment anything is typed, and a
+    stale offset pair silently edits the wrong paragraph. The text is checked
+    against the stored body before any model call, so the failure is a 422 the
+    author can act on rather than a replacement for something else.
+    """
+
+    selection: str = Field(
+        min_length=inline_edit.MIN_SELECTION_CHARS,
+        max_length=inline_edit.MAX_SELECTION_CHARS,
+    )
+    operation: inline_edit.EditOperation
+    #: Only read by the ``retone`` operation. Left unset, that operation uses
+    #: the project's own tone — "make this sound like the rest of my writing".
+    tone: Tone | None = None
+
+    @field_validator("selection")
+    @classmethod
+    def _not_only_whitespace(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("select some text to edit")
+        return v
+
+
+class InlineEditOut(BaseModel):
+    """The replacement for the selected passage — nothing persisted.
+
+    The editor splices this into the textarea itself, which is what keeps the
+    browser's own undo working and leaves the author holding the decision.
+    """
+
+    replacement: str
+    operation: inline_edit.EditOperation
+    provider: str | None = None
+    model: str | None = None
 
 
 class HeadlineVariantsOut(BaseModel):

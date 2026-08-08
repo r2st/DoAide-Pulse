@@ -16,6 +16,13 @@ import {
   titleize,
 } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
+import {
+  OPERATIONS,
+  TONES,
+  normalizeSelection,
+  selectionProblem,
+  spliceSelection,
+} from "../lib/passageEdit";
 
 /**
  * How long the typing has to stop before the draft is written.
@@ -76,6 +83,23 @@ export default function ContentEditor() {
   // which is the thing you want to know when a save has just stopped working.
   const [autoSave, setAutoSave] = useState({ status: "idle", at: null, error: null });
 
+  // The passage the body textarea currently holds selected, as
+  // `{ start, end, text }` — see lib/passageEdit. Kept in state rather than
+  // read off the element when a button is pressed, because clicking the button
+  // is what takes the focus away from the textarea.
+  const bodyRef = useRef(null);
+  const draftRef = useRef(null);
+  const [selection, setSelection] = useState(null);
+  // Which passage operation is in flight, or null. The operation's own name
+  // rather than a boolean, so the button that was pressed can say so.
+  const [aiBusy, setAiBusy] = useState(null);
+  // The body as it was before the last passage edit. A controlled textarea
+  // updated by `setDraft` leaves nothing on the browser's undo stack — the
+  // change never went through the input — so one level of undo has to be kept
+  // here, and it is the level that matters: the model just replaced a
+  // paragraph the author had written.
+  const [undoBody, setUndoBody] = useState(null);
+
   const saved = useMemo(() => (data ? draftFrom(data) : null), [data]);
 
   // Load the server's copy into the fields when the *piece* changes — not
@@ -93,7 +117,26 @@ export default function ContentEditor() {
     if (!data || loadedId.current === data.id) return;
     loadedId.current = data.id;
     setDraft(draftFrom(data));
+    // Both describe offsets into a body that has just been replaced. Carrying
+    // them across would leave an Undo button that restores another piece.
+    setSelection(null);
+    setUndoBody(null);
   }, [data]);
+
+  // Put the caret back over the replacement after a passage edit.
+  //
+  // The splice happens through `setDraft`, so React re-renders the textarea
+  // with new text and a collapsed caret; without this the author has to find
+  // and reselect the paragraph to run a second operation on it, which is the
+  // common case (shorten, then read it, then proofread).
+  const restoreRange = useRef(null);
+  useEffect(() => {
+    const range = restoreRange.current;
+    if (!range || !bodyRef.current) return;
+    restoreRange.current = null;
+    bodyRef.current.focus();
+    bodyRef.current.setSelectionRange(range.start, range.end);
+  }, [draft]);
 
   const dirty = useMemo(
     () => Boolean(saved && draft && differs(draft, saved)),
@@ -268,6 +311,79 @@ export default function ContentEditor() {
   // triggered before the user has answered would resolve the question for them
   // by overwriting one of the two answers.
   autoSaveRef.current = !locked && dirty && !saving && !recovered ? autosave : null;
+  // The text on screen, readable from an async handler that has awaited a
+  // round trip. Same reason as the two refs above: `draft` in a closure is the
+  // text as it was when the request went out, and splicing into that would
+  // silently discard anything typed while the model was thinking.
+  draftRef.current = draft;
+
+  /** Record what is selected in the body, so a toolbar button can act on it. */
+  function rememberSelection(event) {
+    const field = event.target;
+    setSelection(
+      normalizeSelection(field.value, field.selectionStart, field.selectionEnd),
+    );
+  }
+
+  /**
+   * Send the selected passage to the model and splice back what comes out.
+   *
+   * Saves first when there is anything to save. The server checks the passage
+   * against the *stored* body and refuses one it cannot find — which is what
+   * stops a stale editor pasting an edit over the wrong paragraph — so an
+   * unsaved draft would otherwise turn every one of these into a 422 telling
+   * the author to press Save and try again. Doing it for them is the whole
+   * difference between a feature and an error message.
+   */
+  async function runPassageEdit(operation, tone) {
+    if (aiBusy || locked || selectionProblem(selection)) return;
+    // Nothing writes to the server underneath a recovery offer — the save
+    // below would answer the banner's question by overwriting one of the two
+    // answers before the user picked either. Same rule as the auto-save, said
+    // out loud here because the user pressed a button and deserves a reason.
+    if (recovered) {
+      toast.error("Restore or discard the unsaved edits above first.");
+      return;
+    }
+    const target = selection;
+    setAiBusy(operation);
+    try {
+      if (dirty) await persist();
+      const result = await api.editPassage(data.id, {
+        selection: target.text,
+        operation,
+        // "" is the Project voice option: send nothing and let the server use
+        // the project's own tone.
+        tone: tone || null,
+      });
+
+      const before = draftRef.current.body_markdown;
+      const next = spliceSelection(before, target, result.replacement);
+      if (!next) {
+        toast.error(
+          "That passage has changed since you selected it — nothing was replaced.",
+        );
+        return;
+      }
+      setUndoBody(before);
+      setDraft((current) => ({ ...current, body_markdown: next.body }));
+      setSelection(next.selection);
+      restoreRange.current = next.selection;
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setAiBusy(null);
+    }
+  }
+
+  /** Put the body back as it was before the last passage edit. */
+  function undoPassageEdit() {
+    if (undoBody === null) return;
+    setDraft((current) => ({ ...current, body_markdown: undoBody }));
+    setUndoBody(null);
+    // The offsets described the replacement, which is no longer there.
+    setSelection(null);
+  }
 
   async function approve() {
     try {
@@ -400,11 +516,23 @@ export default function ContentEditor() {
                 <label className="label" htmlFor="c-body">
                   Body <span className="normal-case tracking-normal">(Markdown)</span>
                 </label>
+                <PassageTools
+                  selection={selection}
+                  dirty={dirty}
+                  busy={aiBusy}
+                  undoable={undoBody !== null}
+                  disabled={locked}
+                  onRun={runPassageEdit}
+                  onUndo={undoPassageEdit}
+                />
                 <textarea
                   id="c-body"
+                  ref={bodyRef}
                   className="input min-h-[520px] resize-y font-mono text-[13px] leading-relaxed"
                   value={draft.body_markdown}
                   onChange={set("body_markdown")}
+                  onSelect={rememberSelection}
+                  onBlur={rememberSelection}
                   disabled={locked}
                   spellCheck
                 />
@@ -484,6 +612,82 @@ function escapeText(text) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/**
+ * Run one model operation over the selected passage.
+ *
+ * Above the textarea rather than floating over the selection: a popover has to
+ * be positioned against a caret inside a textarea, which cannot be measured
+ * without cloning the whole field, and it covers the very text it is about.
+ * The strip costs one line and is always in the same place.
+ *
+ * The buttons stay visible while they are unusable, with the reason spelled
+ * out underneath — a toolbar that appears only once a valid selection exists
+ * is a feature nobody discovers, because discovering it requires having
+ * already done the thing it is waiting for.
+ */
+function PassageTools({ selection, dirty, busy, undoable, disabled, onRun, onUndo }) {
+  const [tone, setTone] = useState("");
+
+  // A published piece is a record of what went out; there is nothing here to
+  // edit, so there is nothing to say about editing it.
+  if (disabled) return null;
+
+  const problem = selectionProblem(selection);
+  const blocked = Boolean(problem) || Boolean(busy);
+
+  return (
+    <div className="mb-2 rounded-lg border border-line bg-canvas px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="eyebrow mr-1.5">Edit passage</span>
+        {OPERATIONS.map((operation) => (
+          <button
+            key={operation.value}
+            type="button"
+            className="btn-quiet"
+            title={operation.title}
+            disabled={blocked}
+            onClick={() => onRun(operation.value, tone)}
+          >
+            {busy === operation.value ? "Working…" : operation.label}
+          </button>
+        ))}
+        <label className="sr-only" htmlFor="c-tone">
+          Tone
+        </label>
+        <select
+          id="c-tone"
+          className="rounded-md border border-line bg-paper px-1.5 py-1 text-xs text-ink-500"
+          value={tone}
+          onChange={(event) => setTone(event.target.value)}
+          disabled={Boolean(busy)}
+        >
+          {TONES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {undoable && (
+          <button
+            type="button"
+            className="btn-quiet ml-auto text-ink-900"
+            onClick={onUndo}
+            disabled={Boolean(busy)}
+          >
+            Undo edit
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-ink-400">
+        {problem ??
+          `${formatCount(selection.text.length)} characters selected` +
+            `${dirty ? " — the draft is saved first" : ""}. The replacement goes ` +
+            `into the editor, where Undo puts it back.`}
+      </p>
+    </div>
+  );
 }
 
 function SeoPanel({ issues, draft, onChange, locked }) {

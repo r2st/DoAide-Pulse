@@ -117,6 +117,12 @@ export const api = {
   socialCards: (id) => request(`/content/${id}/social`),
   generateContent: (payload) =>
     request("/content/generate", { method: "POST", body: payload }),
+  // Rewrites one selected passage. Returns the replacement and persists
+  // nothing — the editor splices it in itself, so the browser's own undo still
+  // works and the author is the one who decides it was an improvement. The
+  // selection must match the *saved* body, so callers save first.
+  editPassage: (id, payload) =>
+    request(`/content/${id}/edit`, { method: "POST", body: payload }),
   createContent: (payload) => request("/content", { method: "POST", body: payload }),
   updateContent: (id, payload) =>
     request(`/content/${id}`, { method: "PATCH", body: payload }),

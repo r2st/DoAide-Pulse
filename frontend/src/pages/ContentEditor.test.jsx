@@ -15,6 +15,7 @@ vi.mock("../lib/api", () => ({
     deleteContent: vi.fn(),
     checkLinks: vi.fn(),
     socialCards: vi.fn(),
+    editPassage: vi.fn(),
   },
 }));
 
@@ -431,6 +432,215 @@ describe("auto-save", () => {
       3,
       expect.objectContaining({ title: "Rescued title" }),
     );
+  });
+});
+
+describe("editing one passage", () => {
+  const BODY = "First paragraph here.\n\nSecond paragraph here.";
+  /** Offsets of the second paragraph within BODY. */
+  const SECOND = [23, 45];
+
+  beforeEach(() => {
+    api.getContent.mockResolvedValue(content({ body_markdown: BODY }));
+    api.updateContent.mockResolvedValue(content({ body_markdown: BODY }));
+    api.editPassage.mockResolvedValue({
+      replacement: "Second, shorter.",
+      operation: "shorten",
+      provider: "openrouter",
+      model: "some-model",
+    });
+  });
+
+  /** Select a span of the body, the way dragging over it would. */
+  async function select(from, to) {
+    const body = await screen.findByLabelText(/^Body/i);
+    body.setSelectionRange(from, to);
+    fireEvent.select(body);
+    return body;
+  }
+
+  it("says what it is waiting for rather than just sitting there disabled", async () => {
+    draw();
+    await screen.findByLabelText(/^Body/i);
+
+    expect(screen.getByText(/Select a passage in the body/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Shorten" })).toBeDisabled();
+  });
+
+  it("stays inert for a selection too short to be a passage", async () => {
+    draw();
+    await select(0, 5);
+
+    expect(screen.getByText(/at least 12 characters/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Shorten" })).toBeDisabled();
+  });
+
+  it("sends the selected passage and the operation", async () => {
+    draw();
+    await select(...SECOND);
+
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+
+    await waitFor(() =>
+      expect(api.editPassage).toHaveBeenCalledWith(3, {
+        selection: "Second paragraph here.",
+        operation: "shorten",
+        tone: null,
+      }),
+    );
+  });
+
+  it("splices the replacement in and leaves the rest of the body alone", async () => {
+    draw();
+    await select(...SECOND);
+
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^Body/i)).toHaveValue(
+        "First paragraph here.\n\nSecond, shorter.",
+      ),
+    );
+  });
+
+  it("saves before asking, because the server checks against the stored body", async () => {
+    // The endpoint refuses a passage it cannot find in the saved draft — which
+    // is what stops a stale editor pasting an edit over the wrong paragraph.
+    // Without saving first, every edit on an unsaved draft would be a 422.
+    draw();
+    const body = await screen.findByLabelText(/^Body/i);
+    fireEvent.change(body, { target: { value: `${BODY} And more.` } });
+    body.setSelectionRange(...SECOND);
+    fireEvent.select(body);
+
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+
+    await waitFor(() => expect(api.editPassage).toHaveBeenCalled());
+    expect(api.updateContent.mock.invocationCallOrder[0]).toBeLessThan(
+      api.editPassage.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("does not ask when saving first failed", async () => {
+    api.updateContent.mockRejectedValue(new Error("Service unavailable"));
+    draw();
+    const body = await screen.findByLabelText(/^Body/i);
+    fireEvent.change(body, { target: { value: `${BODY} And more.` } });
+    body.setSelectionRange(...SECOND);
+    fireEvent.select(body);
+
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Service unavailable"));
+    expect(api.editPassage).not.toHaveBeenCalled();
+  });
+
+  it("offers an undo, because a controlled textarea has no browser undo", async () => {
+    draw();
+    await select(...SECOND);
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText(/^Body/i)).toHaveValue(
+        "First paragraph here.\n\nSecond, shorter.",
+      ),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Undo edit" }));
+
+    expect(screen.getByLabelText(/^Body/i)).toHaveValue(BODY);
+  });
+
+  it("has nothing to undo until an edit has been applied", async () => {
+    draw();
+    await select(...SECOND);
+    expect(screen.queryByRole("button", { name: "Undo edit" })).not.toBeInTheDocument();
+  });
+
+  it("leaves the body untouched when the model could not be reached", async () => {
+    api.editPassage.mockRejectedValue(
+      new Error("No AI provider could be reached for this edit."),
+    );
+    draw();
+    await select(...SECOND);
+
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "No AI provider could be reached for this edit.",
+      ),
+    );
+    expect(screen.getByLabelText(/^Body/i)).toHaveValue(BODY);
+    expect(screen.queryByRole("button", { name: "Undo edit" })).not.toBeInTheDocument();
+  });
+
+  it("does not paste the reply over a passage that has since been deleted", async () => {
+    // The author kept editing while the model was thinking, and the paragraph
+    // the edit was for is gone. Splicing at the stale offsets would overwrite
+    // whatever took its place.
+    let release;
+    api.editPassage.mockImplementation(
+      () => new Promise((resolve) => { release = resolve; }),
+    );
+    draw();
+    const body = await select(...SECOND);
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+    await waitFor(() => expect(api.editPassage).toHaveBeenCalled());
+
+    fireEvent.change(body, { target: { value: "A wholly different draft." } });
+    await act(async () => {
+      release({ replacement: "Second, shorter.", operation: "shorten" });
+    });
+
+    expect(body).toHaveValue("A wholly different draft.");
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("That passage has changed"),
+    );
+  });
+
+  it("passes the chosen tone, and nothing at all for the project's own", async () => {
+    draw();
+    await select(...SECOND);
+
+    await userEvent.selectOptions(screen.getByLabelText("Tone"), "casual");
+    await userEvent.click(screen.getByRole("button", { name: "Retone" }));
+
+    await waitFor(() =>
+      expect(api.editPassage).toHaveBeenCalledWith(
+        3,
+        expect.objectContaining({ operation: "retone", tone: "casual" }),
+      ),
+    );
+  });
+
+  it("does not save underneath an unanswered recovery offer", async () => {
+    // The save this would do first is the one the auto-save refuses to make:
+    // it answers the banner's question by overwriting one of the two answers.
+    storeBuffer({ body_markdown: "A morning of writing" });
+    draw();
+    await screen.findByText(/Unsaved edits/);
+    const body = screen.getByLabelText(/^Body/i);
+    fireEvent.change(body, { target: { value: `${BODY} And more.` } });
+    body.setSelectionRange(...SECOND);
+    fireEvent.select(body);
+
+    await userEvent.click(screen.getByRole("button", { name: "Shorten" }));
+
+    expect(api.updateContent).not.toHaveBeenCalled();
+    expect(api.editPassage).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Restore or discard the unsaved edits above first.",
+    );
+  });
+
+  it("is not offered on a published piece, which cannot be edited", async () => {
+    api.getContent.mockResolvedValue(
+      content({ body_markdown: BODY, status: "published" }),
+    );
+    draw();
+    await screen.findByLabelText(/^Body/i);
+
+    expect(screen.queryByRole("button", { name: "Shorten" })).not.toBeInTheDocument();
   });
 });
 

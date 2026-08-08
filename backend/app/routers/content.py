@@ -30,6 +30,8 @@ from app.schemas.content import (
     HeadlineVariantsOut,
     HeadlineWindowOut,
     HeadlineWinnerOut,
+    InlineEditIn,
+    InlineEditOut,
     InternalLinkSuggestionOut,
     LinkCheckOut,
     LinkStatusOut,
@@ -47,6 +49,7 @@ from app.services import (
     formats,
     github_client,
     headlines,
+    inline_edit,
     link_check,
     publishers,
     publishing_service,
@@ -446,6 +449,63 @@ def repurpose_content(
         provider=result.provider,
         model=result.model,
         is_fallback=result.is_fallback,
+    )
+
+
+@router.post("/{content_id}/edit", response_model=InlineEditOut)
+def edit_passage(
+    content_id: int,
+    payload: InlineEditIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> InlineEditOut:
+    """Rewrite, shorten, expand or retone one passage of a draft.
+
+    Nothing is persisted, for the same reason ``/repurpose`` and
+    ``/headlines`` persist nothing: the author decides whether the model
+    improved anything. The editor splices the replacement into the textarea it
+    already holds, which keeps the browser's own undo working — a server-side
+    apply would need a revision model to be safe, and this needs one less.
+
+    The selection is required to appear verbatim in the stored body. That check
+    is worth more than it looks: it is what stops a stale editor from asking
+    for an edit to a paragraph that no longer exists and splicing the answer
+    back over whatever is there now, and it means the endpoint cannot be used
+    to run arbitrary text through the provider chain on the account's quota.
+    """
+    content = _owned_content(content_id, db, user)
+    selection = payload.selection
+
+    if selection not in (content.body_markdown or ""):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "That passage is not in the saved draft. Save your changes "
+                "first, then select it again."
+            ),
+        )
+
+    try:
+        result = inline_edit.edit(
+            body_markdown=content.body_markdown,
+            selection=selection,
+            operation=payload.operation,
+            title=content.title,
+            project=content.project,
+            tone=payload.tone,
+        )
+    except inline_edit.EditUnavailable as exc:
+        # 503, not 500: nothing is broken here, a dependency is unavailable or
+        # answered with something unusable, and trying again is the right move.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
+
+    return InlineEditOut(
+        replacement=result.replacement,
+        operation=result.operation,
+        provider=result.provider,
+        model=result.model,
     )
 
 
