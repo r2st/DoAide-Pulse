@@ -16,15 +16,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.models.content import Content, ContentStatus, ContentType
+from app.models.metrics import ContentMetric
 from app.models.project import AutopilotMode, Project
-from app.models.publication import Publication
+from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.trigger import Trigger, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.security import hash_password
-from app.services import content_pipeline
+from app.services import content_pipeline, headlines
 from app.services import triggers as trigger_service
 from app.services.signals import TriggerSignal
-from app.tasks import autopilot_tasks, publish_tasks
+from app.tasks import autopilot_tasks, headline_tasks, publish_tasks
 
 
 @pytest.fixture
@@ -200,6 +201,85 @@ def test_the_release_sweep_skips_a_dormant_account(db, dormant_project, monkeypa
     _approved(db, dormant_project)
 
     assert publish_tasks.release_approved_content() == {"found": 0, "released": 0}
+
+
+# --------------------------------------------------------------------------- #
+# The headline sweep                                                           #
+# --------------------------------------------------------------------------- #
+
+
+def _headline_contest(db, project) -> Content:
+    """A published piece with a past headline that clearly beat the live one.
+
+    Enough evidence that ``auto_select_headlines`` would swap it back if it ever
+    looked at this project — which is the whole point of the assertion below.
+    """
+    start = datetime.now(UTC) - timedelta(days=20)
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Original headline",
+        slug=f"original-headline-{project.id}",
+        body_markdown="word " * 200,
+        status=ContentStatus.PUBLISHED,
+        created_at=start,
+    )
+    db.add(content)
+    db.commit()
+
+    publication = Publication(
+        content_id=content.id,
+        platform=Platform.DEVTO,
+        status=PublicationStatus.PUBLISHED,
+    )
+    db.add(publication)
+    db.commit()
+
+    def snapshot(offset: int, views: int) -> None:
+        db.add(
+            ContentMetric(
+                publication_id=publication.id,
+                captured_at=start + timedelta(days=offset),
+                views=views,
+            )
+        )
+        db.commit()
+
+    snapshot(1, 2000)
+    snapshot(9, 4000)
+    headlines.apply_headline(content, "Challenger headline", now=start + timedelta(days=10))
+    db.commit()
+    snapshot(11, 4100)
+    snapshot(19, 4200)
+
+    project.auto_headline_winner = True
+    db.commit()
+    db.refresh(content)
+    return content
+
+
+def test_the_headline_sweep_skips_a_dormant_account(db, dormant_project, monkeypatch):
+    """A daily sweep rewriting the titles of a dormant account's live posts."""
+    content = _headline_contest(db, dormant_project)
+
+    monkeypatch.setattr(headline_tasks, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+
+    assert headline_tasks.auto_select_headlines() == {"considered": 0, "swapped": 0}
+    db.refresh(content)
+    assert content.title == "Challenger headline"
+
+
+def test_the_headline_sweep_still_runs_for_a_live_account(db, project, monkeypatch):
+    """The guard must not catch the ordinary case."""
+    content = _headline_contest(db, project)
+
+    monkeypatch.setattr(headline_tasks, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+
+    assert headline_tasks.auto_select_headlines() == {"considered": 1, "swapped": 1}
+    db.refresh(content)
+    assert content.title == "Original headline"
 
 
 # --------------------------------------------------------------------------- #

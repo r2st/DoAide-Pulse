@@ -16,7 +16,9 @@ import { formatWhen } from "../lib/format";
 export default function Settings() {
   const { user, refresh } = useAuth();
   const { data, error, loading, reload } = useApi(() => api.platforms(), []);
-  const health = useApi(() => api.health(), []);
+  // The detail endpoint, not the public probe: every field this panel renders
+  // is one the anonymous /health deliberately withholds.
+  const health = useApi(() => api.healthDetail(), []);
   const [connecting, setConnecting] = useState(null);
 
   return (

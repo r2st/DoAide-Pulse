@@ -290,12 +290,22 @@ def check_body(
 
     Capped at ``link_check_max_urls``. The cap is a latency guard, not a policy:
     a link-farm of a post is unusual, and 25 requests is already a second or two.
+
+    The cap falls on the *body's* links, never on the caller's. Trimming the
+    combined list put the extras last and therefore first over the edge: a post
+    with the cap's worth of links in it silently stopped having its cover image
+    checked, and the cover is the one URL every reader sees and nobody clicks —
+    a dead one is a broken card in every feed, which is exactly what
+    ``app.routers.content._check_content_links`` passes it here to catch.
     """
-    urls = extract_urls(body_markdown)
-    for extra in extra_urls or []:
-        if extra and extra not in urls:
-            urls.append(extra)
-    return check(urls[: settings.link_check_max_urls])
+    cap = settings.link_check_max_urls
+    # Deduped in order, so a cover image that is also linked in the body does
+    # not spend two of the budget.
+    extras = [url for url in dict.fromkeys(extra_urls or []) if url][:cap]
+    kept = [url for url in extract_urls(body_markdown) if url not in extras][
+        : max(0, cap - len(extras))
+    ]
+    return check(kept + extras)
 
 
 def broken(statuses: list[LinkStatus]) -> list[LinkStatus]:

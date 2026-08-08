@@ -86,7 +86,13 @@ export const api = {
   me: () => request("/auth/me"),
   logout: () => setToken(null),
 
+  // The public liveness probe: status, database, redis, and nothing else.
   health: () => request("/health", { auth: false }),
+  // Everything the Settings page's health panel reads — provider chain, open
+  // breakers, GitHub token, credential encryption — lives only on this one.
+  // The public probe deliberately omits them, so asking it instead reported a
+  // fully configured server as "none configured / anonymous / off".
+  healthDetail: () => request("/health/detail"),
 
   // ---- projects ----
   listProjects: () => request("/projects"),

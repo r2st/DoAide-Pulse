@@ -125,6 +125,48 @@ def test_health_detail_requires_auth(client, redis_up):
     assert resp.status_code == 401
 
 
+def test_a_probe_carries_both_renderings_of_the_same_failure(db, monkeypatch):
+    """One probe, two audiences — so the endpoints cannot disagree about *what*
+    is down while disagreeing about *why*."""
+    def explode(*args, **kwargs):
+        raise OperationalError("SELECT 1", {}, Exception("server closed the connection"))
+
+    monkeypatch.setattr(db, "execute", explode)
+    probe = misc._check_database(db)
+
+    assert probe.describe(public=True) == "OperationalError"
+    assert "server closed the connection" in probe.describe(public=False)
+
+
+def test_a_probe_with_no_verbose_detail_falls_back_to_the_public_one(client, auth):
+    """Monkeypatched probes — and any future one — supply only ``detail``."""
+    probe = misc._Probe(False, "ConnectionError")
+    assert probe.describe(public=False) == "ConnectionError"
+
+
+def test_health_detail_says_why_a_dependency_is_down(client, auth, monkeypatch):
+    """The reason for the auth on this endpoint: the public probe says
+    ``ConnectionError`` and stops, which is useless to the person fixing it."""
+    monkeypatch.setattr(
+        misc,
+        "_check_redis",
+        lambda: misc._Probe(
+            False, "ConnectionError", "ConnectionError: Error 111 connecting to redis:6379"
+        ),
+    )
+    monkeypatch.setattr(settings, "celery_enabled", True)
+
+    detailed = client.get(f"{HEALTH}/detail", headers=auth).json()
+    public = client.get(HEALTH).json()
+
+    assert detailed["redis"]["detail"] == (
+        "ConnectionError: Error 111 connecting to redis:6379"
+    )
+    # Same verdict, less of it, for a caller with no token.
+    assert public["redis"]["detail"] == "ConnectionError"
+    assert public["status"] == detailed["status"] == "degraded"
+
+
 def test_health_detail_reports_capabilities(client, auth, redis_up):
     body = client.get(f"{HEALTH}/detail", headers=auth).json()
     # conftest blanks every key, so the chain is empty in tests.

@@ -342,6 +342,49 @@ def test_check_body_includes_extra_urls(monkeypatch):
     ]
 
 
+def test_the_cap_falls_on_the_body_not_on_the_cover_image(monkeypatch):
+    """The cover is the one URL every reader sees and nobody clicks.
+
+    Capping the combined list put the extras last and therefore first over the
+    edge, so a link-heavy post silently stopped having its cover checked — and
+    the publish gate that exists to catch a broken card never saw it.
+    """
+    monkeypatch.setattr("app.services.link_check.settings.link_check_max_urls", 3)
+    checked: list[list[str]] = []
+    monkeypatch.setattr(
+        link_check, "check", lambda urls, **kw: checked.append(urls) or []
+    )
+
+    body = " ".join(f"https://example.com/{n}" for n in range(9))
+    link_check.check_body(body, extra_urls=["https://cdn.example.com/cover.png"])
+
+    assert checked == [
+        [
+            "https://example.com/0",
+            "https://example.com/1",
+            "https://cdn.example.com/cover.png",
+        ]
+    ]
+
+
+def test_a_cover_already_linked_in_the_body_does_not_spend_two_of_the_budget(
+    monkeypatch,
+):
+    monkeypatch.setattr("app.services.link_check.settings.link_check_max_urls", 3)
+    checked: list[list[str]] = []
+    monkeypatch.setattr(
+        link_check, "check", lambda urls, **kw: checked.append(urls) or []
+    )
+
+    cover = "https://cdn.example.com/cover.png"
+    link_check.check_body(
+        f"{cover} https://example.com/a https://example.com/b https://example.com/c",
+        extra_urls=[cover],
+    )
+
+    assert checked == [["https://example.com/a", "https://example.com/b", cover]]
+
+
 def test_check_of_nothing_makes_no_requests():
     assert link_check.check([]) == []
 

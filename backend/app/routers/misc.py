@@ -25,7 +25,17 @@ router = APIRouter(tags=["misc"])
 @dataclass(frozen=True)
 class _Probe:
     ok: bool
+    #: What an anonymous caller is told — the exception class name and nothing
+    #: else. See :func:`_short`.
     detail: str = ""
+    #: The same failure with its message kept. Only ever rendered for a
+    #: logged-in caller on ``/health/detail``; empty falls back to
+    #: :attr:`detail`, which is what a monkeypatched probe supplies.
+    verbose: str = ""
+
+    def describe(self, *, public: bool) -> str:
+        """The detail string this probe is allowed to show *this* caller."""
+        return self.detail if public else (self.verbose or self.detail)
 
 
 def _check_database(db: Session) -> _Probe:
@@ -38,7 +48,7 @@ def _check_database(db: Session) -> _Probe:
     try:
         db.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
-        return _Probe(False, _short(exc))
+        return _Probe(False, _short(exc), _short(exc, public=False))
     return _Probe(True)
 
 
@@ -57,7 +67,7 @@ def _check_redis() -> _Probe:
         finally:
             client.close()
     except Exception as exc:  # redis raises a family of unrelated errors
-        return _Probe(False, _short(exc))
+        return _Probe(False, _short(exc), _short(exc, public=False))
     return _Probe(True)
 
 
@@ -74,8 +84,15 @@ def _short(exc: BaseException, *, public: bool = True) -> str:
     return f"{cls}: {exc}".splitlines()[0][:200]
 
 
-def _health_core(response: Response, db: Session) -> tuple[bool, DependencyOut, DependencyOut]:
-    """Shared probe logic for both health endpoints."""
+def _health_core(
+    response: Response, db: Session, *, public: bool = True
+) -> tuple[bool, DependencyOut, DependencyOut]:
+    """Shared probe logic for both health endpoints.
+
+    *public* decides how much of a failure the caller is shown. The probes
+    always capture both renderings; anything else would mean the two endpoints
+    could disagree about whether something is down while agreeing about why.
+    """
     database = _check_database(db)
     redis_probe = _check_redis()
     redis_required = settings.celery_enabled
@@ -92,12 +109,12 @@ def _health_core(response: Response, db: Session) -> tuple[bool, DependencyOut, 
     db_out = DependencyOut(
         status="ok" if database.ok else "unavailable",
         required=True,
-        detail=database.detail,
+        detail=database.describe(public=public),
     )
     redis_out = DependencyOut(
         status="ok" if redis_probe.ok else "unavailable",
         required=redis_required,
-        detail=redis_probe.detail,
+        detail=redis_probe.describe(public=public),
     )
     return healthy, db_out, redis_out
 
@@ -122,9 +139,12 @@ def health_detail(
     """Authenticated detail view — answers "why isn't X working?".
 
     LLM provider config, circuit-breaker state, platform list, and encryption
-    status are only visible to logged-in users.
+    status are only visible to logged-in users — and so is the *reason* a
+    dependency is down. The public probe reports ``OperationalError`` and stops
+    there, which is the right answer for an anonymous caller and a useless one
+    for the person trying to fix it; here the message comes with it.
     """
-    healthy, db_out, redis_out = _health_core(response, db)
+    healthy, db_out, redis_out = _health_core(response, db, public=False)
     return HealthDetailOut(
         status="ok" if healthy else "degraded",
         database=db_out,
