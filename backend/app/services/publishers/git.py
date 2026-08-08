@@ -61,6 +61,65 @@ _REPO_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
 #: Path components that would escape the repo or the checkout.
 _UNSAFE_PATH = re.compile(r"(^/)|(\.\.)|(^~)")
 
+#: The per-entry fields carried through a sitemap rewrite. ``loc`` is renamed to
+#: ``url`` on the way in because that is what ``seo.build_sitemap_xml`` reads.
+_SITEMAP_FIELDS = ("loc", "lastmod", "changefreq", "priority")
+
+
+def _localname(tag: object) -> str:
+    """An element's name without its namespace.
+
+    Sitemaps in the wild are inconsistently namespaced — the schema says to
+    declare ``sitemaps.org/schemas/sitemap/0.9`` and plenty of hand-written and
+    generator-written ones simply do not. Matching on a qualified name treats
+    those as containing no URLs at all, which for a function that rewrites the
+    file means silently replacing it with a single entry.
+    """
+    name = str(tag)
+    return name.rsplit("}", 1)[-1] if name.startswith("{") else name
+
+
+def _parse_urlset(raw: str) -> list[dict[str, str]] | None:
+    """Existing sitemap entries, or ``None`` if this file must not be rewritten.
+
+    ``None`` is the important return. A ``<sitemapindex>`` lists other sitemaps
+    rather than pages, and its ``<loc>`` elements read as perfectly ordinary
+    URLs — rewriting one as a ``<urlset>`` turns a working index into a page
+    list pointing at sitemaps. Anything that is not a ``<urlset>``, including a
+    file that does not parse, is left where it is.
+
+    Entries keep ``lastmod``, ``changefreq`` and ``priority``. Reading only the
+    ``<loc>`` and rebuilding from that loses every other field in the file, and
+    ``lastmod`` is the one a crawler uses to decide what to re-fetch.
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        root = ET.fromstring(raw)
+    except ET.ParseError:
+        return None
+    if _localname(root.tag) != "urlset":
+        return None
+
+    entries: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for url_el in root:
+        if _localname(url_el.tag) != "url":
+            continue
+        entry: dict[str, str] = {}
+        for child in url_el:
+            field_name = _localname(child.tag)
+            if field_name in _SITEMAP_FIELDS and child.text and child.text.strip():
+                entry["url" if field_name == "loc" else field_name] = child.text.strip()
+        loc = entry.get("url")
+        # First occurrence wins, as it did when this was a set. Document order
+        # is kept rather than sorted: the file belongs to the user, and
+        # reordering it on every publish makes the diff unreadable.
+        if loc and loc not in seen:
+            seen.add(loc)
+            entries.append(entry)
+    return entries
+
 
 class GitAdapter(Adapter):
     platform = Platform.GIT
@@ -340,8 +399,14 @@ class GitAdapter(Adapter):
 
         # Best-effort sitemap update: add the new post's URL and re-commit
         # sitemap.xml.  Failures here must not block the publish result.
+        #
+        # Gated on the published URL actually being *on the site*, not merely on
+        # a site being configured. `_published_url` falls back to the GitHub
+        # commit address whenever it cannot compute a page address — a slugless
+        # request is enough — and a sitemap is a list of pages on this domain.
+        # A github.com URL in it is a crawl error the user did not write.
         site = str(credentials.get("site_url") or "").strip().rstrip("/")
-        if site and not request.as_draft:
+        if site and not request.as_draft and published_url.startswith(f"{site}/"):
             try:
                 self._update_sitemap(
                     repo=repo,
@@ -373,13 +438,18 @@ class GitAdapter(Adapter):
         The sitemap is fetched, parsed, de-duplicated, and re-committed in a
         single PUT. If the file does not exist yet it is created with just
         this one entry. This is best-effort: the caller catches any exception.
+
+        This rewrites a file in a repository the user owns, so the read has to
+        be as careful as the write: anything that does not parse as a
+        ``<urlset>`` is left exactly where it is rather than replaced by a
+        one-entry sitemap. See :func:`_parse_urlset`.
         """
         sitemap_path = "public/sitemap.xml"
         params = {"ref": branch} if branch else None
 
         # Fetch existing sitemap (if any).
         existing_sha: str | None = None
-        existing_urls: set[str] = set()
+        entries: list[dict[str, str]] = []
         try:
             resp = self._request(
                 "GET",
@@ -389,26 +459,32 @@ class GitAdapter(Adapter):
             )
             data = resp.json()
             if isinstance(data, dict) and data.get("content"):
-                existing_sha = data.get("sha")
                 raw = base64.b64decode(data["content"]).decode("utf-8")
-                # Parse existing URLs out of the XML.
-                import xml.etree.ElementTree as ET
-
-                root = ET.fromstring(raw)
-                ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-                for loc in root.findall(".//sm:loc", ns):
-                    if loc.text:
-                        existing_urls.add(loc.text.strip())
+                parsed = _parse_urlset(raw)
+                if parsed is None:
+                    logger.info(
+                        "%s: %s is not a <urlset> — left alone", repo, sitemap_path
+                    )
+                    return
+                existing_sha = data.get("sha")
+                entries = parsed
         except PublishError:
             pass  # 404 — sitemap does not exist yet.
 
-        if post_url in existing_urls:
-            return  # Already present, nothing to do.
-
-        # Build updated sitemap.
+        # Re-publishing a piece is exactly when `lastmod` earns its keep, so an
+        # entry that is already here gets its date moved rather than skipped.
+        # Only an entry already stamped today has genuinely nothing to say, and
+        # that is the case worth avoiding a commit for.
         now_iso = datetime.now(UTC).strftime("%Y-%m-%d")
-        entries = [{"url": u} for u in sorted(existing_urls)]
-        entries.append({"url": post_url, "lastmod": now_iso})
+        for entry in entries:
+            if entry["url"] == post_url:
+                if entry.get("lastmod") == now_iso:
+                    return
+                entry["lastmod"] = now_iso
+                break
+        else:
+            entries.append({"url": post_url, "lastmod": now_iso})
+
         sitemap_xml = seo.build_sitemap_xml(entries)
 
         payload: dict[str, Any] = {
