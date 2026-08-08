@@ -56,7 +56,11 @@ def test_confidence_rejects_out_of_range():
 
 def test_is_production_property():
     for env in ("production", "prod", "PRODUCTION", "Prod"):
-        s = Settings(environment=env, jwt_secret="real-secret-here", _env_file=None)
+        # Long enough to clear the production strength floor — this test is
+        # about ``is_production``, not about the secret.
+        s = Settings(
+            environment=env, jwt_secret="real-secret-here" * 3, _env_file=None
+        )
         assert s.is_production is True
     for env in ("development", "staging", "test"):
         s = Settings(environment=env, jwt_secret="test", _env_file=None)

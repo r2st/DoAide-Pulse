@@ -10,6 +10,11 @@ from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: Shortest ``JWT_SECRET`` production will start with, in bytes. 256 bits, the
+#: output size of SHA-256 — RFC 7518 §3.2 requires an HMAC key at least as long
+#: as the hash it is used with, and PyJWT warns below this and signs anyway.
+_MIN_JWT_SECRET_BYTES = 32
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -416,11 +421,29 @@ class Settings(BaseSettings):
     @field_validator("jwt_secret")
     @classmethod
     def _jwt_secret_not_default_in_production(cls, v: str, info) -> str:
-        """Refuse to start in production with the placeholder JWT secret."""
+        """Refuse to start in production with a placeholder or weak JWT secret.
+
+        Not being the default was never the same thing as being strong. This
+        signs every session token Herald issues, with HMAC-SHA256 by default,
+        and RFC 7518 §3.2 requires a key at least as long as the hash output —
+        256 bits — for exactly one reason: anyone holding a single issued token
+        can brute-force a shorter key offline, and the key is what the whole
+        auth scheme rests on. PyJWT warns about it and carries on, which is the
+        wrong moment to find out. ``JWT_SECRET=hunter2`` passed the old check.
+        """
         env = (info.data.get("environment") or "development").lower()
-        if env in {"production", "prod"} and v == "change-me-to-a-long-random-string":
+        if env not in {"production", "prod"}:
+            return v
+        if v == "change-me-to-a-long-random-string":
             raise ValueError(
                 "JWT_SECRET must be changed from its default value in production"
+            )
+        if len(v.encode("utf-8")) < _MIN_JWT_SECRET_BYTES:
+            raise ValueError(
+                f"JWT_SECRET must be at least {_MIN_JWT_SECRET_BYTES} bytes in "
+                "production — a shorter key can be recovered offline from any "
+                'token Herald has issued. Generate one with: python -c '
+                '"import secrets; print(secrets.token_urlsafe(48))"'
             )
         return v
 
