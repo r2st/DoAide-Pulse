@@ -211,12 +211,25 @@ def cadence_for(db: Session, user_id: int, platform: Platform | str) -> Cadence:
     return learn(db, user_id, platform).cadence
 
 
-def describe_all(db: Session, user_id: int, platforms: list[Platform | str]) -> list[dict]:
-    """Cadence guidance for several platforms, sharing one pass over the series."""
+def describe_all(
+    db: Session,
+    user_id: int,
+    platforms: list[Platform | str],
+    *,
+    known: list[velocity.Curve] | None = None,
+) -> list[dict]:
+    """Cadence guidance for several platforms, sharing one pass over the series.
+
+    Pass *known* when the caller has already built the curves — same contract as
+    :func:`learn` and :func:`benchmarks`. The calendar endpoint builds them to
+    pick its suggested slots and then asks for this, and without somewhere to
+    hand them over it paid for the whole metric series twice on every load.
+    """
     wanted = [p if isinstance(p, Platform) else Platform(p) for p in platforms]
     if not wanted:
         return []
-    known = velocity.curves(db, user_id) if settings.learned_cadence_enabled else []
+    if known is None:
+        known = velocity.curves(db, user_id) if settings.learned_cadence_enabled else []
     return [learn(db, user_id, p, known=known).as_dict() for p in wanted]
 
 

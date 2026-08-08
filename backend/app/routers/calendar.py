@@ -137,7 +137,11 @@ def get_calendar(
 
     return CalendarOut(
         entries=entries,
-        cadence=learned_cadence.describe_all(db, user.id, list(connected)),
+        # ``known=`` for the same reason it is passed to ``learn`` above: these
+        # are the curves built at the top of this function, and letting
+        # ``describe_all`` rebuild them read the entire metric series a second
+        # time on every calendar load.
+        cadence=learned_cadence.describe_all(db, user.id, list(connected), known=known),
         suggested_slots=sorted(set(suggested))[:6],
     )
 
