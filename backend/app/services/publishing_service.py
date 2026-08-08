@@ -223,7 +223,7 @@ def _mark_connection_invalid(
     )
     if connection is not None:
         connection.status = ConnectionStatus.INVALID
-        connection.last_error = error
+        connection.last_error = _clip(error)
 
 
 def build_request(
@@ -510,7 +510,7 @@ def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
 
     publication.status = PublicationStatus.SCHEDULED
     publication.scheduled_for = utcnow() + timedelta(seconds=wait)
-    publication.error = f"{exc} — retrying in {round(wait)}s"
+    publication.error = _clip(f"{exc} — retrying in {round(wait)}s")
     db.commit()
     logger.info(
         "publication %s to %s rate-limited (attempt %d); deferred %.0fs",
@@ -521,8 +521,31 @@ def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
     )
 
 
+#: How much of a failure message is worth keeping on the row.
+#:
+#: Adapter messages quote what the platform said, and several of them quote the
+#: whole body when it is not the shape they expected — ``f"Hashnode returned no
+#: post: {data}"``. That body is not ours and has no size limit; ``error`` is a
+#: ``Text`` column with none either, and it is written again on every attempt
+#: and rendered in the publications list. A megabyte of someone else's JSON in
+#: a field the UI shows is a bad row and a slow page, and the part that says
+#: what went wrong is in the first line regardless.
+MAX_ERROR_CHARS = 2000
+
+
+def _clip(error: str) -> str:
+    """A failure message bounded to :data:`MAX_ERROR_CHARS`.
+
+    Applied at the one place every failure funnels through rather than in each
+    adapter, so a new adapter cannot forget it.
+    """
+    if len(error) <= MAX_ERROR_CHARS:
+        return error
+    return error[: MAX_ERROR_CHARS - 1].rstrip() + "…"
+
+
 def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) -> None:
-    publication.error = error
+    publication.error = _clip(error)
     publication.status = (
         PublicationStatus.FAILED if terminal else PublicationStatus.PENDING
     )

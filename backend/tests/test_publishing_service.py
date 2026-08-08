@@ -361,3 +361,94 @@ def test_relentless_rate_limiting_still_ends_up_in_front_of_a_human(
     publishing_service.execute(db, publication)
     assert publication.status == PublicationStatus.FAILED
     assert content.status == ContentStatus.FAILED
+
+
+# -- Bounded failure messages ---------------------------------------------- #
+#
+# Adapter messages quote what the platform said, and several quote the whole
+# body when it is not the shape they expected — `f"Hashnode returned no post:
+# {data}"`. That body is not ours and has no size limit; `error` is a `Text`
+# column with none either, it is rewritten on every attempt, and the
+# publications list renders it.
+
+
+def test_a_vast_upstream_error_is_clipped_before_it_is_stored(
+    db, content, connected, monkeypatch
+):
+    from app.services.publishers.devto import DevToAdapter
+
+    huge = "x" * 50_000
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: (_ for _ in ()).throw(CredentialError(huge)),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    publishing_service.execute(db, publication)
+
+    assert publication.status == PublicationStatus.FAILED
+    assert len(publication.error) == publishing_service.MAX_ERROR_CHARS
+    assert publication.error.endswith("…")
+
+
+def test_the_connection_note_is_clipped_too(db, content, connected, monkeypatch):
+    """`last_error` is the same unbounded write, shown on the settings page."""
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: (_ for _ in ()).throw(CredentialError("y" * 50_000)),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    publishing_service.execute(db, publication)
+
+    db.refresh(connected)
+    assert len(connected.last_error) == publishing_service.MAX_ERROR_CHARS
+
+
+def test_an_ordinary_error_is_stored_whole(db, content, connected, monkeypatch):
+    """Clipping must not touch the messages anyone actually reads."""
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: (_ for _ in ()).throw(CredentialError("bad key")),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    publishing_service.execute(db, publication)
+
+    assert publication.error == "bad key"
+
+
+def test_a_clipped_rate_limit_note_still_says_when_it_retries(
+    db, content, connected, monkeypatch
+):
+    """The deferral message appends the wait — clipping must not eat it.
+
+    It is built as `f"{exc} — retrying in {n}s"`, so a vast `exc` would push the
+    only actionable part of the sentence off the end.
+    """
+    from app.services.publishers.devto import DevToAdapter
+
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: (_ for _ in ()).throw(
+            RateLimited("z" * 50_000, retry_after=30)
+        ),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    publishing_service.execute(db, publication)
+
+    assert publication.status == PublicationStatus.SCHEDULED
+    assert len(publication.error) == publishing_service.MAX_ERROR_CHARS
