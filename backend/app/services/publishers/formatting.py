@@ -93,12 +93,73 @@ def escape_attribute(value: str) -> str:
     )
 
 
+#: The characters a double-quoted YAML scalar cannot carry literally, and what
+#: YAML spells them as. The backslash has to be in here — escaping the quote
+#: without it is what turns a title ending in one (``C:\``) into ``"C:\"``, an
+#: unterminated scalar that fails the whole document.
+_YAML_ESCAPES = {
+    "\\": "\\\\",
+    '"': '\\"',
+    "\n": "\\n",
+    "\r": "\\r",
+    "\t": "\\t",
+    "\x85": "\\N",
+    "\u2028": "\\L",
+    "\u2029": "\\P",
+}
+
+
+def escape_yaml_scalar(value: object) -> str:
+    """Escape *value* for use inside a double-quoted YAML scalar.
+
+    Walks the string once rather than chaining ``str.replace``: a chain has to
+    escape the backslash first and then never touch the backslashes it just
+    wrote, which is a rule that holds right up until someone adds a case in the
+    wrong order. A single pass cannot double-escape.
+
+    Three things are being prevented, and only the first is cosmetic:
+
+    * **Corruption.** ``\\n`` typed literally in a title is a YAML escape, so an
+      unescaped backslash turns ``Use \\n to break lines`` into a real newline,
+      and ``\\\\d+`` in a regex into ``\\d+``.
+    * **A document that will not parse.** A trailing backslash escapes the
+      closing quote, and a raw quote inside a flow sequence ends the item early.
+      Either one fails the static-site build this file is committed to.
+    * **Front-matter injection.** The block is delimited by ``---`` lines, so a
+      newline in a value could close it early and spill the rest of that value
+      into the document as keys — or into the body. Values here are titles,
+      descriptions and keywords: model-written text, committed to the user's
+      blog repo. None of it is trusted enough to go in raw.
+    """
+    out: list[str] = []
+    for char in str(value):
+        escape = _YAML_ESCAPES.get(char)
+        if escape is not None:
+            out.append(escape)
+        elif char < "\x20" or char == "\x7f":
+            # C0 and DEL are outside YAML's printable set.
+            out.append(f"\\x{ord(char):02x}")
+        elif "\x80" <= char <= "\x9f":
+            # C1 likewise.
+            out.append(f"\\u{ord(char):04x}")
+        else:
+            out.append(char)
+    return "".join(out)
+
+
+def _quoted(value: object) -> str:
+    """*value* as a double-quoted YAML scalar, safe to drop into a document."""
+    return f'"{escape_yaml_scalar(value)}"'
+
+
 def front_matter(fields: dict[str, object]) -> str:
-    """A YAML front-matter block, for platforms that take one (Dev.to).
+    """A YAML front-matter block, for the platforms that take one.
 
     Hand-rolled rather than a YAML dependency: the value space here is strings,
     booleans and flat string lists, and a real serializer would still need the
-    same quoting decisions made explicitly.
+    same quoting decisions made explicitly. What it must not skip is the
+    escaping — see :func:`escape_yaml_scalar` for what goes wrong without it.
+    Keys are Herald's own constants and are never escaped; values are not.
     """
     lines = ["---"]
     for key, value in fields.items():
@@ -107,12 +168,12 @@ def front_matter(fields: dict[str, object]) -> str:
         if isinstance(value, bool):
             lines.append(f"{key}: {str(value).lower()}")
         elif isinstance(value, (list, tuple)):
-            rendered = ", ".join(f'"{str(v)}"' for v in value)
-            lines.append(f"{key}: [{rendered}]")
+            # Escaped item by item. A flow sequence is not a place a raw quote
+            # is any safer than it is in a plain scalar — it ends the item
+            # there and the rest of the document is read as syntax.
+            lines.append(f"{key}: [{', '.join(_quoted(v) for v in value)}]")
         else:
-            # Double quotes inside a double-quoted scalar must be escaped.
-            escaped = str(value).replace('"', '\\"')
-            lines.append(f'{key}: "{escaped}"')
+            lines.append(f"{key}: {_quoted(value)}")
     lines.append("---")
     return "\n".join(lines)
 
@@ -279,6 +340,7 @@ __all__ = [
     "clip",
     "compose_social",
     "escape_attribute",
+    "escape_yaml_scalar",
     "front_matter",
     "hashtagify",
     "lead_image_html",
