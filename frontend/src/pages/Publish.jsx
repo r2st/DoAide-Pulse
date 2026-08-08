@@ -87,6 +87,18 @@ export default function Publish() {
             </Link>
           }
         />
+        {/* Its own banner, not the queue's. Every other page here reports each
+            fetch it makes (see Analytics, which banners all four of its own);
+            this section reported none, so a 502 from /settings/platforms
+            rendered as an empty grid that reads as "nothing connected" — the
+            one conclusion a user must not draw from a failed request. */}
+        <ErrorBanner message={platforms.error} onRetry={platforms.reload} />
+        {/* The analytics call feeds the reach figures in these tiles and both
+            sections below it. A failure used to fall through to the `?? 0`
+            defaults, so the tiles claimed nought published and nought views for
+            platforms that had plenty — worse than the empty grid above,
+            because it looks like an answer. */}
+        <ErrorBanner message={analytics.error} onRetry={analytics.reload} />
         {platforms.loading && !platforms.data ? (
           <Skeleton rows={3} />
         ) : (
@@ -103,9 +115,18 @@ export default function Publish() {
                     </span>
                     <ConnectionPill platform={platform} />
                   </div>
+                  {/* "—" until the analytics call has actually answered. A
+                      platform with no rows genuinely is 0/0, but a platform
+                      whose numbers never arrived is unknown, and the same
+                      distinction the API keeps between the two (see
+                      analytics_service._rate) has to survive the render. */}
                   <dl className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-ink-500">
-                    <span>{formatCount(stats?.published ?? 0)} published</span>
-                    <span>{formatCount(stats?.views ?? 0)} views</span>
+                    <span>
+                      {analytics.data ? formatCount(stats?.published ?? 0) : "—"} published
+                    </span>
+                    <span>
+                      {analytics.data ? formatCount(stats?.views ?? 0) : "—"} views
+                    </span>
                     {(stats?.failed ?? 0) > 0 && (
                       <span className="text-bad">{stats.failed} failed</span>
                     )}
