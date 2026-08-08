@@ -29,6 +29,32 @@ def _absolute_image_url(value: str | None) -> str | None:
     return url
 
 
+def unique_platforms(value: list[Platform] | None) -> list[Platform] | None:
+    """Drop repeats from a platform list, keeping the caller's order.
+
+    ``["devto", "devto"]`` is not a request to publish twice — there is nowhere
+    for the second copy to go. One row per (content, platform) is a database
+    constraint (``uq_publication_content_platform``), and
+    :func:`app.services.publishing_service.queue` builds its "already queued"
+    index once before the loop, so the repeat was not recognised as one and the
+    INSERT failed the constraint: a 500 on a payload the API had already
+    accepted as valid. Deduping here rather than in ``queue`` fixes every entry
+    point at once, including the scheduling pass in
+    ``POST /content/{id}/schedule``, which sizes its slot list from this list
+    before any publication row is touched.
+    """
+    if value is None:
+        return None
+    seen: set[Platform] = set()
+    out: list[Platform] = []
+    for platform in value:
+        if platform in seen:
+            continue
+        seen.add(platform)
+        out.append(platform)
+    return out
+
+
 def _absolute_canonical_url(value: str | None) -> str | None:
     """Accept an absolute http(s) URL, or nothing.
 
@@ -238,6 +264,8 @@ class PublishRequestIn(BaseModel):
     #: is unthinkable — sometimes the page is about to exist.
     allow_broken_links: bool = False
 
+    _dedupe_platforms = field_validator("platforms")(unique_platforms)
+
 
 class InternalLinkSuggestionOut(BaseModel):
     """Another post in the project worth linking to, by keyword overlap."""
@@ -361,6 +389,8 @@ class BulkPublishIn(BulkContentIn):
     as_draft: bool = False
     allow_broken_links: bool = False
 
+    _dedupe_platforms = field_validator("platforms")(unique_platforms)
+
 
 class BulkFailureOut(BaseModel):
     content_id: int
@@ -387,6 +417,8 @@ class ScheduleContentIn(BaseModel):
     #: firing five copies into five feeds in the same second.
     optimize: bool = False
     as_draft: bool = False
+
+    _dedupe_platforms = field_validator("platforms")(unique_platforms)
 
 
 class SlotOut(BaseModel):
