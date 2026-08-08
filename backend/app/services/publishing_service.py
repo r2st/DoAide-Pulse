@@ -324,9 +324,10 @@ class _Campaign:
 def execute(db: Session, publication: Publication) -> Publication:
     """Attempt one publication, recording the outcome. Never raises.
 
-    Retryable failures leave the row ``pending`` until ``publish_max_retries``
-    is spent; credential failures and unfinished adapters go straight to
-    ``failed``, because retrying either is guaranteed to fail the same way.
+    Retryable failures park the row until its backoff has elapsed and
+    ``publish_max_retries`` is spent (see :func:`_fail`); credential failures
+    and unfinished adapters go straight to ``failed``, because retrying either
+    is guaranteed to fail the same way.
     """
     content = publication.content
     user_id = content.project.user_id
@@ -505,7 +506,11 @@ def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
 
     wait = exc.retry_after
     if wait is None:
-        wait = float(settings.publish_scan_interval_seconds)
+        # The platform declined to say when. Fall back to the same escalating
+        # window any other retryable failure gets rather than a flat sweep
+        # interval: a platform limiting us on every attempt is one to back away
+        # from, and coming back at a fixed cadence is how a soft limit hardens.
+        wait = retry_defer_seconds(publication.attempts)
     wait = min(wait, float(settings.publish_rate_limit_max_defer_seconds))
 
     publication.status = PublicationStatus.SCHEDULED
@@ -544,13 +549,57 @@ def _clip(error: str) -> str:
     return error[: MAX_ERROR_CHARS - 1].rstrip() + "…"
 
 
+def retry_defer_seconds(attempts: int) -> float:
+    """How long to hold a publication before spending its next attempt.
+
+    Exponential from ``publish_retry_defer_seconds``, capped at
+    ``publish_retry_max_defer_seconds``. Unlike the in-adapter backoff in
+    :func:`app.services.publishers.base._backoff_delay` this is not jittered:
+    nothing sleeps on it — the row carries a ``scheduled_for`` and the sweep
+    picks it up — so there is no thundering herd to spread out, and a
+    predictable "back in five minutes" is what the publications list can show.
+
+    ``attempts`` is the count *already spent*, so the first failure waits the
+    base window rather than skipping it.
+    """
+    window = settings.publish_retry_defer_seconds * (2 ** max(0, attempts - 1))
+    return float(min(window, settings.publish_retry_max_defer_seconds))
+
+
 def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) -> None:
+    """Record a failed attempt, and decide when — if ever — to try again.
+
+    A non-terminal failure is *parked* rather than returned to ``pending``. The
+    difference matters more than it looks: ``pending`` with no ``scheduled_for``
+    is due immediately, so the retry budget used to be spent at the sweep
+    cadence regardless of what went wrong. Three attempts inside ten minutes
+    answers a blip and nothing else — a platform having a half-hour outage saw
+    every attempt land inside it, and the piece went terminal while the outage
+    was still going, needing a hand-retry from somebody who had no reason to be
+    looking. Backing off spends the same three attempts across an hour instead.
+
+    ``scheduled`` rather than ``pending`` because that is the status whose
+    meaning already includes ``scheduled_for`` — :func:`_defer` parks
+    rate-limited rows the same way, and both the beat sweep and
+    ``publish_tasks.publish_one``'s claim already refuse to pick up a row before
+    its time. Leaving it ``pending`` with a future time would work today and be
+    a trap for the next reader.
+    """
     publication.error = _clip(error)
-    publication.status = (
-        PublicationStatus.FAILED if terminal else PublicationStatus.PENDING
-    )
     if terminal:
+        publication.status = PublicationStatus.FAILED
+        # Cleared, because it is now a lie. A row that failed on its last
+        # attempt is carrying the ``scheduled_for`` from the retry before it —
+        # a time in the future, on a row nothing will ever come back for, which
+        # the calendar and the publications list both read as "still to come".
+        publication.scheduled_for = None
         _sync_content_status(publication.content)
+    else:
+        wait = retry_defer_seconds(publication.attempts)
+        publication.status = PublicationStatus.SCHEDULED
+        publication.scheduled_for = utcnow() + timedelta(seconds=wait)
+        if wait:
+            publication.error = _clip(f"{error} — retrying in {round(wait)}s")
     db.commit()
     logger.warning(
         "publication %s to %s failed (%s): %s",

@@ -205,7 +205,8 @@ def test_one_platform_succeeding_is_enough(db, user, content, connected, monkeyp
     publishing_service.execute(db, medium)
 
     assert content.status == ContentStatus.PUBLISHED
-    assert medium.status == PublicationStatus.PENDING  # retryable, not terminal
+    # Retryable, not terminal: parked for its backoff rather than failed.
+    assert medium.status == PublicationStatus.SCHEDULED
 
 
 def test_every_platform_failing_fails_the_content(db, content, connected, monkeypatch):
@@ -245,7 +246,10 @@ def test_retryable_failure_becomes_terminal_after_the_cap(
 
     for _ in range(settings.publish_max_retries - 1):
         publishing_service.execute(db, publication)
-        assert publication.status == PublicationStatus.PENDING
+        # Parked for its backoff, not failed — and not due yet either, which is
+        # the point: `execute` is called here directly, bypassing the claim that
+        # would otherwise refuse a row before its time.
+        assert publication.status == PublicationStatus.SCHEDULED
 
     publishing_service.execute(db, publication)
     assert publication.status == PublicationStatus.FAILED

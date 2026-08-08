@@ -259,6 +259,16 @@ class Settings(BaseSettings):
     # First backoff window, doubled per attempt, with full jitter inside it.
     publish_retry_backoff_seconds: float = 1.0
     publish_retry_max_backoff_seconds: float = 30.0
+    # Backoff *between* publication-level attempts — the outer layer, measured
+    # in minutes rather than the seconds the two settings above deal in. A
+    # retryable failure parks the row until this has elapsed instead of leaving
+    # it at the front of the next sweep. Without it the three attempts above are
+    # spent at the sweep cadence, so a platform having a twenty-minute outage
+    # burns the whole budget inside ten and the piece needs a hand-retry nobody
+    # is watching for. The default series is 5m, 10m, 20m — an hour of outage
+    # survived by waiting, which is the one thing this layer can usefully do.
+    publish_retry_defer_seconds: float = 300.0
+    publish_retry_max_defer_seconds: float = 3600.0
     # Ceiling on how long a rate-limited publication is parked for. Platforms
     # occasionally answer Retry-After with something enormous, and a post that
     # silently disappears for a day looks like a bug rather than a queue.
@@ -430,6 +440,21 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("must be zero or positive")
+        return v
+
+    @field_validator(
+        "publish_retry_defer_seconds",
+        "publish_retry_max_defer_seconds",
+    )
+    @classmethod
+    def _non_negative_seconds(cls, v: float) -> float:
+        """Separate from :meth:`_non_negative` only because these are floats.
+
+        Zero is allowed and means something: no wait between publication-level
+        attempts, which is how this behaved before the backoff existed.
+        """
         if v < 0:
             raise ValueError("must be zero or positive")
         return v

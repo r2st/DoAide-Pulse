@@ -211,6 +211,23 @@ function ConnectionPill({ platform }) {
   return <span className="badge bg-canvas text-ink-500">not connected</span>;
 }
 
+/**
+ * Whether this row is worth offering a "Retry" button on.
+ *
+ * A failed row, obviously. Also a row that has failed at least once and is
+ * *waiting out its backoff*: the backend parks those as `scheduled` with a
+ * time up to an hour away, which is right when nobody is watching and wrong
+ * the moment somebody is — they have just fixed the thing that broke, and the
+ * only honest answer to "will it go out now?" was "in twenty minutes".
+ *
+ * A scheduled row with no attempts is a normal future post, not a retry, and
+ * gets no button: that is what the calendar is for.
+ */
+function retryable(item) {
+  if (item.status === "failed") return true;
+  return item.status === "scheduled" && item.attempts > 0;
+}
+
 function QueueRow({ item, onChanged }) {
   const toast = useToast();
 
@@ -247,7 +264,7 @@ function QueueRow({ item, onChanged }) {
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <StatusBadge status={item.status} />
-        {item.status === "failed" && (
+        {retryable(item) && (
           <button className="btn-quiet" onClick={retry}>
             Retry
           </button>

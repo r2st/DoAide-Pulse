@@ -157,6 +157,46 @@ describe("the queue", () => {
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
   });
 
+  it("offers a retry on a row waiting out its backoff", async () => {
+    // The backend parks a retryable failure as `scheduled`, up to an hour out.
+    // Somebody looking at that row has usually just fixed what broke, and
+    // "in an hour" is the wrong answer to give them.
+    api.publicationQueue.mockResolvedValue([
+      {
+        id: 3,
+        content_id: 9,
+        platform: "devto",
+        status: "scheduled",
+        attempts: 1,
+        scheduled_for: "2099-01-01T10:00:00Z",
+        error: "devto is down — retrying in 300s",
+      },
+    ]);
+    draw();
+
+    await screen.findByText(/retrying in 300s/);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+  });
+
+  it("offers no retry on a post that is merely scheduled", async () => {
+    // Nothing has gone wrong with this one. A Retry button on it would read as
+    // "publish now", which is a different action and lives on the calendar.
+    api.publicationQueue.mockResolvedValue([
+      {
+        id: 4,
+        content_id: 10,
+        platform: "devto",
+        status: "scheduled",
+        attempts: 0,
+        scheduled_for: "2099-01-01T10:00:00Z",
+      },
+    ]);
+    draw();
+
+    await screen.findByText("Dev.to");
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
   it("says nothing is queued rather than showing an empty list", async () => {
     draw();
     expect(await screen.findByText("Nothing queued")).toBeInTheDocument();
