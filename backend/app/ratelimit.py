@@ -1,10 +1,24 @@
-"""Request rate limiting (slowapi) for the authentication surface.
+"""Request rate limiting (slowapi) for everything reachable without a token.
 
-Only ``/auth/*`` is limited. Those are the endpoints an outsider can reach
-without a token, and the ones where an unlimited request rate is worth
-something to an attacker: password guessing on ``/auth/login``, account
-creation on ``/auth/register``, and reset-mail flooding on the password-reset
-routes. Everything else already needs a valid bearer token.
+The rule is the endpoint's audience, not its cost: if a caller can reach it
+with no bearer token, it carries a limit. That is the whole unauthenticated
+surface, and it is worth listing because it is easy to assume it is just login:
+
+* ``/auth/login``, ``/auth/register``, ``/auth/password-reset*`` — password
+  guessing, account creation, and reset-mail flooding, the classic three.
+* ``/projects/{id}/feed.xml`` — the public RSS feed. Two database queries and
+  an XML render for anyone who can guess a project id.
+* ``/health`` — a Postgres round-trip and a fresh Redis connection per call.
+* ``/webhooks/events``, ``/triggers/kinds`` — constant lists, limited for
+  consistency rather than for cost.
+* ``/triggers/inbound/{token}`` — limited separately, since a trigger fires a
+  content generation and the token is the only thing gating it.
+
+An earlier version of this docstring said everything outside ``/auth/*`` needed
+a token. That stopped being true when the feed and the health probe landed, and
+neither was limited — which is the failure mode a list like the one above is
+meant to make visible, since the limit is only ever added by someone who
+remembers the endpoint is public.
 
 Two deployment details shape the configuration:
 

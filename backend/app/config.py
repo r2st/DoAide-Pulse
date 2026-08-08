@@ -97,6 +97,22 @@ class Settings(BaseSettings):
     rate_limit_register: str = "5/hour"
     rate_limit_password_reset: str = "5/hour"
     rate_limit_auth_read: str = "60/minute"
+    # The public RSS feed. Two database queries and an XML render for anyone who
+    # can guess a project id, so it is the most expensive thing an anonymous
+    # caller can reach. A reader polls a feed every 15-60 minutes; 20/minute is
+    # far above any real client and far below what makes the endpoint a lever.
+    rate_limit_public_feed: str = "20/minute;300/hour"
+    # The liveness probe. Caddy polls it every 30s (see deploy/Caddyfile.herald)
+    # from the Docker bridge with no X-Forwarded-For, so its requests bucket
+    # against the proxy address rather than any caller's — and a deploy adds at
+    # most a handful of retries to that same bucket. Public traffic arrives
+    # through Caddy and buckets per visitor. 60/minute leaves both an order of
+    # magnitude of headroom while still capping a probe that opens a fresh Redis
+    # connection and round-trips Postgres on every call.
+    rate_limit_health: str = "60/minute"
+    # The unauthenticated constant lists (webhook events, trigger kinds). Cheap
+    # to serve, but there is no reason for one caller to need hundreds a minute.
+    rate_limit_public_read: str = "60/minute"
 
     # ---- Database ----
     database_url: str = "postgresql+psycopg://herald:herald@localhost:5432/herald"

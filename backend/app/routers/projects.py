@@ -8,12 +8,14 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus
 from app.models.mixins import utcnow
 from app.models.project import Project, slugify
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.project import (
     IdeaOut,
     ProjectCreate,
@@ -256,6 +258,7 @@ def scan_repo(
 
 
 @router.get("/{project_id}/feed.xml", include_in_schema=False)
+@limiter.limit(settings.rate_limit_public_feed)
 def project_feed(
     project_id: int,
     request: Request,
@@ -267,6 +270,11 @@ def project_feed(
     every item here is already live wherever it was published. Only
     ``PUBLISHED`` content is ever included — drafts and the review queue never
     reach this endpoint regardless of who asks.
+
+    Rate-limited because "no token required" and "free to serve" are different
+    claims: this is two queries and an XML render, the project id is a small
+    integer anyone can walk, and it was the one anonymous endpoint in the API
+    that would answer as fast as it was asked.
     """
     project = db.get(Project, project_id)
     if project is None:

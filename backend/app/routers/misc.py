@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.settings import DependencyOut, HealthDetailOut, HealthOut
 from app.services import llm_router, publishers
 from app.services.crypto import encryption_enabled
@@ -120,11 +121,21 @@ def _health_core(
 
 
 @router.get("/health", response_model=HealthOut)
-def health(response: Response, db: Session = Depends(get_db)) -> HealthOut:
+@limiter.limit(settings.rate_limit_health)
+def health(
+    request: Request, response: Response, db: Session = Depends(get_db)
+) -> HealthOut:
     """Public liveness probe.
 
     Caddy polls this as its ``health_uri``, so the status code is load-bearing.
     Returns only dependency reachability — no operational details.
+
+    Limited despite that, and safely: Caddy's own poll originates from the proxy
+    and carries no ``X-Forwarded-For``, so it counts against the proxy's address
+    rather than any visitor's, at two requests a minute against a budget of
+    sixty. Public callers arrive *through* Caddy and are bucketed per visitor by
+    the rightmost forwarded entry, which is the one they cannot choose. The
+    ``request`` parameter is not decoration — slowapi reads the limiter off it.
     """
     healthy, db_out, redis_out = _health_core(response, db)
     return HealthOut(status="ok" if healthy else "degraded", database=db_out, redis=redis_out)

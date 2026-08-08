@@ -114,8 +114,14 @@ def _to_out(trigger: Trigger) -> TriggerOut:
 
 
 @router.get("/kinds", response_model=list[TriggerKindOut])
-def list_kinds() -> list[TriggerKindOut]:
-    """Every kind of trigger and what it needs configuring."""
+@limiter.limit(settings.rate_limit_public_read)
+def list_kinds(request: Request, response: Response) -> list[TriggerKindOut]:
+    """Every kind of trigger and what it needs configuring.
+
+    Reachable without a token, so it carries a limit like the rest of the
+    anonymous surface — see :func:`app.routers.webhooks.list_events` for what
+    the two slowapi parameters are doing here.
+    """
     return [
         TriggerKindOut(
             kind=kind.value,

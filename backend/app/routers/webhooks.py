@@ -6,10 +6,11 @@ button on it.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
@@ -20,6 +21,7 @@ from app.models.webhook import (
     WebhookDelivery,
     WebhookEvent,
 )
+from app.ratelimit import limiter
 from app.schemas.webhook import (
     WebhookCreate,
     WebhookCreated,
@@ -64,8 +66,19 @@ def _owned(webhook_id: int, db: Session, user: User) -> Webhook:
 
 
 @router.get("/events", response_model=list[WebhookEventOut])
-def list_events() -> list[WebhookEventOut]:
-    """Every event a webhook can subscribe to, and what it means."""
+@limiter.limit(settings.rate_limit_public_read)
+def list_events(request: Request, response: Response) -> list[WebhookEventOut]:
+    """Every event a webhook can subscribe to, and what it means.
+
+    Reachable without a token, so it carries a limit like the rest of the
+    anonymous surface — not because a constant list is expensive, but so that
+    "is this endpoint public?" and "is it limited?" stay the same question.
+
+    Both parameters are slowapi's, not FastAPI's: it reads the limiter off the
+    request and writes ``X-RateLimit-*`` onto the response. Without the second
+    one an endpoint that returns a model rather than a ``Response`` raises when
+    the headers are injected — a 500 on every call, not just a limited one.
+    """
     return [
         WebhookEventOut(event=event.value, description=EVENT_DESCRIPTIONS[event])
         for event in SUBSCRIBABLE_EVENTS
