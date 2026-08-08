@@ -27,6 +27,17 @@ TITLE_MAX = 60
 #: More than this and the keywords stop being a focus and start being a list.
 KEYWORD_MAX = 8
 
+#: The longest a single keyword may be, matching the ``focus_keyword`` column
+#: and the 100-character cap on the schema field.
+#:
+#: The cap belongs here rather than only on the schema because the router
+#: derives a missing focus keyword from ``keywords[0]``
+#: (``app.routers.content``), and that path never saw the field validator — so
+#: a 500-character "keyword" in the list became a 500-character focus keyword
+#: that the explicit field would have refused, and then became the body of a
+#: regex run against the whole post on every audit.
+KEYWORD_MAX_LENGTH = 100
+
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$", re.M)
 _CODE_FENCE = re.compile(r"```.*?```", re.S)
@@ -90,6 +101,10 @@ def normalize_keywords(keywords: list[str], *, extra: list[str] | None = None) -
     Order is preserved because the model's ordering is roughly its own
     relevance ranking, and the first keyword is the one that ends up in the
     title check.
+
+    Anything longer than :data:`KEYWORD_MAX_LENGTH` is dropped rather than
+    truncated — a 500-character string is not a keyword with a long tail, it is
+    not a keyword, and half of one is no more searchable than all of it.
     """
     out: list[str] = []
     seen: set[str] = set()
@@ -97,6 +112,8 @@ def normalize_keywords(keywords: list[str], *, extra: list[str] | None = None) -
         keyword = re.sub(r"\s+", " ", str(raw)).strip().lower().strip("#,.")
         # Single characters and bare numbers are never a useful keyword.
         if len(keyword) < 2 or keyword.isdigit() or keyword in seen:
+            continue
+        if len(keyword) > KEYWORD_MAX_LENGTH:
             continue
         seen.add(keyword)
         out.append(keyword)
@@ -156,6 +173,22 @@ def _keyword_occurrences(plain_text: str, keyword: str) -> int:
         return 0
     pattern = _WORD_EDGE.format(body=r"\s+".join(parts))
     return len(re.findall(pattern, plain_text.lower()))
+
+
+def _contains_keyword(text: str, keyword: str) -> bool:
+    """Whether *keyword* appears in *text* as a whole word.
+
+    The same matching :func:`_keyword_occurrences` does, asked as a yes/no.
+    Every other focus-keyword check in this module used ``in`` — plain
+    substring — while the density check counted whole words, so the two
+    disagreed about the same keyword in the same piece. A post titled "Rapid
+    prototyping" satisfied the focus keyword "api", because "rapid" contains
+    it; so did the slug ``rapid-prototyping`` and the opening paragraph. The
+    author saw a clean panel for a keyword the title does not mention, which is
+    the same unactionable-number problem the density fix was for, pointed the
+    other way: silence the piece has not earned.
+    """
+    return _keyword_occurrences(text, keyword) > 0
 
 
 def _keyword_density(plain_text: str, keyword: str) -> float:
@@ -227,6 +260,21 @@ def audit(
                 f"Aim for {META_DESCRIPTION_MIN}–{META_DESCRIPTION_MAX}.",
             )
         )
+    elif len(meta_description) > META_DESCRIPTION_MAX:
+        # The other end of the band the message above quotes, which nothing
+        # checked. :func:`build_meta_description` trims what the model returns,
+        # so this was unreachable for generated content — but the field is
+        # editable and accepts 500 characters (``ContentUpdate.meta_description``),
+        # and a hand-written 300-character description showed a clean panel and a
+        # score of 100 while Google clipped it mid-sentence in every result.
+        issues.append(
+            SeoIssue(
+                "warn",
+                "meta_description",
+                f"Meta description is {len(meta_description)} characters — search "
+                f"results cut off around {META_DESCRIPTION_MAX}. Trim the tail.",
+            )
+        )
 
     # Use focus_keyword if provided, else fall back to first keyword.
     fk = (focus_keyword or "").strip()
@@ -243,7 +291,7 @@ def audit(
     # which checks the focus keyword unconditionally, still docked ten points for
     # it. An editor looking at a clean panel and a score of 90 has no way to find
     # the missing ten.
-    if fk and title and fk.lower() not in title.lower():
+    if fk and title and not _contains_keyword(title, fk):
         issues.append(
             SeoIssue(
                 "warn",
@@ -292,7 +340,7 @@ def audit(
 
         # First paragraph.
         first_para = _first_paragraph(body_markdown)
-        if first_para and fk.lower() not in first_para.lower():
+        if first_para and not _contains_keyword(first_para, fk):
             issues.append(
                 SeoIssue(
                     "warn",
@@ -304,7 +352,7 @@ def audit(
         # Subheadings.
         headings = _find_headings(body_markdown)
         heading_texts = [text for _, text in headings]
-        if heading_texts and not any(fk.lower() in h.lower() for h in heading_texts):
+        if heading_texts and not any(_contains_keyword(h, fk) for h in heading_texts):
             issues.append(
                 SeoIssue(
                     "warn",
@@ -315,7 +363,7 @@ def audit(
             )
 
         # Meta description.
-        if meta_description and fk.lower() not in meta_description.lower():
+        if meta_description and not _contains_keyword(meta_description, fk):
             issues.append(
                 SeoIssue(
                     "warn",
@@ -325,16 +373,17 @@ def audit(
             )
 
         # Slug.
-        if slug:
-            slug_words = slug.lower().replace("-", " ")
-            if fk.lower() not in slug_words:
-                issues.append(
-                    SeoIssue(
-                        "warn",
-                        "slug",
-                        f'Focus keyword "{fk}" not in the URL slug.',
-                    )
+        # Hyphens are the slug's word separator, so they become spaces before
+        # matching — otherwise a multi-word keyword never matches, since the
+        # pattern joins its parts with whitespace.
+        if slug and not _contains_keyword(slug.replace("-", " "), fk):
+            issues.append(
+                SeoIssue(
+                    "warn",
+                    "slug",
+                    f'Focus keyword "{fk}" not in the URL slug.',
                 )
+            )
 
     headings = _find_headings(body_markdown)
     levels = [len(hashes) for hashes, _ in headings]
@@ -442,19 +491,25 @@ def seo_score(
         score -= 5
 
     # Meta description (15 points).
+    #
+    # Length and focus keyword are charged separately, because `audit` reports
+    # them separately. Folded into one `or` they cost five points between them,
+    # so a description that was both too short *and* off-keyword showed two
+    # things to fix and the price of one.
     if not meta_description.strip():
         score -= 15
-    elif len(meta_description) < META_DESCRIPTION_MIN or (
-        fk and fk.lower() not in meta_description.lower()
-    ):
-        score -= 5
+    else:
+        if not META_DESCRIPTION_MIN <= len(meta_description) <= META_DESCRIPTION_MAX:
+            score -= 5
+        if fk and not _contains_keyword(meta_description, fk):
+            score -= 5
 
     # Keywords presence (5 points).
     if not keywords:
         score -= 5
 
     # Focus keyword in title (10 points).
-    if fk and title and fk.lower() not in title.lower():
+    if fk and title and not _contains_keyword(title, fk):
         score -= 10
 
     plain = strip_markdown(body_markdown)
@@ -471,7 +526,7 @@ def seo_score(
     # First paragraph (10 points).
     if fk:
         first_para = _first_paragraph(body_markdown)
-        if first_para and fk.lower() not in first_para.lower():
+        if first_para and not _contains_keyword(first_para, fk):
             score -= 10
 
     # Subheadings (10 points).
@@ -479,7 +534,7 @@ def seo_score(
     heading_texts = [text for _, text in headings]
     if not heading_texts:
         score -= 10
-    elif fk and not any(fk.lower() in h.lower() for h in heading_texts):
+    elif fk and not any(_contains_keyword(h, fk) for h in heading_texts):
         score -= 5
 
     # Heading hierarchy (5 points).
@@ -509,7 +564,7 @@ def seo_score(
     if slug:
         if len(slug) > 60:
             score -= 3
-        if fk and fk.lower() not in slug.lower().replace("-", " "):
+        if fk and not _contains_keyword(slug.replace("-", " "), fk):
             score -= 2
 
     return max(0, score)
@@ -679,6 +734,7 @@ def suggest_internal_links(
 
 __all__ = [
     "KEYWORD_MAX",
+    "KEYWORD_MAX_LENGTH",
     "META_DESCRIPTION_MAX",
     "META_DESCRIPTION_MIN",
     "SEO_SCORE_THRESHOLD",

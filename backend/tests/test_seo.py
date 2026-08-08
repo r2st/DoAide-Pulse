@@ -618,3 +618,202 @@ def test_every_density_band_the_score_charges_for_has_an_audit_issue_behind_it()
             assert [i for i in seo.audit(**kwargs) if i.field == "body"], (
                 f"{mentions} mentions: score docked, panel silent"
             )
+
+
+# -- Whole-word focus-keyword matching ------------------------------------- #
+#
+# `_keyword_density` has counted whole words since the "api inside rapid" fix.
+# Every *other* focus-keyword check went on using `in` — plain substring — so
+# the two disagreed about the same keyword in the same piece, and the
+# disagreement always fell the same way: the substring checks stayed silent
+# about a keyword the piece does not actually use.
+
+
+def test_a_title_that_only_contains_the_keyword_as_a_substring_is_flagged():
+    """"Rapid" contains "api". The title does not mention the API."""
+    issues = seo.audit(
+        title="Rapid prototyping for teams",
+        body_markdown="## Intro\n\n" + ("word " * 400),
+        meta_description="A description of the thing, long enough to pass the floor "
+        "that the audit applies to meta descriptions.",
+        keywords=["api"],
+        focus_keyword="api",
+    )
+
+    title_issues = [i for i in issues if i.field == "title"]
+    assert any('"api" does not appear in the title' in i.message for i in title_issues)
+
+
+def test_a_title_that_really_contains_the_keyword_is_still_silent():
+    issues = seo.audit(
+        title="The API, explained",
+        body_markdown="## The API\n\nThe API is the subject. " + ("word " * 400),
+        meta_description="A description of the API, long enough to pass the floor "
+        "that the audit applies to meta descriptions.",
+        keywords=["api"],
+        focus_keyword="api",
+    )
+
+    assert not [i for i in issues if i.field == "title"]
+
+
+def test_a_slug_that_only_contains_the_keyword_as_a_substring_is_flagged():
+    issues = seo.audit(
+        title="The API, explained",
+        body_markdown="## The API\n\nThe API is the subject. " + ("word " * 400),
+        meta_description="A description of the API, long enough to pass the floor "
+        "that the audit applies to meta descriptions.",
+        keywords=["api"],
+        focus_keyword="api",
+        slug="rapid-prototyping-for-teams",
+    )
+
+    assert [i for i in issues if i.field == "slug"]
+
+
+def test_a_hyphenated_slug_still_matches_a_multi_word_keyword():
+    """Hyphens are the slug's word separator — the match must see through them."""
+    issues = seo.audit(
+        title="Celery retries, explained",
+        body_markdown="## Celery retries\n\nCelery retries are the subject. "
+        + ("word " * 400),
+        meta_description="How celery retries work, at length, in a description long "
+        "enough to clear the minimum the audit enforces.",
+        keywords=["celery retries"],
+        focus_keyword="celery retries",
+        slug="celery-retries-explained",
+    )
+
+    assert not [i for i in issues if i.field == "slug"]
+
+
+def test_a_substring_only_keyword_costs_the_same_points_the_panel_names():
+    """The invariant: audit and score agree about what counts as a mention."""
+    kwargs = dict(
+        title="Rapid prototyping for teams",
+        body_markdown="## Rapid prototyping\n\nRapid prototyping is the subject. "
+        + ("word " * 400),
+        meta_description="A description of rapid prototyping, long enough to pass "
+        "the floor that the audit applies to meta descriptions.",
+        keywords=["api"],
+        focus_keyword="api",
+        slug="rapid-prototyping-for-teams",
+        cover_image_url="https://example.com/cover.png",
+    )
+
+    # Nothing in this piece mentions the API as a word, so every focus-keyword
+    # check should fire — and the score should charge for each one.
+    assert seo.seo_score(**kwargs) < 70
+    fields = {i.field for i in seo.audit(**kwargs)}
+    assert {"title", "body", "meta_description", "slug"} <= fields
+
+
+def test_the_subheading_check_reads_whole_words_too():
+    issues = seo.audit(
+        title="The API, explained",
+        body_markdown="## Rapid prototyping\n\nThe API is the subject here. "
+        + ("word " * 400),
+        meta_description="A description of the API, long enough to pass the floor "
+        "that the audit applies to meta descriptions.",
+        keywords=["api"],
+        focus_keyword="api",
+    )
+
+    assert any("not in any subheading" in i.message for i in issues)
+
+
+# -- Over-long meta descriptions ------------------------------------------- #
+
+
+def test_an_over_long_meta_description_is_flagged():
+    """The field accepts 500 characters; nothing checked the upper bound.
+
+    `build_meta_description` trims what the model returns, so this was
+    unreachable for generated content — but the editor can type into the field,
+    and a 300-character description scored 100 while Google clipped it.
+    """
+    long_meta = "A description of celery retries that runs on and on. " * 6
+    assert len(long_meta) > seo.META_DESCRIPTION_MAX
+
+    issues = seo.audit(
+        title="Celery retries, explained",
+        body_markdown="## Celery retries\n\nCelery retries are the subject. "
+        + ("word " * 400),
+        meta_description=long_meta,
+        keywords=["celery retries"],
+        focus_keyword="celery retries",
+    )
+
+    meta_issues = [i for i in issues if i.field == "meta_description"]
+    assert any("cut off around" in i.message for i in meta_issues)
+
+
+def test_an_over_long_meta_description_costs_points():
+    base = dict(
+        title="Celery retries, explained",
+        body_markdown="## Celery retries\n\nCelery retries are the subject. "
+        + ("celery retries " * 6)
+        + ("word " * 400),
+        keywords=["celery retries"],
+        focus_keyword="celery retries",
+        slug="celery-retries-explained",
+        cover_image_url="https://example.com/cover.png",
+    )
+    good = "How celery retries work, at length, in a description long enough to "
+    good += "clear the minimum the audit enforces."
+    long_meta = "A description of celery retries that runs on and on. " * 6
+
+    assert seo.META_DESCRIPTION_MIN <= len(good) <= seo.META_DESCRIPTION_MAX
+    assert seo.seo_score(**base, meta_description=good) > seo.seo_score(
+        **base, meta_description=long_meta
+    )
+
+
+def test_a_meta_description_that_is_both_short_and_off_keyword_is_charged_for_both():
+    """Folded into one `or`, the two cost five points between them.
+
+    Two audit issues, one deduction — the panel named more to fix than the
+    score had taken off, which is the same disagreement the other way round.
+    """
+    base = dict(
+        title="Celery retries, explained",
+        body_markdown="## Celery retries\n\nCelery retries are the subject. "
+        + ("celery retries " * 6)
+        + ("word " * 400),
+        keywords=["celery retries"],
+        focus_keyword="celery retries",
+        slug="celery-retries-explained",
+        cover_image_url="https://example.com/cover.png",
+    )
+    short_and_off = "A short note."
+    short_on_keyword = "Celery retries."
+
+    assert len(short_and_off) < seo.META_DESCRIPTION_MIN
+    assert len(short_on_keyword) < seo.META_DESCRIPTION_MIN
+
+    both = seo.seo_score(**base, meta_description=short_and_off)
+    one = seo.seo_score(**base, meta_description=short_on_keyword)
+    assert one - both == 5
+
+    issues = seo.audit(**base, meta_description=short_and_off)
+    assert len([i for i in issues if i.field == "meta_description"]) == 2
+
+
+# -- Keyword length -------------------------------------------------------- #
+
+
+def test_an_absurdly_long_keyword_is_dropped():
+    """`focus_keyword` is capped at 100 chars on the schema; `keywords` was not.
+
+    `app.routers.content` fills a missing focus keyword from `keywords[0]`,
+    which never passed the field validator — so an over-long list entry became
+    an over-long focus keyword, and then the body of a regex run over the whole
+    post on every audit.
+    """
+    huge = "a" * (seo.KEYWORD_MAX_LENGTH + 1)
+    assert seo.normalize_keywords([huge, "celery retries"]) == ["celery retries"]
+
+
+def test_a_keyword_at_the_length_limit_is_kept():
+    at_limit = "a" * seo.KEYWORD_MAX_LENGTH
+    assert seo.normalize_keywords([at_limit]) == [at_limit]
