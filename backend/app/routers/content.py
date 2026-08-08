@@ -141,7 +141,13 @@ def list_content(
     project_id: int | None = None,
     status_filter: ContentStatus | None = Query(default=None, alias="status"),
     content_type: ContentType | None = None,
-    limit: int = Query(default=100, le=500),
+    # ``ge=1`` as well as ``le``: every other paginated endpoint here bounds
+    # both ends, and this one bounded only the top. A negative ``limit`` reaches
+    # SQLAlchemy's ``.limit()`` verbatim, and the two databases disagree about
+    # what that means — SQLite reads ``LIMIT -1`` as "no limit" and returns the
+    # caller's entire content table past the 500 cap, while Postgres refuses it
+    # outright and the request becomes a 500.
+    limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
