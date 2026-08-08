@@ -42,6 +42,19 @@ class GitHubRateLimited(GitHubError):
     """
 
 
+class GitHubNotFound(GitHubError):
+    """GitHub has no such path.
+
+    :func:`fetch_latest_release` needs to tell "this repo has releases disabled"
+    (fine, return ``None``) from "this repo is gone" (not fine), and used to do
+    it by searching the *message* of the generic error for ``"has no"``. The
+    message is prose written for a human reading a 502 body; a reword would
+    have silently turned every missing repo into a repo with no releases, and
+    the phrase itself appears in any repo name containing it. A subclass says
+    the same thing where it cannot be edited out from under the check.
+    """
+
+
 @dataclass(frozen=True)
 class Commit:
     sha: str
@@ -124,10 +137,57 @@ def _get(path: str, *, params: dict | None = None) -> httpx.Response:
             )
         raise GitHubError(f"GitHub denied access to {path} (403) — private repo?")
     if resp.status_code == 404:
-        raise GitHubError(f"GitHub has no {path} — check the repo URL")
+        raise GitHubNotFound(f"GitHub has no {path} — check the repo URL")
     if resp.status_code >= 400:
         raise GitHubError(f"GitHub returned {resp.status_code} for {path}")
     return resp
+
+
+def _json(resp: httpx.Response, path: str) -> object:
+    """The response body decoded, as a :class:`GitHubError` if it will not.
+
+    Every caller of this module catches ``GitHubError`` and nothing else — the
+    scan route turns it into a 502, the autopilot into a "unreachable" status
+    that still advances ``last_scanned_at``. A 200 carrying something that is
+    not JSON (a proxy's HTML error page, a captive portal, a truncated body)
+    raised ``json.JSONDecodeError`` straight through all of that: the route
+    answered 500 "Internal server error" for an upstream fault that had a
+    perfectly good 502 waiting for it, and the autopilot logged a crash
+    traceback and left the project looking never-scanned.
+    """
+    try:
+        return resp.json()
+    except ValueError as exc:
+        content_type = resp.headers.get("content-type") or "no content-type"
+        raise GitHubError(
+            f"GitHub returned a non-JSON body for {path} ({content_type})"
+        ) from exc
+
+
+def _int(value: object) -> int:
+    """A count from the payload, or zero. Never an exception.
+
+    ``stargazers_count`` is a number in every response GitHub documents, so an
+    ``int()`` straight off the payload reads as safe — but it is parsing
+    someone else's JSON, and the one thing this module must not do is fail in a
+    way its callers do not catch.
+    """
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _topics(value: object) -> list[str]:
+    """The repo's topics, or an empty list.
+
+    ``list(payload or [])`` looks equivalent and is not: a *string* where the
+    list should be iterates into one topic per character, and those go into the
+    generator's prompt.
+    """
+    if not isinstance(value, list):
+        return []
+    return [topic for topic in value if isinstance(topic, str)]
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -173,13 +233,19 @@ def fetch_commits(full_name: str, *, since_sha: str | None = None) -> list[Commi
     is returned. Over-reporting is the right failure here: it means the post
     says "a lot has changed", not that a change is missed.
     """
-    resp = _get(f"/repos/{full_name}/commits", params={"per_page": _COMMIT_PAGE_SIZE})
-    payload = resp.json()
+    path = f"/repos/{full_name}/commits"
+    resp = _get(path, params={"per_page": _COMMIT_PAGE_SIZE})
+    payload = _json(resp, path)
     if not isinstance(payload, list):
         raise GitHubError(f"Unexpected commits payload for {full_name}")
 
     commits: list[Commit] = []
     for item in payload:
+        # A list whose entries are not objects is not a commits page. Skipping
+        # the entry rather than raising keeps one malformed element from losing
+        # the ninety-nine good ones either side of it.
+        if not isinstance(item, dict):
+            continue
         commit = _commit_from_payload(item)
         if since_sha and commit.sha == since_sha:
             break
@@ -194,15 +260,16 @@ def fetch_latest_release(full_name: str) -> Release | None:
     newest release is a prerelease still reports it — a beta is exactly the kind
     of thing worth an announcement.
     """
+    path = f"/repos/{full_name}/releases"
     try:
-        resp = _get(f"/repos/{full_name}/releases", params={"per_page": 1})
-    except GitHubError as exc:
+        resp = _get(path, params={"per_page": 1})
+    except GitHubNotFound:
         # A repo with releases disabled 404s here. That is not a failure.
-        if "has no" in str(exc):
-            return None
-        raise
-    payload = resp.json()
+        return None
+    payload = _json(resp, path)
     if not isinstance(payload, list) or not payload:
+        return None
+    if not isinstance(payload[0], dict):
         return None
     return _release_from_payload(payload[0])
 
@@ -218,7 +285,10 @@ def fetch_activity(
     Raises :class:`GitHubError` if the repo can't be read at all;
     a missing releases endpoint is tolerated.
     """
-    repo = _get(f"/repos/{full_name}").json()
+    path = f"/repos/{full_name}"
+    repo = _json(_get(path), path)
+    if not isinstance(repo, dict):
+        raise GitHubError(f"Unexpected repo payload for {full_name}")
 
     commits = fetch_commits(full_name, since_sha=since_sha)
     release = fetch_latest_release(full_name)
@@ -234,9 +304,9 @@ def fetch_activity(
         full_name=full_name,
         new_commits=commits,
         new_release=new_release,
-        description=repo.get("description") or "",
-        topics=list(repo.get("topics") or []),
-        stars=int(repo.get("stargazers_count") or 0),
+        description=str(repo.get("description") or ""),
+        topics=_topics(repo.get("topics")),
+        stars=_int(repo.get("stargazers_count")),
         head_sha=head_sha,
         latest_tag=release.tag if release else since_tag,
     )
@@ -252,6 +322,7 @@ def fetch_activity(
 __all__ = [
     "Commit",
     "GitHubError",
+    "GitHubNotFound",
     "GitHubRateLimited",
     "Release",
     "RepoActivity",

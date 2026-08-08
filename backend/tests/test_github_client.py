@@ -1,0 +1,295 @@
+"""The GitHub reader, and what it does when GitHub answers with nonsense.
+
+Every caller of this module catches `GitHubError` and nothing else — the scan
+route turns it into a 502, the autopilot into an "unreachable" status that
+still advances `last_scanned_at`. So the contract under test is not just "the
+happy path parses"; it is that *nothing else escapes*, because anything that
+does becomes a 500 on a route that had a 502 ready for it.
+"""
+from __future__ import annotations
+
+import httpx
+import pytest
+
+from app.services import github_client
+
+
+def _response(
+    payload: object = None,
+    *,
+    status_code: int = 200,
+    text: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
+    kwargs: dict = {"status_code": status_code, "headers": headers or {}}
+    if text is not None:
+        kwargs["text"] = text
+    else:
+        kwargs["json"] = payload
+    return httpx.Response(request=httpx.Request("GET", "https://api.github.test"), **kwargs)
+
+
+def _stub(monkeypatch, handler) -> list[str]:
+    """Replace httpx.get, recording the paths asked for."""
+    seen: list[str] = []
+
+    def fake_get(url, **kwargs):
+        seen.append(url)
+        return handler(url, **kwargs)
+
+    monkeypatch.setattr(github_client.httpx, "get", fake_get)
+    return seen
+
+
+REPO = {
+    "description": "A repo",
+    "topics": ["python", "fastapi"],
+    "stargazers_count": 12,
+}
+COMMITS = [
+    {
+        "sha": "abc123",
+        "html_url": "https://github.test/c/abc123",
+        "commit": {
+            "message": "feat: a thing\n\nbody",
+            "author": {"name": "Ada", "date": "2026-01-02T03:04:05Z"},
+        },
+        "author": {"login": "ada"},
+    }
+]
+
+
+# -- The happy path, so the failure tests below mean something --------------- #
+
+
+def test_fetch_activity_reads_repo_commits_and_release(monkeypatch):
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response(
+                [{"tag_name": "v2", "name": "Two", "published_at": "2026-01-03T00:00:00Z"}]
+            )
+        if url.endswith("/commits"):
+            return _response(COMMITS)
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo")
+
+    assert activity.stars == 12
+    assert activity.topics == ["python", "fastapi"]
+    assert activity.head_sha == "abc123"
+    assert activity.new_commits[0].author == "ada"
+    assert activity.new_commits[0].summary == "feat: a thing"
+    assert activity.new_release.tag == "v2"
+    assert activity.has_news
+
+
+def test_commits_stop_at_the_watermark(monkeypatch):
+    page = [
+        {"sha": "new", "commit": {"message": "newer"}},
+        {"sha": "seen", "commit": {"message": "the watermark"}},
+        {"sha": "old", "commit": {"message": "older"}},
+    ]
+    _stub(monkeypatch, lambda url, **_: _response(page))
+
+    commits = github_client.fetch_commits("owner/repo", since_sha="seen")
+    assert [c.sha for c in commits] == ["new"]
+
+
+# -- Malformed upstream responses ------------------------------------------ #
+
+
+def test_a_non_json_body_is_a_github_error_not_a_json_decode_error(monkeypatch):
+    """A proxy's HTML error page under a 200 used to escape every handler.
+
+    `resp.json()` raises `json.JSONDecodeError`, which is not a `GitHubError`,
+    so it went past the scan route's 502 handler and out through the app's
+    catch-all as a 500 — Herald reporting someone else's fault as its own.
+    """
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response(
+            text="<html>502 Bad Gateway</html>",
+            headers={"content-type": "text/html"},
+        ),
+    )
+
+    with pytest.raises(github_client.GitHubError) as exc:
+        github_client.fetch_activity("owner/repo")
+    assert "non-JSON" in str(exc.value)
+    assert "text/html" in str(exc.value)
+
+
+def test_a_repo_payload_that_is_not_an_object_is_a_github_error(monkeypatch):
+    """`fetch_commits` checked its payload shape; `fetch_activity` did not.
+
+    A list where the repo object belongs reached `.get()` and raised
+    `AttributeError` — again past every caller's `except GitHubError`.
+    """
+    def handler(url, **_):
+        if url.endswith("/commits"):
+            return _response(COMMITS)
+        if url.endswith("/releases"):
+            return _response([])
+        return _response(["not", "an", "object"])
+
+    _stub(monkeypatch, handler)
+    with pytest.raises(github_client.GitHubError):
+        github_client.fetch_activity("owner/repo")
+
+
+def test_a_commits_payload_that_is_not_a_list_is_a_github_error(monkeypatch):
+    _stub(monkeypatch, lambda url, **_: _response({"message": "Not Found"}))
+    with pytest.raises(github_client.GitHubError):
+        github_client.fetch_commits("owner/repo")
+
+
+def test_a_malformed_commit_entry_does_not_lose_the_rest_of_the_page(monkeypatch):
+    page = ["nonsense", *COMMITS]
+    _stub(monkeypatch, lambda url, **_: _response(page))
+
+    commits = github_client.fetch_commits("owner/repo")
+    assert [c.sha for c in commits] == ["abc123"]
+
+
+def test_topics_that_arrive_as_a_string_do_not_become_one_topic_per_character(monkeypatch):
+    """`list("python")` is eleven topics, and they go into the model's prompt."""
+    def handler(url, **_):
+        if url.endswith("/commits"):
+            return _response(COMMITS)
+        if url.endswith("/releases"):
+            return _response([])
+        return _response({**REPO, "topics": "python"})
+
+    _stub(monkeypatch, handler)
+    assert github_client.fetch_activity("owner/repo").topics == []
+
+
+def test_a_non_numeric_star_count_reads_as_zero(monkeypatch):
+    def handler(url, **_):
+        if url.endswith("/commits"):
+            return _response(COMMITS)
+        if url.endswith("/releases"):
+            return _response([])
+        return _response({**REPO, "stargazers_count": "lots"})
+
+    _stub(monkeypatch, handler)
+    assert github_client.fetch_activity("owner/repo").stars == 0
+
+
+def test_a_release_entry_that_is_not_an_object_reads_as_no_release(monkeypatch):
+    _stub(monkeypatch, lambda url, **_: _response(["nonsense"]))
+    assert github_client.fetch_latest_release("owner/repo") is None
+
+
+# -- Status codes ---------------------------------------------------------- #
+
+
+def test_a_404_on_releases_means_releases_are_disabled_not_a_failure(monkeypatch):
+    """Distinguished by exception type now, not by grepping the message.
+
+    The old check searched the error's prose for "has no". A reword of that
+    sentence would have turned every missing *repo* into a repo with no
+    releases, silently.
+    """
+    _stub(monkeypatch, lambda url, **_: _response({}, status_code=404))
+    assert github_client.fetch_latest_release("owner/repo") is None
+
+
+def test_a_404_is_a_not_found_which_is_still_a_github_error(monkeypatch):
+    _stub(monkeypatch, lambda url, **_: _response({}, status_code=404))
+
+    with pytest.raises(github_client.GitHubNotFound):
+        github_client.fetch_commits("owner/repo")
+    # Callers catch the base class; the subclass must not slip past them.
+    assert issubclass(github_client.GitHubNotFound, github_client.GitHubError)
+
+
+def test_a_rate_limit_is_not_swallowed_by_the_releases_fallback(monkeypatch):
+    """429 on /releases must propagate — "come back later", not "no releases".
+
+    `GitHubRateLimited` is a `GitHubError`, so the old blanket `except
+    GitHubError` in this function caught it; only the message check let it back
+    out. Now the fallback is narrowed to the one status it is for.
+    """
+    _stub(monkeypatch, lambda url, **_: _response({}, status_code=429))
+
+    with pytest.raises(github_client.GitHubRateLimited):
+        github_client.fetch_latest_release("owner/repo")
+
+
+def test_an_exhausted_quota_under_a_403_reads_as_rate_limited(monkeypatch):
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response(
+            {}, status_code=403, headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "999"}
+        ),
+    )
+    with pytest.raises(github_client.GitHubRateLimited) as exc:
+        github_client.fetch_commits("owner/repo")
+    assert "999" in str(exc.value)
+
+
+def test_a_403_with_quota_left_reads_as_a_private_repo(monkeypatch):
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response({}, status_code=403, headers={"X-RateLimit-Remaining": "57"}),
+    )
+    with pytest.raises(github_client.GitHubError) as exc:
+        github_client.fetch_commits("owner/repo")
+    assert not isinstance(exc.value, github_client.GitHubRateLimited)
+    assert "private" in str(exc.value)
+
+
+def test_a_transport_failure_is_a_github_error(monkeypatch):
+    def handler(url, **_):
+        raise httpx.ConnectError("no route to host")
+
+    _stub(monkeypatch, handler)
+    with pytest.raises(github_client.GitHubError):
+        github_client.fetch_commits("owner/repo")
+
+
+def test_a_500_is_a_github_error(monkeypatch):
+    _stub(monkeypatch, lambda url, **_: _response({}, status_code=500))
+    with pytest.raises(github_client.GitHubError):
+        github_client.fetch_commits("owner/repo")
+
+
+# -- Watermarks ------------------------------------------------------------ #
+
+
+def test_an_unchanged_repo_keeps_its_watermark_rather_than_clearing_it(monkeypatch):
+    """No new commits means HEAD is still the watermark, not None.
+
+    Clearing it would make the next scan re-report the whole page.
+    """
+    def handler(url, **_):
+        if url.endswith("/commits"):
+            return _response([{"sha": "seen", "commit": {"message": "the watermark"}}])
+        if url.endswith("/releases"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo", since_sha="seen", since_tag="v1")
+
+    assert activity.new_commits == []
+    assert activity.head_sha == "seen"
+    assert activity.latest_tag == "v1"
+    assert not activity.has_news
+
+
+def test_a_release_already_seen_is_not_reported_as_new(monkeypatch):
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response([{"tag_name": "v1"}])
+        if url.endswith("/commits"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo", since_tag="v1")
+
+    assert activity.new_release is None
+    assert activity.latest_tag == "v1"

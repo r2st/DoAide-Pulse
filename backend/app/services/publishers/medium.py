@@ -79,7 +79,7 @@ class MediumAdapter(Adapter):
 
     def _me(self, token: str) -> dict[str, Any]:
         resp = self._request("GET", f"{_API}/me", headers=self._headers(token))
-        data = (resp.json() or {}).get("data") or {}
+        data = (self._json(resp) or {}).get("data") or {}
         if not data.get("id"):
             raise CredentialError("Medium accepted the token but returned no user")
         return data
@@ -119,7 +119,7 @@ class MediumAdapter(Adapter):
             url = f"{_API}/users/{self._me(token)['id']}/posts"
 
         resp = self._request("POST", url, headers=self._headers(token), json_body=payload)
-        data = (resp.json() or {}).get("data") or {}
+        data = (self._json(resp) or {}).get("data") or {}
 
         post_id = data.get("id")
         if not post_id:

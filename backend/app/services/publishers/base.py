@@ -310,6 +310,34 @@ class Adapter(ABC):
             values.append(value)
         return tuple(values)
 
+    def _json(self, response: httpx.Response) -> Any:
+        """The response body decoded, as a :class:`PublishError` if it will not.
+
+        ``response.json()`` raises ``json.JSONDecodeError`` — a ``ValueError``,
+        and not a :class:`PublishError`. Every adapter called it bare, so a 200
+        carrying something that is not JSON (a CDN's HTML error page, a captive
+        portal, a body cut short mid-stream) went past
+        ``publishing_service.execute``'s ``PublishError`` branch and into its
+        ``except Exception`` catch-all, which fails the publication
+        **terminally**. A transient blip at the edge of someone else's
+        infrastructure therefore burned the post permanently, with its retry
+        budget untouched, and the piece was left needing a hand-retry nobody
+        knew to do.
+
+        Raised as a plain :class:`PublishError` because that is exactly what it
+        is: possibly transient, worth the retry budget.
+        """
+        try:
+            return response.json()
+        except ValueError as exc:
+            content_type = response.headers.get("content-type") or "no content-type"
+            error = PublishError(
+                f"{self.display_name} returned a non-JSON body "
+                f"({response.status_code}, {content_type})"
+            )
+            error.__cause__ = exc
+            raise error from exc
+
     def _request(
         self,
         method: str,

@@ -141,16 +141,28 @@ class HashnodeAdapter(Adapter):
             },
             json_body={"query": query, "variables": variables},
         )
-        body = resp.json() or {}
+        body = self._json(resp) or {}
+        # GraphQL's envelope is an object. Anything else is not a reply to this
+        # query, and `.get` on it raises AttributeError — which is not a
+        # PublishError, so it would fail the publication terminally rather than
+        # spending a retry on what is almost certainly a gateway in the way.
+        if not isinstance(body, dict):
+            raise PublishError("Hashnode returned a body that is not a GraphQL response")
 
         errors = body.get("errors") or []
+        if not isinstance(errors, list):
+            errors = [errors]
         if errors:
+            # Entries are objects in the spec; a string or a null among them is
+            # malformed, and reading it as one must not be what breaks here.
             message = "; ".join(
-                str(error.get("message") or error) for error in errors
+                str(error.get("message") or error) if isinstance(error, dict) else str(error)
+                for error in errors
             )
             codes = {
                 str((error.get("extensions") or {}).get("code") or "").upper()
                 for error in errors
+                if isinstance(error, dict) and isinstance(error.get("extensions"), dict)
             }
             if codes & _AUTH_CODES:
                 raise CredentialError(f"Hashnode rejected the request: {message}")

@@ -330,7 +330,7 @@ class GitAdapter(Adapter):
         resp = self._request(
             "GET", f"{_API}/repos/{repo}", headers=self._headers(self._token(credentials))
         )
-        data = resp.json() or {}
+        data = self._json(resp) or {}
         # A read-only token reads a public repo perfectly well and then fails at
         # the first commit, which is a bad time to find out.
         if not (data.get("permissions") or {}).get("push"):
@@ -360,7 +360,7 @@ class GitAdapter(Adapter):
             raise  # 401/403 must surface, not be silenced as "file not found"
         except PublishError:
             return None
-        data = resp.json()
+        data = self._json(resp)
         # A directory comes back as a list, which means the path is unusable.
         if isinstance(data, list):
             raise PublishError(f"{path} is a directory in {repo}, not a file")
@@ -389,7 +389,7 @@ class GitAdapter(Adapter):
             headers=self._headers(token),
             json_body=payload,
         )
-        data = resp.json() or {}
+        data = self._json(resp) or {}
         commit = data.get("commit") or {}
         commit_sha = commit.get("sha")
         if not commit_sha:
@@ -457,7 +457,7 @@ class GitAdapter(Adapter):
                 headers=headers,
                 params=params,
             )
-            data = resp.json()
+            data = self._json(resp)
             if isinstance(data, dict) and data.get("content"):
                 raw = base64.b64decode(data["content"]).decode("utf-8")
                 parsed = _parse_urlset(raw)

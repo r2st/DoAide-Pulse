@@ -119,7 +119,7 @@ class BlueskyAdapter(Adapter):
             headers={"Content-Type": "application/json"},
             json_body={"identifier": handle.lstrip("@"), "password": password},
         )
-        data = resp.json() or {}
+        data = self._json(resp) or {}
         if not data.get("accessJwt") or not data.get("did"):
             raise CredentialError(
                 "Bluesky accepted the handshake but returned no session"
@@ -177,7 +177,7 @@ class BlueskyAdapter(Adapter):
                 "record": record,
             },
         )
-        data = resp.json() or {}
+        data = self._json(resp) or {}
 
         uri = data.get("uri")
         if not uri:
@@ -207,7 +207,7 @@ class BlueskyAdapter(Adapter):
             headers={"Authorization": f"Bearer {session['accessJwt']}"},
             params={"uris": external_id},
         )
-        posts = (resp.json() or {}).get("posts") or []
+        posts = (self._json(resp) or {}).get("posts") or []
         if not posts:
             # Deleted, or the account lost access to it. Not an error worth
             # retrying — an empty snapshot records "nothing to see".

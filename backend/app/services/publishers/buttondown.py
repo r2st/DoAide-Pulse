@@ -138,7 +138,7 @@ class ButtondownAdapter(Adapter):
         resp = self._request(
             "GET", f"{_API}/newsletters", headers=self._headers(api_key)
         )
-        data = resp.json() or {}
+        data = self._json(resp) or {}
         # The endpoint is paginated, but a bare list is what older keys return.
         results = data.get("results", data) if isinstance(data, dict) else data
         if not results:
@@ -162,7 +162,7 @@ class ButtondownAdapter(Adapter):
             ),
             json_body=self.build_payload(request),
         )
-        data = resp.json() or {}
+        data = self._json(resp) or {}
 
         email_id = data.get("id")
         if not email_id:
