@@ -352,6 +352,16 @@ class Settings(BaseSettings):
     # deliberately far out: near-median variation is what content does, and an
     # alert that fires on a normal week trains the user to ignore the panel.
     underperformance_threshold: float = 0.5
+    # How old a post may be and still be worth an underperformance warning.
+    # The remedy that alert names — a new headline, a re-share — only moves a
+    # post still being distributed, which is why the alert is framed as "worth
+    # trying while it is still new". Nothing bounded it, so every post that ever
+    # had a weak first two days stayed a warning for the life of the account,
+    # and since warnings sort above notices and the list is truncated, the post
+    # published on Tuesday was pushed off the end by one from last year. Two
+    # weeks is comfortably more than `digest_window_days`, so no post can age
+    # out between two weekly digests without having been reported at least once.
+    underperformance_max_age_hours: int = 336
     # A post whose views over the trailing window fall to this fraction of its
     # own best equivalent window has stopped growing.
     velocity_stall_window_hours: int = 168  # one week
@@ -399,6 +409,7 @@ class Settings(BaseSettings):
         "trigger_daily_content_limit",
         "trigger_disable_after_failures",
         "trigger_scan_interval_seconds",
+        "underperformance_max_age_hours",
         "velocity_benchmark_window_hours",
         "velocity_early_window_hours",
         "velocity_min_sample",

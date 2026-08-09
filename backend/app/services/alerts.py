@@ -14,9 +14,13 @@ it was failing would be wrong in the way that gets a tool ignored.
 Two things are worth an alert:
 
 * **Underperforming** — the first ``velocity_benchmark_window_hours`` came in
-  far under the platform's median. Early enough to still act on: a headline
-  swap (:mod:`app.services.headlines`) or a re-share is worth trying on day
-  three, not on day thirty.
+  far under the platform's median, and the post is still under
+  ``underperformance_max_age_hours`` old. Early enough to still act on: a
+  headline swap (:mod:`app.services.headlines`) or a re-share is worth trying
+  on day three, not on day thirty. The age bound is what makes that sentence
+  true rather than merely intended — without it the panel is a standing list of
+  the worst posts an account has ever published, sorted so that the ones
+  nothing can be done about crowd out the one that went out this week.
 * **Stalled** — a post that *did* land has stopped growing. Not a failure, and
   never urgent, but it is the list a refresh or an evergreen re-share should be
   drawn from.
@@ -75,7 +79,18 @@ class Alert:
 
 
 def _underperformance(group: list[Curve], curve: Curve) -> Alert | None:
-    """Judge one post against its platform-mates, or decline to judge it."""
+    """Judge one post against its platform-mates, or decline to judge it.
+
+    Only while the post is new enough for the answer to be worth anything. The
+    verdict itself never expires — a weak first two days in March is still a
+    weak first two days — but the alert is not a verdict, it is a prompt to do
+    something, and the something it names stops working once the post has left
+    the feeds. A post old enough to be past that is handed to :func:`_stalled`
+    by the caller, which offers the remedy that does still apply.
+    """
+    if curve.age_hours > float(settings.underperformance_max_age_hours):
+        return None
+
     window = float(settings.velocity_benchmark_window_hours)
     observed = curve.views_within(window)
     if observed is None:
@@ -149,8 +164,11 @@ def build(
     """Every alert for one user, worst first.
 
     At most one alert per publication: a post that underperformed *and* then
-    stalled is one problem with two symptoms, and the earlier, more actionable
-    one is the one to report.
+    stalled is one problem with two symptoms, and only the symptom something
+    can still be done about is worth reporting. Age decides which that is —
+    :func:`_underperformance` declines once a post is too old for a headline to
+    change its distribution, which is the point at which :func:`_stalled`'s
+    remedy, a re-share, becomes the one on offer.
     """
     all_curves = velocity.curves(db, user_id, now=now)
     grouped: dict[Platform, list[Curve]] = {}

@@ -104,6 +104,74 @@ def test_a_post_still_inside_the_window_is_not_judged(db, project, user):
     assert alerts.build(db, user.id) == []
 
 
+def test_a_post_too_old_to_rescue_is_not_a_headline_problem(db, project, user):
+    """The verdict is still true; the alert has stopped being worth raising.
+
+    "Worth trying a different headline while it is still new" is what the alert
+    says, and on a post from six months ago it is simply false — the piece is
+    out of every feed it was ever in, and no headline changes that.
+    """
+    _seed_normal(db, project)
+    make_post(db, project, slug="ancient", published_hours_ago=5000, readings=[(46, 10)])
+
+    assert [a for a in alerts.build(db, user.id) if a.title == "Post ancient"] == []
+
+
+def test_a_post_just_inside_the_bound_is_still_judged(db, project, user):
+    """The cutoff is the only thing separating this from the test above."""
+    _seed_normal(db, project)
+    make_post(
+        db,
+        project,
+        slug="recent",
+        published_hours_ago=settings.underperformance_max_age_hours - 2,
+        readings=[(46, 10)],
+    )
+
+    (alert,) = [a for a in alerts.build(db, user.id) if a.title == "Post recent"]
+    assert alert.kind == "underperforming"
+
+
+def test_this_week_s_dud_is_not_crowded_out_by_last_year_s(db, project, user):
+    """The reason the bound matters, rather than just being tidy.
+
+    Warnings sort worst-ratio-first and the list is truncated — three in the
+    digest, five on the dashboard. An account's all-time worst posts have the
+    worst ratios by definition, so they held the top of that list for ever and
+    the post that went out this week, the only one still fixable, was sorted
+    off the end.
+    """
+    _seed_normal(db, project)
+    make_post(db, project, slug="ancient", published_hours_ago=5000, readings=[(46, 10)])
+    make_post(db, project, slug="this-week", published_hours_ago=100, readings=[(46, 100)])
+
+    (alert,) = alerts.build(db, user.id, limit=1)
+    assert alert.title == "Post this-week"
+
+
+def test_posts_past_the_bound_still_form_the_median(db, project, user):
+    """Bounded as a subject, not as evidence.
+
+    The comparison is against everything this user has ever published on the
+    platform — that history is what makes the median worth anything, and a
+    stricter reading of the age bound would throw it away and leave a mature
+    account with too few comparables to judge anything at all.
+    """
+    for index in range(3):
+        make_post(
+            db,
+            project,
+            slug=f"old-normal-{index}",
+            published_hours_ago=5000,
+            readings=[(24, 500), (46, 1000)],
+        )
+    make_post(db, project, slug="fresh-dud", published_hours_ago=100, readings=[(46, 50)])
+
+    (alert,) = alerts.build(db, user.id)
+    assert alert.title == "Post fresh-dud"
+    assert alert.expected == 1000, "the median came from posts too old to alert on"
+
+
 def test_a_platform_where_nothing_is_read_raises_nothing(db, project, user):
     """A median of zero cannot be underperformed."""
     for index in range(4):
@@ -150,7 +218,13 @@ def test_a_post_that_stopped_growing_is_a_notice_not_a_warning(db, project, user
 
 
 def test_one_alert_per_publication(db, project, user):
-    """A post that underperformed and then stalled is one problem, not two."""
+    """A post that underperformed and then stalled is one problem, not two.
+
+    At 600 hours the piece matches both tests on the numbers. It gets one
+    alert, and it is the stalled notice: a post twenty-five days old is not
+    going to be rescued by a new headline, and the re-share :func:`_stalled`
+    suggests is the only remedy still on the table.
+    """
     _seed_normal(db, project)
     flat = [(0, 0), (24, 2), (46, 3)]
     flat += [(48 + 24 * n, 3) for n in range(1, 16)]
@@ -158,7 +232,7 @@ def test_one_alert_per_publication(db, project, user):
 
     for_post = [a for a in alerts.build(db, user.id) if a.title == "Post both"]
     assert len(for_post) == 1
-    assert for_post[0].kind == "underperforming", "the earlier, actionable one wins"
+    assert for_post[0].kind == "stalled", "the remedy that still applies wins"
 
 
 # --------------------------------------------------------------------------- #
