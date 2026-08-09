@@ -26,7 +26,22 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 _KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_content")
 
 #: A Markdown inline link target: the ``(…)`` half of ``[text](url "title")``.
-_MD_LINK = re.compile(r"\]\(\s*(?P<url>https?://[^\s)]+)(?P<title>\s+\"[^\"]*\")?\s*\)")
+#:
+#: The URL alternation allows a balanced ``(…)`` inside the address, which
+#: CommonMark does and which real URLs use — ``/wiki/Ruby_(programming)``,
+#: ``/docs/api_(v2)``. Reading the address as "anything up to the first ``)``"
+#: stopped one character early and then took the article's ``)`` as the link's
+#: own, so a rewrite published ``…/api_(v2?utm_source=devto)`` — a dead link,
+#: on the user's own domain, in prose Herald had been asked only to tag.
+#:
+#: One level of nesting, not arbitrary depth, which a regex cannot do. Anything
+#: deeper or unbalanced simply fails to match and is left exactly as written —
+#: the right outcome either way, since not tagging a link costs some attribution
+#: and mangling one costs the reader the page.
+_MD_LINK = re.compile(
+    r"\]\(\s*(?P<url>https?://(?:[^\s()]|\([^\s()]*\))+)"
+    r"(?P<title>\s+\"[^\"]*\")?\s*\)"
+)
 
 #: A fenced code block, so the rewriter can leave its contents alone.
 _FENCE = re.compile(r"(^|\n)(?P<fence>```|~~~)[^\n]*\n.*?(?:\n(?P=fence)|\Z)", re.S)

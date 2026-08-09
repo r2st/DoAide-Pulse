@@ -99,6 +99,27 @@ def test_urls_inside_fenced_code_are_not_rewritten():
     assert "guide?utm_source=devto" in out
 
 
+def test_a_bracketed_url_survives_the_rewrite():
+    """A `)` in the address is part of it, not the end of the link.
+
+    Reading the address as "up to the first `)`" stopped a character early and
+    then consumed the link's own `)` as the closing one, publishing a dead link
+    on the user's own domain — the one host this rewriter touches at all.
+    """
+    body = "Read [the API notes](https://herald.example.com/docs/api_(v2)) first."
+    out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
+
+    assert "/docs/api_(v2)?utm_source=devto" in out
+    assert out.endswith(") first.")
+    assert "api_(v2?" not in out
+
+
+def test_an_unbalanced_bracket_is_left_alone_rather_than_mangled():
+    """Not tagging costs attribution; mangling costs the reader the page."""
+    body = "Try [this](https://herald.example.com/x(y) now."
+    assert utm.tag_markdown_links(body, host="herald.example.com", **PARAMS) == body
+
+
 def test_link_titles_survive_the_rewrite():
     body = '[Herald](https://herald.example.com/ "The tool")'
     out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
