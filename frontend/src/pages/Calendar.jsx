@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ErrorBanner, Skeleton } from "../components/ui/Bits";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
-import { cadenceProvenance, isLearned } from "../lib/alerts";
+import { cadenceProvenance, isLearned, weekdaysLearned } from "../lib/alerts";
 import { api } from "../lib/api";
 import {
   UNROUTED,
@@ -341,9 +341,11 @@ export default function Calendar() {
                       <span
                         className={`chip ${isLearned(item) ? "text-brand-500" : "text-ink-400"}`}
                         title={
-                          isLearned(item)
-                            ? "Derived from your own first-day views on this platform"
-                            : "Published guidance — not enough of your own posts yet"
+                          !isLearned(item)
+                            ? "Published guidance — not enough of your own posts yet"
+                            : weekdaysLearned(item)
+                              ? "Derived from your own first-day views on this platform"
+                              : "The hour comes from your own first-day views; the days are still published guidance — no single weekday has enough posts behind it yet"
                         }
                       >
                         {cadenceProvenance(item)}

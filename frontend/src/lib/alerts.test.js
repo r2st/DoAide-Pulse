@@ -7,6 +7,7 @@ import {
   formatAlertRatio,
   isLearned,
   summarizeAlerts,
+  weekdaysLearned,
 } from "./alerts";
 
 /** An alert as `/analytics/alerts` sends it. */
@@ -92,17 +93,31 @@ describe("summarizeAlerts", () => {
 });
 
 describe("cadence provenance", () => {
+  const fullyLearned = { source: "learned", weekdays_source: "learned" };
+
   it("recognises a learned cadence", () => {
-    expect(isLearned({ source: "learned", sample: 12 })).toBe(true);
-    expect(cadenceProvenance({ source: "learned", sample: 12 })).toBe(
+    expect(isLearned({ ...fullyLearned, sample: 12 })).toBe(true);
+    expect(cadenceProvenance({ ...fullyLearned, sample: 12 })).toBe(
       "Learned from 12 posts",
     );
   });
 
   it("singularises one post", () => {
-    expect(cadenceProvenance({ source: "learned", sample: 1 })).toBe(
+    expect(cadenceProvenance({ ...fullyLearned, sample: 1 })).toBe(
       "Learned from 1 post",
     );
+  });
+
+  it("credits only the hour when the days are still the table's", () => {
+    // The two clear the evidence bar separately: enough posts at 07:00 to name
+    // an hour, no single weekday with enough of its own to name a rota. The
+    // days rendered beside this chip are the published table's, and a bare
+    // "Learned from 6 posts" would be read as a claim about them too.
+    const entry = { source: "learned", weekdays_source: "table", sample: 6 };
+
+    expect(isLearned(entry)).toBe(true);
+    expect(weekdaysLearned(entry)).toBe(false);
+    expect(cadenceProvenance(entry)).toBe("Hour learned from 6 posts");
   });
 
   it("treats a response with no source as the generic table", () => {
@@ -111,5 +126,16 @@ describe("cadence provenance", () => {
     expect(isLearned({ best_time_utc: "13:00" })).toBe(false);
     expect(isLearned(undefined)).toBe(false);
     expect(cadenceProvenance({ best_time_utc: "13:00" })).toBe("Generic guidance");
+  });
+
+  it("understates rather than overstates a response predating the field", () => {
+    // `weekdays_source` is newer than `source`, so a cached entry can have one
+    // and not the other. Falling back to "table" costs a word of precision;
+    // falling back the other way would put "Learned from 9 posts" next to days
+    // that came from the table, which is the failure this split exists to fix.
+    expect(weekdaysLearned({ source: "learned", sample: 9 })).toBe(false);
+    expect(cadenceProvenance({ source: "learned", sample: 9 })).toBe(
+      "Hour learned from 9 posts",
+    );
   });
 });

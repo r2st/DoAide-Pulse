@@ -69,9 +69,26 @@ export function isLearned(cadenceEntry) {
   return (cadenceEntry?.source ?? "table") === "learned";
 }
 
+/**
+ * Whether a cadence entry's *weekdays* were learned as well as its hour.
+ *
+ * The two clear the evidence bar separately: an hour can have enough posts
+ * behind it while every individual weekday is still too thin to name, and the
+ * rota is then the published table's. Defaults to "table" when the field is
+ * missing, for the same cached-response reason as `isLearned` — the panel may
+ * understate what it knows, never overstate it.
+ */
+export function weekdaysLearned(cadenceEntry) {
+  return (cadenceEntry?.weekdays_source ?? "table") === "learned";
+}
+
 /** "from 12 posts" / "generic guidance" — the provenance line under a cadence. */
 export function cadenceProvenance(cadenceEntry) {
   if (!isLearned(cadenceEntry)) return "Generic guidance";
   const sample = cadenceEntry.sample ?? 0;
-  return `Learned from ${sample} post${sample === 1 ? "" : "s"}`;
+  const posts = `${sample} post${sample === 1 ? "" : "s"}`;
+  // The days shown alongside are the table's in this case, and "Learned from 6
+  // posts" sitting next to them reads as a claim about both.
+  if (!weekdaysLearned(cadenceEntry)) return `Hour learned from ${posts}`;
+  return `Learned from ${posts}`;
 }

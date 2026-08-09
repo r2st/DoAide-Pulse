@@ -244,6 +244,145 @@ def test_weekdays_narrow_to_the_days_that_worked(db, project, user):
 
     learned = learned_cadence.learn(db, user.id, Platform.DEVTO)
     assert learned.cadence.best_weekdays == (1,)
+    assert learned.weekdays_learned is True
+
+
+def test_one_lucky_day_does_not_join_the_rota(db, project, user):
+    """A weekday needs its own posts behind it, exactly as the hour does.
+
+    Beating the overall median is a bar half the sample clears by construction,
+    so a weekday holding a single above-median post used to have a median above
+    the median and joined ``best_weekdays`` on the strength of that one post.
+    """
+    for index in range(5):
+        _publish_at(
+            db,
+            project,
+            slug=f"tue-{index}",
+            when=_weeks_ago(index + 2, hour=7, weekday=1),
+            first_day_views=100,
+        )
+    # One Sunday, one view above the median of the whole sample.
+    _publish_at(
+        db,
+        project,
+        slug="sun-0",
+        when=_weeks_ago(9, hour=7, weekday=6),
+        first_day_views=101,
+    )
+
+    learned = learned_cadence.learn(db, user.id, Platform.DEVTO)
+    assert learned.is_learned is True
+    assert 6 not in learned.cadence.best_weekdays
+    assert learned.cadence.best_weekdays == (1,)
+
+
+def test_a_day_with_enough_posts_still_joins_on_merit(db, project, user):
+    """The floor is a minimum, not a narrowing to one day."""
+    for index in range(3):
+        _publish_at(
+            db,
+            project,
+            slug=f"tue-{index}",
+            when=_weeks_ago(index + 2, hour=7, weekday=1),
+            first_day_views=2000,
+        )
+    for index in range(3):
+        _publish_at(
+            db,
+            project,
+            slug=f"thu-{index}",
+            when=_weeks_ago(index + 6, hour=7, weekday=3),
+            first_day_views=2000,
+        )
+
+    learned = learned_cadence.learn(db, user.id, Platform.DEVTO)
+    assert learned.cadence.best_weekdays == (1, 3)
+    assert learned.weekdays_learned is True
+
+
+def test_a_learned_hour_can_sit_on_the_table_s_days(db, project, user):
+    """Scattered one-per-weekday: the hour is answerable, the rota is not.
+
+    The table's days stand rather than an empty tuple, which would make
+    :func:`app.services.cadence.next_slot` search four weeks and give up.
+    """
+    for index in range(5):
+        _publish_at(
+            db,
+            project,
+            slug=f"p-{index}",
+            when=_weeks_ago(index + 2, hour=7, weekday=index),
+            first_day_views=500,
+        )
+
+    learned = learned_cadence.learn(db, user.id, Platform.DEVTO)
+    assert learned.is_learned is True
+    assert learned.cadence.best_hour_utc == 7
+    assert learned.weekdays_learned is False
+    assert learned.cadence.best_weekdays == cadence.cadence_for(Platform.DEVTO).best_weekdays
+
+
+def test_the_endpoint_separates_the_two_provenances(client, auth, db, project, user):
+    """The days and the hour are credited to whatever each actually came from."""
+    db.add(
+        PlatformConnection(
+            user_id=user.id,
+            platform=Platform.DEVTO,
+            status=ConnectionStatus.CONNECTED,
+        )
+    )
+    db.commit()
+    for index in range(5):
+        _publish_at(
+            db,
+            project,
+            slug=f"p-{index}",
+            when=_weeks_ago(index + 2, hour=7, weekday=index),
+            first_day_views=500,
+        )
+
+    (entry,) = client.get("/api/v1/calendar/cadence", headers=auth).json()
+    assert entry["source"] == "learned"
+    assert entry["weekdays_source"] == "table"
+    assert entry["best_time_utc"] == "07:00"
+    assert entry["best_weekdays"] == ["Tue", "Wed", "Thu"]
+
+
+def test_a_spurious_day_does_not_reach_the_scheduler(db, project, user):
+    """The end of the chain: what `optimal_slots` actually puts on the calendar.
+
+    Searched from a Friday on purpose. ``next_slot`` walks forward a day at a
+    time and takes the first weekday in the rota, so a spurious Sunday is only
+    observable from a starting point that reaches Sunday before it reaches
+    Tuesday — from a Monday the correct answer wins by position whether the rota
+    is right or not, and the test would pass on six days in seven while the bug
+    was live.
+    """
+    for index in range(5):
+        _publish_at(
+            db,
+            project,
+            slug=f"tue-{index}",
+            when=_weeks_ago(index + 2, hour=7, weekday=1),
+            first_day_views=100,
+        )
+    _publish_at(
+        db,
+        project,
+        slug="sun-0",
+        when=_weeks_ago(9, hour=7, weekday=6),
+        first_day_views=101,
+    )
+
+    now = datetime.now(UTC)
+    friday = (now + timedelta(days=(4 - now.weekday()) % 7)).replace(
+        hour=12, minute=0, second=0, microsecond=0
+    )
+
+    (slot,) = scheduling.optimal_slots(db, user.id, [Platform.DEVTO], after=friday)
+    assert slot.when.weekday() == 1, "Sunday is one post — it must not be a slot"
+    assert slot.when.hour == 7
 
 
 def test_each_platform_learns_separately(db, project, user):

@@ -17,12 +17,18 @@ saturation that view counts cannot express. Metrics say which post did well;
 they never say which post would not have been sent at all.
 
 **The bar for replacing the table.** A learned answer needs
-``learned_cadence_min_samples`` observations on that platform, and the winning
-hour needs ``learned_cadence_min_bucket`` posts of its own. Below either, the
-table stands unchanged. Two posts at 09:00 that happened to do well are a
-coincidence, and a scheduler that chases coincidences is worse than one that is
-merely generic — its suggestions move every week and stop being predictable,
-which was the original argument for a table.
+``learned_cadence_min_samples`` observations on that platform, and each bucket
+it names — the winning hour, and every weekday in the rota — needs
+``learned_cadence_min_bucket`` posts of its own. Below either, the table stands
+unchanged. Two posts at 09:00 that happened to do well are a coincidence, and a
+scheduler that chases coincidences is worse than one that is merely generic —
+its suggestions move every week and stop being predictable, which was the
+original argument for a table.
+
+The hour and the weekdays clear that bar separately, so one can be learned while
+the other falls back; :attr:`Learned.weekdays_learned` says which happened,
+because "Tue–Thu, learned from 6 posts" is a false claim when the days are the
+table's.
 
 The comparable is each post's first-``velocity_early_window_hours`` views (see
 :mod:`app.services.velocity`), not lifetime views: a post from March has had
@@ -60,6 +66,10 @@ class Learned:
     #: is what makes the suggestion arguable rather than oracular.
     best_hour_median: float | None = None
     overall_median: float | None = None
+    #: True when ``cadence.best_weekdays`` came from this user's results as well.
+    #: The hour clears its own bar, so it can be learned while the days are still
+    #: the table's — a rota is only as good as the thinnest day in it.
+    weekdays_learned: bool = False
 
     def as_dict(self) -> dict:
         described = cadence.describe(self.cadence.platform)
@@ -69,6 +79,11 @@ class Learned:
                 "best_time_utc": time(hour=self.cadence.best_hour_utc).strftime("%H:%M"),
                 "rationale": self.cadence.rationale,
                 "source": "learned" if self.is_learned else "table",
+                # Reported separately from ``source`` so the UI can put the days
+                # and the hour under the provenance each actually has, rather
+                # than crediting the user's own data for a row that is half
+                # table.
+                "weekdays_source": "learned" if self.weekdays_learned else "table",
                 "sample": self.sample,
                 "best_hour_sample": self.best_hour_sample,
                 "best_hour_median_views": self.best_hour_median,
@@ -173,14 +188,27 @@ def learn(
     overall_median = statistics.median([o.early_views for o in sample])
 
     # Weekdays are a set, not a winner: several days can be worth posting on,
-    # and narrowing to one would push every piece in a queue a week apart. Any
-    # day that beats the overall median qualifies; if none does — which happens
-    # when one day carries everything — keep the table's days rather than
-    # returning an empty tuple that would make next_slot search for ever.
+    # and narrowing to one would push every piece in a queue a week apart. A day
+    # joins the rota by beating the overall median *and* by having
+    # ``learned_cadence_min_bucket`` posts of its own behind it — the same floor
+    # the winning hour clears, for the reason the module docstring gives.
+    #
+    # The floor is the whole point. Beating the median is a bar half the sample
+    # clears by construction, so without a minimum bucket a weekday holding one
+    # above-median post had a median above the median and joined the rota on the
+    # strength of that single post. At the minimum sample of five that is one
+    # good Sunday away, and `next_slot` then starts putting pieces out on
+    # Sundays — while the calendar sits it next to "Learned from 5 posts", which
+    # is true of the platform and false of the day.
+    #
+    # If no day clears both tests — a sample spread one-per-weekday, or one day
+    # carrying everything — keep the table's days rather than returning an empty
+    # tuple that would make next_slot search for ever.
     good_days = tuple(
         day
         for day, values in sorted(by_weekday.items())
-        if statistics.median(values) >= overall_median
+        if len(values) >= settings.learned_cadence_min_bucket
+        and statistics.median(values) >= overall_median
     )
     weekdays = good_days or table.best_weekdays
 
@@ -203,6 +231,7 @@ def learn(
         best_hour_sample=hour_count,
         best_hour_median=round(hour_median, 1),
         overall_median=round(overall_median, 1),
+        weekdays_learned=bool(good_days),
     )
 
 
