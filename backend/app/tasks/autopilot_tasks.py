@@ -10,17 +10,25 @@ The loop for one project is:
    confident, otherwise into the review queue.
 5. Move the watermark, so the same commits never trigger twice.
 
-Step 5 happens **whatever the outcome**, including when generation falls back to
+Step 5 happens on almost every outcome, including when generation falls back to
 a template. A watermark that only advances on success means one bad scan makes
 every subsequent scan re-report the same backlog, and the daily cap then burns
 itself on the same commits every day.
 
-The single exception is a *total provider outage* — nothing answered, so nothing
-was asked and nothing was written. That is the same situation as GitHub
-rate-limiting the read, and it gets the same answer: leave the watermark, write
-nothing, come back later. It is safe to hold here precisely because the
-condition ends on its own (free-tier quotas reset daily) rather than needing a
-human, so the backlog this defers is one the next sweep clears.
+Two outcomes hold it instead, both because the commits were genuinely never
+consumed and both because the condition ends on its own rather than needing a
+human — so the backlog they defer is one a later sweep clears:
+
+* A *total provider outage*, or GitHub rate-limiting the read. Nothing answered,
+  so nothing was asked and nothing was written. Free-tier quotas reset daily.
+* Commits that did not clear ``autopilot_commit_threshold``. The threshold means
+  "not enough has happened **yet**", and it can only mean that if the commits it
+  refuses are still there next time. Advancing past them turns it into "not
+  enough happened this hour" — and against an hourly scan and a default of ten,
+  a repo pushed at any human rate is refused every hour and loses those commits
+  every hour, so the autopilot never writes about commits at all. Nothing is
+  banked below the bar either: the same commits arrive again next hour, and an
+  idea banked now would be re-banked every hour until they clear it.
 """
 from __future__ import annotations
 
@@ -57,11 +65,19 @@ def _pick_content_type(activity: github_client.RepoActivity) -> ContentType:
     return ContentType.FEATURE_SPOTLIGHT
 
 
+#: Outcomes after which the watermark must stay where it is. See the module
+#: docstring: these are the scans that read commits without consuming them, so
+#: claiming to have seen them would throw them away.
+_HOLDS_WATERMARK = frozenset({"below_threshold"})
+
+
 def _worth_writing(activity: github_client.RepoActivity) -> bool:
     """Is there enough here to justify a post?
 
     A release always is. Loose commits need to clear a threshold: writing an
     announcement about three typo fixes is how an audience learns to ignore you.
+    Below the bar the caller holds the watermark, so "not enough" is a verdict
+    on the backlog so far rather than on this hour's slice of it.
     """
     if activity.new_release:
         return True
@@ -143,8 +159,10 @@ def scan_project(project_id: int) -> dict:
             logger.warning("autopilot paused on project %s: %s", project_id, exc)
             return {"project_id": project_id, "status": "llm_unavailable"}
 
-        project.last_seen_commit_sha = activity.head_sha
-        project.last_seen_release_tag = activity.latest_tag
+        if result.get("status") not in _HOLDS_WATERMARK:
+            project.last_seen_commit_sha = activity.head_sha
+            project.last_seen_release_tag = activity.latest_tag
+        # Always: we did look, whatever we decided to do about it.
         project.last_scanned_at = utcnow()
         db.commit()
         return {"project_id": project_id, **result}
@@ -201,6 +219,21 @@ def _act_on(
     if not activity.has_news:
         return {"status": "no_news"}
 
+    mode = (
+        project.autopilot_mode
+        if isinstance(project.autopilot_mode, AutopilotMode)
+        else AutopilotMode(project.autopilot_mode)
+    )
+
+    # Asked before anything is banked, because this is the one outcome the
+    # caller holds the watermark for: these commits arrive again next scan, and
+    # an idea banked from them now would be banked again from the same commits
+    # every hour until they clear the bar. A project with the autopilot off is
+    # not subject to it — it is here for its ideas, and there is no post for the
+    # threshold to be protecting.
+    if mode != AutopilotMode.OFF and not _worth_writing(activity):
+        return {"status": "below_threshold", "commits": len(activity.new_commits)}
+
     # Bank an idea regardless of whether we write now: the calendar's
     # "suggested" column is fed from these, and an idea costs nothing to keep.
     for idea in content_generator.suggest_ideas(project, activity=activity, limit=2):
@@ -217,15 +250,8 @@ def _act_on(
     # Prune oldest unused ideas beyond the cap so the table stays bounded.
     _prune_ideas(db, project.id)
 
-    mode = (
-        project.autopilot_mode
-        if isinstance(project.autopilot_mode, AutopilotMode)
-        else AutopilotMode(project.autopilot_mode)
-    )
     if mode == AutopilotMode.OFF:
         return {"status": "ideas_only"}
-    if not _worth_writing(activity):
-        return {"status": "below_threshold", "commits": len(activity.new_commits)}
     if _daily_count(db, project.id) >= settings.autopilot_daily_content_limit:
         return {"status": "daily_limit_reached"}
 

@@ -118,6 +118,67 @@ def test_a_handful_of_commits_is_below_the_threshold(db, project, stub_github):
     assert db.query(Content).count() == 0
 
 
+def test_commits_below_the_threshold_are_not_consumed(db, project, stub_github):
+    """Below the bar the watermark must not move — the commits are still news.
+
+    The threshold means "not enough has happened *yet*". Advancing past commits
+    it just refused makes it mean "not enough happened this hour", and since the
+    scan runs hourly against a default of ten commits, a repo that pushes at any
+    human rate is refused every hour and its commits are discarded every hour.
+    """
+    project.autopilot_mode = AutopilotMode.DRAFT
+    project.last_seen_commit_sha = "old"
+    db.commit()
+    stub_github["set"](make_activity(commits=2, head="two-in"))
+
+    assert autopilot_tasks.scan_project(project.id)["status"] == "below_threshold"
+
+    db.refresh(project)
+    assert project.last_seen_commit_sha == "old"
+    # We did look, even though we did nothing about it.
+    assert project.last_scanned_at is not None
+
+
+def test_commits_accumulate_across_scans_until_they_clear_the_bar(
+    db, project, stub_github, monkeypatch
+):
+    """Three quiet hours and a busy one add up to a post."""
+    project.autopilot_mode = AutopilotMode.DRAFT
+    project.last_seen_commit_sha = "old"
+    db.commit()
+    _modest_generation(monkeypatch)
+
+    for _ in range(3):
+        stub_github["set"](make_activity(commits=3, head="drip"))
+        assert autopilot_tasks.scan_project(project.id)["status"] == "below_threshold"
+        # Every scan still asks from the same point, because none of these
+        # commits has been written about.
+        assert stub_github["calls"][-1]["since_sha"] == "old"
+
+    stub_github["set"](make_activity(commits=10, head="enough"))
+    assert autopilot_tasks.scan_project(project.id)["status"] == "queued_for_review"
+
+    db.refresh(project)
+    assert project.last_seen_commit_sha == "enough"
+
+
+def test_nothing_is_banked_for_commits_that_will_be_seen_again(
+    db, project, stub_github
+):
+    """No ideas below the bar, or the held watermark re-banks them every hour."""
+    from app.models.content import ContentIdea
+
+    project.autopilot_mode = AutopilotMode.DRAFT
+    project.last_seen_commit_sha = "old"
+    db.commit()
+
+    for _ in range(3):
+        stub_github["set"](make_activity(commits=2))
+        autopilot_tasks.scan_project(project.id)
+
+    assert db.query(ContentIdea).count() == 0
+
+
 def _modest_generation(monkeypatch):
     """A real generation the model is not confident about.
 
