@@ -15,6 +15,7 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -327,7 +328,10 @@ def execute(db: Session, publication: Publication) -> Publication:
     Retryable failures park the row until its backoff has elapsed and
     ``publish_max_retries`` is spent (see :func:`_fail`); credential failures
     and unfinished adapters go straight to ``failed``, because retrying either
-    is guaranteed to fail the same way.
+    is guaranteed to fail the same way. A worker running out of time is
+    retryable too — see the ``SoftTimeLimitExceeded`` branch, which has to come
+    before the defensive catch-all rather than rely on the handler in
+    ``publish_tasks.publish_one``.
     """
     content = publication.content
     user_id = content.project.user_id
@@ -367,6 +371,27 @@ def execute(db: Session, publication: Publication) -> Publication:
             db,
             publication,
             str(exc),
+            terminal=publication.attempts >= settings.publish_max_retries,
+        )
+        return publication
+    except SoftTimeLimitExceeded:
+        # Celery delivers the worker's soft time limit by raising *inside*
+        # whatever the task is doing, which is nearly always the HTTP call
+        # above — that is where a publish spends its time. And it raises an
+        # ordinary ``Exception``, not a ``BaseException``, so without this
+        # branch the defensive handler below caught it, wrote "Unexpected
+        # error" on the row and marked it terminal: the first time a platform
+        # was slow, the post was burned. ``publish_tasks.publish_one`` has a
+        # handler meant for this, but it cannot run — nothing propagates out of
+        # a function that has already caught the exception and returned.
+        #
+        # A timeout says nothing about the post, only about how long the
+        # platform took, so it goes on the same budget as any other retryable
+        # failure rather than ending the row.
+        _fail(
+            db,
+            publication,
+            "Publishing timed out — the platform took too long to answer",
             terminal=publication.attempts >= settings.publish_max_retries,
         )
         return publication

@@ -81,7 +81,8 @@ class LinkedInAdapter(Adapter):
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
         raise NotImplementedAdapter(
             "The LinkedIn adapter is not finished — it needs an OAuth flow before "
-            "it can post. Content queued for LinkedIn will stay pending."
+            "it can post. Anything queued for LinkedIn fails immediately rather "
+            "than waiting for an adapter that is not coming."
         )
 
 

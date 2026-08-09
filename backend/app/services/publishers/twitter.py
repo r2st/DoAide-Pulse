@@ -88,7 +88,8 @@ class TwitterAdapter(Adapter):
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
         raise NotImplementedAdapter(
             "The Twitter/X adapter is not finished — it needs OAuth 1.0a signing "
-            "and a paid API tier. Content queued for Twitter will stay pending."
+            "and a paid API tier. Anything queued for Twitter fails immediately "
+            "rather than waiting for an adapter that is not coming."
         )
 
 
