@@ -98,3 +98,44 @@ def test_seed_adds_new_specs_to_an_existing_account(db, run_seed):
     db.expire_all()
     assert set(_projects(db)) == {"herald", "gstbot", "caflow"}
     assert len(list(db.scalars(select(User)))) == 1
+
+
+def test_seed_fills_in_a_repo_url_that_was_never_set(db, run_seed):
+    """The reason a project can sit registered and never scan.
+
+    A NULL ``repo_url`` is what excludes a project from ``scan_all_projects``,
+    and "already exists, leaving it alone" meant a row that arrived without one
+    kept the NULL through every later seed — registered, visible, and silently
+    outside the sweep forever.
+    """
+    run_seed()
+    db.expire_all()
+    project = _projects(db)["gstbot"]
+    project.repo_url = None
+    db.commit()
+
+    run_seed()
+    db.expire_all()
+
+    project = _projects(db)["gstbot"]
+    assert project.repo_full_name == "r2st/GSTBot"
+    assert project.autopilot_blocked_reason is None
+
+
+def test_seed_does_not_overwrite_what_somebody_typed(db, run_seed):
+    """Backfill fills gaps; it does not re-assert the registry over an edit."""
+    run_seed()
+    db.expire_all()
+    project = _projects(db)["caflow"]
+    project.repo_url = "https://github.com/someone-else/CAFlow"
+    project.description = "Rewritten by hand."
+    project.keywords = ["only this one"]
+    db.commit()
+
+    run_seed()
+    db.expire_all()
+
+    project = _projects(db)["caflow"]
+    assert project.repo_url == "https://github.com/someone-else/CAFlow"
+    assert project.description == "Rewritten by hand."
+    assert project.keywords == ["only this one"]

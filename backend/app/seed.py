@@ -283,6 +283,46 @@ def _create_project(db, user_id: int, spec: ProjectSpec) -> Project:
     return project
 
 
+#: Columns the seed will fill in on a project that already exists, but only
+#: where the stored value is empty. Deliberately not every column: ``name``,
+#: ``tone`` and ``autopilot_mode`` always hold a value, so "empty" cannot
+#: distinguish a default from a choice, and re-asserting them would undo an edit.
+_BACKFILL_COLUMNS = (
+    "repo_url",
+    "live_url",
+    "description",
+    "target_audience",
+    "tech_stack",
+    "keywords",
+)
+
+
+def _backfill(project: Project, spec: ProjectSpec) -> list[str]:
+    """Fill in *project*'s empty fields from *spec*. Returns what was filled.
+
+    "Leave it alone" was too strong a reading of idempotent. A project row
+    created before its repo was known — or by any path other than this one —
+    kept a NULL ``repo_url`` through every subsequent seed, and a NULL
+    ``repo_url`` is precisely what excludes a project from the autopilot sweep.
+    The row looked registered, the projects page looked right, and it silently
+    never scanned.
+
+    Only empty values are written, so anything a human has since typed, cleared
+    or corrected survives untouched. A user who deletes the repo URL on purpose
+    will see it come back on the next seed run; that is the one case this gets
+    wrong, and it is a visible, one-field correction rather than a project that
+    quietly does nothing.
+    """
+    filled: list[str] = []
+    for column in _BACKFILL_COLUMNS:
+        seeded = getattr(spec, column)
+        if not seeded or getattr(project, column):
+            continue
+        setattr(project, column, list(seeded) if isinstance(seeded, list) else seeded)
+        filled.append(column)
+    return filled
+
+
 def seed(email: str | None = None, password: str | None = None) -> None:
     email = email or os.environ.get("SEED_EMAIL", DEFAULT_EMAIL)
     # A generated password beats a hardcoded one that ends up in a public repo
@@ -319,7 +359,15 @@ def seed(email: str | None = None, password: str | None = None) -> None:
             if existing is None:
                 _create_project(db, user.id, spec)
             else:
-                logger.info("project %s already exists, leaving it alone", spec.name)
+                filled = _backfill(existing, spec)
+                if filled:
+                    logger.info(
+                        "project %s already exists; filled in %s",
+                        spec.name,
+                        ", ".join(filled),
+                    )
+                else:
+                    logger.info("project %s already exists, leaving it alone", spec.name)
 
         db.commit()
         logger.info("seed complete")

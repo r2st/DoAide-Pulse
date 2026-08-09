@@ -174,6 +174,46 @@ class Project(Base, TimestampMixin):
             return None
         return f"{match['owner']}/{match['repo']}"
 
+    @property
+    def autopilot_blocked_reason(self) -> str | None:
+        """Why this project's autopilot can never fire, or ``None`` if it can.
+
+        The autopilot sweep selects on ``repo_url IS NOT NULL`` and the scan
+        itself needs a *GitHub* URL it can parse, so a project can sit at
+        ``auto`` — badge lit, switch on, nothing wrong on the page — and be
+        structurally incapable of ever producing a post. Nothing said so, and
+        the only symptom was an absence: no content, no error, no log line.
+
+        Reported rather than corrected on purpose. A project genuinely may not
+        have a repo, and the answer then is a trigger or a manual piece, not a
+        URL invented to satisfy the scan.
+
+        Reads ``self.triggers``: any active trigger — an RSS feed, a schedule, an
+        inbound webhook — drives the project through the same pipeline without a
+        repo, so a project with one is not blocked. Callers that serialize more
+        than one project should eager-load the relationship.
+        """
+        mode = (
+            self.autopilot_mode
+            if isinstance(self.autopilot_mode, AutopilotMode)
+            else AutopilotMode(self.autopilot_mode)
+        )
+        if mode == AutopilotMode.OFF:
+            return None
+        if any(trigger.is_active for trigger in self.triggers):
+            return None
+        if not self.repo_url:
+            return (
+                "No repository is linked and no trigger is set, so nothing can "
+                "start a piece."
+            )
+        if self.repo_full_name is None:
+            return (
+                "The repository URL is not a GitHub repo, which is the only "
+                "kind the scan can read."
+            )
+        return None
+
     def brief(self) -> dict[str, Any]:
         """The project facts a prompt needs, in one dict."""
         return {

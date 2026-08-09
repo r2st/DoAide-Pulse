@@ -281,8 +281,34 @@ def scan_all_projects() -> dict:
                 )
             )
         )
+        # A project set to draft or auto but with no repo is silently outside
+        # the query above — it will never scan, and until this line the only
+        # evidence was that it never produced anything. Named here so the fact
+        # is discoverable from the logs as well as the projects page.
+        any_trigger = select(Trigger.project_id).where(Trigger.is_active.is_(True))
+        stranded = list(
+            db.scalars(
+                select(Project.name)
+                .join(User, User.id == Project.user_id)
+                .where(
+                    Project.is_active.is_(True),
+                    User.is_active.is_(True),
+                    Project.repo_url.is_(None),
+                    Project.autopilot_mode != AutopilotMode.OFF,
+                    Project.id.not_in(any_trigger),
+                )
+            )
+        )
     finally:
         db.close()
+
+    if stranded:
+        logger.warning(
+            "autopilot is on for %d project(s) with no repo and no trigger, "
+            "so they can never scan: %s",
+            len(stranded),
+            ", ".join(stranded),
+        )
 
     # Dispatch each project as a separate Celery task so they run in parallel
     # across workers instead of blocking a single task for the entire fleet.

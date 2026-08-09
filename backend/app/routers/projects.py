@@ -6,7 +6,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
 from app.database import get_db
@@ -92,6 +92,7 @@ def _to_out(
         **{
             **_project_fields(project),
             "repo_full_name": project.repo_full_name,
+            "autopilot_blocked_reason": project.autopilot_blocked_reason,
             "content_count": content_count,
             "published_count": published_count,
         }
@@ -120,7 +121,12 @@ def list_projects(
 ) -> list[ProjectOut]:
     projects = list(
         db.scalars(
-            select(Project).where(Project.user_id == user.id).order_by(Project.name)
+            select(Project)
+            .where(Project.user_id == user.id)
+            # `autopilot_blocked_reason` reads `project.triggers`; without this
+            # the list page emits one extra query per project to find out.
+            .options(selectinload(Project.triggers))
+            .order_by(Project.name)
         )
     )
     counts = _batch_counts(db, [p.id for p in projects])

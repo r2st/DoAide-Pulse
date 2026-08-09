@@ -145,6 +145,9 @@ class ProjectOut(ProjectBase):
     id: int
     slug: str
     repo_full_name: str | None = None
+    #: Set when the autopilot is on but cannot possibly fire — see
+    #: ``Project.autopilot_blocked_reason``. ``None`` when it is fine.
+    autopilot_blocked_reason: str | None = None
     last_seen_commit_sha: str | None = None
     last_seen_release_tag: str | None = None
     last_scanned_at: datetime | None = None
