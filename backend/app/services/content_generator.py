@@ -14,6 +14,18 @@ a deterministic template built from the project record and the repo activity.
 It is not a good post, and it is marked ``confidence=0.0`` so the autopilot will
 never publish it unreviewed, but it is a draft a human can open and fix. The
 alternative, a 500 in a background task, loses the trigger entirely.
+
+A fallback carries **why** it fell back, in ``GeneratedContent.fallback_reason``.
+The two causes need opposite handling upstream and had been indistinguishable:
+
+* :data:`FALLBACK_UNUSABLE` — a provider answered and what came back was junk.
+  Asking again gets the same junk, so the template is the final answer and the
+  caller should keep it.
+* :data:`FALLBACK_NO_PROVIDER` — nothing answered at all (every key rate-limited,
+  every circuit open). Nothing was written because nothing was *asked*, and the
+  condition clears on its own when the quota resets. A caller holding a
+  watermark must not advance it on this one — see
+  :class:`app.services.content_pipeline.GenerationUnavailable`.
 """
 from __future__ import annotations
 
@@ -27,6 +39,11 @@ from app.models.project import Project, Tone
 from app.services import ai, formats, seo
 from app.services.github_client import RepoActivity
 from app.services.signals import TriggerSignal, from_repo_activity
+
+#: A provider answered; the body it returned was unusable. Not worth retrying.
+FALLBACK_UNUSABLE = "unusable"
+#: No provider answered at all. Transient — retry once the quota resets.
+FALLBACK_NO_PROVIDER = "no_provider"
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +135,9 @@ class GeneratedContent:
     model: str | None = None
     #: True when the provider chain failed and this is the static template.
     is_fallback: bool = False
+    #: Why it fell back — :data:`FALLBACK_UNUSABLE` or
+    #: :data:`FALLBACK_NO_PROVIDER`. Empty when this is a real generation.
+    fallback_reason: str = ""
 
 
 def content_from_generated(
@@ -275,6 +295,8 @@ def _fallback(
     content_type: ContentType,
     activity: RepoActivity | None,
     signal: TriggerSignal | None = None,
+    *,
+    reason: str = FALLBACK_NO_PROVIDER,
 ) -> GeneratedContent:
     """A usable draft assembled from the record when every provider is down.
 
@@ -287,7 +309,8 @@ def _fallback(
 
     if shape != formats.ContentFormat.ARTICLE:
         return _fallback_shaped(
-            shape, brief, content_type, _as_signal(activity, signal), digest
+            shape, brief, content_type, _as_signal(activity, signal), digest,
+            reason=reason,
         )
 
     sections = [
@@ -319,6 +342,7 @@ def _fallback(
         focus_keyword=keywords[0] if keywords else "",
         confidence=0.0,
         is_fallback=True,
+        fallback_reason=reason,
     )
 
 
@@ -328,6 +352,8 @@ def _fallback_shaped(
     content_type: ContentType,
     signal: TriggerSignal | None,
     digest: str,
+    *,
+    reason: str = FALLBACK_NO_PROVIDER,
 ) -> GeneratedContent:
     """The provider-is-down draft for a thread or a changelog.
 
@@ -381,6 +407,7 @@ def _fallback_shaped(
         focus_keyword=keywords[0] if keywords else "",
         confidence=0.0,
         is_fallback=True,
+        fallback_reason=reason,
     )
 
 
@@ -454,7 +481,9 @@ def generate(
             project.id,
             exc,
         )
-        return _fallback(project, content_type, activity, signal)
+        return _fallback(
+            project, content_type, activity, signal, reason=FALLBACK_NO_PROVIDER
+        )
 
     return _assemble(payload, completion, project, content_type, activity, signal)
 
@@ -490,7 +519,11 @@ def _assemble(
             shape.value,
             reason or "reasoning transcript",
         )
-        return _fallback(project, content_type, activity, signal)
+        # A provider *did* answer here — retrying buys nothing, so this template
+        # is the final answer rather than a placeholder to come back to.
+        return _fallback(
+            project, content_type, activity, signal, reason=FALLBACK_UNUSABLE
+        )
 
     if not title or ai.looks_like_reasoning(title):
         title = f"{project.name}: {content_type.label}"

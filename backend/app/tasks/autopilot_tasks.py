@@ -14,6 +14,13 @@ Step 5 happens **whatever the outcome**, including when generation falls back to
 a template. A watermark that only advances on success means one bad scan makes
 every subsequent scan re-report the same backlog, and the daily cap then burns
 itself on the same commits every day.
+
+The single exception is a *total provider outage* — nothing answered, so nothing
+was asked and nothing was written. That is the same situation as GitHub
+rate-limiting the read, and it gets the same answer: leave the watermark, write
+nothing, come back later. It is safe to hold here precisely because the
+condition ends on its own (free-tier quotas reset daily) rather than needing a
+human, so the backlog this defers is one the next sweep clears.
 """
 from __future__ import annotations
 
@@ -124,7 +131,17 @@ def scan_project(project_id: int) -> dict:
         # registering a five-year-old project produces a post about five years
         # of history.
         first_scan = project.last_seen_commit_sha is None
-        result = _act_on(db, project, activity, first_scan=first_scan)
+        try:
+            result = _act_on(db, project, activity, first_scan=first_scan)
+        except content_pipeline.GenerationUnavailable as exc:
+            # Nothing was written and the watermark stays put, so the next sweep
+            # sees these same commits and writes about them properly. Rolled
+            # back explicitly: the ideas banked above this point belong to the
+            # piece that was not written, and would otherwise be re-banked as
+            # duplicates every scan until the quota returns.
+            db.rollback()
+            logger.warning("autopilot paused on project %s: %s", project_id, exc)
+            return {"project_id": project_id, "status": "llm_unavailable"}
 
         project.last_seen_commit_sha = activity.head_sha
         project.last_seen_release_tag = activity.latest_tag
@@ -223,6 +240,8 @@ def _act_on(
             "release_tag": activity.new_release.tag if activity.new_release else None,
             "commit_count": len(activity.new_commits),
         },
+        # The scan can read the same commits again — see the module docstring.
+        defer_on_outage=True,
     )
     return routed.summary()
 

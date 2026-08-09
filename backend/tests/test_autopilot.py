@@ -118,11 +118,39 @@ def test_a_handful_of_commits_is_below_the_threshold(db, project, stub_github):
     assert db.query(Content).count() == 0
 
 
-def test_a_release_always_warrants_a_post(db, project, stub_github):
+def _modest_generation(monkeypatch):
+    """A real generation the model is not confident about.
+
+    Needed wherever the test is about *routing* rather than about the provider
+    chain. No provider is configured in tests, so without a stub the autopilot
+    now defers the scan entirely (see ``test_llm_outage_watermark``) and never
+    reaches the decision under test.
+    """
+    from app.services.content_generator import GeneratedContent
+
+    monkeypatch.setattr(
+        autopilot_tasks.content_generator,
+        "generate",
+        lambda project, content_type, **kw: GeneratedContent(
+            title="Herald 1.2.0 is out",
+            body_markdown="## What changed\n\n" + ("Real prose. " * 200),
+            excerpt="Herald 1.2.0 is out.",
+            meta_description="Herald 1.2.0 is out, with a faster publish sweep.",
+            keywords=["herald"],
+            tags=["python"],
+            confidence=0.2,
+            provider="openrouter",
+            model="openai/gpt-oss-20b:free",
+        ),
+    )
+
+
+def test_a_release_always_warrants_a_post(db, project, stub_github, monkeypatch):
     project.autopilot_mode = AutopilotMode.DRAFT
     project.last_seen_commit_sha = "old"
     db.commit()
     stub_github["set"](make_activity(commits=1, release=True))
+    _modest_generation(monkeypatch)
 
     result = autopilot_tasks.scan_project(project.id)
 
@@ -228,13 +256,16 @@ def test_a_confident_piece_with_live_links_publishes(
     assert db.query(Content).one().source["dead_links"] == []
 
 
-def test_auto_mode_still_reviews_a_low_confidence_draft(db, project, stub_github):
-    """No provider is configured, so generation falls back at confidence 0.0."""
+def test_auto_mode_still_reviews_a_low_confidence_draft(
+    db, project, stub_github, monkeypatch
+):
+    """Auto is permission to publish what the model stands behind, not everything."""
     project.autopilot_mode = AutopilotMode.AUTO
     project.autopilot_platforms = ["devto"]
     project.last_seen_commit_sha = "old"
     db.commit()
     stub_github["set"](make_activity(commits=1, release=True))
+    _modest_generation(monkeypatch)
 
     result = autopilot_tasks.scan_project(project.id)
 
@@ -248,6 +279,7 @@ def test_daily_limit_stops_a_busy_repo(db, project, stub_github, monkeypatch):
     db.commit()
     stub_github["set"](make_activity(commits=1, release=True))
     monkeypatch.setattr(settings, "autopilot_daily_content_limit", 1)
+    _modest_generation(monkeypatch)
 
     assert autopilot_tasks.scan_project(project.id)["status"] == "queued_for_review"
 

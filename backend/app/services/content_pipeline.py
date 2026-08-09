@@ -50,6 +50,24 @@ QUEUED_FOR_REVIEW = "queued_for_review"
 AUTO_PUBLISHED = "auto_published"
 
 
+class GenerationUnavailable(RuntimeError):
+    """No LLM provider could be reached, so nothing was written.
+
+    Distinct from a generation that produced a poor piece: here the model was
+    never asked, because every provider was rate-limited or its circuit was
+    open. Raised only when the caller passes ``defer_on_outage=True`` to say it
+    can ask again — see :func:`generate_and_route`.
+
+    The free-tier quotas this runs on reset daily, so a caller that *can* retry
+    should do nothing at all and let the next sweep write the piece properly.
+    The alternative, which this replaces for those callers, was to store the
+    template: it burned the day's content budget, moved the watermark past the
+    commits, and left a stub in the review queue that no later scan would ever
+    supersede — so a single exhausted quota permanently cost those commits their
+    post.
+    """
+
+
 @dataclass
 class RoutedContent:
     """A generated piece and what was decided about it."""
@@ -90,12 +108,24 @@ def generate_and_route(
     activity: Any = None,
     instructions: str = "",
     source: dict[str, Any],
+    defer_on_outage: bool = False,
 ) -> RoutedContent:
     """Write one piece for *project* and route it. Commits.
 
     *source* is the provenance dict stored on the content row; this adds the
     quality-gate results to it so a reviewer can see why a piece was held back
     without reading the logs.
+
+    *defer_on_outage* decides what happens when no provider answers at all, and
+    the right value follows from one question: **can this signal be read
+    again?** A repo scan and a feed poll can — the watermark is still where it
+    was — so they pass ``True``, nothing is written, and the next sweep produces
+    a real piece instead of a template that permanently occupies the slot.
+    An inbound webhook cannot: the request is gone once it returns, so it keeps
+    the default and takes the template, which is worse than a post and much
+    better than silence.
+
+    Raises :class:`GenerationUnavailable` on that path, having written nothing.
     """
     generated = content_generator.generate(
         project,
@@ -104,6 +134,20 @@ def generate_and_route(
         signal=signal,
         instructions=instructions,
     )
+
+    # Before anything is added to the session: a total provider outage must
+    # leave no trace, or the retry it is asking for cannot happen cleanly.
+    if defer_on_outage and (
+        generated.fallback_reason == content_generator.FALLBACK_NO_PROVIDER
+    ):
+        logger.warning(
+            "no LLM provider reachable — wrote nothing for project %s (%s)",
+            project.id,
+            content_type.value,
+        )
+        raise GenerationUnavailable(
+            f"No LLM provider was reachable while writing for project {project.id}."
+        )
 
     mode = (
         project.autopilot_mode
@@ -330,6 +374,7 @@ def publish_now(publication_id: int) -> None:
 __all__ = [
     "AUTO_PUBLISHED",
     "QUEUED_FOR_REVIEW",
+    "GenerationUnavailable",
     "RoutedContent",
     "generate_and_route",
     "publish_now",
