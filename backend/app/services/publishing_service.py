@@ -675,9 +675,24 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
     live task behind it. ``updated_at`` is the clock — it moves on the claim, so
     it measures the age of *this* claim rather than of the row.
 
-    The attempt is counted: it is genuinely spent, and a publish that reliably
-    kills its worker should exhaust its retries and be looked at by a human
-    rather than cycling forever.
+    The attempt is counted *here*, and it has to be: it is genuinely spent, and
+    a publish that reliably kills its worker should exhaust its retries and be
+    looked at by a human rather than cycling forever.
+
+    Counting it is this function's job because the increment :func:`execute`
+    does not survive the death this function is cleaning up after. ``execute``
+    does ``attempts += 1`` and *flushes* — it does not commit, and nothing
+    between that flush and the adapter call commits either, since
+    ``_credentials_for`` only reads and the adapter never sees the session. The
+    transaction is still open when the worker is killed, so the increment rolls
+    back with it and the row arrives here carrying the count from *before* the
+    attempt that did the killing. Reading that count and re-arming on it was a
+    free retry, which made a payload that segfaults its worker every time an
+    infinite loop: claim, die, roll back, re-arm at the same number, claim
+    again — and never an error anybody would be shown, because the row looked
+    busy the whole way round. A row in this query is proof the attempt happened;
+    only a commit inside ``_fail``, ``_defer`` or the success path moves a row
+    out of ``publishing``, and each of those persists its own increment.
     """
     cutoff = (now or utcnow()) - timedelta(seconds=settings.publish_stuck_after_seconds)
     stuck = list(
@@ -689,6 +704,7 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
         )
     )
     for publication in stuck:
+        publication.attempts += 1
         logger.warning(
             "publication %s to %s was left mid-publish; re-arming (attempt %d)",
             publication.id,
