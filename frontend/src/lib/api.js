@@ -137,6 +137,21 @@ export const api = {
   reviewQueue: () => request("/content/queue/review"),
   publicationQueue: () => request("/content/queue/publications"),
 
+  // ---- preview links ----
+  // A shareable, unauthenticated, read-only URL for one draft. The URL only
+  // ever appears in the response to `create` — a later `list` shows a link
+  // exists and lets it be revoked, not what it is.
+  listPreviewLinks: (contentId) => request(`/content/${contentId}/preview-links`),
+  createPreviewLink: (contentId, ttlHours) =>
+    request(`/content/${contentId}/preview-links`, {
+      method: "POST",
+      body: ttlHours ? { ttl_hours: ttlHours } : {},
+    }),
+  revokePreviewLink: (contentId, linkId) =>
+    request(`/content/${contentId}/preview-links/${linkId}`, { method: "DELETE" }),
+  // Unauthenticated on purpose — this is what the link itself resolves.
+  publicPreview: (token) => request(`/content/preview/${token}`, { auth: false }),
+
   // ---- calendar ----
   calendar: (params = {}) => request(`/calendar${qs(params)}`),
   reschedule: (contentId, payload) =>

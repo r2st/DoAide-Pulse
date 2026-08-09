@@ -13,6 +13,7 @@ from app.models.content import (
 from app.models.metrics import ContentMetric
 from app.models.password_reset import PasswordResetToken
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
+from app.models.preview_link import PreviewLink
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.template import ContentTemplate, TemplateMode
@@ -41,6 +42,7 @@ __all__ = [
     "PasswordResetToken",
     "Platform",
     "PlatformConnection",
+    "PreviewLink",
     "Project",
     "Publication",
     "PublicationStatus",

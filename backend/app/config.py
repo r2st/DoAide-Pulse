@@ -65,6 +65,13 @@ class Settings(BaseSettings):
     # link sitting in an inbox is not a standing key to the account.
     password_reset_token_ttl_minutes: int = 60
 
+    # ---- Draft preview links ----
+    # A shareable, unauthenticated, read-only link to one draft. Long enough
+    # that a reviewer gets to it without a deadline; the max is a ceiling on
+    # what the author can ask for, not a default.
+    preview_link_default_ttl_hours: int = 168  # 7 days
+    preview_link_max_ttl_hours: int = 720  # 30 days
+
     # ---- SMTP (password reset mail — the only mail Herald sends) ----
     # With SMTP_HOST blank the reset link is written to the log instead of sent.
     # That is a deliberate fallback for a self-hosted single-user install, not a
@@ -404,6 +411,8 @@ class Settings(BaseSettings):
         "learned_cadence_min_bucket",
         "learned_cadence_min_samples",
         "password_reset_token_ttl_minutes",
+        "preview_link_default_ttl_hours",
+        "preview_link_max_ttl_hours",
         "publish_max_retries",
         "publish_stuck_after_seconds",
         "trigger_daily_content_limit",

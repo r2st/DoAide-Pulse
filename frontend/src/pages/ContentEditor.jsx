@@ -567,6 +567,7 @@ export default function ContentEditor() {
             contentId={data.id}
           />
           <LinksPanel contentId={data.id} />
+          <PreviewLinksPanel contentId={data.id} />
           <PublicationsPanel content={data} onChanged={reload} />
           {!locked && (
             <button className="btn-quiet w-full text-bad" onClick={remove}>
@@ -903,6 +904,124 @@ function LinksPanel({ contentId }) {
               ))}
           </ul>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Shareable, read-only links to this draft — a second pair of eyes without
+ * giving out an account. The URL only ever appears once, in the response to
+ * creating it: a link in the list below is shown as "issued" and "revoke",
+ * never re-copyable, because the server only ever stored its hash.
+ */
+function PreviewLinksPanel({ contentId }) {
+  const toast = useToast();
+  const { data: links, loading, reload } = useApi(
+    () => api.listPreviewLinks(contentId),
+    [contentId],
+  );
+  const [creating, setCreating] = useState(false);
+  const [justCreated, setJustCreated] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  async function create() {
+    setCreating(true);
+    try {
+      const link = await api.createPreviewLink(contentId);
+      setJustCreated(link);
+      await reload();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function copy(url) {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied");
+    } catch {
+      toast.error("Could not copy — select the link and copy it manually.");
+    }
+  }
+
+  async function revoke(linkId) {
+    setBusyId(linkId);
+    try {
+      await api.revokePreviewLink(contentId, linkId);
+      if (justCreated?.id === linkId) setJustCreated(null);
+      await reload();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  // The just-created link already has its own callout with the full URL;
+  // listing it again below would say the same thing twice.
+  const live = (links ?? []).filter(
+    (link) => !link.revoked_at && link.id !== justCreated?.id,
+  );
+
+  return (
+    <div className="panel space-y-3 p-5">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-ink-900">Share preview</h2>
+        <button className="btn-quiet -mr-2.5" onClick={create} disabled={creating}>
+          {creating ? "Creating…" : "New link"}
+        </button>
+      </div>
+
+      {!loading && live.length === 0 && !justCreated && (
+        <p className="text-xs text-ink-400">
+          A read-only link, no account required — for a reviewer who is not a
+          Herald user.
+        </p>
+      )}
+
+      {justCreated && !justCreated.revoked_at && (
+        <div className="rounded-lg border border-line bg-canvas px-3 py-2">
+          <div className="flex items-center gap-2">
+            <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-ink-700">
+              {justCreated.url}
+            </code>
+            <button className="btn-quiet shrink-0" onClick={() => copy(justCreated.url)}>
+              Copy
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-ink-400">
+            Shown once — Herald only keeps a hash of it after this.
+          </p>
+        </div>
+      )}
+
+      {live.length > 0 && (
+        <ul className="space-y-1.5">
+          {live.map((link) => (
+            <li
+              key={link.id}
+              className="flex items-center justify-between gap-2 rounded-lg bg-canvas px-3 py-2 text-xs text-ink-500"
+            >
+              <span>
+                expires {formatWhen(link.expires_at)}
+                {" · "}
+                {link.view_count === 0
+                  ? "never opened"
+                  : `viewed ${link.view_count}× · last ${formatWhen(link.last_viewed_at)}`}
+              </span>
+              <button
+                className="btn-quiet shrink-0 text-bad"
+                onClick={() => revoke(link.id)}
+                disabled={busyId === link.id}
+              >
+                Revoke
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

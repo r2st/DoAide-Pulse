@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -16,6 +16,7 @@ from app.models.content import Content, ContentIdea, ContentStatus, ContentType,
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.content import (
     BulkContentIn,
     BulkFailureOut,
@@ -35,7 +36,10 @@ from app.schemas.content import (
     InternalLinkSuggestionOut,
     LinkCheckOut,
     LinkStatusOut,
+    PreviewLinkCreate,
+    PreviewLinkOut,
     PublicationOut,
+    PublicPreviewOut,
     PublishRequestIn,
     RepurposeOut,
     ScheduleContentIn,
@@ -51,6 +55,7 @@ from app.services import (
     headlines,
     inline_edit,
     link_check,
+    preview_links,
     publishers,
     publishing_service,
     repurpose,
@@ -354,6 +359,36 @@ def bulk_publish_content(
             continue
         succeeded.append(content_id)
     return BulkResultOut(succeeded=succeeded, failed=failed)
+
+
+@router.get("/preview/{token}", response_model=PublicPreviewOut)
+@limiter.limit(settings.rate_limit_public_read)
+def get_public_preview(
+    token: str,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> PublicPreviewOut:
+    """A reviewer's view of one draft, no bearer token required.
+
+    Declared ahead of ``/{content_id}`` so a token here is never swallowed by
+    that route's int-typed path param — see the module docstring notes on
+    ``/queue/*`` and ``/bulk/*`` above for the same reason. Rate-limited like
+    every other anonymous read in the API: a token is unguessable, but "no
+    token required" and "free to hammer" are different claims.
+    """
+    content = preview_links.resolve(db, token)
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    return PublicPreviewOut(
+        title=content.title,
+        body_markdown=content.body_markdown,
+        excerpt=content.excerpt,
+        cover_image_url=content.cover_image_url,
+        word_count=content.word_count,
+        read_minutes=content.read_minutes,
+        project_name=content.project.name if content.project else None,
+    )
 
 
 @router.get("/{content_id}/internal-links", response_model=list[InternalLinkSuggestionOut])
@@ -660,6 +695,65 @@ def _to_link_check(statuses: list[link_check.LinkStatus]) -> LinkCheckOut:
         broken_count=len(link_check.broken(statuses)),
         checked=len(statuses),
     )
+
+
+def _to_preview_link(link, *, url: str | None = None) -> PreviewLinkOut:
+    return PreviewLinkOut(
+        id=link.id,
+        url=url,
+        expires_at=link.expires_at,
+        revoked_at=link.revoked_at,
+        view_count=link.view_count,
+        last_viewed_at=link.last_viewed_at,
+        created_at=link.created_at,
+    )
+
+
+@router.get("/{content_id}/preview-links", response_model=list[PreviewLinkOut])
+def list_preview_links(
+    content_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[PreviewLinkOut]:
+    """Every link ever issued for this draft. The URL only ever appears once,
+    at creation — a listing can show that a link exists and let it be revoked,
+    not what it is."""
+    content = _owned_content(content_id, db, user)
+    return [_to_preview_link(link) for link in preview_links.list_for_content(db, content.id)]
+
+
+@router.post(
+    "/{content_id}/preview-links",
+    response_model=PreviewLinkOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_preview_link(
+    content_id: int,
+    payload: PreviewLinkCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PreviewLinkOut:
+    content = _owned_content(content_id, db, user)
+    link, raw_token = preview_links.issue(db, content, ttl_hours=payload.ttl_hours)
+    return _to_preview_link(link, url=preview_links.preview_url(raw_token))
+
+
+@router.delete("/{content_id}/preview-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_preview_link(
+    content_id: int,
+    link_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    content = _owned_content(content_id, db, user)
+    link = next(
+        (row for row in preview_links.list_for_content(db, content.id) if row.id == link_id),
+        None,
+    )
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    preview_links.revoke(db, link)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # --------------------------------------------------------------------------- #

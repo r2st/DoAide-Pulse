@@ -7,6 +7,7 @@ import ContentEditor from "./pages/ContentEditor";
 import ContentList from "./pages/ContentList";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
+import PreviewPage from "./pages/PreviewPage";
 import Projects from "./pages/Projects";
 import Publish from "./pages/Publish";
 import Settings from "./pages/Settings";
@@ -32,6 +33,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Unauthenticated on purpose — see app.services.preview_links. */}
+      <Route path="/preview/:token" element={<PreviewPage />} />
 
       <Route
         path="/"

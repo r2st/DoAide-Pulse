@@ -16,6 +16,9 @@ vi.mock("../lib/api", () => ({
     checkLinks: vi.fn(),
     socialCards: vi.fn(),
     editPassage: vi.fn(),
+    listPreviewLinks: vi.fn(),
+    createPreviewLink: vi.fn(),
+    revokePreviewLink: vi.fn(),
   },
 }));
 
@@ -86,6 +89,7 @@ beforeEach(() => {
   window.localStorage.clear();
   api.getContent.mockResolvedValue(content());
   api.platforms.mockResolvedValue([]);
+  api.listPreviewLinks.mockResolvedValue([]);
 });
 
 describe("recovering unsaved work", () => {
@@ -680,5 +684,117 @@ describe("approving", () => {
     await userEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     expect(toast.success).toHaveBeenCalledWith("Approved — ready to publish");
+  });
+});
+
+describe("sharing a preview link", () => {
+  beforeEach(() => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+  });
+
+  it("shows nothing to revoke when there are no live links", async () => {
+    api.listPreviewLinks.mockResolvedValue([]);
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    expect(
+      await screen.findByText(/read-only link, no account required/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the url once, right after creating a link", async () => {
+    api.listPreviewLinks.mockResolvedValue([]);
+    api.createPreviewLink.mockResolvedValue({
+      id: 9,
+      url: "https://herald.example.com/preview/abc123",
+      expires_at: "2026-08-16T10:00:00Z",
+      revoked_at: null,
+      view_count: 0,
+      last_viewed_at: null,
+    });
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: "New link" }));
+
+    expect(
+      await screen.findByText("https://herald.example.com/preview/abc123"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Shown once/)).toBeInTheDocument();
+  });
+
+  it("copies the link to the clipboard", async () => {
+    api.listPreviewLinks.mockResolvedValue([]);
+    api.createPreviewLink.mockResolvedValue({
+      id: 9,
+      url: "https://herald.example.com/preview/abc123",
+      expires_at: "2026-08-16T10:00:00Z",
+      revoked_at: null,
+      view_count: 0,
+      last_viewed_at: null,
+    });
+    draw();
+    await screen.findByDisplayValue("Saved title");
+    await userEvent.click(screen.getByRole("button", { name: "New link" }));
+    await screen.findByText("https://herald.example.com/preview/abc123");
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "https://herald.example.com/preview/abc123",
+    );
+    expect(toast.success).toHaveBeenCalledWith("Link copied");
+  });
+
+  it("lists an existing link without its url", async () => {
+    api.listPreviewLinks.mockResolvedValue([
+      {
+        id: 4,
+        url: null,
+        expires_at: "2026-08-16T10:00:00Z",
+        revoked_at: null,
+        view_count: 3,
+        last_viewed_at: "2026-08-10T10:00:00Z",
+      },
+    ]);
+    draw();
+
+    expect(await screen.findByText(/viewed 3×/)).toBeInTheDocument();
+    expect(screen.queryByText(/^https?:\/\//)).not.toBeInTheDocument();
+  });
+
+  it("revoking a link removes it from the list", async () => {
+    api.listPreviewLinks.mockResolvedValueOnce([
+      {
+        id: 4,
+        url: null,
+        expires_at: "2026-08-16T10:00:00Z",
+        revoked_at: null,
+        view_count: 0,
+        last_viewed_at: null,
+      },
+    ]);
+    api.revokePreviewLink.mockResolvedValue(undefined);
+    draw();
+    await screen.findByText(/never opened/);
+
+    api.listPreviewLinks.mockResolvedValueOnce([
+      {
+        id: 4,
+        url: null,
+        expires_at: "2026-08-16T10:00:00Z",
+        revoked_at: "2026-08-09T10:00:00Z",
+        view_count: 0,
+        last_viewed_at: null,
+      },
+    ]);
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+
+    expect(api.revokePreviewLink).toHaveBeenCalledWith(3, 4);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument(),
+    );
   });
 });

@@ -32,6 +32,7 @@ from app.database import Base
 from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.preview_link import PreviewLink
     from app.models.project import Project
     from app.models.publication import Publication
 
@@ -172,6 +173,9 @@ class Content(Base, TimestampMixin):
     project: Mapped[Project] = relationship(back_populates="content")
     publications: Mapped[list[Publication]] = relationship(
         back_populates="content", cascade="all, delete-orphan", lazy="selectin"
+    )
+    preview_links: Mapped[list[PreviewLink]] = relationship(
+        back_populates="content", cascade="all, delete-orphan"
     )
 
     @property

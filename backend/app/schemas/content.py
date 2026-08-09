@@ -502,3 +502,36 @@ class CalendarOut(BaseModel):
     cadence: list[dict] = []
     #: Empty slots the calendar offers as "schedule something here".
     suggested_slots: list[datetime] = []
+
+
+class PreviewLinkCreate(BaseModel):
+    """How long the link should live. Omitted means the configured default."""
+
+    ttl_hours: int | None = Field(default=None, gt=0)
+
+
+class PreviewLinkOut(BaseModel):
+    id: int
+    url: str | None = None
+    expires_at: datetime
+    revoked_at: datetime | None = None
+    view_count: int = 0
+    last_viewed_at: datetime | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PublicPreviewOut(BaseModel):
+    """What an unauthenticated reviewer sees — the piece, nothing about who
+    wrote it or where else it might go out."""
+
+    title: str
+    body_markdown: str
+    excerpt: str
+    cover_image_url: str | None = None
+    word_count: int = 0
+    read_minutes: int = 1
+    project_name: str | None = None
+
+    model_config = {"from_attributes": True}
