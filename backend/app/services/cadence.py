@@ -158,6 +158,13 @@ def next_slot(
 ) -> datetime:
     """The next good time to post on *platform* after *after*.
 
+    The search starts on *after*'s own day and steps forward a day at a time.
+    Today counts whenever its hour has not gone yet: asking at 09:00 on a
+    Tuesday — a day dev.to's rota already likes — must not answer "Wednesday"
+    and throw away the 13:00 slot four hours away. Every caller passes ``now``
+    as *after*, so skipping the current day cost a day off the front of every
+    suggestion the calendar and the optimiser made.
+
     Skips any slot within 12 hours of one already in *taken*, so "schedule the
     next three" spreads them out instead of stacking them on the same morning.
     Searches four weeks ahead and then gives up and returns the last candidate —
@@ -171,17 +178,21 @@ def next_slot(
     """
     cadence = using or cadence_for(platform)
     occupied = taken or []
-    candidate = after
+
+    candidate = after.replace(
+        hour=cadence.best_hour_utc, minute=0, second=0, microsecond=0
+    )
+    # Strictly after: a slot exactly on *after* is the moment the caller is
+    # already standing in, and "the next good time" is the one after it.
+    if candidate <= after:
+        candidate += timedelta(days=1)
 
     for _ in range(28):
-        candidate = (candidate + timedelta(days=1)).replace(
-            hour=cadence.best_hour_utc, minute=0, second=0, microsecond=0
-        )
-        if candidate.weekday() not in cadence.best_weekdays:
-            continue
-        if any(abs((candidate - t).total_seconds()) < 12 * 3600 for t in occupied):
-            continue
-        return candidate
+        if candidate.weekday() in cadence.best_weekdays and not any(
+            abs((candidate - t).total_seconds()) < 12 * 3600 for t in occupied
+        ):
+            return candidate
+        candidate += timedelta(days=1)
 
     return candidate
 
