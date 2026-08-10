@@ -111,11 +111,6 @@ class Curve:
         point = self._covering(hours)
         return point.views if point is not None else None
 
-    def engagement_within(self, hours: float) -> int | None:
-        """Cumulative engagement in the first *hours*, or ``None``."""
-        point = self._covering(hours)
-        return point.engagement if point is not None else None
-
     def gain_between(self, start_hours: float, end_hours: float) -> int | None:
         """Views gained in ``[start_hours, end_hours]``, or ``None``.
 

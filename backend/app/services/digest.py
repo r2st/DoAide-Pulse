@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from html import escape
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -133,6 +133,44 @@ class Digest:
         }
 
 
+def _last_readings_before(
+    db: Session, publication_ids: list[int], moment: datetime
+) -> dict[int, ContentMetric]:
+    """The newest snapshot before *moment*, per publication. One row each.
+
+    The baseline the earliest reported window is measured against. Publications
+    with nothing before *moment* are simply absent — a first appearance has no
+    "before", which :func:`_gains` reads as "the whole first count was gained".
+    """
+    if not publication_ids:
+        return {}
+
+    newest = (
+        select(
+            ContentMetric.publication_id.label("publication_id"),
+            func.max(ContentMetric.captured_at).label("captured_at"),
+        )
+        .where(
+            ContentMetric.publication_id.in_(publication_ids),
+            ContentMetric.captured_at < moment,
+        )
+        .group_by(ContentMetric.publication_id)
+        .subquery()
+    )
+    return {
+        metric.publication_id: metric
+        for metric in db.scalars(
+            select(ContentMetric).join(
+                newest,
+                and_(
+                    ContentMetric.publication_id == newest.c.publication_id,
+                    ContentMetric.captured_at == newest.c.captured_at,
+                ),
+            )
+        )
+    }
+
+
 def _gains(
     db: Session, user_id: int, *, since: datetime, until: datetime
 ) -> tuple[Movement, dict[int, int]]:
@@ -142,6 +180,14 @@ def _gains(
     last reading before it — the counters are cumulative, so a difference is
     the only honest reading of "this week". A publication first seen inside the
     window counts its whole first reading, since it had nothing before.
+
+    Two queries rather than one, and the reason is that ``content_metrics`` only
+    ever grows. Reading every snapshot the user has ever had and discarding all
+    but the last one before the window made the weekly digest cost proportional
+    to how long they had been using Herald — a year of polling every published
+    post, loaded into memory, to answer a question about fourteen days. The
+    first query is bounded by the two windows being compared; the second fetches
+    exactly one baseline row per publication that appears in them.
     """
     span = until - since
     earlier_start = since - span
@@ -151,26 +197,30 @@ def _gains(
         .join(Publication, Publication.id == ContentMetric.publication_id)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
-        .where(Project.user_id == user_id, ContentMetric.captured_at < until)
+        .where(
+            Project.user_id == user_id,
+            ContentMetric.captured_at >= earlier_start,
+            ContentMetric.captured_at < until,
+        )
         .order_by(ContentMetric.publication_id, ContentMetric.captured_at)
     ).all()
 
-    # Per publication, the last reading in each of three periods: before the
-    # comparison window, inside it, and inside the window being reported. Two
-    # differences fall out of that — this week, and the week before it.
-    prior: dict[int, ContentMetric] = {}
+    # Per publication, the last reading in each of the two periods being
+    # compared: the window before the one being reported, and the one being
+    # reported. The third period — everything before both — supplies only the
+    # baseline the earlier window is measured against, and is fetched below.
     baseline: dict[int, ContentMetric] = {}
     latest: dict[int, ContentMetric] = {}
     content_of: dict[int, int] = {}
     for metric, content_id in rows:
         content_of[metric.publication_id] = content_id
         captured = as_aware(metric.captured_at)
-        if captured < earlier_start:
-            prior[metric.publication_id] = metric
-        elif captured < since:
+        if captured < since:
             baseline[metric.publication_id] = metric
         else:
             latest[metric.publication_id] = metric
+
+    prior = _last_readings_before(db, list(content_of), earlier_start)
 
     def _delta(end: ContentMetric | None, start: ContentMetric | None, field_: str) -> int:
         if end is None:

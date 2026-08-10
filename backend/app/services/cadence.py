@@ -214,11 +214,6 @@ def suggest_schedule(
     return slots
 
 
-def weekly_capacity(platforms: list[Platform | str]) -> int:
-    """How many posts a week this set of platforms can absorb in total."""
-    return sum(cadence_for(p).max_per_week for p in platforms)
-
-
 def describe(platform: Platform | str) -> dict:
     """JSON-serializable cadence, for the calendar's sidebar."""
     cadence = cadence_for(platform)
@@ -239,5 +234,4 @@ __all__ = [
     "describe",
     "next_slot",
     "suggest_schedule",
-    "weekly_capacity",
 ]
