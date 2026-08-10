@@ -1,0 +1,249 @@
+"""``publish_tasks``: the paths that only run when something has gone wrong.
+
+The happy path through ``publish_one`` and the atomic claim are covered
+elsewhere (``test_publishing_service.py``, ``test_publish_platform_dedupe.py``,
+``test_stuck_publications.py``). What nothing exercised is what happens *after*
+the claim goes wrong: a row deleted out from under a worker, a soft time limit
+landing mid-publish, and ``cancel_publication`` — which had no test at all
+despite being the only thing standing between a scheduled post and a user who
+has changed their mind.
+"""
+from __future__ import annotations
+
+import pytest
+from celery.exceptions import SoftTimeLimitExceeded
+
+from app.models.content import Content, ContentStatus, ContentType
+from app.models.mixins import utcnow
+from app.models.publication import Platform, Publication, PublicationStatus
+from app.tasks import publish_tasks
+
+
+def _no_close(session):
+    """The test session, wrapped so a task's ``db.close()`` does not end it."""
+
+    class NoCloseProxy:
+        closed = 0
+
+        def __getattr__(self, name):
+            return getattr(session, name)
+
+        def close(self):
+            type(self).closed += 1
+
+    return NoCloseProxy
+
+
+@pytest.fixture(autouse=True)
+def _task_session(db, monkeypatch):
+    proxy = _no_close(db)
+    monkeypatch.setattr(publish_tasks, "SessionLocal", proxy)
+    return proxy
+
+
+@pytest.fixture
+def content(db, project) -> Content:
+    row = Content(
+        project_id=project.id,
+        title="Herald 1.0",
+        slug="herald-1-0",
+        content_type=ContentType.ANNOUNCEMENT,
+        status=ContentStatus.APPROVED,
+        body_markdown="It ships.",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _publication(
+    db,
+    content: Content,
+    *,
+    status: PublicationStatus = PublicationStatus.PENDING,
+    platform: Platform = Platform.DEVTO,
+) -> Publication:
+    row = Publication(content_id=content.id, platform=platform, status=status)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+# --------------------------------------------------------------------------- #
+# publish_one: the row is gone                                                 #
+# --------------------------------------------------------------------------- #
+
+
+def test_publishing_a_row_that_no_longer_exists_is_reported_not_raised(_task_session):
+    """A piece deleted between dispatch and pickup.
+
+    The claim matches nothing and ``db.get`` returns nothing. Raising would earn
+    three Celery retries against a row that will never exist again.
+    """
+    result = publish_tasks.publish_one(4242)
+
+    assert result == {"publication_id": 4242, "status": "missing"}
+    assert _task_session.closed == 1
+
+
+# --------------------------------------------------------------------------- #
+# publish_one: the soft time limit                                             #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_publish_that_runs_out_of_time_is_re_armed_rather_than_stranded(
+    db, content, monkeypatch
+):
+    """Without this the row sits in ``publishing`` forever.
+
+    The claim has already moved it out of every state the beat sweep looks at,
+    so a worker killed at the hard limit would leave a publication no sweep can
+    see and no user can retry. Recording the timeout puts it back in ``pending``,
+    which *is* the retry queue.
+    """
+    publication = _publication(db, content)
+
+    def _slow(session, row):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(publish_tasks.publishing_service, "execute", _slow)
+
+    result = publish_tasks.publish_one(publication.id)
+
+    assert result == {"publication_id": publication.id, "status": "timeout"}
+    db.refresh(publication)
+    assert publication.status is PublicationStatus.PENDING
+    assert "timed out" in (publication.error or "")
+
+
+def test_a_timeout_after_the_post_went_out_does_not_re_arm_it(db, content, monkeypatch):
+    """The dangerous case: the platform accepted the post and *then* we ran out
+    of time. Re-arming a published row would publish it a second time.
+    """
+    publication = _publication(db, content)
+
+    def _publishes_then_times_out(session, row):
+        row.status = PublicationStatus.PUBLISHED
+        row.external_url = "https://dev.to/u/herald-1-0"
+        session.commit()
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(
+        publish_tasks.publishing_service, "execute", _publishes_then_times_out
+    )
+
+    result = publish_tasks.publish_one(publication.id)
+
+    assert result == {"publication_id": publication.id, "status": "timeout"}
+    db.refresh(publication)
+    assert publication.status is PublicationStatus.PUBLISHED, (
+        "a terminal row must not be dragged back into the retry queue"
+    )
+    assert publication.error is None
+
+
+def test_a_timeout_whose_bookkeeping_also_fails_still_returns(db, content, monkeypatch):
+    """The inner ``try`` exists because the session may be the reason we timed
+    out. If recording the timeout raises too, the task must still return rather
+    than turning a soft limit into an unhandled exception and three retries.
+    """
+    publication = _publication(db, content)
+
+    def _slow(session, row):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(publish_tasks.publishing_service, "execute", _slow)
+
+    calls = {"get": 0}
+    real_get = type(db).get
+
+    def _get(self, *args, **kwargs):
+        calls["get"] += 1
+        if calls["get"] > 1:  # the one inside the timeout handler
+            raise RuntimeError("connection already gone")
+        return real_get(db, *args, **kwargs)
+
+    monkeypatch.setattr(type(db), "get", _get)
+
+    result = publish_tasks.publish_one(publication.id)
+
+    assert result == {"publication_id": publication.id, "status": "timeout"}
+
+
+# --------------------------------------------------------------------------- #
+# cancel_publication                                                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_cancelling_a_scheduled_publication_stops_it(db, content):
+    publication = _publication(db, content, status=PublicationStatus.SCHEDULED)
+    publication.scheduled_for = utcnow()
+    db.commit()
+
+    assert publish_tasks.cancel_publication(publication.id) == {
+        "publication_id": publication.id,
+        "cancelled": True,
+    }
+    db.refresh(publication)
+    assert publication.status is PublicationStatus.CANCELLED
+
+
+def test_cancelling_a_publication_that_is_gone_is_not_an_error(_task_session):
+    assert publish_tasks.cancel_publication(777) == {
+        "publication_id": 777,
+        "cancelled": False,
+    }
+    assert _task_session.closed == 1
+
+
+@pytest.mark.parametrize(
+    "status",
+    [PublicationStatus.PUBLISHED, PublicationStatus.FAILED, PublicationStatus.CANCELLED],
+)
+def test_a_terminal_publication_cannot_be_cancelled(db, content, status):
+    """Cancelling a published post would say "cancelled" about something that is
+    live on the internet. The answer is no, and the status is left alone.
+    """
+    publication = _publication(db, content, status=status)
+
+    assert publish_tasks.cancel_publication(publication.id)["cancelled"] is False
+    db.refresh(publication)
+    assert publication.status is status
+
+
+# --------------------------------------------------------------------------- #
+# publish_due: the broker-down fallback                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_sweep_publishes_inline_when_the_broker_is_unreachable(
+    db, content, monkeypatch
+):
+    """A dropped publication is worse than a slow sweep.
+
+    ``publish_one.delay`` raising means the queue is unreachable; the sweep runs
+    the work on its own thread rather than returning as though it dispatched it.
+    """
+    publication = _publication(db, content)
+    inline: list[int] = []
+
+    def _broker_down(publication_id):
+        raise ConnectionError("no broker")
+
+    monkeypatch.setattr(publish_tasks.publish_one, "delay", _broker_down)
+    monkeypatch.setattr(
+        publish_tasks.publishing_service,
+        "execute",
+        lambda session, row: inline.append(row.id),
+    )
+
+    result = publish_tasks.publish_due()
+
+    assert result["dispatched"] == 1
+    assert inline == [publication.id], "the due row must still have been published"
+
+
+def test_the_sweep_reports_nothing_when_nothing_is_due(_task_session):
+    assert publish_tasks.publish_due() == {"dispatched": 0, "reclaimed": 0}
