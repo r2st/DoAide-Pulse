@@ -499,3 +499,133 @@ def test_the_preference_can_be_turned_off_and_back_on(client, auth):
         "/api/v1/auth/me", headers=auth, json={"weekly_digest_enabled": True}
     )
     assert resp.json()["weekly_digest_enabled"] is True
+
+
+# --------------------------------------------------------------------------- #
+# What building one costs                                                      #
+# --------------------------------------------------------------------------- #
+#
+# The "failed" and "upcoming" sections each read `p.content.title` inside a
+# `limit(5)` loop. The join above those queries only filters — it does not
+# populate `Publication.content` — so the title lazy-loaded once per row. Ten
+# avoidable round trips, bounded per user but paid again for every user on the
+# instance on the same weekly pass.
+
+
+def _publication(db, piece, *, status, index, **kwargs) -> Publication:
+    row = Publication(
+        content_id=piece.id,
+        platform=Platform.DEVTO,
+        status=status,
+        **kwargs,
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def _own_piece(db, project, index: int) -> Content:
+    """A published piece of its own, so the identity map cannot answer for it.
+
+    Sharing one content row across the five publications would make a lazy load
+    indistinguishable from an eager one after the first hit.
+    """
+    row = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title=f"Piece {index}",
+        slug=f"piece-{index}",
+        body_markdown="word " * 100,
+        status=ContentStatus.PUBLISHED,
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_the_failed_section_loads_its_titles_with_the_query(
+    db, user, project, sql_log
+):
+    for i in range(5):
+        _publication(
+            db,
+            _own_piece(db, project, i),
+            status=PublicationStatus.FAILED,
+            index=i,
+            error="the platform said no",
+        )
+    db.expire_all()
+    sql_log.clear()
+
+    result = digest.build(db, user)
+
+    assert len(result.failed) == 5
+    assert all(row["title"] for row in result.failed)
+    # `content` is selected only as part of the publication queries — never on
+    # its own, once per row, to fill in a title.
+    standalone = [
+        s
+        for s in sql_log
+        if s.startswith("SELECT") and " FROM content WHERE content.id = ?" in s
+    ]
+    assert standalone == [], f"{len(standalone)} lazy title loads"
+
+
+def test_the_upcoming_section_loads_its_titles_with_the_query(
+    db, user, project, sql_log
+):
+    for i in range(5):
+        _publication(
+            db,
+            _own_piece(db, project, 10 + i),
+            status=PublicationStatus.SCHEDULED,
+            index=i,
+            scheduled_for=_now() + timedelta(days=i + 1),
+        )
+    db.expire_all()
+    sql_log.clear()
+
+    result = digest.build(db, user)
+
+    assert len(result.upcoming) == 5
+    assert all(row["title"] for row in result.upcoming)
+    standalone = [
+        s
+        for s in sql_log
+        if s.startswith("SELECT") and " FROM content WHERE content.id = ?" in s
+    ]
+    assert standalone == [], f"{len(standalone)} lazy title loads"
+
+
+def test_building_a_digest_costs_the_same_for_one_row_as_for_five(
+    db, user, project, sql_log
+):
+    """The `limit(5)` caps the damage, not the shape. One row and five rows
+    costing the same is what says the titles arrive joined.
+    """
+    _publication(
+        db,
+        _own_piece(db, project, 20),
+        status=PublicationStatus.FAILED,
+        index=0,
+        error="nope",
+    )
+    db.expire_all()
+    sql_log.clear()
+    digest.build(db, user)
+    one = len([s for s in sql_log if s.startswith("SELECT")])
+
+    for i in range(4):
+        _publication(
+            db,
+            _own_piece(db, project, 21 + i),
+            status=PublicationStatus.FAILED,
+            index=i,
+            error="nope",
+        )
+    db.expire_all()
+    sql_log.clear()
+    digest.build(db, user)
+    five = len([s for s in sql_log if s.startswith("SELECT")])
+
+    assert one == five, f"{five - one} extra queries for 4 extra failures"

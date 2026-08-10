@@ -38,6 +38,7 @@ from app.services.crypto import (
     decrypt_credentials,
     encrypt_credentials,
 )
+from app.services.errors import clip_error
 from app.services.signals import TriggerSignal
 
 logger = logging.getLogger(__name__)
@@ -472,7 +473,10 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
 
 def _mark_checked(db: Session, trigger: Trigger, error: str | None = None) -> None:
     trigger.last_checked_at = utcnow()
-    trigger.last_error = error
+    # A feed or repo that answers with a wall of HTML instead of what it
+    # promised puts that whole body in the exception's message, and this row is
+    # rewritten on every poll.
+    trigger.last_error = clip_error(error) if error else None
     if error:
         trigger.consecutive_failures += 1
         if trigger.consecutive_failures >= settings.trigger_disable_after_failures:

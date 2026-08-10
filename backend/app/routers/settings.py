@@ -19,6 +19,7 @@ from app.models.user import User
 from app.schemas.settings import ConnectionCreate, ConnectionOut, PlatformCapability
 from app.services import publishers
 from app.services.crypto import CredentialEncryptionError, encrypt_credentials
+from app.services.errors import clip_error
 from app.services.publishers.base import (
     CredentialError,
     NotImplementedAdapter,
@@ -152,12 +153,12 @@ def verify_connection(
         connection.last_error = None
     except (CredentialError, CredentialEncryptionError) as exc:
         connection.status = ConnectionStatus.INVALID
-        connection.last_error = str(exc)
+        connection.last_error = clip_error(str(exc))
     except (PublishError, NotImplementedAdapter) as exc:
         # Leave the status alone: an unreachable platform is not proof the
         # credentials are bad, and flipping to INVALID would make the user
         # re-enter a working token.
-        connection.last_error = str(exc)
+        connection.last_error = clip_error(str(exc))
 
     db.commit()
     db.refresh(connection)

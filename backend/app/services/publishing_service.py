@@ -28,6 +28,7 @@ from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.webhook import WebhookEvent
 from app.services import publishers, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
+from app.services.errors import clip_error
 from app.services.publishers.base import (
     CredentialError,
     NotImplementedAdapter,
@@ -224,7 +225,7 @@ def _mark_connection_invalid(
     )
     if connection is not None:
         connection.status = ConnectionStatus.INVALID
-        connection.last_error = _clip(error)
+        connection.last_error = clip_error(error)
 
 
 def build_request(
@@ -540,7 +541,7 @@ def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
 
     publication.status = PublicationStatus.SCHEDULED
     publication.scheduled_for = utcnow() + timedelta(seconds=wait)
-    publication.error = _clip(f"{exc} — retrying in {round(wait)}s")
+    publication.error = clip_error(f"{exc} — retrying in {round(wait)}s")
     db.commit()
     logger.info(
         "publication %s to %s rate-limited (attempt %d); deferred %.0fs",
@@ -549,29 +550,6 @@ def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
         publication.attempts,
         wait,
     )
-
-
-#: How much of a failure message is worth keeping on the row.
-#:
-#: Adapter messages quote what the platform said, and several of them quote the
-#: whole body when it is not the shape they expected — ``f"Hashnode returned no
-#: post: {data}"``. That body is not ours and has no size limit; ``error`` is a
-#: ``Text`` column with none either, and it is written again on every attempt
-#: and rendered in the publications list. A megabyte of someone else's JSON in
-#: a field the UI shows is a bad row and a slow page, and the part that says
-#: what went wrong is in the first line regardless.
-MAX_ERROR_CHARS = 2000
-
-
-def _clip(error: str) -> str:
-    """A failure message bounded to :data:`MAX_ERROR_CHARS`.
-
-    Applied at the one place every failure funnels through rather than in each
-    adapter, so a new adapter cannot forget it.
-    """
-    if len(error) <= MAX_ERROR_CHARS:
-        return error
-    return error[: MAX_ERROR_CHARS - 1].rstrip() + "…"
 
 
 def retry_defer_seconds(attempts: int) -> float:
@@ -610,7 +588,7 @@ def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) 
     its time. Leaving it ``pending`` with a future time would work today and be
     a trap for the next reader.
     """
-    publication.error = _clip(error)
+    publication.error = clip_error(error)
     if terminal:
         publication.status = PublicationStatus.FAILED
         # Cleared, because it is now a lie. A row that failed on its last
@@ -624,7 +602,7 @@ def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) 
         publication.status = PublicationStatus.SCHEDULED
         publication.scheduled_for = utcnow() + timedelta(seconds=wait)
         if wait:
-            publication.error = _clip(f"{error} — retrying in {round(wait)}s")
+            publication.error = clip_error(f"{error} — retrying in {round(wait)}s")
     db.commit()
     logger.warning(
         "publication %s to %s failed (%s): %s",

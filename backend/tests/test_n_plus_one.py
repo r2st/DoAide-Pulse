@@ -198,3 +198,186 @@ def test_the_approved_sweep_query_count_is_flat(db, user, monkeypatch, sql_log):
     many = len([s for s in sql_log if s.startswith("SELECT")])
 
     assert few == many, f"{many - few} extra queries for 30 extra pieces"
+
+
+# --------------------------------------------------------------------------- #
+# The bulk endpoints                                                           #
+# --------------------------------------------------------------------------- #
+#
+# These take a list of ids — up to 100 — and used to `db.get` each one and then
+# reach through `content.project` for the ownership check. Both are round
+# trips, so the cost was 2n rather than the one query the whole batch needs.
+# Unlike the list endpoints there is no pagination ceiling to hide behind: the
+# id list is exactly as long as the user's selection.
+
+
+def _seed_ids(
+    db, user_id: int, count: int, *, offset: int = 0, status=ContentStatus.REVIEW
+) -> list[int]:
+    """*count* pieces, each on its own project, returned as ids.
+
+    Separate projects for the same reason as ``_seed`` above: sharing one would
+    let the identity map answer every ownership check after the first and hide
+    the lazy load entirely.
+    """
+    ids: list[int] = []
+    for i in range(offset, offset + count):
+        project = Project(
+            user_id=user_id,
+            name=f"Bulk {i}",
+            slug=f"bulk-{i}",
+            description="A thing that ships.",
+            tone=Tone.TECHNICAL,
+        )
+        db.add(project)
+        db.flush()
+        content = Content(
+            project_id=project.id,
+            content_type=ContentType.ANNOUNCEMENT,
+            status=status,
+            title=f"Bulk piece {i}",
+            slug=f"bulk-piece-{i}",
+            body_markdown="Body.",
+        )
+        db.add(content)
+        db.flush()
+        ids.append(content.id)
+    db.commit()
+    db.expire_all()
+    return ids
+
+
+def test_bulk_reject_query_count_is_flat(client, auth, db, user, sql_log):
+    user_id = user.id
+
+    few = _seed_ids(db, user_id, 2)
+    sql_log.clear()
+    resp = client.post(
+        "/api/v1/content/bulk/reject", json={"content_ids": few}, headers=auth
+    )
+    assert resp.json()["succeeded"] == few
+    small = len([s for s in sql_log if s.startswith("SELECT")])
+
+    many = _seed_ids(db, user_id, 20, offset=100)
+    sql_log.clear()
+    resp = client.post(
+        "/api/v1/content/bulk/reject", json={"content_ids": many}, headers=auth
+    )
+    assert resp.json()["succeeded"] == many
+    large = len([s for s in sql_log if s.startswith("SELECT")])
+
+    assert small == large, f"{large - small} extra queries for 18 extra ids"
+
+
+def test_bulk_approve_query_count_is_flat(client, auth, db, user, sql_log):
+    """Approve reads the rows twice: once to set the status, and again after
+    the commit — which expired them — for ``release_approved`` to decide on.
+    Both halves have to be one query, not one per piece.
+
+    These projects are on the default (manual) autopilot mode, so the release
+    bails at the mode check without committing. That is the point: it still
+    walks ``publications``, ``project`` and ``project.user`` to get there.
+    """
+    user_id = user.id
+
+    few = _seed_ids(db, user_id, 2)
+    sql_log.clear()
+    resp = client.post(
+        "/api/v1/content/bulk/approve", json={"content_ids": few}, headers=auth
+    )
+    assert resp.json()["succeeded"] == few
+    small = len([s for s in sql_log if s.startswith("SELECT")])
+
+    many = _seed_ids(db, user_id, 20, offset=200)
+    sql_log.clear()
+    resp = client.post(
+        "/api/v1/content/bulk/approve", json={"content_ids": many}, headers=auth
+    )
+    assert resp.json()["succeeded"] == many
+    large = len([s for s in sql_log if s.startswith("SELECT")])
+
+    assert small == large, f"{large - small} extra queries for 18 extra ids"
+    assert _selects(sql_log, "projects") == []
+
+
+def test_bulk_publish_does_not_walk_to_the_owner_per_piece(client, auth, db, user, sql_log):
+    """``_queue_publish`` used to read ``content.project.user`` for the
+    connection check — two lazy hops per piece on top of the lookup, making the
+    publish batch the most expensive of the three. It takes the authenticated
+    user directly now; both callers have already proven the piece is theirs.
+
+    Nothing is connected here, so every item fails that check — which is
+    exactly the path that used to do the walking.
+    """
+    user_id = user.id
+
+    few = _seed_ids(db, user_id, 2, status=ContentStatus.APPROVED)
+    sql_log.clear()
+    resp = client.post(
+        "/api/v1/content/bulk/publish",
+        json={"content_ids": few, "platforms": ["devto"]},
+        headers=auth,
+    )
+    assert [f["content_id"] for f in resp.json()["failed"]] == few
+    small = len([s for s in sql_log if s.startswith("SELECT")])
+
+    many = _seed_ids(db, user_id, 20, offset=300, status=ContentStatus.APPROVED)
+    sql_log.clear()
+    resp = client.post(
+        "/api/v1/content/bulk/publish",
+        json={"content_ids": many, "platforms": ["devto"]},
+        headers=auth,
+    )
+    assert [f["content_id"] for f in resp.json()["failed"]] == many
+    large = len([s for s in sql_log if s.startswith("SELECT")])
+
+    assert small == large, f"{large - small} extra queries for 18 extra ids"
+    assert _selects(sql_log, "projects") == []
+    # One, and only one: the bearer token's own user lookup. The owner behind
+    # each piece rides along on the content query.
+    assert len(_selects(sql_log, "users")) == 1
+
+
+def test_a_bulk_batch_still_reports_ids_it_does_not_own(client, auth, db, user):
+    """Ownership moved into the WHERE clause; "not mine" must still read as
+    "not found" rather than quietly succeeding or 403-ing the whole batch.
+    """
+    from app.models.user import User
+    from app.security import hash_password
+
+    stranger = User(
+        email="stranger@example.com",
+        full_name="Stranger",
+        hashed_password=hash_password("hunter2hunter2"),
+    )
+    db.add(stranger)
+    db.commit()
+
+    mine = _seed_ids(db, user.id, 1, offset=400)
+    theirs = _seed_ids(db, stranger.id, 1, offset=500)
+
+    resp = client.post(
+        "/api/v1/content/bulk/reject",
+        json={"content_ids": mine + theirs + [999_999]},
+        headers=auth,
+    )
+
+    body = resp.json()
+    assert body["succeeded"] == mine
+    assert {f["content_id"] for f in body["failed"]} == {theirs[0], 999_999}
+    assert {f["reason"] for f in body["failed"]} == {"Not found"}
+
+
+def test_a_bulk_batch_keeps_the_order_it_was_given(client, auth, db, user):
+    """The result is read back positionally by the review queue, and the fetch
+    is now one unordered query — so the loop, not the database, has to own the
+    order.
+    """
+    ids = _seed_ids(db, user.id, 4, offset=600)
+    shuffled = [ids[2], ids[0], ids[3], ids[1]]
+
+    resp = client.post(
+        "/api/v1/content/bulk/reject", json={"content_ids": shuffled}, headers=auth
+    )
+
+    assert resp.json()["succeeded"] == shuffled

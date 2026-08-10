@@ -52,6 +52,7 @@ from app.services.crypto import (
     decrypt_credentials,
     encrypt_credentials,
 )
+from app.services.errors import clip_error
 
 logger = logging.getLogger(__name__)
 
@@ -406,6 +407,9 @@ def _record_failure(
     spent = delivery.attempts >= settings.webhook_max_attempts
     give_up = terminal or spent
 
+    # Both the attempt row and the endpoint summary quote whatever the remote
+    # end said, which for a misbehaving endpoint is an unbounded error page.
+    error = clip_error(error)
     delivery.error = error
     if give_up:
         delivery.status = DeliveryStatus.FAILED

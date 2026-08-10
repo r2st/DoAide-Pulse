@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from html import escape
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.models.content import Content, ContentStatus
@@ -280,8 +280,13 @@ def build(
             "platform": p.platform.value,
             "error": (p.error or "")[:200],
         }
+        # The join here only filters; reading ``p.content.title`` above is what
+        # populates the relationship, and it lazy-loads once per row without
+        # this. Bounded at five, but the digest runs for every user on the
+        # instance, so it is five avoidable round trips times the user count.
         for p in db.scalars(
             select(Publication)
+            .options(joinedload(Publication.content))
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
             .where(
@@ -303,6 +308,7 @@ def build(
         }
         for p in db.scalars(
             select(Publication)
+            .options(joinedload(Publication.content))
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
             .where(

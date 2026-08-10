@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import logging
 import secrets
+from collections.abc import Sequence
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.config import settings
 from app.database import get_db
@@ -76,6 +77,33 @@ def _owned_content(content_id: int, db: Session, user: User) -> Content:
             status_code=status.HTTP_404_NOT_FOUND, detail="Content not found"
         )
     return content
+
+
+def _owned_content_map(
+    content_ids: Sequence[int], db: Session, user: User
+) -> dict[int, Content]:
+    """Every requested piece this user owns, keyed by id, in one query.
+
+    The ``/bulk/*`` endpoints are the review queue's batch buttons, so the id
+    list is as long as the user's selection — up to a hundred, with no
+    pagination ceiling to hide behind. Fetching one at a time and then reaching
+    through ``content.project`` for the ownership check costs two round trips
+    per item; a 20-item batch spent 40 queries where one does.
+
+    Ownership is enforced in the WHERE clause rather than after the load: a
+    piece belonging to someone else is simply absent from the map, which is the
+    same thing the caller reports for an id that does not exist. ``project``
+    rides along because every caller renders or reasons about it.
+    """
+    if not content_ids:
+        return {}
+    stmt = (
+        select(Content)
+        .options(joinedload(Content.project))
+        .join(Project, Project.id == Content.project_id)
+        .where(Content.id.in_(set(content_ids)), Project.user_id == user.id)
+    )
+    return {content.id: content for content in db.scalars(stmt).unique()}
 
 
 def _to_out(content: Content) -> ContentOut:
@@ -275,10 +303,11 @@ def bulk_approve_content(
     """
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
-    approved: list[Content] = []
+    approved: list[int] = []
+    owned = _owned_content_map(payload.content_ids, db, user)
     for content_id in payload.content_ids:
-        content = db.get(Content, content_id)
-        if content is None or content.project.user_id != user.id:
+        content = owned.get(content_id)
+        if content is None:
             failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
             continue
         if content.status == ContentStatus.PUBLISHED:
@@ -287,13 +316,26 @@ def bulk_approve_content(
             )
             continue
         content.status = ContentStatus.APPROVED
-        approved.append(content)
+        approved.append(content_id)
         succeeded.append(content_id)
     db.commit()
     # After the commit, so a release that dispatches a worker cannot hand it a
-    # row this request has not written yet.
-    for content in approved:
-        content_pipeline.release_approved(db, content)
+    # row this request has not written yet — which means re-reading the rows,
+    # since the commit expired every one of them. ``release_approved`` walks
+    # ``publications``, ``project`` and ``project.user`` before deciding, so
+    # loading them here is the difference between one query for the batch and
+    # three per piece. Same eager set as the backstop sweep in
+    # :func:`app.tasks.publish_tasks.release_approved_content`.
+    if approved:
+        for content in db.scalars(
+            select(Content)
+            .options(
+                joinedload(Content.project).joinedload(Project.user),
+                selectinload(Content.publications),
+            )
+            .where(Content.id.in_(approved))
+        ).unique():
+            content_pipeline.release_approved(db, content)
     return BulkResultOut(succeeded=succeeded, failed=failed)
 
 
@@ -310,9 +352,10 @@ def bulk_reject_content(
     """
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
+    owned = _owned_content_map(payload.content_ids, db, user)
     for content_id in payload.content_ids:
-        content = db.get(Content, content_id)
-        if content is None or content.project.user_id != user.id:
+        content = owned.get(content_id)
+        if content is None:
             failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
             continue
         if content.status == ContentStatus.PUBLISHED:
@@ -347,13 +390,14 @@ def bulk_publish_content(
         as_draft=payload.as_draft,
         allow_broken_links=payload.allow_broken_links,
     )
+    owned = _owned_content_map(payload.content_ids, db, user)
     for content_id in payload.content_ids:
-        content = db.get(Content, content_id)
-        if content is None or content.project.user_id != user.id:
+        content = owned.get(content_id)
+        if content is None:
             failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
             continue
         try:
-            _queue_publish(content, single, db)
+            _queue_publish(content, single, db, user)
         except _PublishError as exc:
             failed.append(BulkFailureOut(content_id=content_id, reason=exc.detail))
             continue
@@ -991,7 +1035,7 @@ class _PublishError(Exception):
 
 
 def _queue_publish(
-    content: Content, payload: PublishRequestIn, db: Session
+    content: Content, payload: PublishRequestIn, db: Session, owner: User
 ) -> list[Publication]:
     """Validate and queue a piece for one or more platforms.
 
@@ -999,6 +1043,11 @@ def _queue_publish(
     exact same adapter/connection/link checks. Queuing is synchronous and
     cheap; the publishing itself is a worker's job (or runs inline when
     ``CELERY_ENABLED`` is off).
+
+    *owner* is the authenticated user, passed rather than walked to via
+    ``content.project.user``: both callers have already established that this
+    piece belongs to them, and the walk is two lazy hops per piece that the
+    bulk endpoint pays again after every commit in its loop.
     """
     try:
         when = scheduling.normalize(payload.scheduled_for)
@@ -1017,11 +1066,8 @@ def _queue_publish(
             f"{', '.join(p.value for p in publishers.implemented_platforms())}."
         )
 
-    missing = [
-        p.value
-        for p in payload.platforms
-        if p.value not in content.project.user.connected_platforms
-    ]
+    connected = owner.connected_platforms
+    missing = [p.value for p in payload.platforms if p.value not in connected]
     if missing:
         raise _PublishError(
             f"Not connected to: {', '.join(missing)}. Add credentials in Settings."
@@ -1081,7 +1127,7 @@ def publish_content(
     """
     content = _owned_content(content_id, db, user)
     try:
-        publications = _queue_publish(content, payload, db)
+        publications = _queue_publish(content, payload, db, user)
     except _PublishError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     return [PublicationOut.model_validate(p) for p in publications]
@@ -1192,6 +1238,7 @@ def schedule_content(
                 as_draft=payload.as_draft,
             ),
             db,
+            user,
         )
     except _PublishError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
@@ -1300,11 +1347,29 @@ def write_from_idea(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
-    """Turn a suggested idea into a draft, and retire the idea."""
+    """Turn a suggested idea into a draft, and retire the idea.
+
+    Idempotent per idea: an idea that has already been written returns the
+    draft it produced instead of writing a second one. Generation takes long
+    enough that the button looks unresponsive, and the second click used to
+    spend another model call and leave the user two near-identical drafts to
+    reconcile — the idea is a one-shot prompt, not a "generate again" button.
+    """
     idea = db.get(ContentIdea, idea_id)
     if idea is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Idea not found")
     project = owned_project(idea.project_id, db, user)
+
+    if idea.used_content_id is not None:
+        existing = db.get(Content, idea.used_content_id)
+        if existing is not None:
+            # 200, not the route's 201: the replay creates nothing.
+            response.status_code = status.HTTP_200_OK
+            return _to_detail(existing)
+        # ``used_content_id`` is not a FK: the draft this idea produced can be
+        # deleted and the idea outlives it. With nothing left to return to,
+        # writing it again is the useful answer rather than a dead reference.
+        idea.used_content_id = None
 
     generated = content_generator.generate(
         project,

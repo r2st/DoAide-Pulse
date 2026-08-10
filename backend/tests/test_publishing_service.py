@@ -9,7 +9,7 @@ from app.models.content import Content, ContentStatus, ContentType
 from app.models.mixins import as_aware
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform, Publication, PublicationStatus
-from app.services import publishing_service
+from app.services import errors, publishing_service
 from app.services.crypto import encrypt_credentials
 from app.services.publishers.base import (
     CredentialError,
@@ -393,7 +393,7 @@ def test_a_vast_upstream_error_is_clipped_before_it_is_stored(
     publishing_service.execute(db, publication)
 
     assert publication.status == PublicationStatus.FAILED
-    assert len(publication.error) == publishing_service.MAX_ERROR_CHARS
+    assert len(publication.error) == errors.MAX_ERROR_CHARS
     assert publication.error.endswith("…")
 
 
@@ -412,7 +412,7 @@ def test_the_connection_note_is_clipped_too(db, content, connected, monkeypatch)
     publishing_service.execute(db, publication)
 
     db.refresh(connected)
-    assert len(connected.last_error) == publishing_service.MAX_ERROR_CHARS
+    assert len(connected.last_error) == errors.MAX_ERROR_CHARS
 
 
 def test_an_ordinary_error_is_stored_whole(db, content, connected, monkeypatch):
@@ -455,4 +455,4 @@ def test_a_clipped_rate_limit_note_still_says_when_it_retries(
     publishing_service.execute(db, publication)
 
     assert publication.status == PublicationStatus.SCHEDULED
-    assert len(publication.error) == publishing_service.MAX_ERROR_CHARS
+    assert len(publication.error) == errors.MAX_ERROR_CHARS
