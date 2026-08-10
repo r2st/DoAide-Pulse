@@ -329,6 +329,110 @@ def test_one_poll_acts_on_at_most_the_configured_number_of_entries(
 
 
 # --------------------------------------------------------------------------- #
+# GitHub triggers                                                              #
+# --------------------------------------------------------------------------- #
+
+
+def _activity(*, commits: int = 0, release: bool = False, head: str = "abc123"):
+    from app.services.github_client import Commit, Release, RepoActivity
+
+    return RepoActivity(
+        full_name="r2st/Herald",
+        new_commits=[
+            Commit(f"sha{i}", f"feat: thing {i}", "r2st", None, "https://x/c")
+            for i in range(commits)
+        ],
+        new_release=(
+            Release("v1.2.0", "Name", "Notes.", None, "https://x/r", False)
+            if release
+            else None
+        ),
+        head_sha=head,
+        latest_tag="v1.2.0" if release else None,
+    )
+
+
+def _stub_activity(monkeypatch, **kwargs):
+    from app.services import github_client
+
+    monkeypatch.setattr(github_client, "fetch_activity", lambda *a, **k: _activity(**kwargs))
+
+
+def test_the_first_github_check_baselines_and_writes_nothing(
+    db, writing_project, monkeypatch
+):
+    _stub_activity(monkeypatch, commits=3)
+    trigger = _trigger(db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald")
+
+    result = triggers.check(db, trigger)
+
+    assert result["status"] == "baselined"
+    assert db.query(Content).count() == 0
+    assert trigger.state["last_sha"] == "abc123"
+
+
+def test_commits_below_the_threshold_hold_the_watermark(
+    db, writing_project, monkeypatch
+):
+    """Same bug the project-level scan had: a hold, not an advance, on below_threshold.
+
+    A threshold below the bar means "not enough has happened *yet*" — that is
+    only true if the same commits are still there on the next poll. Advancing
+    the watermark past them turns it into "not enough happened this scan", and
+    against an hourly poll a repo pushed at any human rate never accumulates
+    enough to clear it.
+    """
+    _stub_activity(monkeypatch, commits=3, head="baseline")
+    trigger = _trigger(
+        db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald", commit_threshold=10
+    )
+    triggers.check(db, trigger)  # baselines
+
+    _stub_activity(monkeypatch, commits=2, head="two-in")
+    result = triggers.check(db, trigger)
+
+    assert result["status"] == "below_threshold"
+    assert trigger.state["last_sha"] == "baseline"
+    assert db.query(Content).count() == 0
+
+
+def test_commits_below_the_threshold_accumulate_across_scans(
+    db, writing_project, monkeypatch
+):
+    _stub_activity(monkeypatch, commits=1, head="baseline")
+    trigger = _trigger(
+        db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald", commit_threshold=5
+    )
+    triggers.check(db, trigger)  # baselines
+
+    _stub_activity(monkeypatch, commits=3, head="drip")
+    assert triggers.check(db, trigger)["status"] == "below_threshold"
+    assert triggers.check(db, trigger)["status"] == "below_threshold"
+
+    _stub_activity(monkeypatch, commits=6, head="enough")
+    result = triggers.check(db, trigger)
+
+    assert result["status"] == TriggerEventStatus.GENERATED.value
+    assert trigger.state["last_sha"] == "enough"
+
+
+def test_a_release_clears_the_threshold_regardless_of_commit_count(
+    db, writing_project, monkeypatch
+):
+    _stub_activity(monkeypatch, commits=1)
+    trigger = _trigger(
+        db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald", commit_threshold=10
+    )
+    triggers.check(db, trigger)  # baselines
+
+    _stub_activity(monkeypatch, commits=1, release=True, head="rel")
+    result = triggers.check(db, trigger)
+
+    assert result["status"] == TriggerEventStatus.GENERATED.value
+    assert trigger.state["last_sha"] == "rel"
+
+
+# --------------------------------------------------------------------------- #
 # Schedule triggers                                                            #
 # --------------------------------------------------------------------------- #
 

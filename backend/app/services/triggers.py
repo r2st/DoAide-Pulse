@@ -570,23 +570,36 @@ def _check_github(db: Session, trigger: Trigger) -> dict[str, Any]:
         raise TriggerError(str(exc)) from exc
 
     first_scan = since_sha is None
-    state["last_sha"] = activity.head_sha
-    state["last_tag"] = activity.latest_tag
-    trigger.state = state
+
+    below_threshold = False
+    if not first_scan and activity.has_news:
+        threshold = trigger.setting("commit_threshold")
+        minimum = (
+            int(threshold)
+            if isinstance(threshold, (int, float)) and int(threshold) > 0
+            else settings.autopilot_commit_threshold
+        )
+        below_threshold = not activity.new_release and len(activity.new_commits) < minimum
+
+    # Below the bar the commits are still news, just not enough of it yet, so
+    # the watermark must hold — the same commits get re-read and can
+    # accumulate across scans until they clear it. Advancing past them here
+    # means "not enough happened this scan" rather than "not enough has
+    # happened yet", and against an hourly poll a repo pushed at any human
+    # rate is refused every hour and never accumulates. Same bug, same fix, as
+    # app.tasks.autopilot_tasks — this is the other place a GitHub watermark
+    # advances.
+    if not below_threshold:
+        state["last_sha"] = activity.head_sha
+        state["last_tag"] = activity.latest_tag
+        trigger.state = state
     db.commit()
 
     if first_scan:
         return {"status": "baselined", "commits": len(activity.new_commits)}
     if not activity.has_news:
         return {"status": "no_news"}
-
-    threshold = trigger.setting("commit_threshold")
-    minimum = (
-        int(threshold)
-        if isinstance(threshold, (int, float)) and int(threshold) > 0
-        else settings.autopilot_commit_threshold
-    )
-    if not activity.new_release and len(activity.new_commits) < minimum:
+    if below_threshold:
         return {"status": "below_threshold", "commits": len(activity.new_commits)}
 
     signal = signals.from_repo_activity(activity, source=trigger.name or None)
