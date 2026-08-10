@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from celery.exceptions import SoftTimeLimitExceeded
+from sqlalchemy.exc import OperationalError
 
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.mixins import as_aware
@@ -339,3 +341,62 @@ def test_one_unreleasable_piece_does_not_stop_the_sweep(db, auto_project, monkey
 
     assert result == {"found": 2, "released": 1}
     assert db.query(Publication).count() == 2
+
+
+def test_the_sweep_stops_when_it_runs_out_of_time(db, auto_project, monkeypatch):
+    """The soft limit ends the pass; it is not one piece's bad day.
+
+    ``SoftTimeLimitExceeded`` is an ordinary ``Exception``, so the per-piece
+    handler caught the timeout, logged it against whichever piece happened to
+    be in hand, and carried on to the next — which is exactly what the soft
+    limit exists to prevent. The sweep then ran until the *hard* limit killed
+    the worker, with a transaction open. The remainder is not lost: nothing
+    about a piece changes by being skipped, so the next pass finds it again.
+    """
+    monkeypatch.setattr(publish_tasks, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+    _content(db, auto_project, status=ContentStatus.APPROVED, slug="a")
+    _content(db, auto_project, status=ContentStatus.APPROVED, slug="b")
+
+    seen: list[int] = []
+
+    def _timeout(session, content):
+        seen.append(content.id)
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(content_pipeline, "release_approved", _timeout)
+
+    result = publish_tasks.release_approved_content()
+
+    assert result == {"found": 2, "released": 0}
+    # The point of the fix: the second piece is never attempted.
+    assert len(seen) == 1
+    assert db.query(Publication).count() == 0
+
+
+def test_a_database_failure_leaves_the_sweep_to_celery(db, monkeypatch):
+    """A dead connection has to reach ``autoretry_for``, not become a result.
+
+    The task builds its counts inside ``try``/``finally`` with no ``except``,
+    and reports them after the block. That reads like it could return with
+    ``stuck`` unbound, but it cannot: with nothing catching it the error
+    propagates past the return entirely, which is what puts the sweep in
+    celery's hands. Pinned because the alternative — swallowing it — would
+    turn a broken database into a cheerful ``{"found": 0}`` every five minutes.
+    """
+    monkeypatch.setattr(publish_tasks, "SessionLocal", lambda: db)
+    closed: list[bool] = []
+    monkeypatch.setattr(db, "close", lambda: closed.append(True))
+
+    def _boom(*_args, **_kwargs):
+        raise OperationalError("SELECT 1", {}, Exception("connection lost"))
+
+    monkeypatch.setattr(db, "scalars", _boom)
+
+    with pytest.raises(OperationalError):
+        publish_tasks.release_approved_content()
+
+    # OperationalError is in the task's autoretry_for, so this becomes a retry.
+    assert OperationalError in publish_tasks.release_approved_content.autoretry_for
+    # And the session still went back, which is what the `finally` is for.
+    assert closed == [True]

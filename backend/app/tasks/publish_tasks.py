@@ -12,6 +12,7 @@ import logging
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select, update
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import joinedload
 
 from app.database import SessionLocal
 from app.models.content import Content, ContentStatus
@@ -202,6 +203,12 @@ def release_approved_content() -> dict:
                     Project.autopilot_mode == AutopilotMode.AUTO,
                     Publication.id.is_(None),
                 )
+                # ``release_approved`` re-reads ``content.project`` and
+                # ``project.user`` to re-check what the WHERE clause above
+                # already filtered on, and both hops were lazy: two SELECTs per
+                # stuck piece. The join that finds the rows is already visiting
+                # both tables, so loading them costs nothing extra.
+                .options(joinedload(Content.project).joinedload(Project.user))
             )
         )
         released = 0
@@ -209,6 +216,17 @@ def release_approved_content() -> dict:
             try:
                 if content_pipeline.release_approved(db, content):
                     released += 1
+            except SoftTimeLimitExceeded:
+                # Must precede the blanket handler: the soft limit arrives *as*
+                # an Exception, so catching it as one piece's failure kept the
+                # sweep running until the hard limit killed the worker mid
+                # transaction. Stop and let the next pass take the remainder.
+                logger.warning(
+                    "release_approved_content timed out after %d of %d piece(s)",
+                    released,
+                    len(stuck),
+                )
+                break
             except Exception:
                 # One unpublishable piece must not stop the sweep reaching the
                 # rest — the row keeps its status and comes back next pass.

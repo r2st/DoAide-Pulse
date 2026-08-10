@@ -76,6 +76,16 @@ def check_due_triggers() -> dict:
         try:
             check_trigger.delay(trigger_id)
             dispatched += 1
+        except SoftTimeLimitExceeded:
+            # Before the broker fallback, not after: the timeout arrives as an
+            # Exception, so the handler below would read it as "broker down"
+            # and answer by running a full check *inline* — the most expensive
+            # thing available — on a task that is already out of time. The rest
+            # stay due and the next tick dispatches them.
+            logger.warning(
+                "trigger dispatch timed out after %d of %d", dispatched, len(ids)
+            )
+            break
         except Exception:
             # Broker down — fall back to inline, same as the repo scan.
             check_trigger(trigger_id)

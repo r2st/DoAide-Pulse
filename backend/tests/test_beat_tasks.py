@@ -17,6 +17,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from celery.exceptions import SoftTimeLimitExceeded
 
 from app.models.mixins import utcnow
 from app.models.password_reset import PasswordResetToken
@@ -33,7 +34,7 @@ from app.models.webhook import (
     WebhookEvent,
 )
 from app.services.password_reset import hash_token
-from app.tasks import maintenance_tasks, trigger_tasks
+from app.tasks import autopilot_tasks, maintenance_tasks, trigger_tasks
 
 
 def _no_close(session):
@@ -122,7 +123,6 @@ def test_a_trigger_that_crashes_is_reported_not_raised(
 
 def test_a_trigger_that_times_out_says_so(db, schedule_trigger, monkeypatch):
     """The soft time limit is a verdict on this trigger, not on the worker."""
-    from celery.exceptions import SoftTimeLimitExceeded
 
     def _slow(*_args, **_kwargs):
         raise SoftTimeLimitExceeded()
@@ -219,6 +219,32 @@ def test_a_broker_that_refuses_the_dispatch_falls_back_to_running_inline(
 
     assert trigger_tasks.check_due_triggers() == {"due": 1, "dispatched": 1}
     assert ran == [schedule_trigger.id]
+
+
+def test_a_dispatch_that_runs_out_of_time_does_not_fall_back_to_inline(
+    db, schedule_trigger, monkeypatch
+):
+    """The timeout must not be mistaken for a dead broker.
+
+    ``SoftTimeLimitExceeded`` is an ``Exception``, so the fallback above caught
+    it and responded the only way it knows — by running the check *inline*.
+    That answers "you are out of time" with the most expensive call available,
+    on a task already past its soft limit and heading for the hard one.
+    """
+    ran: list[int] = []
+
+    def _too_slow(_trigger_id):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(trigger_tasks.check_trigger, "delay", _too_slow)
+    monkeypatch.setattr(
+        trigger_tasks.trigger_service,
+        "check",
+        lambda _db, trigger: ran.append(trigger.id) or {"status": "no_news"},
+    )
+
+    assert trigger_tasks.check_due_triggers() == {"due": 1, "dispatched": 0}
+    assert ran == [], "the timeout must not trigger the broker-down fallback"
 
 
 # --------------------------------------------------------------------------- #
@@ -343,3 +369,32 @@ def test_a_recent_settled_trigger_event_is_kept(db, schedule_trigger):
     db.commit()
 
     assert maintenance_tasks.purge_old_trigger_events() == {"purged": 0}
+
+
+def test_the_autopilot_dispatch_does_not_scan_inline_when_it_runs_out_of_time(
+    db, project, monkeypatch
+):
+    """The same trap as the trigger dispatch, with a costlier bottom.
+
+    ``scan_project`` inline means reading a repository and calling a model. The
+    broker-down fallback exists to make that trade deliberately; a soft-limit
+    timeout falling through to it makes it by accident, at the worst moment.
+    """
+    monkeypatch.setattr(autopilot_tasks, "SessionLocal", _no_close(db))
+    scanned: list[int] = []
+
+    class _TimesOutOnDispatch:
+        """Stands in for the task: enqueueing times out, calling runs the scan."""
+
+        def delay(self, _project_id):
+            raise SoftTimeLimitExceeded()
+
+        def __call__(self, project_id):
+            scanned.append(project_id)
+
+    monkeypatch.setattr(autopilot_tasks, "scan_project", _TimesOutOnDispatch())
+
+    result = autopilot_tasks.scan_all_projects()
+
+    assert result == {"scanned": 1, "dispatched": 0}
+    assert scanned == [], "a timeout must not become an inline repo scan"

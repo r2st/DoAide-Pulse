@@ -108,6 +108,22 @@ describe("the list", () => {
     expect(screen.getByText("404 Not Found")).toBeInTheDocument();
   });
 
+  it("shows a hostile error message as text rather than markup", async () => {
+    // `last_error` is the remote end's own words: for a webhook it is an
+    // excerpt of the response body, for a feed whatever the server said. None
+    // of it is Herald's, so the endpoint picks this string, not the user. It
+    // reaches the DOM as a JSX child, which React escapes — pinned here so a
+    // later "render the error as rich text" never quietly makes it a payload.
+    const hostile = '<img src=x onerror="alert(1)">';
+    api.listTriggers.mockResolvedValue([
+      trigger({ consecutive_failures: 1, last_error: hostile }),
+    ]);
+    draw();
+
+    expect(await screen.findByText(hostile)).toBeInTheDocument();
+    expect(document.querySelector("img")).toBeNull();
+  });
+
   it("does not claim a trigger that has never fired is healthy", async () => {
     api.listTriggers.mockResolvedValue([trigger({ fire_count: 0 })]);
     draw();

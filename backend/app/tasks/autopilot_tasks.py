@@ -343,6 +343,17 @@ def scan_all_projects() -> dict:
         try:
             scan_project.delay(project_id)
             dispatched += 1
+        except SoftTimeLimitExceeded:
+            # Must beat the broker fallback below, which would otherwise read
+            # the timeout as a dead broker and answer it by scanning a repo and
+            # calling a model inline, on a task with seconds left before the
+            # hard limit. Undispatched projects are picked up by the next scan.
+            logger.warning(
+                "autopilot dispatch timed out after %d of %d project(s)",
+                dispatched,
+                len(ids),
+            )
+            break
         except Exception:
             # Broker down — fall back to inline.
             scan_project(project_id)

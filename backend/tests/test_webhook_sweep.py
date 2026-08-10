@@ -105,6 +105,7 @@ def receiver(monkeypatch):
     class _Receiver:
         def __init__(self):
             self.status = 200
+            self.body = ""
             self.error: Exception | None = None
             self.requests: list[httpx.Request] = []
 
@@ -112,7 +113,7 @@ def receiver(monkeypatch):
             self.requests.append(request)
             if self.error is not None:
                 raise self.error
-            return httpx.Response(self.status)
+            return httpx.Response(self.status, text=self.body)
 
     listener = _Receiver()
     monkeypatch.setattr(
@@ -167,6 +168,49 @@ def test_a_refused_delivery_reports_its_status_rather_than_raising(
     db.refresh(delivery)
     assert delivery.attempts == 1
     assert delivery.next_attempt_at is not None, "a retry must have been scheduled"
+
+
+def test_a_failing_endpoints_own_words_are_stored_whole_but_bounded(
+    db, webhook, receiver
+):
+    """``last_error`` quotes the remote server, which Herald does not control.
+
+    It is kept verbatim on purpose — a truncated or scrubbed excerpt is worse
+    at the one job it has, which is telling the user what their endpoint said.
+    What it must not do is grow without limit: the body is whatever the other
+    end feels like sending, and it lands in a column shown on the Triggers
+    page. Flattened to one line and capped, with the cap made visible.
+    """
+    receiver.status = 500
+    receiver.body = "<script>alert(1)</script>\n" + "A" * 500
+    delivery = _delivery(db, webhook)
+
+    webhook_tasks.deliver_one(delivery.id)
+
+    db.refresh(webhook)
+    assert webhook.last_error is not None
+    # Bounded: the 500-character tail cannot become a 500-character column.
+    assert len(webhook.last_error) < 300
+    assert webhook.last_error.endswith("…")
+    # Verbatim within that bound: escaping belongs at the point of render, and
+    # doing it here would show the user mangled text that is not what their
+    # server sent. The frontend renders this as a JSX child — see
+    # Triggers.test.jsx, "shows a hostile error message as text".
+    assert "<script>alert(1)</script>" in webhook.last_error
+    # Flattened, so a body full of newlines cannot smear the row.
+    assert "\n" not in webhook.last_error
+
+
+def test_a_short_error_body_is_not_marked_as_truncated(db, webhook, receiver):
+    receiver.status = 500
+    receiver.body = "no such tenant"
+    delivery = _delivery(db, webhook)
+
+    webhook_tasks.deliver_one(delivery.id)
+
+    db.refresh(webhook)
+    assert "no such tenant" in webhook.last_error
+    assert "…" not in webhook.last_error
 
 
 # --------------------------------------------------------------------------- #

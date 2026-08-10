@@ -60,4 +60,36 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown("")).toBe("");
     expect(renderMarkdown(null)).toBe("");
   });
+
+  it("renders a blockquote", () => {
+    // Regression: escapeHtml runs over the whole document first, so by the time
+    // the blockquote branch sees the line the marker is `&gt;`, not `>`. The
+    // branch tested for the raw character and so never fired — every quote in
+    // every generated post rendered as a paragraph beginning with a stray `>`.
+    expect(renderMarkdown("> quoted")).toContain("<blockquote>quoted</blockquote>");
+  });
+
+  it("ends a blockquote at the paragraph after it", () => {
+    const html = renderMarkdown("intro\n\n> a quote\n\nafter");
+    expect(html).toContain("<p>intro</p>");
+    expect(html).toContain("<blockquote>a quote</blockquote>");
+    expect(html).toContain("<p>after</p>");
+  });
+
+  it("still escapes markup inside a blockquote", () => {
+    const html = renderMarkdown("> <img src=x onerror=alert(1)>");
+    expect(html).toContain("<blockquote>");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
+
+  it("cannot be made to break out of a link's href attribute", () => {
+    // The body is generated from feeds and commit messages Herald does not
+    // control, and this string is the shape that turns a quoted attribute into
+    // an event handler. The up-front escape neutralises the quotes, so the
+    // whole thing stays inside the href — or, as here, is not a link at all.
+    const html = renderMarkdown('[click](https://x.com/" onmouseover="alert(1))');
+    expect(html).not.toContain("onmouseover=\"alert");
+    expect(html).toContain("&quot;");
+  });
 });

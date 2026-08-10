@@ -16,7 +16,8 @@ first from memory, turning an N+1 into a single extra query.
 from __future__ import annotations
 
 from app.models.content import Content, ContentStatus, ContentType
-from app.models.project import Project, Tone
+from app.models.project import AutopilotMode, Project, Tone
+from app.tasks import publish_tasks
 
 
 def _seed(
@@ -124,3 +125,76 @@ def test_dashboard_query_count_is_flat(client, auth, db, user, sql_log):
     many = len([s for s in sql_log if s.startswith("SELECT")])
 
     assert few == many, f"{many - few} extra queries for 12 extra rows"
+
+
+def _seed_approved(db, user_id: int, count: int, *, offset: int = 0) -> None:
+    """Approved pieces the backstop sweep will find, each on its own project.
+
+    The projects are on ``auto`` with **no** destinations, so
+    ``release_approved`` walks every relationship it needs and then returns
+    empty at the destination check. That keeps the sweep's own inserts out of
+    the query log, leaving only the loads this test is about.
+    """
+    for i in range(offset, offset + count):
+        project = Project(
+            user_id=user_id,
+            name=f"Auto {i}",
+            slug=f"auto-{i}",
+            description="A thing that ships.",
+            tone=Tone.TECHNICAL,
+            autopilot_mode=AutopilotMode.AUTO,
+            autopilot_platforms=[],
+        )
+        db.add(project)
+        db.flush()
+        db.add(
+            Content(
+                project_id=project.id,
+                content_type=ContentType.ANNOUNCEMENT,
+                status=ContentStatus.APPROVED,
+                title=f"Approved {i}",
+                slug=f"approved-{i}",
+                body_markdown="Body.",
+            )
+        )
+    db.commit()
+    db.expire_all()
+
+
+def test_the_approved_sweep_loads_projects_in_one_query(db, user, monkeypatch, sql_log):
+    """The beat sweep re-reads each piece's project, and used to do it per row.
+
+    ``release_approved`` re-checks the project and its owner — the same two
+    tables the sweep's own WHERE clause already joins against. Lazily that is
+    two extra SELECTs per stuck piece on a task that runs every five minutes.
+    """
+    monkeypatch.setattr(publish_tasks, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+    _seed_approved(db, user.id, 15)
+    sql_log.clear()
+
+    result = publish_tasks.release_approved_content()
+
+    assert result == {"found": 15, "released": 0}
+    # The projects (and their owner) ride along on the query that finds the
+    # content, so neither table is selected on its own.
+    assert _selects(sql_log, "projects") == []
+    assert _selects(sql_log, "users") == []
+
+
+def test_the_approved_sweep_query_count_is_flat(db, user, monkeypatch, sql_log):
+    monkeypatch.setattr(publish_tasks, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+    user_id = user.id
+
+    _seed_approved(db, user_id, 3)
+    sql_log.clear()
+    assert publish_tasks.release_approved_content()["found"] == 3
+    few = len([s for s in sql_log if s.startswith("SELECT")])
+
+    _seed_approved(db, user_id, 30, offset=3)
+    sql_log.clear()
+    assert publish_tasks.release_approved_content()["found"] == 33
+    many = len([s for s in sql_log if s.startswith("SELECT")])
+
+    assert few == many, f"{many - few} extra queries for 30 extra pieces"
