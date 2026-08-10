@@ -317,6 +317,37 @@ def test_a_confident_piece_with_live_links_publishes(
     assert db.query(Content).one().source["dead_links"] == []
 
 
+def test_a_confident_piece_with_a_weak_seo_score_goes_to_review(
+    db, project, stub_github, monkeypatch
+):
+    """The second quality gate, exercised for real rather than bypassed.
+
+    Every other autopilot test that reaches this far stubs ``seo.seo_score``
+    to 100 — reasonably, since the stub bodies are not meant to be good SEO —
+    but that leaves ``generate_and_route``'s own threshold check
+    (``content_pipeline.py``, "held back from auto-publish: SEO score") never
+    actually exercised end to end. This one lets the real scorer run against a
+    body that is genuinely thin: no headings, no cover image, under 300
+    words — the same kind of piece a confident model can produce about a
+    one-line release.
+    """
+    project.autopilot_mode = AutopilotMode.AUTO
+    project.autopilot_platforms = ["devto"]
+    project.last_seen_commit_sha = "old"
+    db.commit()
+    stub_github["set"](make_activity(commits=1, release=True))
+    _confident_generation(monkeypatch, "A short update about the release.")
+    monkeypatch.setattr(content_pipeline.link_check, "check_body", lambda body, **kw: [])
+
+    result = autopilot_tasks.scan_project(project.id)
+
+    assert result["status"] == "queued_for_review"
+    assert result["seo_score"] < content_pipeline.seo.SEO_SCORE_THRESHOLD
+    content = db.query(Content).one()
+    assert content.status == ContentStatus.REVIEW
+    assert content.source["seo_score"] == result["seo_score"]
+
+
 def test_auto_mode_still_reviews_a_low_confidence_draft(
     db, project, stub_github, monkeypatch
 ):
