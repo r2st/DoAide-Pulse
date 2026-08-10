@@ -94,13 +94,26 @@ cd backend  && .venv/bin/python -m pytest && .venv/bin/ruff check app tests
 cd frontend && npm test && npm run build
 ```
 
-The Python suite is 1056 tests across two roots — 996 under `backend/tests` and
+The Python suite is 2144 tests across two roots — 2084 under `backend/tests` and
 60 under `marketing/tests` — and needs no external services. The root
 `pytest.ini` is what makes one command cover both; `backend/pyproject.toml`
 still configures a run started from `backend/`, so that keeps working as it did.
 
-Coverage (`--cov=app`, `--cov=campaign --cov=herald_client`) sits at 88% for the
-backend and 86% for the campaign runner.
+#### Coverage
+
+```bash
+cd backend && .venv/bin/python -m pytest --cov   # fails under the floor
+```
+
+Everything the run needs — `source`, branch mode, the exclusions and the
+regression floor — lives in `[tool.coverage.*]` in `backend/pyproject.toml`, so
+the bare `--cov` above is the whole gate. It is deliberately not in `addopts`:
+the suite takes about seven minutes without instrumentation, and making every
+ordinary run pay the tracer cost is how a suite stops being run at all.
+
+Coverage sits at **98.96% of statements and 94.73% of branches** (98.15%
+combined, which is the number the floor is set against). Raise `fail_under` when
+the real number moves up; never lower it to make a red run green.
 
 ---
 

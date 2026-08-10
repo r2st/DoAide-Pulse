@@ -23,6 +23,34 @@ testpaths = ["tests"]
 addopts = "-q"
 filterwarnings = ["ignore::DeprecationWarning"]
 
+# Coverage is configured here rather than passed on the command line, so that a
+# bare `pytest --cov` is the whole gate: source, branch mode and the regression
+# floor all come from this file. It is deliberately *not* in `addopts` — the
+# suite takes ~7 minutes without instrumentation, and paying the tracer cost on
+# every ordinary run would push it past the point where anyone runs it locally.
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = true
+# The floor sits just under the measured total (line + branch) so that an
+# unrelated change cannot quietly delete coverage, while a normal patch that
+# adds a line or two of straight-line code does not trip it. Raise it when the
+# real number moves up; never lower it to make a red run go green.
+fail_under = 98.0
+exclude_also = [
+    # `if TYPE_CHECKING:` blocks exist for the type checker and never execute.
+    "if TYPE_CHECKING:",
+    # Abstract methods are contracts; the bodies are `raise NotImplementedError`
+    # and every real caller goes through a concrete subclass.
+    "raise NotImplementedError",
+    # Module-level `__main__` guards are entry points, not library code.
+    "if __name__ == .__main__.:",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
