@@ -16,7 +16,7 @@ from app.models.content import Content, ContentIdea, ContentStatus, ContentType,
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import account_key, limiter
 from app.schemas.content import (
     BulkContentIn,
     BulkFailureOut,
@@ -465,8 +465,11 @@ def social_cards_preview(
 
 
 @router.post("/{content_id}/repurpose", response_model=RepurposeOut)
+@limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def repurpose_content(
     content_id: int,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> RepurposeOut:
@@ -474,7 +477,9 @@ def repurpose_content(
 
     POST, not GET, and runs inline like ``/generate``: this costs an LLM call
     and nothing is persisted, so the caller gets a fresh set of snippets every
-    time — there is no cached result to invalidate.
+    time — there is no cached result to invalidate. Which is also why it is
+    rate-limited per account: nothing is cached, so every call is a fresh call
+    against a shared free-tier quota.
     """
     content = _owned_content(content_id, db, user)
     result = repurpose.generate(content, content.project)
@@ -488,9 +493,12 @@ def repurpose_content(
 
 
 @router.post("/{content_id}/edit", response_model=InlineEditOut)
+@limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def edit_passage(
     content_id: int,
     payload: InlineEditIn,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> InlineEditOut:
@@ -545,8 +553,11 @@ def edit_passage(
 
 
 @router.post("/{content_id}/headlines", response_model=HeadlineVariantsOut)
+@limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def generate_headline_variants(
     content_id: int,
+    request: Request,
+    response: Response,
     count: int = Query(default=4, ge=2, le=6),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -657,8 +668,11 @@ def get_content(
 
 
 @router.get("/{content_id}/links", response_model=LinkCheckOut)
+@limiter.limit(settings.rate_limit_link_check, key_func=account_key)
 def check_links(
     content_id: int,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> LinkCheckOut:
@@ -667,6 +681,13 @@ def check_links(
     Not folded into ``GET /{content_id}``: that endpoint is loaded every time the
     editor opens and this one makes up to ``link_check_max_urls`` outbound
     requests. Kept separate so reading a draft stays free.
+
+    Rate-limited per account for the same reason it is separate. One call is up
+    to ``link_check_max_urls`` outbound requests, from Herald's address, to
+    hosts named in a document the caller wrote — which is an amplifier if it can
+    be replayed. The URLs themselves are already vetted against private and
+    loopback addresses on every hop (:mod:`app.services.link_check`); this caps
+    the volume rather than the destination.
     """
     content = _owned_content(content_id, db, user)
     return _to_link_check(_check_content_links(content))
@@ -762,8 +783,11 @@ def revoke_preview_link(
 
 
 @router.post("/generate", response_model=ContentDetail, status_code=status.HTTP_201_CREATED)
+@limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def generate_content(
     payload: GenerateRequest,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
@@ -772,6 +796,10 @@ def generate_content(
     Runs inline rather than on a worker: the user is watching, and a draft that
     arrives in the response is worth the ~20s wait. The autopilot path is the
     one that goes through Celery.
+
+    The most expensive thing an authenticated caller can ask for, and so the
+    tightest of the per-account budgets — the daily quotas it spends are shared
+    by every account on the install.
     """
     project = owned_project(payload.project_id, db, user)
 
@@ -1264,8 +1292,11 @@ def retry_publication(
 
 
 @router.post("/ideas/{idea_id}/write", response_model=ContentDetail, status_code=201)
+@limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def write_from_idea(
     idea_id: int,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:

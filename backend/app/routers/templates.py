@@ -20,17 +20,19 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, owned_project
 from app.models.content import Content, ContentStatus, unique_content_slug
 from app.models.project import Project
 from app.models.template import ContentTemplate, TemplateMode
 from app.models.user import User
+from app.ratelimit import account_key, limiter
 from app.schemas.content import ContentDetail
 from app.schemas.template import (
     MAX_TEMPLATES_PER_USER,
@@ -296,9 +298,12 @@ def preview_template(
     response_model=ContentDetail,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def use_template(
     template_id: int,
     payload: TemplateUseRequest,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
@@ -306,6 +311,15 @@ def use_template(
 
     A ``literal`` template never reaches a model; a ``prompt`` one hands its
     rendered text over as the brief.
+
+    Rate-limited at the same per-account budget as ``/content/generate``,
+    because in ``prompt`` mode this *is* ``/content/generate`` with the brief
+    templated — the same call, against the same shared quota, reached by a
+    different route. The budget is not conditioned on the mode: which mode a
+    template is in cannot be known without reading the row, and the limit has
+    to be decided before the request is worth serving. A ``literal`` template
+    loses nothing real by it — sixty finished drafts an hour is far past what
+    the deterministic path is for, and it writes a row either way.
     """
     from app.routers.content import _commit_content, _to_detail
 

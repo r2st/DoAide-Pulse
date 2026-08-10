@@ -120,6 +120,27 @@ class Settings(BaseSettings):
     # The unauthenticated constant lists (webhook events, trigger kinds). Cheap
     # to serve, but there is no reason for one caller to need hundreds a minute.
     rate_limit_public_read: str = "60/minute"
+    # The budgets below are per *account*, not per address, and exist because
+    # the request spends something shared rather than because the caller is
+    # anonymous — see the `app.ratelimit` module docstring. Every one of them is
+    # set well above a person clicking a button and well below a retry loop.
+    #
+    # Writing a whole piece: one LLM call of a few thousand tokens, ~20s of
+    # somebody watching a spinner. Six an hour is a busy editorial day; sixty is
+    # not a person.
+    rate_limit_ai_generate: str = "60/hour;300/day"
+    # The small single-shot model calls — rewriting a passage, headline
+    # variants, a repurposed blurb. Cheaper per call and used far more often
+    # inside one editing session, so the budget is looser.
+    rate_limit_ai_assist: str = "120/hour;600/day"
+    # Repo scans spend the *install's* GitHub quota (5000/hour authenticated,
+    # 60 unauthenticated), which is one budget shared by every account. A scan
+    # is a handful of calls, so this caps one account at a small fraction of it.
+    rate_limit_repo_scan: str = "60/hour;500/day"
+    # The link checker fans one request out to `link_check_max_urls` outbound
+    # requests from Herald's own address. Limited so a document full of links
+    # cannot be replayed into an outbound-traffic amplifier.
+    rate_limit_link_check: str = "60/hour;500/day"
 
     # ---- Database ----
     database_url: str = "postgresql+psycopg://herald:herald@localhost:5432/herald"

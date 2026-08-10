@@ -15,7 +15,7 @@ from app.models.content import Content, ContentIdea, ContentStatus
 from app.models.mixins import utcnow
 from app.models.project import Project, slugify
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import account_key, limiter
 from app.schemas.project import (
     IdeaOut,
     ProjectCreate,
@@ -217,8 +217,11 @@ def delete_project(
 
 
 @router.post("/{project_id}/scan", response_model=RepoActivityOut)
+@limiter.limit(settings.rate_limit_repo_scan, key_func=account_key)
 def scan_repo(
     project_id: int,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> RepoActivityOut:
@@ -227,6 +230,12 @@ def scan_repo(
     Moving the watermark here is deliberate: a manual scan is the user saying
     "I've seen this", so the autopilot should not then write about the same
     commits an hour later.
+
+    Rate-limited per account because the quota it spends is not the account's.
+    ``GITHUB_TOKEN`` is one token for the whole install, and once its hourly
+    budget is gone every project's scan — and the autopilot's own polling —
+    answers 403 until the window rolls over. The 429 below reports GitHub
+    saying no; this stops one caller getting it said to everybody.
     """
     project = owned_project(project_id, db, user)
     full_name = project.repo_full_name
@@ -298,9 +307,33 @@ def project_feed(
     return Response(content=xml, media_type="application/rss+xml")
 
 
+#: The spellings pydantic parses as a true ``bool`` query param. Mirrored here
+#: rather than re-derived, because :func:`_not_refreshing` has to reach the same
+#: verdict as FastAPI does about the very same string — a limit that exempts
+#: ``?refresh=on`` while the endpoint honours it is an unlimited endpoint.
+_TRUTHY = frozenset({"1", "t", "true", "y", "yes", "on"})
+
+
+def _not_refreshing(request: Request) -> bool:
+    """Whether this ``/ideas`` call is the free read rather than the model call.
+
+    The limit below covers one endpoint with two costs. Without ``refresh`` it
+    is two queries the projects page runs on every visit; with it, it is an LLM
+    call. Limiting both at the model call's budget would throttle a page load;
+    limiting neither leaves the model call open. So the limit is declared on the
+    endpoint and exempted for the cheap half.
+    """
+    return request.query_params.get("refresh", "").strip().lower() not in _TRUTHY
+
+
 @router.get("/{project_id}/ideas", response_model=list[IdeaOut])
+@limiter.limit(
+    settings.rate_limit_ai_generate, key_func=account_key, exempt_when=_not_refreshing
+)
 def list_ideas(
     project_id: int,
+    request: Request,
+    response: Response,
     refresh: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -308,7 +341,9 @@ def list_ideas(
     """Subjects worth writing about. ``refresh=true`` asks the model for more.
 
     Without ``refresh`` this is a cheap read of what the autopilot has already
-    banked, so the projects page can show ideas without an LLM call per visit.
+    banked, so the projects page can show ideas without an LLM call per visit —
+    and only the refreshing half counts against a rate limit, see
+    :func:`_not_refreshing`.
     """
     project = owned_project(project_id, db, user)
 
