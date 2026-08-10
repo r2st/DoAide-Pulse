@@ -440,7 +440,7 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
                 "url": signal.url,
             },
         )
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         logger.exception("trigger %s failed while writing: %s", trigger.id, exc)
         db.rollback()
         event.status = TriggerEventStatus.FAILED
@@ -506,7 +506,7 @@ def check(db: Session, trigger: Trigger) -> dict[str, Any]:
     except TriggerError as exc:
         _mark_checked(db, trigger, str(exc))
         return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
-    except Exception as exc:  # pragma: no cover - defensive
+    except Exception as exc:
         logger.exception("trigger %s crashed: %s", trigger.id, exc)
         _mark_checked(db, trigger, f"Unexpected error: {exc}")
         return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}

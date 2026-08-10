@@ -21,13 +21,9 @@ from app.models.project import AutopilotMode
 from app.services import ai, content_generator, content_pipeline
 from app.tasks import autopilot_tasks
 
-# Reused rather than rebuilt: `stub_github` fakes the GitHub read and points the
-# task at the test's session, and `_share_session` (autouse) is what supplies it.
-from tests.test_autopilot import (  # noqa: F401
-    _share_session,
-    make_activity,
-    stub_github,
-)
+# `stub_github` (a fixture in conftest.py) fakes the GitHub read and points the
+# task at the test's session; this is the activity it hands back.
+from .conftest import repo_activity as make_activity
 
 
 @pytest.fixture
@@ -63,7 +59,7 @@ def armed(db, project):
 
 
 def test_a_total_outage_writes_nothing_and_holds_the_watermark(
-    db, armed, stub_github, no_provider  # noqa: F811
+    db, armed, stub_github, no_provider
 ):
     stub_github["set"](make_activity(commits=30, head="new-head"))
 
@@ -82,7 +78,7 @@ def test_a_total_outage_writes_nothing_and_holds_the_watermark(
 
 
 def test_the_next_scan_writes_the_piece_the_outage_deferred(
-    db, armed, stub_github, monkeypatch  # noqa: F811
+    db, armed, stub_github, monkeypatch
 ):
     """The point of holding the watermark: the commits get their post later."""
     stub_github["set"](make_activity(commits=30, head="new-head"))
@@ -123,7 +119,7 @@ def test_the_next_scan_writes_the_piece_the_outage_deferred(
 
 
 def test_an_outage_does_not_spend_the_daily_content_budget(
-    db, armed, stub_github, no_provider, monkeypatch  # noqa: F811
+    db, armed, stub_github, no_provider, monkeypatch
 ):
     """A day of exhausted quota must not also cost the day's post allowance."""
     monkeypatch.setattr(settings, "autopilot_daily_content_limit", 1)
@@ -135,7 +131,7 @@ def test_an_outage_does_not_spend_the_daily_content_budget(
 
 
 def test_a_provider_that_answers_badly_still_stores_its_template(
-    db, armed, stub_github, junk_provider  # noqa: F811
+    db, armed, stub_github, junk_provider
 ):
     """The other half of the distinction, and the pre-existing behaviour.
 

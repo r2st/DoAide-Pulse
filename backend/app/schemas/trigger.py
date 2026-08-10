@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.content import ContentType
 from app.models.trigger import TriggerEventStatus, TriggerKind
@@ -47,7 +47,7 @@ ALLOWED_CONFIG: dict[TriggerKind, tuple[str, ...]] = {
 MAX_INTERVAL_HOURS = 24 * 365
 
 
-def validate_config(kind: TriggerKind, config: dict[str, Any]) -> dict[str, Any]:
+def validate_config(kind: TriggerKind, config: dict[str, Any] | None) -> dict[str, Any]:
     """Return *config* checked against *kind*, or raise ``ValueError``."""
     body = dict(config or {})
 
@@ -135,20 +135,17 @@ class TriggerUpdate(BaseModel):
     ``config`` is replaced wholesale rather than merged. A merge cannot express
     "remove this setting", and a half-updated config is harder to reason about
     than one the client sends complete.
+
+    There is deliberately no ``config`` validator here. Kind-aware validation
+    needs the stored row to know *which* kind's rules apply, so the router calls
+    :func:`validate_config` itself once it has loaded the trigger; the annotation
+    below is what rejects a non-object, and it does so before any validator of
+    ours would run.
     """
 
     name: str | None = Field(default=None, max_length=120)
     config: dict[str, Any] | None = None
     is_active: bool | None = None
-
-    @field_validator("config")
-    @classmethod
-    def _shape(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
-        # Kind-aware validation needs the stored row, so the router calls
-        # ``validate_config`` itself. This only rejects the obviously wrong.
-        if v is not None and not isinstance(v, dict):
-            raise ValueError("config must be an object")
-        return v
 
 
 class TriggerOut(BaseModel):

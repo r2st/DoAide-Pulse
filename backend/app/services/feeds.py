@@ -11,11 +11,14 @@ server is what opens it, so the same SSRF checks apply — loopback, private and
 link-local space are refused, and redirects are not followed. See
 ``app.services.webhooks``, whose reasoning this borrows wholesale.
 
-**The response is capped before it is parsed.** ``xml.etree`` will happily
-expand a small document into gigabytes of memory (the "billion laughs" family of
-attacks), and the cheapest defence that does not add a dependency is to refuse
-to read more than :data:`MAX_FEED_BYTES` off the socket at all. A feed that does
-not fit in two megabytes is not a feed Herald can work with anyway.
+**The response is capped before it is parsed, and its DTD is refused.** The cap
+(:data:`MAX_FEED_BYTES`) bounds what comes off the socket; a feed that does not
+fit in two megabytes is not a feed Herald can work with anyway. It does *not*
+bound what parsing that response costs, which is the whole point of the "billion
+laughs" family of attacks: ``xml.etree`` expands internal entities eagerly, so a
+few hundred bytes of nested ``<!ENTITY>`` declarations become gigabytes of
+resident memory, and the cap the bytes passed is the cap on the *compressed*
+form. :func:`_reject_dtd_entities` is what actually closes it — see there.
 
 **Entries are identified, not counted.** Feeds reorder, republish and backfill.
 A poller that remembers "I had read 10 items" writes about the same entry twice
@@ -31,6 +34,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
 from xml.etree import ElementTree
+from xml.parsers import expat
 
 import httpx
 
@@ -147,6 +151,57 @@ def _atom_link(entry: ElementTree.Element) -> str:
     return fallback
 
 
+class _RootReached(Exception):
+    """The pre-scan got as far as the root element. Nothing left to check."""
+
+
+def _reject_dtd_entities(xml: str | bytes) -> None:
+    """Refuse a document that declares XML entities, before anything expands one.
+
+    ``xml.etree`` has no switch for this. Its C parser exposes neither expat's
+    ``EntityDeclHandler`` nor a writable ``entity`` mapping, so the declarations
+    cannot be intercepted on the way through the parse that matters — by the
+    time :func:`parse` is running, a document that turns 300 bytes into a
+    gigabyte has already done it.
+
+    So the check runs first, on its own expat parser, with every handler off
+    except two. ``EntityDeclHandler`` fires when an entity is *declared*, which
+    is strictly before any reference to it is expanded — refusing there costs
+    nothing and is what makes the guard safe rather than merely early.
+    ``StartElementHandler`` aborts the scan at the root element: entity
+    declarations live in the DTD, the DTD precedes the root, so once the root
+    opens there is nothing left to find. That is what keeps this a scan of the
+    prolog rather than a second full parse of every feed Herald reads.
+
+    External entities are refused by the same handler, which matters for a
+    different reason: expat will not *fetch* one by default, but a document that
+    declares ``<!ENTITY x SYSTEM "file:///etc/passwd">`` is not a feed, and
+    saying so is better than parsing it and silently yielding empty text.
+
+    A malformed document is not this function's problem — it returns quietly and
+    lets :func:`parse` raise the error that actually describes what is wrong.
+    """
+    parser = expat.ParserCreate()
+
+    def _on_entity_decl(name, *_args) -> None:
+        raise FeedError(
+            f"That feed declares an XML entity ({name!r}). Herald does not parse "
+            "feeds with a document type definition."
+        )
+
+    def _on_root(*_args) -> None:
+        raise _RootReached
+
+    parser.EntityDeclHandler = _on_entity_decl
+    parser.StartElementHandler = _on_root
+    try:
+        parser.Parse(xml if isinstance(xml, bytes) else xml.encode("utf-8"), True)
+    except _RootReached:
+        return
+    except expat.ExpatError:
+        return
+
+
 def parse(xml: str | bytes) -> Feed:
     """Parse RSS 2.0 or Atom into a :class:`Feed`.
 
@@ -154,6 +209,7 @@ def parse(xml: str | bytes) -> Feed:
     claims about itself: half the feeds on the internet serve Atom as
     ``text/xml`` and RSS as ``application/atom+xml``.
     """
+    _reject_dtd_entities(xml)
     try:
         root = ElementTree.fromstring(xml)
     except ElementTree.ParseError as exc:

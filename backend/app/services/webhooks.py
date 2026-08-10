@@ -230,15 +230,23 @@ def dispatch(delivery_ids: list[int]) -> None:
 
     from app.tasks import webhook_tasks
 
+    # How many the broker has already accepted. Everything from here on is what
+    # the inline fallback is still responsible for — and *only* that. A broker
+    # that dies partway through a batch is the exact case this fallback exists
+    # for, and starting the inline loop from the top would POST the ids queued
+    # before the failure a second time. The receiver cannot tell that duplicate
+    # from a genuine retry: same delivery id, same signature, same body.
+    dispatched = 0
     if settings.celery_enabled:
         try:
             for delivery_id in delivery_ids:
                 webhook_tasks.deliver_one.delay(delivery_id)
+                dispatched += 1
             return
-        except Exception as exc:  # pragma: no cover - broker down
+        except Exception as exc:
             logger.warning("celery dispatch failed, delivering inline: %s", exc)
 
-    for delivery_id in delivery_ids:
+    for delivery_id in delivery_ids[dispatched:]:
         try:
             webhook_tasks.deliver_one(delivery_id)
         except Exception:

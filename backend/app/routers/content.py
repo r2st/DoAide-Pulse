@@ -1300,7 +1300,7 @@ def _dispatch(publication_ids: list[int]) -> None:
             for publication_id in publication_ids:
                 publish_tasks.publish_one.delay(publication_id)
             return
-        except Exception as exc:  # pragma: no cover - broker down
+        except Exception as exc:
             logger.warning("celery dispatch failed, publishing inline: %s", exc)
 
     for publication_id in publication_ids:

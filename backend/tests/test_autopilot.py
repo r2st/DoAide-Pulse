@@ -2,94 +2,18 @@
 
 GitHub is stubbed out with fabricated activity, so what is under test is the
 policy — when Herald writes, when it stays quiet, and what it does with the
-watermark — rather than the HTTP client.
+watermark — rather than the HTTP client. The stub itself is the ``stub_github``
+fixture in ``conftest.py``, shared with the other modules that scan a repo.
 """
 from __future__ import annotations
-
-from datetime import UTC, datetime
-
-import pytest
 
 from app.config import settings
 from app.models.content import Content, ContentStatus
 from app.models.project import AutopilotMode, Project
 from app.services import content_pipeline, github_client
-from app.services.github_client import Commit, RepoActivity
 from app.tasks import autopilot_tasks
 
-
-def make_activity(*, commits: int = 0, release: bool = False, head: str = "abc123"):
-    return RepoActivity(
-        full_name="r2st/Herald",
-        new_commits=[
-            Commit(
-                sha=f"sha{i}",
-                message=f"feat: thing {i}\n\nbody",
-                author="r2st",
-                committed_at=datetime(2026, 7, 1, tzinfo=UTC),
-                url="https://github.com/r2st/Herald/commit/x",
-            )
-            for i in range(commits)
-        ],
-        new_release=(
-            github_client.Release(
-                tag="v1.2.0",
-                name="Calendar drag-and-drop",
-                body="- Drag to reschedule\n- SEO panel",
-                published_at=datetime(2026, 7, 20, tzinfo=UTC),
-                url="https://github.com/r2st/Herald/releases/v1.2.0",
-                prerelease=False,
-            )
-            if release
-            else None
-        ),
-        head_sha=head,
-        latest_tag="v1.2.0" if release else None,
-    )
-
-
-@pytest.fixture
-def stub_github(monkeypatch):
-    """Replace the GitHub fetch with a fixture, and record what it was asked."""
-    calls: list[dict] = []
-    activity = {"value": make_activity()}
-
-    def fake_fetch(full_name, *, since_sha=None, since_tag=None):
-        calls.append({"full_name": full_name, "since_sha": since_sha})
-        return activity["value"]
-
-    monkeypatch.setattr(autopilot_tasks.github_client, "fetch_activity", fake_fetch)
-    monkeypatch.setattr(autopilot_tasks, "SessionLocal", _session_factory())
-    return {"calls": calls, "set": lambda a: activity.update(value=a)}
-
-
-_SESSION_HOLDER: dict = {}
-
-
-def _session_factory():
-    """Hand the task the test's session, without it closing the shared one."""
-
-    def factory():
-        session = _SESSION_HOLDER["session"]
-
-        class NoCloseProxy:
-            def __getattr__(self, name):
-                return getattr(session, name)
-
-            def close(self):
-                # The fixture owns this session's lifetime, not the task.
-                pass
-
-        return NoCloseProxy()
-
-    return factory
-
-
-@pytest.fixture(autouse=True)
-def _share_session(db):
-    _SESSION_HOLDER["session"] = db
-    yield
-    _SESSION_HOLDER.clear()
+from .conftest import repo_activity as make_activity
 
 
 def test_first_scan_only_baselines(db, project, stub_github):

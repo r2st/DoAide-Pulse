@@ -173,6 +173,84 @@ def sql_log():
 
 
 @pytest.fixture
+def task_session(db):
+    """A ``SessionLocal`` stand-in that hands a background task the test session.
+
+    Celery tasks open their own session and close it in a ``finally``. Handing
+    them the test's session directly means the first task to finish closes the
+    session the assertions are about, so the proxy swallows ``close()`` — the
+    fixture owns this session's lifetime, not the task.
+
+    Returns the factory, ready to be patched over a module's ``SessionLocal``.
+    """
+
+    class _NoCloseProxy:
+        def __getattr__(self, name):
+            return getattr(db, name)
+
+        def close(self):
+            pass
+
+    return lambda: _NoCloseProxy()
+
+
+def repo_activity(*, commits: int = 0, release: bool = False, head: str = "abc123"):
+    """Fabricated GitHub activity, so the tests are about policy not HTTP."""
+    from datetime import UTC, datetime
+
+    from app.services.github_client import Commit, Release, RepoActivity
+
+    return RepoActivity(
+        full_name="r2st/Herald",
+        new_commits=[
+            Commit(
+                sha=f"sha{i}",
+                message=f"feat: thing {i}\n\nbody",
+                author="r2st",
+                committed_at=datetime(2026, 7, 1, tzinfo=UTC),
+                url="https://github.com/r2st/Herald/commit/x",
+            )
+            for i in range(commits)
+        ],
+        new_release=(
+            Release(
+                tag="v1.2.0",
+                name="Calendar drag-and-drop",
+                body="- Drag to reschedule\n- SEO panel",
+                published_at=datetime(2026, 7, 20, tzinfo=UTC),
+                url="https://github.com/r2st/Herald/releases/v1.2.0",
+                prerelease=False,
+            )
+            if release
+            else None
+        ),
+        head_sha=head,
+        latest_tag="v1.2.0" if release else None,
+    )
+
+
+@pytest.fixture
+def stub_github(monkeypatch, task_session):
+    """Replace the GitHub fetch with a fixture, and record what it was asked.
+
+    Lives here rather than in one test module because three of them need it, and
+    importing a fixture across modules shadows it into an F811 at every use.
+    """
+    from app.tasks import autopilot_tasks
+
+    calls: list[dict] = []
+    activity = {"value": repo_activity()}
+
+    def fake_fetch(full_name, *, since_sha=None, since_tag=None):
+        calls.append({"full_name": full_name, "since_sha": since_sha})
+        return activity["value"]
+
+    monkeypatch.setattr(autopilot_tasks.github_client, "fetch_activity", fake_fetch)
+    monkeypatch.setattr(autopilot_tasks, "SessionLocal", task_session)
+    return {"calls": calls, "set": lambda a: activity.update(value=a)}
+
+
+@pytest.fixture
 def project(db, user) -> Project:
     row = Project(
         user_id=user.id,
