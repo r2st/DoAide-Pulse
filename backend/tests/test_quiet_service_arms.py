@@ -55,7 +55,9 @@ def _publication(db, content, *, platform=Platform.DEVTO, status=PublicationStat
         content_id=content.id,
         platform=platform,
         status=status,
-        published_at=utcnow() - timedelta(days=3) if status == PublicationStatus.PUBLISHED else None,
+        published_at=(
+            utcnow() - timedelta(days=3) if status == PublicationStatus.PUBLISHED else None
+        ),
         external_url="https://dev.to/x/a-piece",
     )
     db.add(row)
