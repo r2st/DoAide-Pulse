@@ -38,8 +38,14 @@ def _prepare_legacy(password: str) -> bytes:
 
 
 def hash_password(password: str) -> str:
-    """Return a bcrypt hash for a plaintext password."""
-    return bcrypt.hashpw(_prepare(password), bcrypt.gensalt()).decode("utf-8")
+    """Return a bcrypt hash for a plaintext password.
+
+    The work factor comes from settings rather than ``gensalt``'s default so
+    the test suite can drop it; production is held at 12 or above by
+    ``Settings._bcrypt_rounds_in_range_and_strong_in_production``.
+    """
+    salt = bcrypt.gensalt(rounds=settings.bcrypt_rounds)
+    return bcrypt.hashpw(_prepare(password), salt).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:

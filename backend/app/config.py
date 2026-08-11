@@ -15,6 +15,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #: as the hash it is used with, and PyJWT warns below this and signs anyway.
 _MIN_JWT_SECRET_BYTES = 32
 
+#: The range bcrypt itself accepts for a work factor; it raises outside it.
+_BCRYPT_MIN_ROUNDS = 4
+_BCRYPT_MAX_ROUNDS = 31
+#: The lowest work factor production may run with, whatever the .env says.
+_BCRYPT_PRODUCTION_MIN_ROUNDS = 12
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -48,6 +54,20 @@ class Settings(BaseSettings):
     # Blank means tokens are stored in the clear — fine for local dev, refused
     # in production (see app.services.crypto).
     token_encryption_key: str = ""
+    # bcrypt's work factor: the cost of one hash is 2**rounds, so each step up
+    # doubles it. 12 is the current sensible default for a password hash and is
+    # the floor production is held to below.
+    #
+    # This is settable for exactly one reason: the test suite. A hash at 12
+    # costs ~230ms, the fixtures make a user for nearly every test, and that
+    # single line was over half the suite's runtime — enough that a full run
+    # reads as a hang and gets killed rather than waited out. Tests set 4, the
+    # library minimum, and run the same code path in ~1ms.
+    #
+    # Lowering this does not strand existing hashes: bcrypt encodes the cost in
+    # the hash itself, so `verify_password` keeps checking old ones at whatever
+    # they were made with, and only new hashes are made at the new cost.
+    bcrypt_rounds: int = 12
 
     # ---- Registration ----
     # Herald is a single-user product: the account is created once by
@@ -542,6 +562,33 @@ class Settings(BaseSettings):
                 "production — a shorter key can be recovered offline from any "
                 'token Herald has issued. Generate one with: python -c '
                 '"import secrets; print(secrets.token_urlsafe(48))"'
+            )
+        return v
+
+    @field_validator("bcrypt_rounds")
+    @classmethod
+    def _bcrypt_rounds_in_range_and_strong_in_production(cls, v: int, info) -> int:
+        """Keep the work factor inside bcrypt's range, and at 12+ in production.
+
+        The setting exists to let the tests drop to 4 (see the field comment).
+        That is a fine thing to do to a suite and a catastrophic thing to do to
+        a live password database — at 4 the whole cost of a guess is ~1ms, and
+        an offline attacker with the hashes gets a ~250x discount on every one
+        of them. Production is held to the default rather than trusted to
+        re-state it, so the escape hatch cannot follow a copied .env onto a
+        real box.
+        """
+        if not _BCRYPT_MIN_ROUNDS <= v <= _BCRYPT_MAX_ROUNDS:
+            raise ValueError(
+                f"BCRYPT_ROUNDS must be between {_BCRYPT_MIN_ROUNDS} and "
+                f"{_BCRYPT_MAX_ROUNDS} — bcrypt refuses anything outside it"
+            )
+        env = (info.data.get("environment") or "development").lower()
+        if env in {"production", "prod"} and v < _BCRYPT_PRODUCTION_MIN_ROUNDS:
+            raise ValueError(
+                f"BCRYPT_ROUNDS must be at least {_BCRYPT_PRODUCTION_MIN_ROUNDS} "
+                "in production — a lower work factor is a test-suite shortcut, "
+                "and it discounts every offline guess against the stored hashes"
             )
         return v
 

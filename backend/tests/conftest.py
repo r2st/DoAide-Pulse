@@ -20,6 +20,13 @@ os.environ["ENVIRONMENT"] = "development"
 # open it explicitly (see tests/test_auth.py), so it must be reachable here.
 os.environ["REGISTRATION_ENABLED"] = "true"
 os.environ["REGISTRATION_INVITE_TOKEN"] = ""
+# bcrypt's minimum work factor. The default 12 costs ~230ms per hash and the
+# fixtures below make a user for nearly every test in the suite, which came to
+# over half the total runtime — long enough that a full run reads as a hang and
+# gets killed instead of waited out. At 4 the same code path costs ~1ms. The
+# production floor is enforced in app.config, so this cannot escape the suite.
+# Unset again once the singleton is built, a few lines below.
+os.environ["BCRYPT_ROUNDS"] = "4"
 # No provider keys: the chain is empty, so generation takes the template path.
 for key in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"):
     os.environ[key] = ""
@@ -47,6 +54,16 @@ import app.config as _cfg  # noqa: E402
 
 _cfg.get_settings.cache_clear()
 _cfg.settings = _cfg.get_settings()
+
+# The singleton now holds the cheap work factor, which is all the suite wanted.
+# Leaving BCRYPT_ROUNDS in the environment would go further than that: every
+# `Settings(environment="production", ...)` a test builds to exercise a
+# production rule reads os.environ too, even with `_env_file=None`, so each one
+# would inherit 4 and trip the production floor for reasons having nothing to
+# do with what it was written to check. Unsetting it here keeps the override
+# where it belongs — on the app's own settings object — instead of leaving a
+# trap for the next test that constructs a production config.
+del os.environ["BCRYPT_ROUNDS"]
 
 import pytest  # noqa: E402
 
