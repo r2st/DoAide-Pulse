@@ -16,6 +16,7 @@ from app.models.mixins import utcnow
 from app.models.project import Project, slugify
 from app.models.user import User
 from app.ratelimit import account_key, limiter
+from app.routers._patch import reject_nulls
 from app.schemas.project import (
     IdeaOut,
     ProjectCreate,
@@ -187,6 +188,7 @@ def update_project(
 ) -> ProjectOut:
     project = owned_project(project_id, db, user)
     data = payload.model_dump(exclude_unset=True)
+    reject_nulls(Project, data)
 
     if "autopilot_platforms" in data and data["autopilot_platforms"] is not None:
         data["autopilot_platforms"] = [

@@ -475,6 +475,11 @@ class Settings(BaseSettings):
         return v
 
     @field_validator(
+        # Zero is a real setting here: keep no unused ideas, so every scan
+        # prunes what the last one suggested and did not use. Negative is not —
+        # it would make `_prune_ideas` compute an excess larger than the number
+        # of rows there are to prune.
+        "autopilot_ideas_cap",
         "publish_request_retries",
         "publish_rate_limit_max_defer_seconds",
         "schedule_past_grace_seconds",

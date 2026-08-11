@@ -40,7 +40,7 @@ skip_covered = true
 # unrelated change cannot quietly delete coverage, while a normal patch that
 # adds a line or two of straight-line code does not trip it. Raise it when the
 # real number moves up; never lower it to make a red run go green.
-fail_under = 98.0
+fail_under = 99.5
 exclude_also = [
     # `if TYPE_CHECKING:` blocks exist for the type checker and never execute.
     "if TYPE_CHECKING:",

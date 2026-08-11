@@ -203,10 +203,11 @@ def _prune_ideas(db: Session, project_id: int) -> int:
             .limit(excess)
         )
     )
-    if oldest_ids:
-        db.execute(
-            ContentIdea.__table__.delete().where(ContentIdea.id.in_(oldest_ids))
-        )
+    # No emptiness check: `autopilot_ideas_cap` cannot be negative (see
+    # `Settings._non_negative`), so reaching here means `unused_count > cap >= 0`
+    # and the LIMIT-ed select over the same predicate that counted them returns
+    # at least one row.
+    db.execute(ContentIdea.__table__.delete().where(ContentIdea.id.in_(oldest_ids)))
     return len(oldest_ids)
 
 

@@ -18,6 +18,7 @@ from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
 from app.ratelimit import account_key, limiter
+from app.routers._patch import reject_nulls
 from app.schemas.content import (
     BulkContentIn,
     BulkFailureOut,
@@ -934,6 +935,7 @@ def update_content(
 ) -> ContentDetail:
     content = _owned_content(content_id, db, user)
     data = payload.model_dump(exclude_unset=True)
+    reject_nulls(Content, data)
 
     if content.status == ContentStatus.PUBLISHED and set(data) - {"status", "scheduled_for"}:
         raise HTTPException(
