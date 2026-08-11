@@ -122,8 +122,18 @@ def get_calendar(
     connected = [Platform(p) for p in user.connected_platforms]
     taken = [as_aware(e.when) for e in entries if as_aware(e.when) >= utcnow()]
     # One pass over the metric series for every connected platform, rather than
-    # one per platform inside the loop.
-    known = velocity.curves(db, user.id) if settings.learned_cadence_enabled else []
+    # one per platform inside the loop — and bounded to the window the learned
+    # cadence actually reads, so the page does not get slower every month the
+    # account stays open. Everything below asks these curves for first-window
+    # views and nothing else; ``within_hours`` makes that a promise the curve
+    # enforces rather than a convention.
+    known = (
+        velocity.curves(
+            db, user.id, within_hours=float(settings.velocity_early_window_hours)
+        )
+        if settings.learned_cadence_enabled
+        else []
+    )
     suggested: list[datetime] = []
     for platform in connected:
         learned = learned_cadence.learn(db, user.id, platform, known=known)

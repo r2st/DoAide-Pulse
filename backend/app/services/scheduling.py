@@ -148,8 +148,15 @@ def optimal_slots(
     chosen: list[Slot] = []
     syndication_floor: datetime | None = None
     # One pass over the metric series for the whole batch, shared across every
-    # platform below — the learned hours come from the same curves each time.
-    known = velocity.curves(db, user_id) if settings.learned_cadence_enabled else []
+    # platform below — the learned hours come from the same curves each time,
+    # and only ever ask about the first window, so the read is bounded to it.
+    known = (
+        velocity.curves(
+            db, user_id, within_hours=float(settings.velocity_early_window_hours)
+        )
+        if settings.learned_cadence_enabled
+        else []
+    )
 
     for platform in ordered:
         start = floor

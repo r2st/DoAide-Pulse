@@ -28,9 +28,9 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -80,11 +80,31 @@ class Curve:
     #: How long the post has been live, at the moment the curve was built.
     age_hours: float
     points: list[Point] = field(default_factory=list)
+    #: Set when the series was deliberately read only through this many hours
+    #: past publication — see the ``within_hours`` argument to :func:`curves`.
+    #: ``None`` means the whole series is here. Every method below that would
+    #: answer differently on a truncated series checks this and refuses, because
+    #: the failure mode otherwise is silent: a post with a year of history read
+    #: through its first day looks like a post that stopped growing after a day.
+    observed_hours: float | None = None
 
     # ---- Reading the curve ------------------------------------------------ #
 
+    def _require_full_series(self, question: str) -> None:
+        if self.observed_hours is not None:
+            raise ValueError(
+                f"{question} needs the whole series, but this curve was built "
+                f"with within_hours={self.observed_hours:g}. Rebuild it with "
+                "velocity.curves(...) and no window."
+            )
+
     def reading_at(self, hours: float) -> Point | None:
         """The last reading taken at or before *hours* since publication."""
+        if self.observed_hours is not None and hours > self.observed_hours:
+            raise ValueError(
+                f"asked for the reading at {hours:g}h, but this curve was only "
+                f"read through {self.observed_hours:g}h"
+            )
         chosen: Point | None = None
         for point in self.points:
             if point.hours > hours:
@@ -133,6 +153,7 @@ class Curve:
         The yardstick a quiet week is measured against. ``None`` with fewer
         than two readings, which is not enough to observe a gain at all.
         """
+        self._require_full_series("peak_gain")
         if len(self.points) < 2:
             return None
         best = 0
@@ -156,6 +177,7 @@ class Curve:
         counting that silence as zero growth would report every post as dead
         the moment metrics collection stops.
         """
+        self._require_full_series("recent_gain")
         if len(self.points) < 2:
             return None
         latest = self.points[-1]
@@ -170,6 +192,7 @@ class Curve:
         landed", a different problem), and a recent window at or under *ratio*
         of that peak.
         """
+        self._require_full_series("is_stalled")
         if self.age_hours < window_hours * 2:
             return False
         peak = self.peak_gain(window_hours)
@@ -179,6 +202,7 @@ class Curve:
         return recent <= peak * ratio
 
     def as_dict(self) -> dict:
+        self._require_full_series("as_dict")
         early = float(settings.velocity_early_window_hours)
         benchmark = float(settings.velocity_benchmark_window_hours)
         latest = self.points[-1] if self.points else None
@@ -203,6 +227,7 @@ class Curve:
 
     def views_per_day(self) -> float | None:
         """Lifetime views divided by days live — the crude comparable rate."""
+        self._require_full_series("views_per_day")
         if not self.points or self.age_hours <= 0:
             return None
         return round(self.points[-1].views / (self.age_hours / 24), 2)
@@ -214,6 +239,7 @@ def _build_curve(
     metrics: list[ContentMetric],
     *,
     now: datetime,
+    within_hours: float | None = None,
 ) -> Curve:
     published_at = as_aware(publication.published_at)
     points: list[Point] = []
@@ -242,6 +268,7 @@ def _build_curve(
         published_at=published_at,
         age_hours=max(0.0, (now - published_at).total_seconds() / 3600),
         points=points,
+        observed_hours=within_hours,
     )
 
 
@@ -252,6 +279,7 @@ def curves(
     project_id: int | None = None,
     platform: Platform | None = None,
     now: datetime | None = None,
+    within_hours: float | None = None,
 ) -> list[Curve]:
     """A growth curve per published publication, newest publication first.
 
@@ -262,6 +290,23 @@ def curves(
     Two queries regardless of how many publications there are — the snapshots
     are fetched in one pass and grouped in Python, because the alternative is a
     round trip per post.
+
+    Pass *within_hours* when the caller only ever asks the curve about the first
+    N hours of a post's life. ``content_metrics`` is append-only and nothing
+    prunes it, so a post polled every six hours for a year carries some 1,400
+    rows; reading all of them to answer "how did its first day go" made the
+    calendar's cost scale with how long the account had existed rather than with
+    what it was being asked. Bounded, that same post contributes four rows.
+
+    The bound is per publication and relative to its own ``published_at``, so it
+    cannot be one ``WHERE`` clause: it is an ``OR`` of one predicate per
+    publication, which the ``(publication_id, captured_at)`` index answers a
+    disjunct at a time. That trades a statement proportional to the number of
+    publications for a result set that no longer grows with the age of the
+    account, and publications are the far smaller and slower-growing number.
+
+    Curves built this way carry :attr:`Curve.observed_hours` and refuse the
+    questions a truncated series cannot honestly answer — see there.
     """
     moment = now or utcnow()
 
@@ -285,9 +330,22 @@ def curves(
         return []
 
     by_publication: dict[int, list[ContentMetric]] = {pub.id: [] for pub, _ in rows}
+    if within_hours is None:
+        wanted = ContentMetric.publication_id.in_(by_publication)
+    else:
+        span = timedelta(hours=within_hours)
+        wanted = or_(
+            *(
+                and_(
+                    ContentMetric.publication_id == pub.id,
+                    ContentMetric.captured_at <= as_aware(pub.published_at) + span,
+                )
+                for pub, _ in rows
+            )
+        )
     snapshots = db.scalars(
         select(ContentMetric)
-        .where(ContentMetric.publication_id.in_(by_publication))
+        .where(wanted)
         # Per publication, then in time order: every subtraction below is only
         # meaningful against the same publication's previous reading.
         .order_by(ContentMetric.publication_id, ContentMetric.captured_at)
@@ -296,7 +354,9 @@ def curves(
         by_publication[metric.publication_id].append(metric)
 
     built = [
-        _build_curve(pub, content, by_publication[pub.id], now=moment)
+        _build_curve(
+            pub, content, by_publication[pub.id], now=moment, within_hours=within_hours
+        )
         for pub, content in rows
     ]
     return sorted(built, key=lambda c: c.published_at, reverse=True)

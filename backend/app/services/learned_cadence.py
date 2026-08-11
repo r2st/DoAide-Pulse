@@ -114,7 +114,9 @@ def observations(
     curves = (
         [c for c in known if c.platform == platform]
         if known is not None
-        else velocity.curves(db, user_id, platform=platform)
+        # Bounded to the one window read below: the whole series per publication
+        # would be a year of six-hourly polling to answer about a first day.
+        else velocity.curves(db, user_id, platform=platform, within_hours=window)
     )
 
     out: list[_Observation] = []
@@ -258,7 +260,13 @@ def describe_all(
     if not wanted:
         return []
     if known is None:
-        known = velocity.curves(db, user_id) if settings.learned_cadence_enabled else []
+        known = (
+            velocity.curves(
+                db, user_id, within_hours=float(settings.velocity_early_window_hours)
+            )
+            if settings.learned_cadence_enabled
+            else []
+        )
     return [learn(db, user_id, p, known=known).as_dict() for p in wanted]
 
 
