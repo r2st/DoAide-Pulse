@@ -174,11 +174,11 @@ def test_a_snapshot_older_than_every_window_is_dropped_rather_than_credited(db, 
 
 
 def test_a_single_word_longer_than_the_limit_starts_its_own_post():
-    """The `if current:` arm when nothing has accumulated yet.
+    """A URL longer than the whole post budget still leads the thread.
 
-    A URL longer than the post limit arrives as the first token, so there is no
-    part in hand to flush before it. Appending an empty string there would emit
-    a blank post.
+    ``_tokens`` cuts it into limit-sized chunks first, so the splitter is never
+    handed a piece it cannot place — the URL opens the first post rather than
+    being dropped or overflowing it.
     """
     url = "https://example.com/" + "x" * 400
 
@@ -190,19 +190,24 @@ def test_a_single_word_longer_than_the_limit_starts_its_own_post():
 
 
 def test_text_that_divides_evenly_leaves_nothing_in_hand():
-    """The `if current:` arm at the end, when the last token closed a part."""
+    """Two sentences that each exactly fill a post produce exactly two posts."""
     parts = formats.split_post("A" * 40 + ". " + "B" * 40 + ".", limit=45)
 
     assert parts == ["A" * 40 + ".", "B" * 40 + "."]
     assert "" not in parts
 
 
-def test_repeated_sentence_punctuation_does_not_produce_empty_tokens():
-    """Splitting on sentence ends yields empty strings between adjacent stops."""
+def test_a_run_of_stops_stays_inside_one_post():
+    """``First one....`` is one piece, not a piece plus three empty ones.
+
+    ``_SENTENCE_END`` matches whitespace after a stop, so a run of stops with
+    nothing between them is never a split point and the ellipsis travels with
+    the sentence it belongs to.
+    """
     parts = formats.split_post("First one.... Second one." + " tail" * 60, limit=60)
 
     assert "" not in parts
-    assert parts[0].startswith("First one")
+    assert parts[0].startswith("First one....")
 
 
 # ---- Mailer: the HTML alternative ------------------------------------------- #

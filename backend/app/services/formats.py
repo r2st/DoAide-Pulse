@@ -123,21 +123,33 @@ def split_post(text: str, limit: int = THREAD_POST_LIMIT) -> list[str]:
         if len(candidate) <= limit:
             current = candidate
             continue
-        if current:
-            parts.append(current)
-        current = piece
-    if current:
+        # `current` is necessarily non-empty here, and again at the tail below.
+        # Both follow from _tokens' contract: every piece is non-empty and no
+        # longer than the limit, and there is at least one for the non-empty
+        # text this line is only reached with. An empty `current` would mean
+        # candidate == piece, which would then have fit. Guarding anyway would
+        # swallow a broken tokeniser instead of showing it — see
+        # test_the_tokeniser_contract_split_post_relies_on.
         parts.append(current)
+        current = piece
+    parts.append(current)
     return parts
 
 
 def _tokens(text: str, limit: int) -> list[str]:
-    """Sentences where they fit, words where they don't, chunks where they must."""
+    """Sentences where they fit, words where they don't, chunks where they must.
+
+    Every token is non-empty and at most *limit* long; :func:`split_post`
+    depends on both. ``filter`` drops empty sentences rather than an ``if``
+    inside the loop because _SENTENCE_END cannot actually produce one — it
+    matches ``\\s+`` after a stop, so it never fires at position 0 (nothing
+    precedes it), never at the end (the caller strips), and never twice in a
+    row (the run of whitespace is greedy). It stays as a filter so a change to
+    that regex cannot start emitting blank posts.
+    """
     tokens: list[str] = []
-    for sentence in _SENTENCE_END.split(text):
-        sentence = sentence.strip()
-        if not sentence:
-            continue
+    sentences = (sentence.strip() for sentence in _SENTENCE_END.split(text))
+    for sentence in filter(None, sentences):
         if len(sentence) <= limit:
             tokens.append(sentence)
             continue

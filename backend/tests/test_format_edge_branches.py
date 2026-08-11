@@ -15,19 +15,55 @@ from app.services import formats
 
 
 def test_a_trailing_full_stop_does_not_produce_an_empty_post():
-    """``_SENTENCE_END`` splits *after* the punctuation, so the tail can be ''.
+    """Text ending in punctuation plus whitespace must not gain a blank post.
 
-    Without the guard the empty piece becomes its own token and the thread gains
-    a blank post that no platform will accept.
+    ``split_post`` strips before splitting, so the trailing space is gone
+    before ``_SENTENCE_END`` ever sees it — that is *why* the tail cannot be
+    empty, not a guard that catches it afterwards.
     """
-    # Longer than the limit, so the splitter runs, and ending on punctuation +
-    # whitespace, so the split yields a trailing empty string.
     text = "Alpha beta. Gamma delta. Epsilon zeta. "
 
     posts = formats.split_post(text, limit=20)
 
     assert posts == ["Alpha beta.", "Gamma delta.", "Epsilon zeta."]
     assert all(post.strip() for post in posts)
+
+
+def test_the_tokeniser_contract_split_post_relies_on():
+    """Every token non-empty, none over the limit, at least one for real text.
+
+    ``split_post`` appends ``current`` without checking it, at the flush and at
+    the tail. That is only correct while this holds: an empty token would
+    become a blank post, and an over-long one would arrive when nothing had
+    accumulated yet and be appended as an empty string. The guards that used to
+    stand there could never fire, so they hid a broken tokeniser rather than
+    reporting one. This is the assertion that replaces them.
+    """
+    corpus = [
+        "Alpha beta. Gamma delta. Epsilon zeta. ",
+        "Wait.. What now?",
+        "First one.... Second one." + " tail" * 60,
+        "https://example.com/" + "x" * 400 + " and then some trailing words.",
+        "A" * 40 + ". " + "B" * 40 + ".",
+        "!?!. . . ?!",
+        "\n\nragged\t\twhitespace\n everywhere.  \n",
+        "no punctuation at all just words that run on and on and on",
+        "。".join(["multibyte"] * 30),
+        "x" * 400,
+    ]
+    for text in corpus:
+        for limit in (1, 2, 7, 20, 45, 100, 280):
+            stripped = text.strip()
+            tokens = formats._tokens(stripped, limit)
+
+            assert all(tokens), f"empty token from {text!r} at limit {limit}"
+            assert all(len(t) <= limit for t in tokens), f"{text!r} at limit {limit}"
+            if len(stripped) > limit:
+                assert tokens, f"no tokens from {text!r} at limit {limit}"
+
+            posts = formats.split_post(text, limit=limit)
+            assert all(posts), f"blank post from {text!r} at limit {limit}"
+            assert all(len(p) <= limit for p in posts), f"{text!r} at limit {limit}"
 
 
 def test_a_word_longer_than_the_limit_is_cut_rather_than_dropped():

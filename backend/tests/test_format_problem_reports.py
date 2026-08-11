@@ -36,12 +36,15 @@ def test_problems_dispatches_on_the_shape_the_content_type_implies():
     assert article == []
 
 
-def test_the_tokeniser_skips_the_empty_pieces_a_double_stop_leaves_behind():
-    """"Wait.. what?" splits into a run with nothing between the two stops."""
+def test_the_tokeniser_keeps_a_double_stop_with_its_sentence():
+    """"Wait.. What now?" is two tokens, not two plus an empty one.
+
+    The split point is whitespace *after* a stop, so the second dot of ``..``
+    is not one — the run stays attached to the sentence that owns it.
+    """
     tokens = formats._tokens("Wait.. What now?", 100)
 
-    assert "" not in tokens
-    assert tokens
+    assert tokens == ["Wait..", "What now?"]
 
 
 # --------------------------------------------------------------------------- #
