@@ -25,7 +25,7 @@ from app.database import get_db
 from app.deps import get_current_user, owned_project
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import account_key, limiter
 from app.schemas.trigger import (
     ALLOWED_CONFIG,
     REQUIRED_CONFIG,
@@ -282,8 +282,11 @@ def rotate_secret(
 
 
 @router.post("/{trigger_id}/check")
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def check_now(
     trigger_id: int,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:

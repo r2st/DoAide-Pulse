@@ -1,16 +1,18 @@
 """Analytics dashboard endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.content import Content, ContentStatus
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
+from app.ratelimit import account_key, limiter
 from app.services import alerts, analytics_service, digest, mailer, velocity
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -105,10 +107,18 @@ def digest_preview(
 
 
 @router.post("/digest/send")
+@limiter.limit(settings.rate_limit_digest_send, key_func=account_key)
 def digest_send(
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> dict:
     """Mail this week's digest now.
+
+    Rate-limited per account: the mail goes out through the install's single
+    SMTP identity, so the budget being spent — and the sending reputation
+    behind it — belongs to everyone here rather than to the caller.
 
     ``sent: false`` is a normal answer, not a failure — an empty week is not
     mailed, and neither is anything when SMTP is unconfigured. ``reason`` says

@@ -21,7 +21,7 @@ from app.models.webhook import (
     WebhookDelivery,
     WebhookEvent,
 )
-from app.ratelimit import limiter
+from app.ratelimit import account_key, limiter
 from app.schemas.webhook import (
     WebhookCreate,
     WebhookCreated,
@@ -180,8 +180,11 @@ def rotate_secret(
 
 
 @router.post("/{webhook_id}/ping", response_model=WebhookDeliveryOut)
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def ping(
     webhook_id: int,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> WebhookDeliveryOut:
@@ -245,9 +248,12 @@ def list_deliveries(
     "/{webhook_id}/deliveries/{delivery_id}/redeliver",
     response_model=WebhookDeliveryOut,
 )
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def redeliver(
     webhook_id: int,
     delivery_id: int,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> WebhookDeliveryOut:

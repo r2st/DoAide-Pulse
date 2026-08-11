@@ -130,6 +130,16 @@ _COSTLY_CALLS = (
     "headlines.generate_variants",
     "github_client.fetch_activity",
     "_check_content_links",
+    # Mail goes out through the install's single SMTP identity: one budget and
+    # one sending reputation, shared by every account here.
+    "digest.send(",
+    # Both of these make a synchronous outbound request from Herald's own
+    # address because the caller asked them to — the link checker's problem in
+    # a different shape. `triggers.check` is the sharper one: against a GitHub
+    # trigger it spends the install's single GITHUB_TOKEN, so leaving it
+    # unlimited was a way around `rate_limit_repo_scan`.
+    "webhooks.deliver(",
+    "trigger_service.check(",
 )
 
 #: Endpoints that touch a costly call but must not carry an account limit, with
@@ -205,6 +215,19 @@ def test_the_costly_endpoints_are_the_ones_expected():
         # `prompt` mode this is `/content/generate` reached by another route,
         # and it was the one costly endpoint missed on the first pass.
         "/templates/{template_id}/use",
+        # Not model spend — the other two shared budgets. Mailing the digest
+        # goes out through the install's one SMTP identity; the ping and the
+        # trigger check are synchronous outbound requests from Herald's own
+        # address, and a GitHub trigger check spends the same single token
+        # `/projects/{id}/scan` is limited to protect.
+        "/analytics/digest/send",
+        "/webhooks/{webhook_id}/ping",
+        "/triggers/{trigger_id}/check",
+        # The sweep's find, again — `redeliver` fires the same outbound request
+        # as the ping and was not on the list written by reading the routers.
+        # It is the one of the four a retry loop reaches most naturally, since
+        # it is the button beside a delivery that just failed.
+        "/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver",
     }
 
 
@@ -280,6 +303,28 @@ def test_the_link_checker_budget_is_spent_and_then_refused(client, auth, linkles
     assert resp.status_code == 429
     assert "Too many requests" in resp.json()["detail"]
     assert resp.headers.get("retry-after")
+
+
+def test_the_digest_send_budget_is_spent_and_then_refused(client, auth):
+    """10/hour. The 11th is refused rather than mailed.
+
+    The account has nothing to report, so every one of these answers
+    ``sent: false`` without touching SMTP — the limit is charged for asking,
+    which is the only way it can stop a loop that would otherwise have to reach
+    the mail server to be counted.
+    """
+    assert settings.rate_limit_digest_send.startswith("10/hour")
+    url = "/api/v1/analytics/digest/send"
+
+    for _ in range(10):
+        resp = client.post(url, headers=auth)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["sent"] is False
+
+    refused = client.post(url, headers=auth)
+    assert refused.status_code == 429
+    assert "Too many requests" in refused.json()["detail"]
+    assert refused.headers.get("retry-after")
 
 
 def test_one_account_hitting_its_limit_does_not_touch_another(

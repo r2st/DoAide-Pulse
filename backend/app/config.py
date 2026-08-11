@@ -141,6 +141,17 @@ class Settings(BaseSettings):
     # requests from Herald's own address. Limited so a document full of links
     # cannot be replayed into an outbound-traffic amplifier.
     rate_limit_link_check: str = "60/hour;500/day"
+    # Mailing the digest on demand spends the install's single SMTP account —
+    # one budget, one sending reputation, shared by every account here. A person
+    # checking what this week's mail looks like sends one or two; a loop sends
+    # enough to get the domain filed as a sender nobody asked for.
+    rate_limit_digest_send: str = "10/hour;30/day"
+    # A webhook ping and a trigger check are both synchronous outbound requests
+    # made from Herald's address on the caller's say-so, which is the link
+    # checker's problem in a different shape. A trigger check is the sharper of
+    # the two: on a GitHub trigger it spends the install's single GITHUB_TOKEN,
+    # so leaving it unlimited was a way around `rate_limit_repo_scan`.
+    rate_limit_outbound_probe: str = "60/hour;500/day"
 
     # ---- Database ----
     database_url: str = "postgresql+psycopg://herald:herald@localhost:5432/herald"
