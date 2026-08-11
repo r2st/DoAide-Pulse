@@ -122,12 +122,92 @@ def test_list_projects_uses_batched_counts(client, auth, project, db, sql_log):
     assert by_slug["gosumo"]["content_count"] == 2
     assert by_slug["gosumo"]["published_count"] == 1
 
-    # The N+1 fix: auth (user + selectin connections), projects, batched counts
-    # = 4 SELECTs.  Without the fix it would be 2 + N (one count per project).
-    selects = [s for s in sql_log if s.strip().upper().startswith("SELECT")]
-    assert len(selects) <= 5, (
-        f"Expected ≤5 SELECTs (auth + projects + batched counts), got {len(selects)}"
+    two_projects = len([s for s in sql_log if s.strip().upper().startswith("SELECT")])
+
+    # Three more projects, each with content of its own. An N+1 would show up
+    # as three extra SELECTs; the batched count and the eager trigger load mean
+    # the number must not move at all. Asserting "unchanged" rather than a
+    # magic ceiling means the test keeps its meaning when a query is legitimately
+    # added or removed — as the X-Total-Count query was.
+    for index in range(3):
+        extra = Project(
+            user_id=project.user_id, name=f"Extra {index}", slug=f"extra-{index}"
+        )
+        db.add(extra)
+        db.flush()
+        db.add(
+            Content(
+                project_id=extra.id,
+                content_type=ContentType.TUTORIAL,
+                title=f"Extra {index} guide",
+                slug=f"extra-{index}-guide",
+                status=ContentStatus.PUBLISHED,
+            )
+        )
+    db.commit()
+
+    sql_log.clear()
+    resp = client.get("/api/v1/projects", headers=auth)
+    assert resp.status_code == 200
+    assert len(resp.json()) == 5
+    five_projects = len([s for s in sql_log if s.strip().upper().startswith("SELECT")])
+
+    assert five_projects == two_projects, (
+        f"query count grew with the number of projects: {two_projects} for two, "
+        f"{five_projects} for five"
     )
+
+
+def test_the_project_list_is_paginated_and_reports_the_total(
+    client, auth, project, db
+):
+    """Nothing caps projects per account, so the listing has to cap itself.
+
+    Unbounded, three things grow with the row count: the response, the eager
+    load of every trigger on every project, and the ``IN`` clause
+    ``_batch_counts`` builds from the ids — and Postgres refuses a statement
+    with more than 65535 bind parameters outright rather than merely slowing
+    down.
+    """
+    for index in range(6):
+        db.add(
+            Project(
+                user_id=project.user_id, name=f"P{index:02d}", slug=f"p-{index:02d}"
+            )
+        )
+    db.commit()
+
+    resp = client.get("/api/v1/projects?limit=3", headers=auth)
+
+    assert resp.status_code == 200
+    assert len(resp.json()) == 3
+    # Seven: the fixture's project plus the six above.
+    assert resp.headers["X-Total-Count"] == "7"
+
+    page_two = client.get("/api/v1/projects?limit=3&offset=3", headers=auth)
+    assert page_two.status_code == 200
+    assert len(page_two.json()) == 3
+    assert page_two.headers["X-Total-Count"] == "7"
+
+    first = [p["slug"] for p in resp.json()]
+    second = [p["slug"] for p in page_two.json()]
+    assert set(first).isdisjoint(second), "pages must not overlap"
+
+    tail = client.get("/api/v1/projects?limit=3&offset=6", headers=auth)
+    assert len(tail.json()) == 1
+
+
+def test_the_project_list_refuses_a_limit_outside_its_bounds(client, auth):
+    """``ge=1`` as well as ``le`` — see the note in ``list_content``.
+
+    A negative limit reaches SQLAlchemy verbatim, and SQLite reads ``LIMIT -1``
+    as "no limit", which would hand back the whole table the cap exists to
+    withhold.
+    """
+    assert client.get("/api/v1/projects?limit=0", headers=auth).status_code == 422
+    assert client.get("/api/v1/projects?limit=-1", headers=auth).status_code == 422
+    assert client.get("/api/v1/projects?limit=501", headers=auth).status_code == 422
+    assert client.get("/api/v1/projects?offset=-1", headers=auth).status_code == 422
 
 
 # --------------------------------------------------------------------------- #

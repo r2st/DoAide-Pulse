@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -118,16 +118,35 @@ def _batch_counts(db: Session, project_ids: list[int]) -> dict[int, tuple[int, i
 
 @router.get("", response_model=list[ProjectOut])
 def list_projects(
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    response: Response,
+    # Nothing caps projects per account, so this read was bounded only by how
+    # many the caller had made. Three things then grew with it: the response,
+    # the `selectinload` of every trigger on every project, and the `IN` clause
+    # `_batch_counts` builds from the ids — and that last one is a hard failure
+    # rather than a slow one, because Postgres refuses a statement with more
+    # than 65535 bind parameters. Same bounds and the same X-Total-Count as
+    # every other listing here; see `list_content` on why `ge=1` matters.
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[ProjectOut]:
+    base = select(Project).where(Project.user_id == user.id)
+
+    total = db.scalar(
+        select(func.count()).select_from(base.with_only_columns(Project.id).subquery())
+    )
+    response.headers["X-Total-Count"] = str(total or 0)
+
     projects = list(
         db.scalars(
-            select(Project)
-            .where(Project.user_id == user.id)
+            base
             # `autopilot_blocked_reason` reads `project.triggers`; without this
             # the list page emits one extra query per project to find out.
             .options(selectinload(Project.triggers))
             .order_by(Project.name)
+            .offset(offset)
+            .limit(limit)
         )
     )
     counts = _batch_counts(db, [p.id for p in projects])

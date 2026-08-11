@@ -34,6 +34,10 @@ def test_an_account_with_no_projects_gets_an_empty_list_not_a_batch_query(
 
     A brand-new account hits this on its very first page load, which is a poor
     moment for the count query to be malformed.
+
+    The listing does send one count of its own — the X-Total-Count total, which
+    has no ``IN`` clause and is fine with zero rows. What must not appear is the
+    per-project count, which would be grouping over an empty id list.
     """
     sql_log.clear()
 
@@ -41,7 +45,11 @@ def test_an_account_with_no_projects_gets_an_empty_list_not_a_batch_query(
 
     assert resp.status_code == 200
     assert resp.json() == []
-    assert not [s for s in sql_log if "count(" in s.lower()]
+    assert resp.headers["X-Total-Count"] == "0"
+
+    counts = [s for s in sql_log if "count(" in s.lower()]
+    assert not [s for s in counts if "GROUP BY" in s.upper()]
+    assert not [s for s in counts if " IN (" in s.upper()]
 
 
 # --------------------------------------------------------------------------- #
