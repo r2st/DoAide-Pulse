@@ -176,6 +176,49 @@ def test_scheduling_leaves_a_platform_that_already_published_alone(
     assert pending.scheduled_for is not None
 
 
+def test_naming_the_already_published_platform_still_leaves_it_alone(
+    client, auth, db, piece, connected
+):
+    """The same protection, for the caller that resends the whole platform list.
+
+    The test above omits dev.to, so the published row never enters the batch.
+    A UI that posts back every platform it is showing *does* name it, and
+    ``publishing_service.queue`` hands the live row straight back rather than
+    re-arming it. The optimizer then walks that batch assigning its slots, and
+    the published row has to be stepped over there too — otherwise the row
+    comes back ``scheduled`` for a time in the future and the next beat posts
+    a second copy to a platform that already has one.
+    """
+    already = Publication(
+        content_id=piece.id,
+        platform=Platform.DEVTO,
+        status=PublicationStatus.PUBLISHED,
+        published_at=utcnow(),
+        external_url="https://dev.to/x/a-piece",
+    )
+    db.add(already)
+    db.commit()
+    db.refresh(already)
+    published_at = already.published_at
+
+    resp = client.post(
+        f"{API}/{piece.id}/schedule",
+        headers=auth,
+        json={"platforms": ["devto", "mastodon"], "optimize": True},
+    )
+
+    assert resp.status_code == 200, resp.text
+    by_platform = {row["platform"]: row for row in resp.json()}
+    assert by_platform["devto"]["status"] == "published"
+    assert by_platform["devto"]["scheduled_for"] is None
+    assert by_platform["mastodon"]["status"] == "scheduled"
+
+    db.refresh(already)
+    assert already.status == PublicationStatus.PUBLISHED
+    assert already.scheduled_for is None
+    assert already.published_at == published_at
+
+
 # --------------------------------------------------------------------------- #
 # Templates: a prompt template with no headline of its own                    #
 # --------------------------------------------------------------------------- #
