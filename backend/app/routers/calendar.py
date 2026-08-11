@@ -67,9 +67,12 @@ def get_calendar(
 
     entries: list[CalendarEntry] = []
     for publication, content, project in db.execute(query).all():
+        # Never None: the WHERE above admits a row only if one of these two
+        # columns falls inside the window, and NULL never satisfies BETWEEN.
+        # A publication queued with no time at all is therefore not on the
+        # calendar at all — see
+        # test_a_publication_with_no_time_at_all_is_not_on_the_calendar.
         when = publication.published_at or publication.scheduled_for
-        if when is None:
-            continue
         entries.append(
             CalendarEntry(
                 content_id=content.id,

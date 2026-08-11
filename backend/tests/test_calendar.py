@@ -307,3 +307,79 @@ def test_calendar_filters_by_project(client, auth, db, project):
     # Wrong project_id → empty
     resp = client.get("/api/v1/calendar?project_id=9999", headers=auth)
     assert len(resp.json()["entries"]) == 0
+
+
+def test_a_publication_with_no_time_at_all_is_not_on_the_calendar(
+    client, auth, db, project
+):
+    """A PENDING row with neither published_at nor scheduled_for has no position.
+
+    The window filter is ``published_at BETWEEN ... OR scheduled_for BETWEEN
+    ...``, and NULL never satisfies BETWEEN, so such a row is excluded in SQL
+    rather than skipped in Python. That is what lets the loop treat
+    ``published_at or scheduled_for`` as a real datetime. If this ever starts
+    returning an entry, the calendar is about to be asked to place something
+    that has no date.
+    """
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Queued, unscheduled",
+        slug="queued-unscheduled",
+        status=ContentStatus.APPROVED,
+    )
+    db.add(content)
+    db.flush()
+    db.add(
+        Publication(
+            content_id=content.id,
+            platform=Platform.DEVTO,
+            status=PublicationStatus.PENDING,
+            scheduled_for=None,
+            published_at=None,
+        )
+    )
+    db.commit()
+
+    resp = client.get("/api/v1/calendar", headers=auth)
+
+    assert resp.status_code == 200
+    assert resp.json()["entries"] == []
+
+
+def test_a_published_row_with_no_published_at_falls_back_to_its_slot(
+    client, auth, db, project
+):
+    """``published_at or scheduled_for`` picks the second when the first is unset.
+
+    A row can be marked published while the timestamp write is still in
+    flight; it still has to land somewhere on the calendar rather than
+    vanishing from it.
+    """
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Live, timestamp pending",
+        slug="live-timestamp-pending",
+        status=ContentStatus.PUBLISHED,
+    )
+    db.add(content)
+    db.flush()
+    slot = _now() - timedelta(days=1)
+    db.add(
+        Publication(
+            content_id=content.id,
+            platform=Platform.DEVTO,
+            status=PublicationStatus.PUBLISHED,
+            scheduled_for=slot,
+            published_at=None,
+        )
+    )
+    db.commit()
+
+    resp = client.get("/api/v1/calendar", headers=auth)
+
+    assert resp.status_code == 200
+    (entry,) = resp.json()["entries"]
+    assert entry["title"] == "Live, timestamp pending"
+    assert entry["movable"] is False
