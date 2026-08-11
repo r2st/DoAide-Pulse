@@ -237,11 +237,6 @@ def learn(
     )
 
 
-def cadence_for(db: Session, user_id: int, platform: Platform | str) -> Cadence:
-    """Drop-in replacement for :func:`app.services.cadence.cadence_for`."""
-    return learn(db, user_id, platform).cadence
-
-
 def describe_all(
     db: Session,
     user_id: int,
@@ -270,4 +265,4 @@ def describe_all(
     return [learn(db, user_id, p, known=known).as_dict() for p in wanted]
 
 
-__all__ = ["Learned", "cadence_for", "describe_all", "learn", "observations"]
+__all__ = ["Learned", "describe_all", "learn", "observations"]

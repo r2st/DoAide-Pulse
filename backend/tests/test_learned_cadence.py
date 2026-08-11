@@ -518,3 +518,27 @@ def test_calendar_cadence_can_be_asked_for_one_platform(client, auth):
     (entry,) = resp.json()
     assert entry["platform"] == "bluesky"
     assert entry["source"] == "table"
+
+
+def test_the_modules_exports_all_exist():
+    """``__all__`` and the module have to agree about what is public.
+
+    ``cadence_for`` sat in this list for a long time as a one-line wrapper
+    around ``learn(...).cadence``. Nothing ever called it: every real consumer
+    — scheduling.optimal_slots, the calendar endpoint — needs the whole
+    ``Learned`` object for ``is_learned`` and ``reason``, or needs to pass
+    ``known=`` curves so several platforms share one pass over the series, and
+    the wrapper could do neither. A name in ``__all__`` reads as supported API,
+    so a stale one invites a caller to reach for the worse of two functions.
+    """
+    missing = [name for name in learned_cadence.__all__ if not hasattr(learned_cadence, name)]
+    assert missing == []
+
+    public = {
+        name
+        for name in vars(learned_cadence)
+        if not name.startswith("_")
+        and getattr(vars(learned_cadence)[name], "__module__", None)
+        == learned_cadence.__name__
+    }
+    assert public == set(learned_cadence.__all__)
