@@ -103,6 +103,29 @@ def test_empty_ai_response_falls_back_to_templates(project, db, stub_llm):
     assert result.variants
 
 
+def test_a_maximum_length_title_never_comes_back_as_its_own_variant(project, db):
+    """At 300 characters the suffix templates truncate back into the title.
+
+    300 is the ceiling on both ``Content.title`` and the schema, so this is a
+    title the API accepts, not a synthetic one. ``{title}: What You Need to
+    Know`` clipped to 300 characters is exactly the title again, and offering
+    the author their own headline back as an "alternative" is the one thing the
+    fallback is not allowed to do. The prefix templates still have something to
+    say, so the list stays useful rather than going empty.
+    """
+    title = ("Herald ships bulk operations and this headline keeps going " * 6)[:300]
+    assert len(title) == 300
+    content = _content(db, project, title=title, slug="a-very-long-title")
+
+    result = headlines.generate_variants(content, project)
+
+    assert result.is_fallback is True
+    assert title not in result.variants
+    assert not any(v == title for v in result.variants)
+    assert result.variants, "the prefix templates must still yield something"
+    assert all(v.startswith(("Why ", "The Case for ")) for v in result.variants)
+
+
 # --------------------------------------------------------------------------- #
 # Applying a headline                                                         #
 # --------------------------------------------------------------------------- #
