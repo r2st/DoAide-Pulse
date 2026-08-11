@@ -138,7 +138,14 @@ def list_kinds(request: Request, response: Response) -> list[TriggerKindOut]:
 
 @router.get("", response_model=list[TriggerOut])
 def list_triggers(
+    response: Response,
     project_id: int | None = Query(default=None),
+    # MAX_TRIGGERS_PER_PROJECT bounds this per project, but nothing bounds
+    # projects per account, so the unnarrowed listing was 20 x however many
+    # projects the caller had made. Same contract as /triggers/{id}/events
+    # below.
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TriggerOut]:
@@ -149,7 +156,6 @@ def list_triggers(
         select(Trigger)
         .join(Project, Project.id == Trigger.project_id)
         .where(Project.user_id == user.id)
-        .order_by(Trigger.id)
     )
     if project_id is not None:
         # Resolve through the ownership guard so an id belonging to somebody
@@ -157,7 +163,13 @@ def list_triggers(
         owned_project(project_id, db, user)
         query = query.where(Trigger.project_id == project_id)
 
-    return [_to_out(row) for row in db.scalars(query)]
+    total = db.scalar(
+        select(func.count()).select_from(query.with_only_columns(Trigger.id).subquery())
+    )
+    response.headers["X-Total-Count"] = str(total or 0)
+
+    rows = db.scalars(query.order_by(Trigger.id).limit(limit).offset(offset))
+    return [_to_out(row) for row in rows]
 
 
 @router.post("", response_model=TriggerCreated, status_code=status.HTTP_201_CREATED)
