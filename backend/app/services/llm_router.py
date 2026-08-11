@@ -689,7 +689,14 @@ def complete(
     sweeps = max(1, int(settings.llm_max_attempts))
     errors: list[str] = []
 
-    for sweep in range(1, sweeps + 1):
+    # `while True` rather than `range(1, sweeps + 1)`: the range bound and the
+    # `sweep >= sweeps` guard below stated the same limit twice, and the guard
+    # has to stay — reaching the bound by falling out of the loop would mean
+    # pricing and sleeping off a pause after the last sweep, delaying the
+    # caller's fallback by up to the rate-limit window for nothing.
+    sweep = 0
+    while True:
+        sweep += 1
         outcome = _sweep(
             providers,
             messages,

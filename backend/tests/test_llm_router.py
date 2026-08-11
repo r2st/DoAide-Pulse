@@ -606,3 +606,78 @@ def test_a_spent_daily_quota_skips_the_sibling_too(all_keys, no_sleeping, monkey
     assert llm_router.complete([{"role": "user", "content": "hi"}]).provider == "gemini"
     assert models.count(settings.openrouter_model) == 1
     assert "openai/other:free" not in models
+
+
+def test_the_sweep_budget_is_spent_exactly_and_not_slept_off_at_the_end(
+    all_keys, no_sleeping, monkeypatch
+):
+    """``llm_max_attempts`` sweeps, and ``llm_max_attempts - 1`` waits.
+
+    The guard that stops after the last sweep is the loop's only bound, so it
+    has to be exact in both directions. One sweep too few wastes a provider
+    that was about to free up; one wait too many parks the caller for a
+    rate-limit window before handing back the failure it already knows about —
+    which is the difference between a static-template fallback that renders
+    now and one that renders a minute from now.
+    """
+    # Two, not the default three, so this asserts the setting is read rather
+    # than that a constant happens to match.
+    monkeypatch.setattr(settings, "llm_max_attempts", 2)
+    monkeypatch.setattr(
+        llm_router.httpx, "post", lambda *a, **kw: _rate_limited("5")
+    )
+
+    # Count passes over the chain rather than HTTP calls: once the breaker
+    # stands a provider down its sweep makes no request, and a sweep that
+    # skipped every provider still spent a pass.
+    real_sweep = llm_router._sweep
+    sweeps = {"n": 0}
+
+    def counted(*args, **kwargs):
+        sweeps["n"] += 1
+        return real_sweep(*args, **kwargs)
+
+    monkeypatch.setattr(llm_router, "_sweep", counted)
+
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+
+    assert sweeps["n"] == 2
+    assert len(no_sleeping) == 1
+
+
+def test_a_single_attempt_budget_never_waits(all_keys, no_sleeping, monkeypatch):
+    """``llm_max_attempts=1`` means one pass and no nap before giving up."""
+    monkeypatch.setattr(settings, "llm_max_attempts", 1)
+    monkeypatch.setattr(
+        llm_router.httpx, "post", lambda *a, **kw: _rate_limited("5")
+    )
+
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+
+    assert no_sleeping == []
+
+
+def test_a_nonsense_attempt_budget_still_makes_one_pass(
+    all_keys, no_sleeping, monkeypatch
+):
+    """``max(1, ...)`` floors it: 0 or a negative must not mean "never call".
+
+    Falling through with no request at all would report every provider as
+    failed while none had been asked.
+    """
+    monkeypatch.setattr(settings, "llm_max_attempts", 0)
+    calls = {"n": 0}
+
+    def fake_post(url, *, json, headers, timeout):
+        calls["n"] += 1
+        return _rate_limited("5")
+
+    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+
+    with pytest.raises(llm_router.AllProvidersFailed):
+        llm_router.complete([{"role": "user", "content": "hi"}])
+
+    assert calls["n"] == 3
+    assert no_sleeping == []
