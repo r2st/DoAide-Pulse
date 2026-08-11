@@ -74,13 +74,15 @@ def generate_variants(
     content: Content, project: Project, *, count: int = 4
 ) -> HeadlineVariants:
     """Draft alternative headlines for one piece. Never raises."""
+    # focus_keyword and excerpt are nullable and routinely unset; the name is
+    # not — the column is NOT NULL and every write path (create, patch, seed)
+    # goes through a min_length=1 field, so there is no project to guard against.
     facts = [f"Current title: {content.title}"]
     if content.focus_keyword:
         facts.append(f"Primary SEO keyword: {content.focus_keyword}")
     if content.excerpt:
         facts.append(f"What it's about: {content.excerpt}")
-    if project.name:
-        facts.append(f"Project: {project.name}")
+    facts.append(f"Project: {project.name}")
 
     prompt = f"""Suggest {count} alternative headlines for this piece of content.
 
