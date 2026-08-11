@@ -40,7 +40,14 @@ skip_covered = true
 # unrelated change cannot quietly delete coverage, while a normal patch that
 # adds a line or two of straight-line code does not trip it. Raise it when the
 # real number moves up; never lower it to make a red run go green.
-fail_under = 99.5
+#
+# Measured 100.00% (8387 statements, 1970 branches, none missed). The floor is
+# 99.9 rather than 100 so that a work-in-progress commit is not blocked by a
+# single uncovered line, which leaves roughly ten statements of slack out of
+# ten thousand. If a branch turns out to be genuinely unreachable, mark it
+# `# pragma: no cover - <reason>` as the rest of the tree does and pin the
+# invariant that makes it unreachable with a test — do not spend the slack.
+fail_under = 99.9
 exclude_also = [
     # `if TYPE_CHECKING:` blocks exist for the type checker and never execute.
     "if TYPE_CHECKING:",
