@@ -48,6 +48,29 @@ def docs_enabled() -> bool:
     return (not settings.is_production) or settings.debug
 
 
+def traceback_responses_enabled() -> bool:
+    """Whether Starlette may return a traceback page instead of a clean 500.
+
+    ``DEBUG=true`` is a documented escape hatch for reopening the docs on a live
+    box (see :func:`docs_enabled`), and an operator reaching for it is thinking
+    about the schema, not about Starlette's error middleware. But the flag is
+    also what ``ServerErrorMiddleware`` checks *before* consulting an installed
+    handler:
+
+        if self.debug:                 # <- traceback response, we never run
+            response = self.debug_response(request, exc)
+        elif self.handler is None: ...
+        else: response = await self.handler(request, exc)
+
+    So ``DEBUG=true`` silently takes the catch-all below out of circuit and
+    serves every unhandled exception as a full traceback — source lines, local
+    variables, the connection string in a DB error's frame — to whoever sent the
+    request. The two uses of the flag are separable, so separate them: in
+    production the docs override stays, the traceback override does not.
+    """
+    return settings.debug and not settings.is_production
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown hook.
@@ -68,7 +91,7 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version="0.1.0",
         description="AI-powered marketing automation for developer projects.",
-        debug=settings.debug,
+        debug=traceback_responses_enabled(),
         lifespan=_lifespan,
         # None removes the route outright — a 404, not a 401. There is nothing
         # here worth an auth prompt, and a prompt confirms the schema exists.
@@ -85,13 +108,21 @@ def create_app() -> FastAPI:
 
     # Catch-all for unhandled exceptions. Without this, FastAPI returns the
     # exception message (and tracebacks in debug mode) to the caller — an
-    # information leak that also looks unprofessional.
+    # information leak that also looks unprofessional. See
+    # traceback_responses_enabled() for why DEBUG must not reach Starlette here.
     async def _unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
         request_id = getattr(request.state, "request_id", "unknown")
         logger.exception("unhandled exception [request_id=%s]", request_id)
+        # Set the header here rather than leaving it to RequestIDMiddleware:
+        # Starlette installs ServerErrorMiddleware *outside* the whole user
+        # middleware stack, so a raising route unwinds past RequestIDMiddleware
+        # before it can decorate a response, and this 500 would go out with no
+        # id at all. The id is in the log line above either way — but a 500 the
+        # caller cannot quote back is the one error where that matters most.
         return JSONResponse(
             {"detail": "Internal server error"},
             status_code=500,
+            headers={"X-Request-ID": request_id},
         )
 
     app.add_exception_handler(Exception, _unhandled_exception)
