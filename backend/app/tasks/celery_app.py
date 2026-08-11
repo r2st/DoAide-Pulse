@@ -112,4 +112,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.maintenance_tasks.purge_old_trigger_events",
         "schedule": 86400.0,  # once a day
     },
+    "purge-old-preview-links": {
+        "task": "app.tasks.maintenance_tasks.purge_old_preview_links",
+        "schedule": 86400.0,  # once a day
+    },
 }

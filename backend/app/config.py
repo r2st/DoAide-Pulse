@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     # what the author can ask for, not a default.
     preview_link_default_ttl_hours: int = 168  # 7 days
     preview_link_max_ttl_hours: int = 720  # 30 days
+    # How long a dead link (revoked, or lapsed) is kept before the maintenance
+    # sweep prunes it. The listing endpoint returns every link ever issued for
+    # a draft, so without a sweep that read grows for the life of the account.
+    # Comfortably past preview_link_max_ttl_hours so a link is never pruned
+    # while it could still open.
+    preview_link_retention_days: int = 90
 
     # ---- SMTP (password reset mail — the only mail Herald sends) ----
     # With SMTP_HOST blank the reset link is written to the log instead of sent.
@@ -465,6 +471,7 @@ class Settings(BaseSettings):
         "password_reset_token_ttl_minutes",
         "preview_link_default_ttl_hours",
         "preview_link_max_ttl_hours",
+        "preview_link_retention_days",
         "publish_max_retries",
         "publish_stuck_after_seconds",
         "trigger_daily_content_limit",

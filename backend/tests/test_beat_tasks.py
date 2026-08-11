@@ -19,8 +19,10 @@ from datetime import timedelta
 import pytest
 from celery.exceptions import SoftTimeLimitExceeded
 
+from app.models.content import Content, ContentStatus, ContentType
 from app.models.mixins import utcnow
 from app.models.password_reset import PasswordResetToken
+from app.models.preview_link import PreviewLink
 from app.models.trigger import (
     Trigger,
     TriggerEvent,
@@ -369,6 +371,95 @@ def test_a_recent_settled_trigger_event_is_kept(db, schedule_trigger):
     db.commit()
 
     assert maintenance_tasks.purge_old_trigger_events() == {"purged": 0}
+
+
+# --------------------------------------------------------------------------- #
+# Preview links: the sweep that keeps a read cheap rather than a trail short   #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def draft(db, project):
+    row = Content(
+        project_id=project.id,
+        content_type=ContentType.TUTORIAL,
+        status=ContentStatus.DRAFT,
+        title="Under review",
+        slug="under-review",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _link(draft, *, expires_in_days: float, revoked_days_ago: float | None = None):
+    return PreviewLink(
+        content_id=draft.id,
+        token_hash=hash_token(f"tok-{expires_in_days}-{revoked_days_ago}"),
+        expires_at=utcnow() + timedelta(days=expires_in_days),
+        revoked_at=(
+            None if revoked_days_ago is None else utcnow() - timedelta(days=revoked_days_ago)
+        ),
+    )
+
+
+def test_long_dead_preview_links_are_purged(db, draft):
+    """Lapsed and revoked both count as dead, and both are measured from when."""
+    db.add(_link(draft, expires_in_days=-200))
+    db.add(_link(draft, expires_in_days=5, revoked_days_ago=200))
+    db.commit()
+
+    assert maintenance_tasks.purge_old_preview_links() == {"purged": 2}
+    assert db.query(PreviewLink).count() == 0
+
+
+def test_a_live_preview_link_is_never_purged_however_old_the_row_is(db, draft):
+    """It is still the URL somebody has sitting in their inbox.
+
+    Age of the row is not the question — a thirty-day link issued yesterday and
+    one issued a year ago by an account that has been quiet since are the same
+    thing to the reviewer holding it.
+    """
+    row = _link(draft, expires_in_days=5)
+    row.created_at = utcnow() - timedelta(days=400)
+    db.add(row)
+    db.commit()
+
+    assert maintenance_tasks.purge_old_preview_links() == {"purged": 0}
+    assert db.query(PreviewLink).count() == 1
+
+
+def test_a_recently_dead_preview_link_is_kept(db, draft):
+    """Inside the window the author can still see that a link existed."""
+    db.add(_link(draft, expires_in_days=-1))
+    db.add(_link(draft, expires_in_days=5, revoked_days_ago=1))
+    db.commit()
+
+    assert maintenance_tasks.purge_old_preview_links() == {"purged": 0}
+    assert db.query(PreviewLink).count() == 2
+
+
+def test_a_link_revoked_long_ago_but_still_unexpired_is_purged(db, draft):
+    """Revocation is what killed it, so revocation is what the clock runs from.
+
+    Reading the cutoff off ``expires_at`` alone would keep a link somebody
+    took back months ago just because it was issued with a long TTL.
+    """
+    db.add(_link(draft, expires_in_days=10, revoked_days_ago=180))
+    db.commit()
+
+    assert maintenance_tasks.purge_old_preview_links() == {"purged": 1}
+
+
+def test_the_preview_link_sweep_is_on_the_beat_schedule():
+    """A task nothing calls is a table that still grows."""
+    from app.tasks.celery_app import celery_app
+
+    scheduled = {
+        entry["task"] for entry in celery_app.conf.beat_schedule.values()
+    }
+    assert "app.tasks.maintenance_tasks.purge_old_preview_links" in scheduled
 
 
 def test_the_autopilot_dispatch_does_not_scan_inline_when_it_runs_out_of_time(

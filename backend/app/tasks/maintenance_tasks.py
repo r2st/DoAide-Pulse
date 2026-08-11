@@ -7,11 +7,12 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func, or_
 
 from app.config import settings
 from app.database import SessionLocal
 from app.models.mixins import utcnow
+from app.models.preview_link import PreviewLink
 from app.models.trigger import TriggerEvent, TriggerEventStatus
 from app.models.webhook import DeliveryStatus, WebhookDelivery
 from app.services import password_reset
@@ -106,6 +107,45 @@ def purge_old_trigger_events() -> dict:
         count = result.rowcount or 0
         if count:
             logger.info("purged %d settled trigger event row(s)", count)
+        return {"purged": count}
+    finally:
+        db.close()
+
+
+@celery_app.task(
+    name="app.tasks.maintenance_tasks.purge_old_preview_links",
+    soft_time_limit=60,
+    time_limit=120,
+)
+def purge_old_preview_links() -> dict:
+    """Drop dead preview links past the retention window.
+
+    The other two sweeps here keep a debugging trail from getting expensive.
+    This one keeps a *read* from getting expensive: ``list_for_content`` returns
+    every link ever issued for a draft, and a reviewer cycle of issue-then-
+    revoke adds a row each time with nothing ever taking one away.
+
+    Dead means revoked or lapsed, and the cutoff is measured from whichever
+    happened. A live link is never touched however old the row is — a
+    thirty-day link issued twenty-nine days ago is still the URL somebody has
+    in their inbox.
+    """
+    cutoff = utcnow() - timedelta(days=settings.preview_link_retention_days)
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            delete(PreviewLink).where(
+                or_(
+                    PreviewLink.revoked_at.is_not(None),
+                    PreviewLink.expires_at < utcnow(),
+                ),
+                func.coalesce(PreviewLink.revoked_at, PreviewLink.expires_at) < cutoff,
+            )
+        )
+        db.commit()
+        count = result.rowcount or 0
+        if count:
+            logger.info("purged %d dead preview link row(s)", count)
         return {"purged": count}
     finally:
         db.close()
