@@ -124,29 +124,99 @@ def test_a_broker_that_refuses_the_handoff_falls_back_to_publishing_inline(
     assert "connection refused" in caplog.text
 
 
-def test_the_fallback_republishes_from_the_start_of_the_batch(
-    fake_publish, monkeypatch
-):
-    """A broker that dies mid-batch must not drop the ids it had accepted.
+def test_the_fallback_resumes_where_the_broker_stopped(fake_publish, monkeypatch):
+    """A broker that dies mid-batch drops nothing and repeats nothing.
 
-    ``delay`` is not transactional across the loop, so the fallback reruns the
-    whole list. Publishing twice is prevented downstream by the publication's
-    own status check; dropping one silently is not prevented anywhere.
+    The ids ``delay`` already accepted belong to a worker. Restarting the inline
+    loop from the top would run the whole publish attempt for them a second time
+    on the request thread — and the only thing standing between that and a
+    duplicate post is ``publish_one``'s conditional UPDATE, a layer away. This is
+    the same accounting ``webhooks.dispatch`` does.
     """
     monkeypatch.setattr(content_router.settings, "celery_enabled", True)
 
     class _DiesOnTheSecond(_FakeTask):
         def delay(self, publication_id: int) -> None:
-            self.delayed.append(publication_id)
-            if len(self.delayed) == 2:
+            if len(self.delayed) == 1:
                 raise OSError("broker gone")
+            self.delayed.append(publication_id)
 
     task = fake_publish(_DiesOnTheSecond())
 
     content_router._dispatch([1, 2, 3])
 
+    assert task.delayed == [1], "the first was accepted before the broker died"
+    assert task.ran_inline == [2, 3], "and only the unaccepted remainder runs here"
+
+
+def test_a_broker_that_dies_on_the_last_id_leaves_nothing_for_the_fallback(
+    fake_publish, monkeypatch
+):
+    """The boundary: every id but one was accepted, so one id runs inline.
+
+    Worth pinning separately because an off-by-one in the resume index is
+    invisible in the middle of a batch and shows up here as either a re-publish
+    of the whole batch or a silently dropped tail.
+    """
+    monkeypatch.setattr(content_router.settings, "celery_enabled", True)
+
+    class _DiesOnTheThird(_FakeTask):
+        def delay(self, publication_id: int) -> None:
+            if len(self.delayed) == 2:
+                raise OSError("broker gone")
+            self.delayed.append(publication_id)
+
+    task = fake_publish(_DiesOnTheThird())
+
+    content_router._dispatch([1, 2, 3])
+
     assert task.delayed == [1, 2]
-    assert task.ran_inline == [1, 2, 3]
+    assert task.ran_inline == [3]
+
+
+def test_one_publication_blowing_up_inline_does_not_strand_the_rest(
+    fake_publish, monkeypatch, caplog
+):
+    """``publish_one`` records its own failures, so reaching here is off-contract.
+
+    The remaining ids are unrelated publications whose rows are already
+    committed. Letting the first exception escape the loop would leave them
+    queued with nobody to run them, and would surface to the caller as a 500 on
+    a publish that had in fact already been persisted.
+    """
+    monkeypatch.setattr(content_router.settings, "celery_enabled", False)
+
+    class _ExplodesOnTheFirst(_FakeTask):
+        def __call__(self, publication_id: int) -> None:
+            if publication_id == 1:
+                raise RuntimeError("adapter imploded")
+            self.ran_inline.append(publication_id)
+
+    task = fake_publish(_ExplodesOnTheFirst())
+
+    with caplog.at_level("ERROR"):
+        content_router._dispatch([1, 2, 3])
+
+    assert task.ran_inline == [2, 3]
+    assert "adapter imploded" in caplog.text
+
+
+def test_an_empty_batch_never_imports_the_task_module(monkeypatch):
+    """The early return happens before the lazy import, as in ``webhooks``."""
+    import builtins
+
+    _real_import = builtins.__import__
+
+    def explode(name, globals=None, locals=None, fromlist=(), level=0):
+        # ``from app.tasks import publish_tasks`` arrives as name="app.tasks"
+        # with the attribute in the fromlist, not as a dotted name.
+        if name == "app.tasks" and "publish_tasks" in (fromlist or ()):
+            raise AssertionError("an empty batch must not reach the import")
+        return _real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", explode)
+
+    content_router._dispatch([])
 
 
 def test_dispatching_nothing_touches_neither_path(fake_publish, monkeypatch):

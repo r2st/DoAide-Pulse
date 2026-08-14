@@ -1524,18 +1524,40 @@ def _dispatch(publication_ids: list[int]) -> None:
     the fallback when the broker is unreachable: losing a publish because Redis
     is down would be a silent failure of the thing the user just clicked.
     """
+    if not publication_ids:
+        return
+
     from app.tasks import publish_tasks
 
+    # How many the broker has already accepted, so the inline fallback picks up
+    # where the broker stopped instead of restarting the batch. A broker that
+    # dies partway through is the case this fallback exists for, and the ids it
+    # already queued are now owned by a worker. Re-running them here does the
+    # whole publish attempt a second time on the request thread — read the row,
+    # render, call the platform adapter — and only ``publish_one``'s conditional
+    # UPDATE, one layer away, keeps that from becoming a duplicate post. That
+    # guard is worth having; it is not worth spending a user-facing request on
+    # work we already know was handed off. Mirrors ``webhooks.dispatch``.
+    dispatched = 0
     if settings.celery_enabled:
         try:
             for publication_id in publication_ids:
                 publish_tasks.publish_one.delay(publication_id)
+                dispatched += 1
             return
         except Exception as exc:
             logger.warning("celery dispatch failed, publishing inline: %s", exc)
 
-    for publication_id in publication_ids:
-        publish_tasks.publish_one(publication_id)
+    for publication_id in publication_ids[dispatched:]:
+        try:
+            publish_tasks.publish_one(publication_id)
+        except Exception:
+            # ``publish_one`` records its own failures on the row and is
+            # documented not to raise, so reaching here means something outside
+            # that contract broke. The remaining ids in the batch are unrelated
+            # publications and still deserve their attempt, and the caller is a
+            # request thread that has already committed the rows.
+            logger.exception("inline publish %s failed", publication_id)
 
 
 @router.post(
