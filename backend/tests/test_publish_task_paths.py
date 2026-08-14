@@ -100,8 +100,11 @@ def test_a_publish_that_runs_out_of_time_is_re_armed_rather_than_stranded(
 
     The claim has already moved it out of every state the beat sweep looks at,
     so a worker killed at the hard limit would leave a publication no sweep can
-    see and no user can retry. Recording the timeout puts it back in ``pending``,
-    which *is* the retry queue.
+    see and no user can retry. Recording the timeout puts it back on the retry
+    queue — ``scheduled`` behind a backoff rather than ``pending``, which is the
+    same terms every other retryable failure gets and the same thing
+    ``execute``'s own timeout branch does. See
+    ``publishing_service.record_timeout``.
     """
     publication = _publication(db, content)
 
@@ -114,8 +117,10 @@ def test_a_publish_that_runs_out_of_time_is_re_armed_rather_than_stranded(
 
     assert result == {"publication_id": publication.id, "status": "timeout"}
     db.refresh(publication)
-    assert publication.status is PublicationStatus.PENDING
+    assert publication.status is PublicationStatus.SCHEDULED
+    assert publication.scheduled_for is not None, "due immediately is not a backoff"
     assert "timed out" in (publication.error or "")
+    assert publication.attempts == 1, "the attempt was spent and must be counted"
 
 
 def test_a_timeout_after_the_post_went_out_does_not_re_arm_it(db, content, monkeypatch):

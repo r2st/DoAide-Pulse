@@ -506,7 +506,7 @@ def execute(db: Session, publication: Publication) -> Publication:
         _fail(
             db,
             publication,
-            "Publishing timed out — the platform took too long to answer",
+            TIMEOUT_ERROR,
             terminal=publication.attempts >= settings.publish_max_retries,
         )
         return publication
@@ -731,6 +731,56 @@ def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
         publication.platform.value,
         publication.attempts,
         wait,
+    )
+
+
+#: What a publication's ``error`` says when the worker ran out of time.
+#:
+#: Named because two paths write it and they must not drift: :func:`execute`,
+#: for the timeout that lands inside its own ``try`` — which is nearly all of
+#: them, since a publish spends its time in the adapter's HTTP call — and
+#: :func:`record_timeout`, for the one that lands anywhere else.
+TIMEOUT_ERROR = "Publishing timed out — the platform took too long to answer"
+
+
+def record_timeout(db: Session, publication: Publication) -> None:
+    """Count a publish that ran out of time outside :func:`execute`. Commits.
+
+    Celery delivers a soft time limit by raising inside whatever the task is
+    doing, and *nearly* always that is the adapter's HTTP call — which sits
+    inside :func:`execute`'s ``try``, where the timeout is caught and put on the
+    retry budget like any other transient failure. This is for the rest: a
+    timeout during the claim, or during the lazy loads in ``execute``'s prologue
+    that walk from the publication to its content, project and owner.
+
+    ``publish_tasks.publish_one`` used to answer that by setting the row back to
+    ``pending`` and nothing else, which had two problems and they compound.
+
+    The first is that the attempt was not counted. ``execute`` increments
+    ``attempts`` and *flushes*; it does not commit, and nothing between that
+    flush and the adapter call does either. A timeout in the prologue therefore
+    rolls the increment back with the transaction, and one that fires before
+    ``execute`` is even reached never made it. So the row came back at the count
+    it went in with — a free retry, which is precisely the loop
+    :func:`reclaim_stuck` documents at length and guards against for the worker
+    that gets killed instead of timing out: re-arm, time out, roll back, re-arm
+    at the same number, forever, and never an error anybody is shown. The caller
+    counts the attempt here for the same reason ``reclaim_stuck`` counts it
+    there — reaching this function is proof the attempt happened.
+
+    The second is that ``pending`` is due immediately, so even a counted attempt
+    would have been spent at the sweep cadence rather than backed off. Going
+    through :func:`_fail` puts a timeout on exactly the terms every other
+    retryable failure gets: parked ``scheduled`` behind an escalating window,
+    and terminal — with the ``publication.failed`` webhook that goes with it —
+    once the budget is gone.
+    """
+    publication.attempts += 1
+    _fail(
+        db,
+        publication,
+        TIMEOUT_ERROR,
+        terminal=publication.attempts >= settings.publish_max_retries,
     )
 
 
@@ -1008,6 +1058,7 @@ def collect_metrics(
 
 
 __all__ = [
+    "TIMEOUT_ERROR",
     "NotConnected",
     "RateLimitKey",
     "build_request",
@@ -1016,4 +1067,5 @@ __all__ = [
     "execute",
     "queue",
     "reclaim_stuck",
+    "record_timeout",
 ]
