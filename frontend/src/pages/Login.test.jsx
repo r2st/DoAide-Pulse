@@ -130,6 +130,22 @@ describe("switching to sign up", () => {
 
     expect(screen.queryByText("Incorrect email or password")).not.toBeInTheDocument();
   });
+
+  it("toggles back to signing in, taking the name field with it", async () => {
+    // The toggle is one button whose meaning inverts, so the return trip is a
+    // different arm from the outbound one. Someone who clicks "Create one" by
+    // mistake has no other way back.
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(screen.getByRole("button", { name: "Create one" }));
+    expect(screen.getByLabelText(/Name/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(screen.queryByLabelText(/Name/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create one" })).toBeInTheDocument();
+  });
 });
 
 describe("already signed in", () => {

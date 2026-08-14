@@ -131,6 +131,47 @@ describe("the list", () => {
     expect(await screen.findByText("Never fired")).toBeInTheDocument();
   });
 
+  it("says '1 time' rather than '1 times'", async () => {
+    api.listTriggers.mockResolvedValue([trigger({ fire_count: 1 })]);
+    draw();
+    expect(await screen.findByText(/fired 1 time$/)).toBeInTheDocument();
+  });
+
+  it("pluralises every other count", async () => {
+    api.listTriggers.mockResolvedValue([trigger({ fire_count: 2 })]);
+    draw();
+    expect(await screen.findByText(/fired 2 times$/)).toBeInTheDocument();
+  });
+
+  it("shows when a trigger last fired, and says nothing when it has not", async () => {
+    api.listTriggers.mockResolvedValue([
+      trigger({ fire_count: 3, last_fired_at: "2026-08-14T09:00:00Z" }),
+    ]);
+    const { unmount } = draw();
+    expect(await screen.findByText(/^last /)).toBeInTheDocument();
+    unmount();
+
+    api.listTriggers.mockResolvedValue([trigger({ fire_count: 0, last_fired_at: null })]);
+    draw();
+    await screen.findByText("Changelog feed");
+    expect(screen.queryByText(/^last /)).not.toBeInTheDocument();
+  });
+
+  it("names the cadence and content type a schedule was configured with", async () => {
+    // Both are optional on every kind, and a schedule that fires every 6h into
+    // changelogs is a different trigger from one that fires daily into
+    // announcements — the list is unreadable if it shows neither.
+    api.listTriggers.mockResolvedValue([
+      trigger({
+        kind: "schedule",
+        config: { every_hours: 6, content_type: "changelog" },
+      }),
+    ]);
+    draw();
+    expect(await screen.findByText("every 6h")).toBeInTheDocument();
+    expect(screen.getByText("Changelog")).toBeInTheDocument();
+  });
+
   it("offers Check now only for the kinds Herald polls", async () => {
     api.listTriggers.mockResolvedValue([
       trigger({ id: 1, kind: "rss" }),

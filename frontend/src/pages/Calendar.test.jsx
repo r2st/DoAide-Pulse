@@ -572,6 +572,36 @@ describe("moving by drag", () => {
     expect(api.reschedule).not.toHaveBeenCalled();
   });
 
+  it("does not reschedule an entry dropped back where it started", async () => {
+    // Same square, same time of day, so the target instant equals the original
+    // and there is nothing to ask for. Without the guard this is a write and a
+    // toast for a drag the user evidently thought better of.
+    respond([upcoming()]);
+    api.reschedule.mockResolvedValue({});
+    draw();
+    await pickUp();
+
+    wouldAccept(20);
+    fireEvent.drop(cell(20));
+
+    expect(api.reschedule).not.toHaveBeenCalled();
+  });
+
+  it("keeps the lit square lit when the pointer leaves a different one", async () => {
+    // dragLeave fires for the square being left, which is not always the one
+    // currently highlighted — the events can arrive out of order across a fast
+    // drag, and clearing on any of them puts the grid back to nothing lit.
+    respond([upcoming()]);
+    draw();
+    await pickUp();
+
+    wouldAccept(24);
+    const lit = cell(24).className;
+    fireEvent.dragLeave(cell(22));
+
+    expect(cell(24).className).toEqual(lit);
+  });
+
   it("lets a square go once the pointer leaves it", async () => {
     // The highlight follows the pointer. One square lit at a time, or a slow
     // drag across a week leaves a trail of them.
