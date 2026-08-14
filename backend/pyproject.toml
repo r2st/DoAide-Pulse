@@ -69,6 +69,14 @@ exclude_also = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# The documented gate is `ruff check app tests` (see the README), so anyone who
+# instead runs `ruff check .` — the obvious command — got 54 findings from
+# generated migration files and nothing from the code the gate covers. Noise
+# that everyone learns to scroll past is the state in which a real finding goes
+# unread, so the exclusion is written down here and the two commands now agree.
+#
+# `alembic/versions` only. `alembic/env.py` is hand-written and stays in scope.
+extend-exclude = ["alembic/versions"]
 
 [tool.ruff.lint]
 # Pinned explicitly: ruff's default rule set has widened across releases, so

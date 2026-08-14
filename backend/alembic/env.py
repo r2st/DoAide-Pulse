@@ -6,14 +6,19 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+import app.models  # noqa: F401  — imported for the side effect below
+from alembic import context
 from app.config import settings
 from app.database import Base
 
-# Import models so they register on Base.metadata for autogenerate.
-import app.models  # noqa: F401
+# `app.models` above is imported for its side effect, not its contents: every
+# model registers on `Base.metadata` as its module executes, and autogenerate
+# diffs against whatever is registered by the time it reads it. It sits in
+# sorted position rather than pinned to the end of the block — nothing here
+# depends on it running after the imports that follow it, and leaving it out
+# of order was the file's only lint finding.
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

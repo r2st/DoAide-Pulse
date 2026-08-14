@@ -33,6 +33,7 @@ build/
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
 *.local
 
 # ---- Editors / OS ----

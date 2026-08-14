@@ -30,8 +30,13 @@ const LABELS = {
 /** Render order. Stable, so the panel does not reshuffle as you type. */
 export const NETWORKS = ["x", "linkedin", "facebook", "slack"];
 
-/** The one size that satisfies every network at once (Facebook's 1.91:1). */
-export const RECOMMENDED_IMAGE = { width: 1200, height: 630 };
+/**
+ * The one size that satisfies every network at once (Facebook's 1.91:1).
+ *
+ * Not exported: the only thing that ever wanted these numbers is the advice
+ * `audit` gives about a missing cover, which is in this file.
+ */
+const RECOMMENDED_IMAGE = { width: 1200, height: 630 };
 
 /** Crawlers fetch from their own servers, so a relative path is never an image. */
 const ABSOLUTE_URL = /^https?:\/\//i;
