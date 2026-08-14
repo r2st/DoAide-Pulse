@@ -12,7 +12,7 @@ import logging
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload
 
 from app.database import SessionLocal
 from app.models.content import Content, ContentStatus
@@ -42,6 +42,12 @@ def _candidates(db: Session) -> list[Content]:
         select(Content)
         .join(Project, Project.id == Content.project_id)
         .join(User, User.id == Project.user_id)
+        # This sweep is unbounded by design — every published piece on every
+        # project that asked for it — so the ``lazy="selectin"`` default was
+        # fetching every publication on the install once per beat. Nothing here
+        # reads them: ``headlines.auto_select`` reaches metrics through its own
+        # join on ``Publication`` and otherwise only writes a title.
+        .options(lazyload(Content.publications))
         .where(
             Project.auto_headline_winner.is_(True),
             Project.is_active.is_(True),

@@ -6,9 +6,12 @@ per row. It is not free anywhere else: the strategy is a property of the
 *mapping*, so every query that loads ``Content`` entities pays for it, including
 the ones that only want a title.
 
-Four readers were paying and not collecting — the dashboard's recent-content
-column, the public RSS feed, the digest's published-this-week list and its top
-table, and the analytics top-content table. None of them names a publication.
+Several readers were paying and not collecting, and none of them names a
+publication: ``velocity.curves`` — the widest, with nine callers including the
+alert pass both the dashboard and the digest run — the dashboard's own
+recent-content column, the public RSS feed, the digest's published-this-week
+list and its top table, the analytics top-content table, and the headline
+sweep, which is unbounded by design and paid for it once per beat.
 
 These assert on the *publications* SELECT specifically rather than a total, so
 they say what they are about, and so they do not move when an unrelated query is
@@ -24,7 +27,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.metrics import ContentMetric
@@ -369,6 +372,25 @@ def test_alert_pass_inherits_the_saving(db, user, sql_log):
     sql_log.clear()
 
     alerts.build(db, user.id)
+
+    assert _selectin_loads(sql_log) == []
+
+
+def test_headline_sweep_does_not_load_publications_it_never_reads(db, user, sql_log):
+    """The one unbounded reader here: every published piece, every beat.
+
+    ``headlines.auto_select`` reaches metrics through its own join on
+    ``Publication`` and otherwise only writes a title, so the relationship was
+    pure cost — and paid once per beat over the whole install.
+    """
+    from app.tasks import headline_tasks
+
+    _seed(db, user.id, 4)
+    db.execute(update(Project).values(auto_headline_winner=True))
+    db.commit()
+    sql_log.clear()
+
+    headline_tasks._candidates(db)
 
     assert _selectin_loads(sql_log) == []
 
