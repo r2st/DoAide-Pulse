@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorBanner, Skeleton } from "../components/ui/Bits";
 import { useToast } from "../components/ui/Toast";
@@ -37,9 +37,15 @@ function monthGrid(anchor) {
 /**
  * The content calendar.
  *
- * Drag-and-drop moves an item to another day, keeping its time of day — a post
- * scheduled for 1pm Tuesday that you drag to Thursday should be 1pm Thursday,
- * not midnight. Published items are not draggable: the past is a record.
+ * Moving an item to another day keeps its time of day — a post scheduled for 1pm
+ * Tuesday that lands on Thursday should be 1pm Thursday, not midnight. Published
+ * items do not move at all: the past is a record.
+ *
+ * Two ways to do it, one meaning. Drag-and-drop, and the arrow keys on a focused
+ * chip. The keyboard route is not an accessibility afterthought bolted beside the
+ * real one — it goes through the same `move`, with the same `canDropOn` guard, so
+ * there is no second implementation to drift. Until it existed, rescheduling was
+ * the one thing on this page a keyboard could not do at all.
  */
 export default function Calendar() {
   const toast = useToast();
@@ -79,19 +85,44 @@ export default function Calendar() {
   const byDay = useMemo(() => bucketByDay(shown), [shown]);
   const counts = useMemo(() => summarize(entries), [entries]);
 
-  async function drop(day) {
-    setHoverDay(null);
-    const entry = dragging;
-    setDragging(null);
-    if (!entry) return;
+  // The chip a keyboard move should get focus back to, once the reload that
+  // move triggered has redrawn the month. A ref rather than state: it is read
+  // once by the effect below and must not cause a render of its own.
+  const refocus = useRef(null);
+  useEffect(() => {
+    const key = refocus.current;
+    if (key === null) return;
+    refocus.current = null;
+    document.querySelector(`[data-chip="${key}"]`)?.focus();
+  }, [data]);
 
+  /**
+   * Put `entry` on `day`, keeping its time of day.
+   *
+   * Shared by the drag and the arrow keys so the two cannot come to disagree
+   * about what a move means. `explain` is the one difference: a drag onto a cell
+   * that will not take it has already been refused visibly, by the browser's own
+   * "no drop" cursor over a dimmed square, where a key press has no such
+   * feedback and silence reads as a key that does not work.
+   */
+  async function move(entry, day, { explain = false } = {}) {
     // Preserve the time of day, change only the date.
     const original = new Date(entry.when);
     const target = dropTarget(entry, day);
     if (target.getTime() === original.getTime()) return;
-    // Belt and braces: the cell should not have accepted the drop, but a
-    // long drag can outlive the moment that made it legal.
-    if (!canDropOn(entry, day)) return;
+    // Belt and braces for a drag: the cell should not have accepted the drop,
+    // but a long drag can outlive the moment that made it legal.
+    if (!canDropOn(entry, day)) {
+      if (explain) {
+        toast.error(
+          entry.movable
+            ? `${formatDateTime(target)} is in the past.`
+            : "A published post is a record — it cannot be moved.",
+        );
+      }
+      refocus.current = null;
+      return;
+    }
 
     try {
       await api.reschedule(entry.content_id, {
@@ -102,7 +133,35 @@ export default function Calendar() {
       reload();
     } catch (err) {
       toast.error(err.message);
+      refocus.current = null;
     }
+  }
+
+  async function drop(day) {
+    setHoverDay(null);
+    const entry = dragging;
+    setDragging(null);
+    if (!entry) return;
+    await move(entry, day);
+  }
+
+  /**
+   * The keyboard's version of the drag: ±1 day sideways, ±1 week vertically,
+   * matching the direction the chip would visibly travel on the grid.
+   *
+   * One request per press rather than a pick-up/put-down mode. Rescheduling is
+   * already undoable by moving it back, and a mode would need its own state, its
+   * own escape key and its own way of telling the user they are in it — for an
+   * interaction that is nearly always a nudge of a day or two.
+   */
+  function nudge(entry, days) {
+    const day = new Date(entry.when);
+    day.setDate(day.getDate() + days);
+    // The chip is about to be re-rendered into a different cell; remember which
+    // one to hand focus back to, or a keyboard user loses their place on every
+    // move and has to tab back in from the top of the month.
+    refocus.current = chipKey(entry);
+    return move(entry, day, { explain: true });
   }
 
   const monthLabel = anchor.toLocaleDateString(undefined, {
@@ -128,7 +187,8 @@ export default function Calendar() {
                 ]
                   .filter(Boolean)
                   .join(" · ")}
-            . Drag a scheduled item to another day to move it.
+            . Drag a scheduled item to another day to move it, or focus it and
+            use the arrow keys.
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -271,13 +331,14 @@ export default function Calendar() {
                     <div className="space-y-1">
                       {dayEntries.map((entry) => (
                         <CalendarChip
-                          key={`${entry.content_id}-${entry.publication_id ?? "none"}`}
+                          key={chipKey(entry)}
                           entry={entry}
                           onDragStart={() => entry.movable && setDragging(entry)}
                           onDragEnd={() => {
                             setDragging(null);
                             setHoverDay(null);
                           }}
+                          onNudge={(days) => nudge(entry, days)}
                         />
                       ))}
                       {hidden > 0 && (
@@ -406,14 +467,50 @@ function FilterRow({ label, value, onChange, options }) {
   );
 }
 
-function CalendarChip({ entry, onDragStart, onDragEnd }) {
+/** Identifies one chip across a reload, for handing focus back after a move. */
+function chipKey(entry) {
+  return `${entry.content_id}-${entry.publication_id ?? "none"}`;
+}
+
+/** Arrow key to day offset. Sideways by a day, vertically by a grid row. */
+const NUDGES = {
+  ArrowLeft: -1,
+  ArrowRight: 1,
+  ArrowUp: -7,
+  ArrowDown: 7,
+};
+
+function CalendarChip({ entry, onDragStart, onDragEnd, onNudge }) {
   return (
     <Link
       to={`/content/${entry.content_id}`}
+      data-chip={chipKey(entry)}
       draggable={entry.movable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      title={`${entry.title} — ${entry.project_name} — ${formatDateTime(entry.when)}`}
+      // The keyboard's route to the same move the drag performs. Only on a
+      // movable entry: an arrow key that silently does nothing on two thirds of
+      // the calendar teaches the user the feature does not exist.
+      onKeyDown={
+        entry.movable
+          ? (event) => {
+              const days = NUDGES[event.key];
+              if (days === undefined) return;
+              // Or the page scrolls out from under the chip being moved.
+              event.preventDefault();
+              onNudge(days);
+            }
+          : undefined
+      }
+      aria-keyshortcuts={entry.movable ? "ArrowLeft ArrowRight ArrowUp ArrowDown" : undefined}
+      title={[
+        entry.title,
+        entry.project_name,
+        formatDateTime(entry.when),
+        entry.movable ? "arrow keys move it" : null,
+      ]
+        .filter(Boolean)
+        .join(" — ")}
       className={[
         "block truncate rounded px-1.5 py-1 text-[11px] leading-tight transition-shadow",
         statusTone(entry.status),

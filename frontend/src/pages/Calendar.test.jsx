@@ -243,3 +243,182 @@ describe("what can be moved", () => {
     expect(scheduled).toHaveAttribute("draggable", "true");
   });
 });
+
+/**
+ * The keyboard's route to a reschedule.
+ *
+ * Also the only testable route to `move` at all: jsdom has no HTML5 drag, so
+ * before these existed the shared reschedule logic — preserve the time of day,
+ * refuse a move into the past, report what the API said — had no coverage on
+ * either path.
+ */
+describe("moving with the keyboard", () => {
+  /** A chip on the 20th: after the faked "now" of the 15th, so it can move. */
+  function upcoming(overrides = {}) {
+    return entry({ title: "Release notes", when: onAugust(20, 13), ...overrides });
+  }
+
+  async function focusChip(name = /Release notes/) {
+    const chip = await screen.findByRole("link", { name });
+    chip.focus();
+    return chip;
+  }
+
+  /** What `reschedule` was told to set, as a local Date. */
+  function rescheduledTo() {
+    const [, body] = api.reschedule.mock.calls[0];
+    return new Date(body.scheduled_for);
+  }
+
+  it("moves a day later on ArrowRight, keeping the time of day", async () => {
+    respond([upcoming()]);
+    api.reschedule.mockResolvedValue({});
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowRight}");
+
+    const target = rescheduledTo();
+    expect(target.getDate()).toBe(21);
+    expect(target.getHours()).toBe(13);
+  });
+
+  it("moves a day earlier on ArrowLeft", async () => {
+    respond([upcoming()]);
+    api.reschedule.mockResolvedValue({});
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowLeft}");
+
+    expect(rescheduledTo().getDate()).toBe(19);
+  });
+
+  it("moves a week — one grid row — on ArrowDown", async () => {
+    respond([upcoming()]);
+    api.reschedule.mockResolvedValue({});
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowDown}");
+
+    expect(rescheduledTo().getDate()).toBe(27);
+  });
+
+  it("moves a week back on ArrowUp", async () => {
+    // From the 25th, not the default 20th: a week back from the 20th is the
+    // 13th, which is behind the faked "now" and correctly refused.
+    respond([upcoming({ when: onAugust(25, 13) })]);
+    api.reschedule.mockResolvedValue({});
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowUp}");
+
+    expect(rescheduledTo().getDate()).toBe(18);
+  });
+
+  it("carries the publication id, so one platform moves and not the piece", async () => {
+    const item = upcoming({ publication_id: 44 });
+    respond([item]);
+    api.reschedule.mockResolvedValue({});
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowRight}");
+
+    const [contentId, body] = api.reschedule.mock.calls[0];
+    expect(contentId).toBe(item.content_id);
+    expect(body.publication_id).toBe(44);
+  });
+
+  it("refuses a move into the past and says why", async () => {
+    // The 16th at 1pm is a day past "now"; ArrowUp lands it on the 9th.
+    respond([upcoming({ when: onAugust(16, 13) })]);
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowUp}");
+
+    expect(api.reschedule).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/in the past/));
+  });
+
+  it("refuses to move a published post, and says that instead", async () => {
+    respond([upcoming({ status: "published", movable: false })]);
+    draw();
+    const chip = await focusChip();
+
+    await userEvent.keyboard("{ArrowRight}");
+
+    // Not wired at all on an immovable chip: no shortcut is announced either,
+    // because announcing one that does nothing is worse than announcing none.
+    expect(chip).not.toHaveAttribute("aria-keyshortcuts");
+    expect(api.reschedule).not.toHaveBeenCalled();
+  });
+
+  it("announces the shortcut on a chip that has one", async () => {
+    respond([upcoming()]);
+    draw();
+
+    expect(await focusChip()).toHaveAttribute(
+      "aria-keyshortcuts",
+      "ArrowLeft ArrowRight ArrowUp ArrowDown",
+    );
+  });
+
+  it("hands focus back to the chip once the month has redrawn", async () => {
+    // The same entry both times, moved — `upcoming()` twice would mint two
+    // different content ids, and the chip focus is handed back to is identified
+    // by that id.
+    const before = upcoming();
+    const after = { ...before, when: onAugust(21, 13) };
+    api.calendar
+      .mockResolvedValueOnce({ entries: [before], cadence: [], suggested_slots: [] })
+      .mockResolvedValue({ entries: [after], cadence: [], suggested_slots: [] });
+    api.reschedule.mockResolvedValue({});
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowRight}");
+
+    // The same chip, re-rendered into a different cell of the grid — a different
+    // parent, so React unmounts the node and focus is genuinely lost and put
+    // back rather than never leaving. `waitFor` because the reload it waits on
+    // is a second round trip.
+    await vi.waitFor(() =>
+      expect(screen.getByRole("link", { name: /Release notes/ })).toHaveFocus(),
+    );
+  });
+
+  it("leaves focus alone when the move was refused", async () => {
+    respond([upcoming({ when: onAugust(16, 13) })]);
+    draw();
+    const chip = await focusChip();
+
+    await userEvent.keyboard("{ArrowUp}");
+
+    expect(chip).toHaveFocus();
+  });
+
+  it("reports what the API said when the move fails", async () => {
+    respond([upcoming()]);
+    api.reschedule.mockRejectedValue(new Error("Slot already taken"));
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{ArrowRight}");
+
+    expect(toast.error).toHaveBeenCalledWith("Slot already taken");
+  });
+
+  it("ignores a key that is not an arrow", async () => {
+    respond([upcoming()]);
+    draw();
+    await focusChip();
+
+    await userEvent.keyboard("{End}");
+
+    expect(api.reschedule).not.toHaveBeenCalled();
+  });
+});

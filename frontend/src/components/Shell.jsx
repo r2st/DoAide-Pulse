@@ -39,11 +39,24 @@ export default function Shell({ children }) {
 
   return (
     <div className="min-h-screen">
+      {/* First in the tab order, and the only way past nine destinations for
+          anyone arriving on a new page with a keyboard or a screen reader.
+          Visible only while focused — see `sr-only` / `focus:not-sr-only`. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-brand-500 focus:px-3 focus:py-1.5 focus:text-sm focus:text-white"
+      >
+        Skip to content
+      </a>
+
       <header className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
           <div className="flex min-w-0 items-center gap-5 sm:gap-8">
             <Wordmark />
-            <nav className="hidden items-center gap-1 overflow-x-auto md:flex">
+            <nav
+              aria-label="Main"
+              className="hidden items-center gap-1 overflow-x-auto md:flex"
+            >
               {TABS.map((tab) => (
                 <Tab key={tab.to} to={tab.to} end={tab.end} badge={badgeFor(tab, counts)}>
                   {tab.label}
@@ -66,10 +79,15 @@ export default function Shell({ children }) {
               Sign out
             </button>
 
+            {/* A disclosure, not a dialog: focus deliberately stays on the
+                button when the menu opens, because the revealed links are the
+                next thing in the tab order anyway and moving focus for the user
+                would cost them the ability to close it again with one key. */}
             <button
               className="btn-quiet -mr-1 inline-flex md:hidden"
               onClick={() => setMenuOpen((v) => !v)}
               aria-expanded={menuOpen}
+              aria-controls="mobile-nav"
               aria-label="Toggle navigation menu"
             >
               <MenuGlyph open={menuOpen} />
@@ -84,7 +102,11 @@ export default function Shell({ children }) {
         </div>
 
         {menuOpen && (
-          <nav className="border-t border-line px-3 py-2 md:hidden">
+          <nav
+            id="mobile-nav"
+            aria-label="Main"
+            className="border-t border-line px-3 py-2 md:hidden"
+          >
             {TABS.map((tab) => (
               <MobileTab
                 key={tab.to}
@@ -108,7 +130,12 @@ export default function Shell({ children }) {
         )}
       </header>
 
-      <main className="mx-auto max-w-6xl px-5 py-9">{children}</main>
+      {/* `tabIndex={-1}` so the skip link moves focus here and not merely the
+          scroll position — without it the next Tab goes back to the top of the
+          nav the link was for skipping. */}
+      <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-5 py-9">
+        {children}
+      </main>
     </div>
   );
 }
