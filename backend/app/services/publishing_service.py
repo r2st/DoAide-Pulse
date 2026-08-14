@@ -25,7 +25,13 @@ from app.models.content import CANONICAL_URL_MAX_LENGTH, Content, ContentStatus
 from app.models.metrics import ContentMetric
 from app.models.mixins import as_aware, utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
-from app.models.publication import Platform, Publication, PublicationStatus
+from app.models.publication import (
+    EXTERNAL_ID_MAX_LENGTH,
+    EXTERNAL_URL_MAX_LENGTH,
+    Platform,
+    Publication,
+    PublicationStatus,
+)
 from app.models.webhook import WebhookEvent
 from app.services import publishers, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
@@ -511,8 +517,18 @@ def execute(db: Session, publication: Publication) -> Publication:
 
     publication.status = PublicationStatus.PUBLISHED
     publication.published_at = utcnow()
-    publication.external_id = result.external_id
-    publication.external_url = result.external_url
+    publication.external_id = _recorded(
+        result.external_id,
+        EXTERNAL_ID_MAX_LENGTH,
+        publication=publication,
+        field="external_id",
+    )
+    publication.external_url = _recorded(
+        result.external_url,
+        EXTERNAL_URL_MAX_LENGTH,
+        publication=publication,
+        field="external_url",
+    )
     publication.error = None
 
     _adopt_canonical(content, publication, result)
@@ -532,6 +548,44 @@ def execute(db: Session, publication: Publication) -> Publication:
         result.external_url,
     )
     return publication
+
+
+def _recorded(
+    value: str | None, limit: int, *, publication: Publication, field: str
+) -> str | None:
+    """A platform's answer, or ``None`` when the column cannot hold it.
+
+    Both columns are written straight from a response body. Dev.to and Medium
+    are fixed hosts answering with their own permalinks, but WordPress, Mastodon
+    and Bluesky are servers the *user* named — the same untrusted-response
+    problem :meth:`Adapter._require_public_url` guards the request side of — and
+    a long enough ``link`` field is all it takes to hand this assignment a value
+    the column will not take.
+
+    The cost of that is out of all proportion to the field. On PostgreSQL the
+    over-long value raises ``StringDataRightTruncation`` from the commit below,
+    which is the commit recording the post as ``PUBLISHED``. It rolls back, the
+    row stays ``publishing``, and the reclaim sweep re-arms it — so a post that
+    is already live on the platform is published a second time. Dropping the
+    field costs a link in the UI, or metrics for one post; keeping it costs a
+    duplicate.
+
+    Truncating instead is worse than dropping: a URL cut at 700 characters is a
+    link that goes somewhere else, and a post id cut at 200 fetches somebody
+    else's metrics. ``_adopt_canonical`` declines for the same reason.
+    """
+    if value is None or len(value) <= limit:
+        return value
+    logger.warning(
+        "publication %s: %s from %s is %d characters, over the %d the column "
+        "holds — recording the publication without it",
+        publication.id,
+        field,
+        publication.platform.value,
+        len(value),
+        limit,
+    )
+    return None
 
 
 def _notify_published(db: Session, content: Content, publication: Publication) -> None:

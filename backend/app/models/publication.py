@@ -92,6 +92,21 @@ class PublicationStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+#: How much of a platform's own post id and permalink the row can hold.
+#:
+#: Named rather than inlined because the values are written from a *response
+#: body* — every adapter records whatever the platform put in its ``url`` or
+#: ``id`` field, and three of those platforms (WordPress, Mastodon, Bluesky)
+#: are servers the user typed the address of. A value over the column width
+#: raises ``StringDataRightTruncation`` on PostgreSQL inside the same commit
+#: that records the post as published, which is the one place in the tree where
+#: a rollback is worse than a lost field: the post is already live, so the
+#: publication is re-armed and published again. See
+#: ``app.services.publishing_service.execute``.
+EXTERNAL_ID_MAX_LENGTH = 200
+EXTERNAL_URL_MAX_LENGTH = 700
+
+
 class Publication(Base, TimestampMixin):
     __tablename__ = "publications"
     __table_args__ = (
@@ -134,8 +149,8 @@ class Publication(Base, TimestampMixin):
     )
 
     #: The platform's own id and permalink, once it has one.
-    external_id: Mapped[str | None] = mapped_column(String(200))
-    external_url: Mapped[str | None] = mapped_column(String(700))
+    external_id: Mapped[str | None] = mapped_column(String(EXTERNAL_ID_MAX_LENGTH))
+    external_url: Mapped[str | None] = mapped_column(String(EXTERNAL_URL_MAX_LENGTH))
 
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
