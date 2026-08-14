@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Empty, ErrorBanner, Skeleton, Tag } from "../components/ui/Bits";
+import Dialog from "../components/ui/Dialog";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
@@ -261,252 +262,246 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={project ? "Edit project" : "Add project"}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Dialog
+      label={project ? "Edit project" : "Add project"}
+      onClose={onClose}
+      width="xl"
+      onSubmit={submit}
     >
-      <form
-        onSubmit={submit}
-        className="panel my-auto w-full max-w-xl space-y-4 p-6 shadow-pop"
-      >
-        <h2 className="font-display text-2xl text-ink-900">
-          {project ? `Edit ${project.name}` : "Add a project"}
-        </h2>
+      <h2 className="font-display text-2xl text-ink-900">
+        {project ? `Edit ${project.name}` : "Add a project"}
+      </h2>
 
+      <div>
+        <label className="label" htmlFor="p-name">
+          Name
+        </label>
+        <input
+          id="p-name"
+          required
+          className="input"
+          value={form.name}
+          onChange={set("name")}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="p-desc">
+          What it is
+        </label>
+        <textarea
+          id="p-desc"
+          rows={3}
+          className="input resize-y"
+          placeholder="One paragraph. This is what every generated post is built from, so be specific."
+          value={form.description}
+          onChange={set("description")}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label" htmlFor="p-name">
-            Name
+          <label className="label" htmlFor="p-repo">
+            Repo URL
           </label>
           <input
-            id="p-name"
-            required
-            className="input"
-            value={form.name}
-            onChange={set("name")}
+            id="p-repo"
+            className="input font-mono text-xs"
+            placeholder="https://github.com/you/project"
+            value={form.repo_url}
+            onChange={set("repo_url")}
           />
         </div>
-
         <div>
-          <label className="label" htmlFor="p-desc">
-            What it is
-          </label>
-          <textarea
-            id="p-desc"
-            rows={3}
-            className="input resize-y"
-            placeholder="One paragraph. This is what every generated post is built from, so be specific."
-            value={form.description}
-            onChange={set("description")}
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="p-repo">
-              Repo URL
-            </label>
-            <input
-              id="p-repo"
-              className="input font-mono text-xs"
-              placeholder="https://github.com/you/project"
-              value={form.repo_url}
-              onChange={set("repo_url")}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="p-live">
-              Live URL
-            </label>
-            <input
-              id="p-live"
-              className="input font-mono text-xs"
-              placeholder="https://project.example.com"
-              value={form.live_url}
-              onChange={set("live_url")}
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="label" htmlFor="p-stack">
-            Tech stack <span className="normal-case tracking-normal">(comma separated)</span>
+          <label className="label" htmlFor="p-live">
+            Live URL
           </label>
           <input
-            id="p-stack"
-            className="input"
-            placeholder="FastAPI, React, PostgreSQL"
-            value={form.tech_stack}
-            onChange={set("tech_stack")}
+            id="p-live"
+            className="input font-mono text-xs"
+            placeholder="https://project.example.com"
+            value={form.live_url}
+            onChange={set("live_url")}
           />
         </div>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="p-stack">
+          Tech stack <span className="normal-case tracking-normal">(comma separated)</span>
+        </label>
+        <input
+          id="p-stack"
+          className="input"
+          placeholder="FastAPI, React, PostgreSQL"
+          value={form.tech_stack}
+          onChange={set("tech_stack")}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="p-audience">
+          Target audience
+        </label>
+        <input
+          id="p-audience"
+          className="input"
+          placeholder="Indie developers shipping side projects"
+          value={form.target_audience}
+          onChange={set("target_audience")}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="p-keywords">
+          SEO keywords{" "}
+          <span className="normal-case tracking-normal">(comma separated)</span>
+        </label>
+        <input
+          id="p-keywords"
+          className="input"
+          placeholder="marketing automation, developer marketing"
+          value={form.keywords}
+          onChange={set("keywords")}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="p-tone">
+            Tone
+          </label>
+          <select id="p-tone" className="input" value={form.tone} onChange={set("tone")}>
+            {TONES.map((tone) => (
+              <option key={tone} value={tone}>
+                {titleize(tone)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="p-autopilot">
+            Autopilot
+          </label>
+          <select
+            id="p-autopilot"
+            className="input"
+            value={form.autopilot_mode}
+            onChange={set("autopilot_mode")}
+          >
+            {AUTOPILOT_MODES.map((mode) => (
+              <option key={mode.value} value={mode.value}>
+                {mode.label}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1.5 text-xs text-ink-400">
+            {AUTOPILOT_MODES.find((m) => m.value === form.autopilot_mode)?.hint}
+          </p>
+        </div>
+      </div>
+
+      <fieldset className="space-y-3 rounded-lg border border-line px-4 py-3">
+        <legend className="label px-1">Syndication</legend>
+
+        <label className="flex items-start gap-2.5 text-sm text-ink-700">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={form.auto_canonical}
+            onChange={(e) =>
+              setForm((current) => ({ ...current, auto_canonical: e.target.checked }))
+            }
+          />
+          <span>
+            Set the canonical URL automatically
+            <span className="mt-0.5 block text-xs text-ink-400">
+              The first public URL a piece gets becomes the original; every
+              platform published to afterwards is told about it, so the copies
+              don&rsquo;t compete with it in search.
+            </span>
+          </span>
+        </label>
 
         <div>
-          <label className="label" htmlFor="p-audience">
-            Target audience
+          <label className="label" htmlFor="p-canonical">
+            Primary destination
           </label>
-          <input
-            id="p-audience"
+          <select
+            id="p-canonical"
             className="input"
-            placeholder="Indie developers shipping side projects"
-            value={form.target_audience}
-            onChange={set("target_audience")}
-          />
-        </div>
-
-        <div>
-          <label className="label" htmlFor="p-keywords">
-            SEO keywords{" "}
-            <span className="normal-case tracking-normal">(comma separated)</span>
-          </label>
-          <input
-            id="p-keywords"
-            className="input"
-            placeholder="marketing automation, developer marketing"
-            value={form.keywords}
-            onChange={set("keywords")}
-          />
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="p-tone">
-              Tone
-            </label>
-            <select id="p-tone" className="input" value={form.tone} onChange={set("tone")}>
-              {TONES.map((tone) => (
-                <option key={tone} value={tone}>
-                  {titleize(tone)}
+            value={form.canonical_platform}
+            disabled={!form.auto_canonical}
+            onChange={set("canonical_platform")}
+          >
+            <option value="">Whichever publishes first</option>
+            {(platforms ?? [])
+              .filter((p) => p.implemented)
+              .map((p) => (
+                <option key={p.platform} value={p.platform}>
+                  {p.display_name}
                 </option>
               ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="p-autopilot">
-              Autopilot
-            </label>
-            <select
-              id="p-autopilot"
-              className="input"
-              value={form.autopilot_mode}
-              onChange={set("autopilot_mode")}
-            >
-              {AUTOPILOT_MODES.map((mode) => (
-                <option key={mode.value} value={mode.value}>
-                  {mode.label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1.5 text-xs text-ink-400">
-              {AUTOPILOT_MODES.find((m) => m.value === form.autopilot_mode)?.hint}
-            </p>
-          </div>
+          </select>
+          <p className="mt-1.5 text-xs text-ink-400">
+            {form.canonical_platform
+              ? "Only this destination can claim the canonical URL. Copies queued alongside it wait until it has published."
+              : "No destination is privileged — the first one to publish owns the canonical URL."}
+          </p>
         </div>
+      </fieldset>
 
-        <fieldset className="space-y-3 rounded-lg border border-line px-4 py-3">
-          <legend className="label px-1">Syndication</legend>
+      <fieldset className="space-y-3 rounded-lg border border-line px-4 py-3">
+        <legend className="label px-1">Attribution</legend>
 
-          <label className="flex items-start gap-2.5 text-sm text-ink-700">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={form.auto_canonical}
-              onChange={(e) =>
-                setForm((current) => ({ ...current, auto_canonical: e.target.checked }))
-              }
-            />
-            <span>
-              Set the canonical URL automatically
-              <span className="mt-0.5 block text-xs text-ink-400">
-                The first public URL a piece gets becomes the original; every
-                platform published to afterwards is told about it, so the copies
-                don&rsquo;t compete with it in search.
-              </span>
+        <label className="flex items-start gap-2.5 text-sm text-ink-700">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={form.utm_enabled}
+            onChange={(e) =>
+              setForm((current) => ({ ...current, utm_enabled: e.target.checked }))
+            }
+          />
+          <span>
+            Tag published links with UTM parameters
+            <span className="mt-0.5 block text-xs text-ink-400">
+              Links pointing at this project&rsquo;s own site carry the
+              platform they were published on, so your analytics can tell you
+              which destination actually sent the visit. The canonical URL is
+              never tagged.
             </span>
+          </span>
+        </label>
+
+        <div>
+          <label className="label" htmlFor="p-utm-campaign">
+            Campaign name
           </label>
-
-          <div>
-            <label className="label" htmlFor="p-canonical">
-              Primary destination
-            </label>
-            <select
-              id="p-canonical"
-              className="input"
-              value={form.canonical_platform}
-              disabled={!form.auto_canonical}
-              onChange={set("canonical_platform")}
-            >
-              <option value="">Whichever publishes first</option>
-              {(platforms ?? [])
-                .filter((p) => p.implemented)
-                .map((p) => (
-                  <option key={p.platform} value={p.platform}>
-                    {p.display_name}
-                  </option>
-                ))}
-            </select>
-            <p className="mt-1.5 text-xs text-ink-400">
-              {form.canonical_platform
-                ? "Only this destination can claim the canonical URL. Copies queued alongside it wait until it has published."
-                : "No destination is privileged — the first one to publish owns the canonical URL."}
-            </p>
-          </div>
-        </fieldset>
-
-        <fieldset className="space-y-3 rounded-lg border border-line px-4 py-3">
-          <legend className="label px-1">Attribution</legend>
-
-          <label className="flex items-start gap-2.5 text-sm text-ink-700">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={form.utm_enabled}
-              onChange={(e) =>
-                setForm((current) => ({ ...current, utm_enabled: e.target.checked }))
-              }
-            />
-            <span>
-              Tag published links with UTM parameters
-              <span className="mt-0.5 block text-xs text-ink-400">
-                Links pointing at this project&rsquo;s own site carry the
-                platform they were published on, so your analytics can tell you
-                which destination actually sent the visit. The canonical URL is
-                never tagged.
-              </span>
-            </span>
-          </label>
-
-          <div>
-            <label className="label" htmlFor="p-utm-campaign">
-              Campaign name
-            </label>
-            <input
-              id="p-utm-campaign"
-              className="input"
-              value={form.utm_campaign}
-              disabled={!form.utm_enabled}
-              placeholder={project?.slug || "the project slug"}
-              onChange={set("utm_campaign")}
-              maxLength={120}
-            />
-            <p className="mt-1.5 text-xs text-ink-400">
-              The <code>utm_campaign</code> value. Leave blank to use the
-              project slug.
-            </p>
-          </div>
-        </fieldset>
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "Saving…" : "Save project"}
-          </button>
+          <input
+            id="p-utm-campaign"
+            className="input"
+            value={form.utm_campaign}
+            disabled={!form.utm_enabled}
+            placeholder={project?.slug || "the project slug"}
+            onChange={set("utm_campaign")}
+            maxLength={120}
+          />
+          <p className="mt-1.5 text-xs text-ink-400">
+            The <code>utm_campaign</code> value. Leave blank to use the
+            project slug.
+          </p>
         </div>
-      </form>
-    </div>
+      </fieldset>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? "Saving…" : "Save project"}
+        </button>
+      </div>
+    </Dialog>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Empty, ErrorBanner, Skeleton } from "../components/ui/Bits";
+import Dialog from "../components/ui/Dialog";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
@@ -271,273 +272,270 @@ function TemplateDialog({ template, projects, builtins, onClose, onSaved, onErro
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={template ? "Edit template" : "New template"}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Dialog
+      label={template ? "Edit template" : "New template"}
+      onClose={onClose}
+      width="3xl"
+      onSubmit={submit}
     >
-      <form onSubmit={submit} className="panel my-auto w-full max-w-3xl space-y-5 p-6 shadow-pop">
-        <h2 className="font-display text-2xl text-ink-900">
-          {template ? "Edit template" : "New template"}
-        </h2>
+      <h2 className="font-display text-2xl text-ink-900">
+        {template ? "Edit template" : "New template"}
+      </h2>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="tpl-name">
-              Name
-            </label>
-            <input
-              id="tpl-name"
-              className="input"
-              required
-              value={form.name}
-              placeholder="Weekly changelog"
-              onChange={(e) => setField("name", e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="tpl-desc">
-              Description
-            </label>
-            <input
-              id="tpl-desc"
-              className="input"
-              value={form.description}
-              placeholder="What this one is for."
-              onChange={(e) => setField("description", e.target.value)}
-            />
-          </div>
-        </div>
-
-        <fieldset>
-          <legend className="label mb-2">What Herald does with it</legend>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {MODES.map((option) => (
-              <label
-                key={option.value}
-                className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${
-                  form.mode === option.value
-                    ? "border-brand-600 bg-brand-50"
-                    : "border-line hover:border-ink-300"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="tpl-mode"
-                  className="mt-0.5"
-                  value={option.value}
-                  checked={form.mode === option.value}
-                  onChange={() => setField("mode", option.value)}
-                />
-                <span>
-                  <span className="font-medium text-ink-900">{option.label}</span>
-                  <span className="mt-0.5 block text-xs text-ink-500">{option.hint}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="tpl-type">
-              Kind of piece
-            </label>
-            <select
-              id="tpl-type"
-              className="input"
-              value={form.content_type}
-              onChange={(e) => setField("content_type", e.target.value)}
-            >
-              {CONTENT_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {titleize(type)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="tpl-project">
-              Usually for
-            </label>
-            <select
-              id="tpl-project"
-              className="input"
-              value={form.default_project_id}
-              onChange={(e) => setField("default_project_id", e.target.value)}
-            >
-              <option value="">No default — ask each time</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="label" htmlFor="tpl-title">
-            Headline
+          <label className="label" htmlFor="tpl-name">
+            Name
           </label>
           <input
-            id="tpl-title"
-            className="input font-mono text-sm"
-            value={form.title_template}
-            placeholder="{{project.name}} — week of {{date.long}}"
-            onChange={(e) => setField("title_template", e.target.value)}
+            id="tpl-name"
+            className="input"
+            required
+            value={form.name}
+            placeholder="Weekly changelog"
+            onChange={(e) => setField("name", e.target.value)}
           />
         </div>
-
         <div>
-          <label className="label" htmlFor="tpl-body">
-            {form.mode === "prompt" ? "Instructions for the model" : "The piece"}
+          <label className="label" htmlFor="tpl-desc">
+            Description
           </label>
-          <textarea
-            id="tpl-body"
-            ref={bodyRef}
-            className="input min-h-[12rem] font-mono text-sm"
-            value={form.body_template}
-            placeholder={
-              form.mode === "prompt"
-                ? "Write about {{feature}} for {{project.name}}. Mention {{link}}."
-                : "## What shipped\n\n{{summary}}\n\nRead more: {{link}}"
-            }
-            onChange={(e) => setField("body_template", e.target.value)}
+          <input
+            id="tpl-desc"
+            className="input"
+            value={form.description}
+            placeholder="What this one is for."
+            onChange={(e) => setField("description", e.target.value)}
           />
-          <p className="mt-1 text-xs text-ink-400">
-            Anything in {"{{double braces}}"} is a blank. A line whose only
-            content is a blank that comes out empty is dropped, so nothing
-            publishes “Read more:” with nothing after it.
+        </div>
+      </div>
+
+      <fieldset>
+        <legend className="label mb-2">What Herald does with it</legend>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {MODES.map((option) => (
+            <label
+              key={option.value}
+              className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${
+                form.mode === option.value
+                  ? "border-brand-600 bg-brand-50"
+                  : "border-line hover:border-ink-300"
+              }`}
+            >
+              <input
+                type="radio"
+                name="tpl-mode"
+                className="mt-0.5"
+                value={option.value}
+                checked={form.mode === option.value}
+                onChange={() => setField("mode", option.value)}
+              />
+              <span>
+                <span className="font-medium text-ink-900">{option.label}</span>
+                <span className="mt-0.5 block text-xs text-ink-500">{option.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="tpl-type">
+            Kind of piece
+          </label>
+          <select
+            id="tpl-type"
+            className="input"
+            value={form.content_type}
+            onChange={(e) => setField("content_type", e.target.value)}
+          >
+            {CONTENT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {titleize(type)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="tpl-project">
+            Usually for
+          </label>
+          <select
+            id="tpl-project"
+            className="input"
+            value={form.default_project_id}
+            onChange={(e) => setField("default_project_id", e.target.value)}
+          >
+            <option value="">No default — ask each time</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="tpl-title">
+          Headline
+        </label>
+        <input
+          id="tpl-title"
+          className="input font-mono text-sm"
+          value={form.title_template}
+          placeholder="{{project.name}} — week of {{date.long}}"
+          onChange={(e) => setField("title_template", e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="tpl-body">
+          {form.mode === "prompt" ? "Instructions for the model" : "The piece"}
+        </label>
+        <textarea
+          id="tpl-body"
+          ref={bodyRef}
+          className="input min-h-[12rem] font-mono text-sm"
+          value={form.body_template}
+          placeholder={
+            form.mode === "prompt"
+              ? "Write about {{feature}} for {{project.name}}. Mention {{link}}."
+              : "## What shipped\n\n{{summary}}\n\nRead more: {{link}}"
+          }
+          onChange={(e) => setField("body_template", e.target.value)}
+        />
+        <p className="mt-1 text-xs text-ink-400">
+          Anything in {"{{double braces}}"} is a blank. A line whose only
+          content is a blank that comes out empty is dropped, so nothing
+          publishes “Read more:” with nothing after it.
+        </p>
+      </div>
+
+      <BuiltinMenu builtins={builtins} onInsert={insertPlaceholder} />
+
+      {undeclared.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm">
+          <p className="text-amber-900">
+            {undeclared.length === 1 ? "This blank is" : "These blanks are"} not
+            declared, so {undeclared.length === 1 ? "it" : "they"} would render
+            empty forever:
+          </p>
+          <p className="mt-2 flex flex-wrap gap-2">
+            {undeclared.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className="btn-ghost border border-amber-300 px-2 py-1 text-xs"
+                onClick={() => addVariable(name)}
+              >
+                Declare {`{{${name}}}`}
+              </button>
+            ))}
           </p>
         </div>
+      )}
 
-        <BuiltinMenu builtins={builtins} onInsert={insertPlaceholder} />
+      {unused.length > 0 && (
+        <p className="text-xs text-ink-400">
+          Declared but never used: {unused.join(", ")}. The form will still ask
+          for {unused.length === 1 ? "it" : "them"}.
+        </p>
+      )}
 
-        {undeclared.length > 0 && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm">
-            <p className="text-amber-900">
-              {undeclared.length === 1 ? "This blank is" : "These blanks are"} not
-              declared, so {undeclared.length === 1 ? "it" : "they"} would render
-              empty forever:
-            </p>
-            <p className="mt-2 flex flex-wrap gap-2">
-              {undeclared.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="btn-ghost border border-amber-300 px-2 py-1 text-xs"
-                  onClick={() => addVariable(name)}
-                >
-                  Declare {`{{${name}}}`}
-                </button>
-              ))}
-            </p>
-          </div>
-        )}
-
-        {unused.length > 0 && (
-          <p className="text-xs text-ink-400">
-            Declared but never used: {unused.join(", ")}. The form will still ask
-            for {unused.length === 1 ? "it" : "them"}.
+      <fieldset className="space-y-3">
+        <legend className="label mb-2">Blanks to fill in</legend>
+        {form.variables.length === 0 && (
+          <p className="text-sm text-ink-400">
+            None yet. Type a {"{{blank}}"} above and Herald will offer to
+            declare it, or add one here.
           </p>
         )}
-
-        <fieldset className="space-y-3">
-          <legend className="label mb-2">Blanks to fill in</legend>
-          {form.variables.length === 0 && (
-            <p className="text-sm text-ink-400">
-              None yet. Type a {"{{blank}}"} above and Herald will offer to
-              declare it, or add one here.
-            </p>
-          )}
-          {form.variables.map((variable, index) => (
-            <div key={index} className="rounded-lg border border-line p-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="label" htmlFor={`var-name-${index}`}>
-                    Name
-                  </label>
-                  <input
-                    id={`var-name-${index}`}
-                    className="input font-mono text-sm"
-                    value={variable.name}
-                    onChange={(e) => setVariable(index, { name: e.target.value })}
-                  />
-                  {nameErrors[index] && (
-                    <p className="mt-1 text-xs text-rose-600">{nameErrors[index]}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="label" htmlFor={`var-label-${index}`}>
-                    Asked for as
-                  </label>
-                  <input
-                    id={`var-label-${index}`}
-                    className="input"
-                    value={variable.label}
-                    placeholder={labelFor(variable.name)}
-                    onChange={(e) => setVariable(index, { label: e.target.value })}
-                  />
-                </div>
-              </div>
-              <div className="mt-3">
-                <label className="label" htmlFor={`var-default-${index}`}>
-                  Default
+        {form.variables.map((variable, index) => (
+          <div key={index} className="rounded-lg border border-line p-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label" htmlFor={`var-name-${index}`}>
+                  Name
                 </label>
                 <input
-                  id={`var-default-${index}`}
+                  id={`var-name-${index}`}
+                  className="input font-mono text-sm"
+                  value={variable.name}
+                  onChange={(e) => setVariable(index, { name: e.target.value })}
+                />
+                {nameErrors[index] && (
+                  <p className="mt-1 text-xs text-rose-600">{nameErrors[index]}</p>
+                )}
+              </div>
+              <div>
+                <label className="label" htmlFor={`var-label-${index}`}>
+                  Asked for as
+                </label>
+                <input
+                  id={`var-label-${index}`}
                   className="input"
-                  value={variable.default}
-                  placeholder="Used when you leave it blank."
-                  onChange={(e) => setVariable(index, { default: e.target.value })}
+                  value={variable.label}
+                  placeholder={labelFor(variable.name)}
+                  onChange={(e) => setVariable(index, { label: e.target.value })}
                 />
               </div>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <label className="flex items-center gap-2 text-sm text-ink-600">
-                  <input
-                    type="checkbox"
-                    checked={variable.required}
-                    onChange={(e) => setVariable(index, { required: e.target.checked })}
-                  />
-                  Required — refuse to write the piece without it
-                </label>
-                <button
-                  type="button"
-                  className="btn-ghost text-xs text-rose-600"
-                  onClick={() => removeVariable(index)}
-                >
-                  Remove
-                </button>
-              </div>
             </div>
-          ))}
-          <button type="button" className="btn-ghost text-sm" onClick={() => addVariable()}>
-            Add a blank
-          </button>
-        </fieldset>
+            <div className="mt-3">
+              <label className="label" htmlFor={`var-default-${index}`}>
+                Default
+              </label>
+              <input
+                id={`var-default-${index}`}
+                className="input"
+                value={variable.default}
+                placeholder="Used when you leave it blank."
+                onChange={(e) => setVariable(index, { default: e.target.value })}
+              />
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-sm text-ink-600">
+                <input
+                  type="checkbox"
+                  checked={variable.required}
+                  onChange={(e) => setVariable(index, { required: e.target.checked })}
+                />
+                Required — refuse to write the piece without it
+              </label>
+              <button
+                type="button"
+                className="btn-ghost text-xs text-rose-600"
+                onClick={() => removeVariable(index)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        <button type="button" className="btn-ghost text-sm" onClick={() => addVariable()}>
+          Add a blank
+        </button>
+      </fieldset>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={busy || blocked}
-            title={
-              undeclared.length > 0
-                ? "Declare the blanks above first — otherwise they render empty."
-                : undefined
-            }
-          >
-            {busy ? "Saving…" : "Save template"}
-          </button>
-        </div>
-      </form>
-    </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={busy || blocked}
+          title={
+            undeclared.length > 0
+              ? "Declare the blanks above first — otherwise they render empty."
+              : undefined
+          }
+        >
+          {busy ? "Saving…" : "Save template"}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -645,99 +643,95 @@ function UseDialog({ template, projects, onClose, onDone }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Use ${template.name}`}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Dialog
+      label={`Use ${template.name}`}
+      onClose={onClose}
+      width="3xl"
     >
-      <div className="panel my-auto w-full max-w-3xl space-y-4 p-6 shadow-pop">
-        <div>
-          <h2 className="font-display text-2xl text-ink-900">{template.name}</h2>
-          <p className="mt-1 text-sm text-ink-500">
-            {template.mode === "prompt"
-              ? "Fill these in and the model gets them as its brief."
-              : "Fill these in and this is the piece, exactly as shown."}
-          </p>
-        </div>
-
-        <div>
-          <label className="label" htmlFor="use-project">
-            For project
-          </label>
-          <select
-            id="use-project"
-            className="input"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            <option value="">Choose a project</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {template.variables.map((variable) => (
-          <div key={variable.name}>
-            <label className="label" htmlFor={`use-${variable.name}`}>
-              {variable.label || labelFor(variable.name)}
-              {variable.required && <span className="ml-1 text-rose-600">*</span>}
-            </label>
-            <textarea
-              id={`use-${variable.name}`}
-              className="input min-h-[3rem]"
-              rows={2}
-              value={values[variable.name] ?? ""}
-              placeholder={variable.description || variable.default}
-              onChange={(e) =>
-                setValues((current) => ({ ...current, [variable.name]: e.target.value }))
-              }
-            />
-          </div>
-        ))}
-
-        <div>
-          <p className="eyebrow mb-1.5">
-            {template.mode === "prompt" ? "The brief" : "Preview"}
-          </p>
-          {previewError ? (
-            <ErrorBanner message={previewError} />
-          ) : (
-            <div className="rounded-lg border border-line bg-canvas p-3">
-              <p className="text-sm font-medium text-ink-900">
-                {preview?.title || <span className="text-ink-400">No headline</span>}
-              </p>
-              <pre className="mt-2 whitespace-pre-wrap font-mono text-xs text-ink-600">
-                {preview?.body || "…"}
-              </pre>
-            </div>
-          )}
-        </div>
-
-        {missing.length > 0 && (
-          <p className="text-sm text-amber-700">
-            Still needs {missing.map((name) => labelFor(name)).join(", ")}.
-          </p>
-        )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={busy || missing.length > 0 || !projectId}
-            onClick={create}
-          >
-            {busy ? "Writing…" : "Create draft"}
-          </button>
-        </div>
+      <div>
+        <h2 className="font-display text-2xl text-ink-900">{template.name}</h2>
+        <p className="mt-1 text-sm text-ink-500">
+          {template.mode === "prompt"
+            ? "Fill these in and the model gets them as its brief."
+            : "Fill these in and this is the piece, exactly as shown."}
+        </p>
       </div>
-    </div>
+
+      <div>
+        <label className="label" htmlFor="use-project">
+          For project
+        </label>
+        <select
+          id="use-project"
+          className="input"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+        >
+          <option value="">Choose a project</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {template.variables.map((variable) => (
+        <div key={variable.name}>
+          <label className="label" htmlFor={`use-${variable.name}`}>
+            {variable.label || labelFor(variable.name)}
+            {variable.required && <span className="ml-1 text-rose-600">*</span>}
+          </label>
+          <textarea
+            id={`use-${variable.name}`}
+            className="input min-h-[3rem]"
+            rows={2}
+            value={values[variable.name] ?? ""}
+            placeholder={variable.description || variable.default}
+            onChange={(e) =>
+              setValues((current) => ({ ...current, [variable.name]: e.target.value }))
+            }
+          />
+        </div>
+      ))}
+
+      <div>
+        <p className="eyebrow mb-1.5">
+          {template.mode === "prompt" ? "The brief" : "Preview"}
+        </p>
+        {previewError ? (
+          <ErrorBanner message={previewError} />
+        ) : (
+          <div className="rounded-lg border border-line bg-canvas p-3">
+            <p className="text-sm font-medium text-ink-900">
+              {preview?.title || <span className="text-ink-400">No headline</span>}
+            </p>
+            <pre className="mt-2 whitespace-pre-wrap font-mono text-xs text-ink-600">
+              {preview?.body || "…"}
+            </pre>
+          </div>
+        )}
+      </div>
+
+      {missing.length > 0 && (
+        <p className="text-sm text-amber-700">
+          Still needs {missing.map((name) => labelFor(name)).join(", ")}.
+        </p>
+      )}
+
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busy || missing.length > 0 || !projectId}
+          onClick={create}
+        >
+          {busy ? "Writing…" : "Create draft"}
+        </button>
+      </div>
+    </Dialog>
   );
 }

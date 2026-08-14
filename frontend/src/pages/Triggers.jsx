@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Empty, ErrorBanner, SectionHeader, Skeleton, StatusBadge } from "../components/ui/Bits";
+import Dialog from "../components/ui/Dialog";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
@@ -421,116 +422,113 @@ function TriggerDialog({ trigger, projects, kinds, defaultProjectId, onClose, on
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={trigger ? "Edit trigger" : "Add trigger"}
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Dialog
+      label={trigger ? "Edit trigger" : "Add trigger"}
+      onClose={onClose}
+      width="xl"
+      onSubmit={submit}
     >
-      <form onSubmit={submit} className="panel my-auto w-full max-w-xl space-y-4 p-6 shadow-pop">
-        <h2 className="font-display text-2xl text-ink-900">
-          {trigger ? "Edit trigger" : "Add a trigger"}
-        </h2>
+      <h2 className="font-display text-2xl text-ink-900">
+        {trigger ? "Edit trigger" : "Add a trigger"}
+      </h2>
 
-        {!trigger && (
-          <>
-            <div>
-              <label className="label" htmlFor="t-project">
-                Project
-              </label>
-              <select
-                id="t-project"
-                className="input"
-                required
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {!trigger && (
+        <>
+          <div>
+            <label className="label" htmlFor="t-project">
+              Project
+            </label>
+            <select
+              id="t-project"
+              className="input"
+              required
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+            >
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
 
-            <fieldset>
-              <legend className="label mb-2">What starts it</legend>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {kinds.map((option) => (
-                  <label
-                    key={option.kind}
-                    className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${
-                      kind === option.kind
-                        ? "border-brand-600 bg-brand-50"
-                        : "border-line hover:border-ink-300"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="kind"
-                      className="mt-0.5"
-                      value={option.kind}
-                      checked={kind === option.kind}
-                      onChange={() => setKind(option.kind)}
-                    />
-                    <span className="min-w-0">
-                      <span className="font-medium text-ink-900">{option.label}</span>
-                      <span className="mt-0.5 block text-xs text-ink-500">
-                        {option.description}
-                      </span>
+          <fieldset>
+            <legend className="label mb-2">What starts it</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {kinds.map((option) => (
+                <label
+                  key={option.kind}
+                  className={`flex cursor-pointer gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${
+                    kind === option.kind
+                      ? "border-brand-600 bg-brand-50"
+                      : "border-line hover:border-ink-300"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="kind"
+                    className="mt-0.5"
+                    value={option.kind}
+                    checked={kind === option.kind}
+                    onChange={() => setKind(option.kind)}
+                  />
+                  <span className="min-w-0">
+                    <span className="font-medium text-ink-900">{option.label}</span>
+                    <span className="mt-0.5 block text-xs text-ink-500">
+                      {option.description}
                     </span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          </>
-        )}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </>
+      )}
 
-        {trigger && kindMeta && (
-          <p className="text-sm text-ink-500">
-            <span className="chip mr-2">{kindMeta.label}</span>
-            {kindMeta.description}
-          </p>
-        )}
+      {trigger && kindMeta && (
+        <p className="text-sm text-ink-500">
+          <span className="chip mr-2">{kindMeta.label}</span>
+          {kindMeta.description}
+        </p>
+      )}
 
-        <div>
-          <label className="label" htmlFor="t-name">
-            Name
-          </label>
-          <input
-            id="t-name"
-            className="input"
-            maxLength={120}
-            placeholder="Changelog feed"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <p className="mt-1.5 text-xs text-ink-400">
-            What this one is for. Three RSS triggers on a project look identical
-            without it.
-          </p>
-        </div>
+      <div>
+        <label className="label" htmlFor="t-name">
+          Name
+        </label>
+        <input
+          id="t-name"
+          className="input"
+          maxLength={120}
+          placeholder="Changelog feed"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <p className="mt-1.5 text-xs text-ink-400">
+          What this one is for. Three RSS triggers on a project look identical
+          without it.
+        </p>
+      </div>
 
-        {fieldsFor(kind).map((field) => (
-          <ConfigField
-            key={field.key}
-            field={field}
-            value={form[field.key]}
-            onChange={(value) => setField(field.key, value)}
-          />
-        ))}
+      {fieldsFor(kind).map((field) => (
+        <ConfigField
+          key={field.key}
+          field={field}
+          value={form[field.key]}
+          onChange={(value) => setField(field.key, value)}
+        />
+      ))}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "Saving…" : trigger ? "Save changes" : "Create trigger"}
-          </button>
-        </div>
-      </form>
-    </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? "Saving…" : trigger ? "Save changes" : "Create trigger"}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 
@@ -621,64 +619,60 @@ function SecretDialog({ trigger, onClose }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Webhook trigger credentials"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <Dialog
+      label="Webhook trigger credentials"
+      onClose={onClose}
+      width="xl"
     >
-      <div className="panel my-auto w-full max-w-xl space-y-4 p-6 shadow-pop">
-        <h2 className="font-display text-2xl text-ink-900">Your trigger is ready</h2>
-        <p className="text-sm text-ink-500">
-          Point anything that speaks HTTP at this URL. The secret is shown now
-          and never again — Herald keeps only an encrypted copy.
-        </p>
+      <h2 className="font-display text-2xl text-ink-900">Your trigger is ready</h2>
+      <p className="text-sm text-ink-500">
+        Point anything that speaks HTTP at this URL. The secret is shown now
+        and never again — Herald keeps only an encrypted copy.
+      </p>
 
-        <div>
-          <p className="label">URL</p>
-          <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2">
-            <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-ink-700">
-              {trigger.inbound_url}
-            </code>
-            <button className="btn-quiet shrink-0" onClick={() => copy(trigger.inbound_url, "URL")}>
-              Copy
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <p className="label">Signing secret</p>
-          <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2">
-            <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-ink-700">
-              {trigger.secret}
-            </code>
-            <button className="btn-quiet shrink-0" onClick={() => copy(trigger.secret, "Secret")}>
-              Copy
-            </button>
-          </div>
-          <div className="mt-1.5 space-y-1.5 text-xs text-ink-400">
-            <p>
-              Send it as <code>X-Herald-Signature</code>, in the same format
-              Herald signs its own outbound webhooks with:
-            </p>
-            <pre className="overflow-x-auto rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-[11px] text-ink-700">
-              t=&lt;unix seconds&gt;,v1=HMAC_SHA256(secret, &quot;&lt;t&gt;.&lt;raw body&gt;&quot;)
-            </pre>
-            <p>
-              Signatures older than five minutes are refused. Only required if
-              you turned signatures on — but a URL leaks by being pasted into a
-              chat window, and a signature makes a leaked URL useless on its own.
-            </p>
-          </div>
-        </div>
-
-        <div className="flex justify-end pt-2">
-          <button className="btn-primary" onClick={onClose}>
-            I&rsquo;ve saved it
+      <div>
+        <p className="label">URL</p>
+        <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2">
+          <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-ink-700">
+            {trigger.inbound_url}
+          </code>
+          <button className="btn-quiet shrink-0" onClick={() => copy(trigger.inbound_url, "URL")}>
+            Copy
           </button>
         </div>
       </div>
-    </div>
+
+      <div>
+        <p className="label">Signing secret</p>
+        <div className="flex items-center gap-2 rounded-lg border border-line bg-canvas px-3 py-2">
+          <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-ink-700">
+            {trigger.secret}
+          </code>
+          <button className="btn-quiet shrink-0" onClick={() => copy(trigger.secret, "Secret")}>
+            Copy
+          </button>
+        </div>
+        <div className="mt-1.5 space-y-1.5 text-xs text-ink-400">
+          <p>
+            Send it as <code>X-Herald-Signature</code>, in the same format
+            Herald signs its own outbound webhooks with:
+          </p>
+          <pre className="overflow-x-auto rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-[11px] text-ink-700">
+            t=&lt;unix seconds&gt;,v1=HMAC_SHA256(secret, &quot;&lt;t&gt;.&lt;raw body&gt;&quot;)
+          </pre>
+          <p>
+            Signatures older than five minutes are refused. Only required if
+            you turned signatures on — but a URL leaks by being pasted into a
+            chat window, and a signature makes a leaked URL useless on its own.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-end pt-2">
+        <button className="btn-primary" onClick={onClose}>
+          I&rsquo;ve saved it
+        </button>
+      </div>
+    </Dialog>
   );
 }

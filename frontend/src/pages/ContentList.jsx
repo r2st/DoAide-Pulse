@@ -7,6 +7,7 @@ import {
   Skeleton,
   StatusBadge,
 } from "../components/ui/Bits";
+import Dialog from "../components/ui/Dialog";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
@@ -219,99 +220,96 @@ function GenerateDialog({ projects, defaultProjectId, onClose, onDone, onError }
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Generate content"
-      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
+    <Dialog
+      label="Generate content"
+      onClose={onClose}
+      closable={!busy}
+      onSubmit={submit}
     >
-      <form onSubmit={submit} className="panel my-auto w-full max-w-lg space-y-4 p-6 shadow-pop">
-        <h2 className="font-display text-2xl text-ink-900">Generate a draft</h2>
+      <h2 className="font-display text-2xl text-ink-900">Generate a draft</h2>
 
-        <div>
-          <label className="label" htmlFor="g-project">
-            Project
-          </label>
-          <select
-            id="g-project"
-            className="input"
-            value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
-          >
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label className="label" htmlFor="g-project">
+          Project
+        </label>
+        <select
+          id="g-project"
+          className="input"
+          value={projectId}
+          onChange={(e) => setProjectId(e.target.value)}
+        >
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <div>
-          <label className="label" htmlFor="g-type">
-            Type
-          </label>
-          <select
-            id="g-type"
-            className="input"
-            value={contentType}
-            onChange={(e) => setContentType(e.target.value)}
-          >
-            {TYPES.map((value) => (
-              <option key={value} value={value}>
-                {titleize(value)}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div>
+        <label className="label" htmlFor="g-type">
+          Type
+        </label>
+        <select
+          id="g-type"
+          className="input"
+          value={contentType}
+          onChange={(e) => setContentType(e.target.value)}
+        >
+          {TYPES.map((value) => (
+            <option key={value} value={value}>
+              {titleize(value)}
+            </option>
+          ))}
+        </select>
+      </div>
 
-        <div>
-          <label className="label" htmlFor="g-instructions">
-            Direction{" "}
-            <span className="normal-case tracking-normal">(optional)</span>
-          </label>
-          <textarea
-            id="g-instructions"
-            rows={3}
-            className="input resize-y"
-            placeholder="Focus on the Celery retry logic, and mention the free-tier model chain."
-            value={instructions}
-            onChange={(e) => setInstructions(e.target.value)}
+      <div>
+        <label className="label" htmlFor="g-instructions">
+          Direction{" "}
+          <span className="normal-case tracking-normal">(optional)</span>
+        </label>
+        <textarea
+          id="g-instructions"
+          rows={3}
+          className="input resize-y"
+          placeholder="Focus on the Celery retry logic, and mention the free-tier model chain."
+          value={instructions}
+          onChange={(e) => setInstructions(e.target.value)}
+        />
+      </div>
+
+      {project?.repo_full_name && (
+        <label className="flex items-start gap-2.5 text-sm text-ink-700">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={includeActivity}
+            onChange={(e) => setIncludeActivity(e.target.checked)}
           />
-        </div>
-
-        {project?.repo_full_name && (
-          <label className="flex items-start gap-2.5 text-sm text-ink-700">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={includeActivity}
-              onChange={(e) => setIncludeActivity(e.target.checked)}
-            />
-            <span>
-              Pull recent commits and releases from{" "}
-              <span className="font-mono text-xs">{project.repo_full_name}</span>
-              <span className="mt-0.5 block text-xs text-ink-400">
-                Worth it for announcements. Adds a round trip.
-              </span>
+          <span>
+            Pull recent commits and releases from{" "}
+            <span className="font-mono text-xs">{project.repo_full_name}</span>
+            <span className="mt-0.5 block text-xs text-ink-400">
+              Worth it for announcements. Adds a round trip.
             </span>
-          </label>
-        )}
+          </span>
+        </label>
+      )}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={busy || !projectId}>
-            {busy ? "Writing…" : "Generate"}
-          </button>
-        </div>
-        {busy && (
-          <p className="text-xs text-ink-400">
-            Asking the model for a full draft. This usually takes 10–30 seconds.
-          </p>
-        )}
-      </form>
-    </div>
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+        <button type="submit" className="btn-primary" disabled={busy || !projectId}>
+          {busy ? "Writing…" : "Generate"}
+        </button>
+      </div>
+      {busy && (
+        <p className="text-xs text-ink-400">
+          Asking the model for a full draft. This usually takes 10–30 seconds.
+        </p>
+      )}
+    </Dialog>
   );
 }

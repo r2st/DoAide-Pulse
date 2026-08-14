@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ErrorBanner, SectionHeader, Skeleton } from "../components/ui/Bits";
+import Dialog from "../components/ui/Dialog";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { useAuth } from "../hooks/useAuth";
@@ -265,62 +266,60 @@ function ConnectDialog({ platform, onClose, onDone }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Connect ${platform.display_name}`}
-      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
+    <Dialog
+      label={`Connect ${platform.display_name}`}
+      onClose={onClose}
+      closable={!busy}
+      width="md"
+      onSubmit={submit}
     >
-      <form onSubmit={submit} className="panel my-auto w-full max-w-md space-y-4 p-6 shadow-pop">
-        <h2 className="font-display text-2xl text-ink-900">
-          Connect {platform.display_name}
-        </h2>
-        {platform.caveat && (
-          <p className="rounded-lg bg-warn-wash px-3 py-2 text-xs leading-relaxed text-warn">
-            {platform.caveat}
-          </p>
-        )}
-
-        {platform.credential_fields.map((field) => (
-          <div key={field.key}>
-            <label className="label" htmlFor={`cred-${field.key}`}>
-              {field.label}
-              {!field.required && (
-                <span className="normal-case tracking-normal"> (optional)</span>
-              )}
-            </label>
-            <input
-              id={`cred-${field.key}`}
-              className="input font-mono text-xs"
-              type={field.secret ? "password" : "text"}
-              required={field.required}
-              autoComplete="off"
-              value={values[field.key]}
-              onChange={(e) =>
-                setValues((current) => ({ ...current, [field.key]: e.target.value }))
-              }
-            />
-            {field.help_text && (
-              <p className="mt-1 text-xs text-ink-400">{field.help_text}</p>
-            )}
-          </div>
-        ))}
-
-        <p className="text-xs text-ink-400">
-          Herald checks these against {platform.display_name} before saving, so you
-          find out now rather than when a scheduled post fails.
+      <h2 className="font-display text-2xl text-ink-900">
+        Connect {platform.display_name}
+      </h2>
+      {platform.caveat && (
+        <p className="rounded-lg bg-warn-wash px-3 py-2 text-xs leading-relaxed text-warn">
+          {platform.caveat}
         </p>
+      )}
 
-        <div className="flex justify-end gap-2 pt-1">
-          <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button type="submit" className="btn-primary" disabled={busy}>
-            {busy ? "Verifying…" : "Connect"}
-          </button>
+      {platform.credential_fields.map((field) => (
+        <div key={field.key}>
+          <label className="label" htmlFor={`cred-${field.key}`}>
+            {field.label}
+            {!field.required && (
+              <span className="normal-case tracking-normal"> (optional)</span>
+            )}
+          </label>
+          <input
+            id={`cred-${field.key}`}
+            className="input font-mono text-xs"
+            type={field.secret ? "password" : "text"}
+            required={field.required}
+            autoComplete="off"
+            value={values[field.key]}
+            onChange={(e) =>
+              setValues((current) => ({ ...current, [field.key]: e.target.value }))
+            }
+          />
+          {field.help_text && (
+            <p className="mt-1 text-xs text-ink-400">{field.help_text}</p>
+          )}
         </div>
-      </form>
-    </div>
+      ))}
+
+      <p className="text-xs text-ink-400">
+        Herald checks these against {platform.display_name} before saving, so you
+        find out now rather than when a scheduled post fails.
+      </p>
+
+      <div className="flex justify-end gap-2 pt-1">
+        <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? "Verifying…" : "Connect"}
+        </button>
+      </div>
+    </Dialog>
   );
 }

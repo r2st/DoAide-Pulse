@@ -229,6 +229,32 @@ describe("the add/edit dialog", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("");
   });
 
+  // The dialog's own keyboard behaviour is covered in ui/Dialog.test.jsx. What
+  // these two check is that this page is wired to it at all — the eight dialogs
+  // this replaced each had `aria-modal` and none of them behaved like it.
+  it("puts focus in the first field, so it can be filled in without a mouse", async () => {
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("No projects yet");
+
+    await user.click(screen.getByRole("button", { name: "Add your first project" }));
+
+    expect(screen.getByLabelText("Name")).toHaveFocus();
+  });
+
+  it("closes on Escape and hands focus back to what opened it", async () => {
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("No projects yet");
+    const opener = screen.getByRole("button", { name: "Add your first project" });
+    await user.click(opener);
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
+
   it("pre-fills from an existing project when editing", async () => {
     api.listProjects.mockResolvedValue([project()]);
     const user = userEvent.setup();

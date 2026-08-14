@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { SectionBoundary } from "../components/ErrorBoundary";
 import SocialPreview from "../components/SocialPreview";
 import { Confidence, ErrorBanner, Skeleton, StatusBadge } from "../components/ui/Bits";
+import Dialog from "../components/ui/Dialog";
 import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
@@ -1158,124 +1159,121 @@ function PublishDialog({ content, platforms, onClose, onDone, onError }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink-900/25 p-4 backdrop-blur-sm sm:p-8"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Publish"
-      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
+    <Dialog
+      label="Publish"
+      onClose={onClose}
+      closable={!busy}
+      onSubmit={submit}
     >
-      <form onSubmit={submit} className="panel my-auto w-full max-w-lg space-y-4 p-6 shadow-pop">
-        <h2 className="font-display text-2xl text-ink-900">Publish</h2>
+      <h2 className="font-display text-2xl text-ink-900">Publish</h2>
 
-        <div className="space-y-2">
-          {platforms.map((platform) => {
-            const live = alreadyLive.has(platform.platform);
-            const connected = platform.connection?.status === "connected";
-            const disabled = !platform.implemented || !connected || live;
-            const reason = live
-              ? "Already published here"
-              : !platform.implemented
-                ? "Adapter not finished"
-                : !connected
-                  ? "Not connected — add credentials in Settings"
-                  : null;
+      <div className="space-y-2">
+        {platforms.map((platform) => {
+          const live = alreadyLive.has(platform.platform);
+          const connected = platform.connection?.status === "connected";
+          const disabled = !platform.implemented || !connected || live;
+          const reason = live
+            ? "Already published here"
+            : !platform.implemented
+              ? "Adapter not finished"
+              : !connected
+                ? "Not connected — add credentials in Settings"
+                : null;
 
-            return (
-              <label
-                key={platform.platform}
-                className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
-                  disabled
-                    ? "border-line bg-canvas opacity-60"
-                    : "border-line-strong bg-paper"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  disabled={disabled}
-                  checked={selected.includes(platform.platform)}
-                  onChange={() => toggle(platform.platform)}
-                />
-                <span className="min-w-0">
-                  <span className="block text-sm text-ink-900">
-                    {platform.display_name}
-                  </span>
-                  {reason && (
-                    <span className="mt-0.5 block text-xs text-ink-400">{reason}</span>
-                  )}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-
-        <div>
-          <label className="label" htmlFor="pub-when">
-            When <span className="normal-case tracking-normal">(blank = now)</span>
-          </label>
-          <input
-            id="pub-when"
-            type="datetime-local"
-            className="input"
-            value={when}
-            onChange={(e) => setWhen(e.target.value)}
-          />
-        </div>
-
-        <label className="flex items-start gap-2.5 text-sm text-ink-700">
-          <input
-            type="checkbox"
-            className="mt-0.5"
-            checked={asDraft}
-            onChange={(e) => setAsDraft(e.target.checked)}
-          />
-          <span>
-            Create as a draft on the platform
-            <span className="mt-0.5 block text-xs text-ink-400">
-              Stages it there so you can hit publish yourself.
-            </span>
-          </span>
-        </label>
-
-        {deadLinks && (
-          <div className="space-y-2.5 rounded-lg bg-bad-wash px-3 py-2.5">
-            <p className="break-words text-xs text-bad">
-              {/* The server's list, minus the hint about the flag this
-                  checkbox now provides. */}
-              {deadLinks.split(". Fix them,")[0]}.
-            </p>
-            <label className="flex items-start gap-2.5 text-sm text-ink-700">
+          return (
+            <label
+              key={platform.platform}
+              className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 ${
+                disabled
+                  ? "border-line bg-canvas opacity-60"
+                  : "border-line-strong bg-paper"
+              }`}
+            >
               <input
                 type="checkbox"
                 className="mt-0.5"
-                checked={allowBroken}
-                onChange={(e) => setAllowBroken(e.target.checked)}
+                disabled={disabled}
+                checked={selected.includes(platform.platform)}
+                onChange={() => toggle(platform.platform)}
               />
-              <span>
-                Publish anyway
-                <span className="mt-0.5 block text-xs text-ink-400">
-                  Sometimes the page is about to exist.
+              <span className="min-w-0">
+                <span className="block text-sm text-ink-900">
+                  {platform.display_name}
                 </span>
+                {reason && (
+                  <span className="mt-0.5 block text-xs text-ink-400">{reason}</span>
+                )}
               </span>
             </label>
-          </div>
-        )}
+          );
+        })}
+      </div>
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={busy || selected.length === 0}
-          >
-            {busy ? "Queueing…" : when ? "Schedule" : "Publish now"}
-          </button>
+      <div>
+        <label className="label" htmlFor="pub-when">
+          When <span className="normal-case tracking-normal">(blank = now)</span>
+        </label>
+        <input
+          id="pub-when"
+          type="datetime-local"
+          className="input"
+          value={when}
+          onChange={(e) => setWhen(e.target.value)}
+        />
+      </div>
+
+      <label className="flex items-start gap-2.5 text-sm text-ink-700">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={asDraft}
+          onChange={(e) => setAsDraft(e.target.checked)}
+        />
+        <span>
+          Create as a draft on the platform
+          <span className="mt-0.5 block text-xs text-ink-400">
+            Stages it there so you can hit publish yourself.
+          </span>
+        </span>
+      </label>
+
+      {deadLinks && (
+        <div className="space-y-2.5 rounded-lg bg-bad-wash px-3 py-2.5">
+          <p className="break-words text-xs text-bad">
+            {/* The server's list, minus the hint about the flag this
+                checkbox now provides. */}
+            {deadLinks.split(". Fix them,")[0]}.
+          </p>
+          <label className="flex items-start gap-2.5 text-sm text-ink-700">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={allowBroken}
+              onChange={(e) => setAllowBroken(e.target.checked)}
+            />
+            <span>
+              Publish anyway
+              <span className="mt-0.5 block text-xs text-ink-400">
+                Sometimes the page is about to exist.
+              </span>
+            </span>
+          </label>
         </div>
-      </form>
-    </div>
+      )}
+
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={busy || selected.length === 0}
+        >
+          {busy ? "Queueing…" : when ? "Schedule" : "Publish now"}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 
