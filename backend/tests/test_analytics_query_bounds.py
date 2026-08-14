@@ -296,6 +296,103 @@ def test_the_engagement_trend_weights_by_the_piece_its_reads_belong_to(
     assert not publications, "\n".join(s[:160] for s in publications)
 
 
+def _body_reads(statements: list[str]) -> list[str]:
+    """Statements that carry ``content.body_markdown`` back to Python."""
+    return [s for s in statements if "content.body_markdown" in s]
+
+
+def _snapshot_reads(statements: list[str]) -> list[str]:
+    """Statements that return a row per ``content_metrics`` snapshot."""
+    return [s for s in statements if s.startswith("SELECT content_metrics.")]
+
+
+def test_the_engagement_trend_reads_a_body_per_piece_not_per_snapshot(
+    db, user, mine, sql_log
+):
+    """The trend query returns a row per *poll*; the body must not ride along.
+
+    Selecting one column instead of the entity fixed the ``lazy="selectin"``
+    load but not the row multiplication: the trend joins ``content_metrics``,
+    so ``content.body_markdown`` came back once per snapshot per publication —
+    at the six-hourly default, ~120 copies of each article over a 30-day
+    window — to produce one reading time per publication.
+
+    Pinned on the emitted SQL, because the numbers were always right. What was
+    wrong was how many megabytes had to cross the wire to reach them.
+    """
+    # Four polls of each publication, all reporting the counters they already
+    # reported. Cumulative counters mean no new gain, so every number below is
+    # the one the single-snapshot fixture produces.
+    for content, publication in mine:
+        for poll in range(4):
+            db.add(
+                ContentMetric(
+                    publication_id=publication.id,
+                    views=10 if content.title == "Short one" else 90,
+                    reads=4 if content.title == "Short one" else 40,
+                    captured_at=utcnow() - timedelta(days=3, hours=6 * poll),
+                )
+            )
+    db.commit()
+
+    sql_log.clear()
+    days = analytics_service.engagement_trend(db, user.id, days=30)
+
+    assert sum(day["reader_minutes"] for day in days) == 4 + 40 * 14
+
+    carrying_bodies = [s for s in _snapshot_reads(sql_log) if "body_markdown" in s]
+    assert not carrying_bodies, (
+        "the per-snapshot read ships a whole article body per poll:\n"
+        + "\n".join(s[:200] for s in carrying_bodies)
+    )
+    assert len(_body_reads(sql_log)) == 1, (
+        "expected exactly one keyed read of the bodies, got "
+        + "\n".join(s[:200] for s in _body_reads(sql_log))
+    )
+
+
+def test_the_engagement_trend_reads_one_body_for_a_piece_on_two_platforms(
+    db, user, project, sql_log
+):
+    """Publications share a piece; the body behind them is read once, not once each.
+
+    Keying the fetch by content id rather than publication id is what makes
+    this true, and syndication — the same article on Dev.to, Hashnode and
+    Medium — is the normal case rather than the edge one.
+    """
+    content, first = _publish(
+        db, project, title="Syndicated", body="word " * 3000, views=90, reads=40
+    )
+    second = Publication(
+        content_id=content.id,
+        platform=Platform.HASHNODE,
+        status=PublicationStatus.PUBLISHED,
+        published_at=utcnow() - timedelta(days=5),
+        external_id=f"ext-{content.id}-hashnode",
+    )
+    db.add(second)
+    db.commit()
+    db.add(
+        ContentMetric(
+            publication_id=second.id,
+            views=10,
+            reads=5,
+            captured_at=utcnow() - timedelta(days=4),
+        )
+    )
+    db.commit()
+
+    sql_log.clear()
+    days = analytics_service.engagement_trend(db, user.id, days=30)
+
+    # 3000 words → 14 minutes, applied to both publications' reads.
+    assert sum(day["reader_minutes"] for day in days) == (40 + 5) * 14
+    assert len(_body_reads(sql_log)) == 1, "\n".join(
+        s[:200] for s in _body_reads(sql_log)
+    )
+    assert first.id != second.id
+
+
 def test_read_minutes_is_the_same_number_from_the_column_and_the_property(db, mine):
     """The free function and the property must not drift.
 

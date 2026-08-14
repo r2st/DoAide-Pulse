@@ -599,6 +599,45 @@ def _pre_window_readings(
     return {row.publication_id: row for row in rows}
 
 
+def _read_minutes_by_publication(
+    db: Session, user_id: int, since: datetime, content_of: dict[int, int]
+) -> dict[int, int]:
+    """Reading time per publication, reading each piece's body exactly once.
+
+    *content_of* maps publication id to the content id behind it, which is what
+    the caller already learned from its own rows. Several publications of the
+    same piece — the normal case, one per platform — share one body, so the
+    bodies are fetched keyed by *content* id and then spread back across the
+    publications.
+
+    The ids come from a subquery repeating the caller's own predicate rather
+    than from an ``IN`` over ``content_of.values()``. It selects the same set
+    either way, but as a subquery the statement carries two bind parameters
+    instead of one per piece, and Postgres refuses a statement with more than
+    65535 of them.
+    """
+    if not content_of:
+        return {}
+    in_window = (
+        select(Publication.content_id)
+        .join(ContentMetric, ContentMetric.publication_id == Publication.id)
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id, ContentMetric.captured_at >= since)
+        .distinct()
+    )
+    minutes_of_content = {
+        content_id: read_minutes_of(body)
+        for content_id, body in db.execute(
+            select(Content.id, Content.body_markdown).where(Content.id.in_(in_window))
+        )
+    }
+    return {
+        publication_id: minutes_of_content[content_id]
+        for publication_id, content_id in content_of.items()
+    }
+
+
 def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
     """Views and engagement *gained* per day over the trailing window.
 
@@ -625,12 +664,15 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
     """
     since = utcnow() - timedelta(days=days)
     rows = db.execute(
-        # The Content join is needed for its own sake here, not just to reach
-        # Project: ``read_minutes`` is derived from the body. That one column,
-        # rather than the entity — see :func:`read_time` on what selecting a
-        # ``Content`` drags along with it, and note that this query returns a
-        # row per *snapshot*, so the same piece arrives once per poll.
-        select(ContentMetric, Content.body_markdown)
+        # ``Publication.content_id`` — an integer already on the row being
+        # joined through — rather than the body it points at. Reading time is
+        # derived from the body, but this query returns a row per *snapshot*,
+        # and the body is a whole article: selecting it here shipped one full
+        # copy per poll per publication, which at the six-hourly default is
+        # ~120 copies of each piece per publication over a 30-day window, to
+        # compute one number per publication. The bodies are fetched once each,
+        # keyed by content id, in ``_read_minutes_by_publication`` below.
+        select(ContentMetric, Publication.content_id)
         .join(Publication, Publication.id == ContentMetric.publication_id)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
@@ -640,11 +682,12 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
     # Group by publication first: a gain is only meaningful against the same
     # post's own previous reading.
     series: dict[int, list[ContentMetric]] = defaultdict(list)
-    read_minutes: dict[int, int] = {}
-    for metric, body_markdown in rows:
+    content_of: dict[int, int] = {}
+    for metric, content_id in rows:
         series[metric.publication_id].append(metric)
-        if metric.publication_id not in read_minutes:
-            read_minutes[metric.publication_id] = read_minutes_of(body_markdown)
+        content_of[metric.publication_id] = content_id
+
+    read_minutes = _read_minutes_by_publication(db, user_id, since, content_of)
 
     baselines = _pre_window_readings(db, since, list(series))
 
