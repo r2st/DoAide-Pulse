@@ -11,7 +11,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.models.project import RELEASE_TAG_MAX_LENGTH
+from app.models.project import COMMIT_SHA_MAX_LENGTH, RELEASE_TAG_MAX_LENGTH
 from app.services import github_client
 
 
@@ -342,3 +342,173 @@ def test_the_cut_tag_still_matches_the_watermark_it_was_stored_as(monkeypatch):
     activity = github_client.fetch_activity("owner/repo", since_tag=stored)
 
     assert activity.new_release is None
+
+
+# -- The sha, which is the other value that becomes a fixed-width column ---- #
+#
+# `Project.last_seen_commit_sha` is `String(40)` and, like the tag above,
+# nothing between GitHub and that column is a request schema. Unlike the tag, it
+# had no cut at all — forty hex characters is a SHA-1 object name and that is
+# what GitHub serves, so the bound held by convention rather than by anything in
+# the code. Git's own SHA-256 transition doubles it.
+
+
+def test_a_sha_wider_than_the_watermark_column_is_cut_on_the_way_in(monkeypatch):
+    """Otherwise the *storing* commit is what fails, which lands badly.
+
+    On PostgreSQL an over-wide value is `StringDataRightTruncation` raised from
+    the commit that records the watermark: a 500 on a manual scan whose upstream
+    call had already succeeded, and in the autopilot a watermark that never
+    advances — so the same commits are re-read and written about again on every
+    scan, for ever.
+    """
+    sha256 = "a" * 64
+    _stub(monkeypatch, lambda url, **_: _response([{"sha": sha256, "commit": {}}]))
+
+    commits = github_client.fetch_commits("owner/repo")
+
+    assert len(commits[0].sha) == COMMIT_SHA_MAX_LENGTH
+
+
+def test_the_cut_sha_still_matches_the_watermark_it_was_stored_as(monkeypatch):
+    """Same reasoning as the tag: both sides of the comparison must be cut."""
+    sha256 = "a" * 64
+    stored = sha256[:COMMIT_SHA_MAX_LENGTH]
+    page = [{"sha": sha256, "commit": {"message": "the watermark"}}]
+    _stub(monkeypatch, lambda url, **_: _response(page))
+
+    assert github_client.fetch_commits("owner/repo", since_sha=stored) == []
+
+
+# -- Fields that are the wrong *type* rather than absent -------------------- #
+#
+# `payload.get(x) or ""` defends against a missing key and against nothing else.
+# Every one of these reaches a `[:120]` that raises `TypeError`, a `.replace()`
+# that raises `AttributeError`, or a database column that will not take the
+# value — and none of those is a `GitHubError`.
+
+
+def test_a_commit_whose_nested_object_is_a_string_does_not_raise(monkeypatch):
+    """`payload["commit"]` as a string used to be `AttributeError` on `.get`."""
+    page = [{"sha": "abc123", "commit": "not an object", "author": "nor this"}]
+    _stub(monkeypatch, lambda url, **_: _response(page))
+
+    commits = github_client.fetch_commits("owner/repo")
+
+    assert commits[0].sha == "abc123"
+    assert commits[0].message == ""
+    assert commits[0].author == ""
+    assert commits[0].committed_at is None
+
+
+def test_a_non_string_sha_reads_as_empty_rather_than_reaching_the_column(monkeypatch):
+    page = [{"sha": {"oid": "abc"}, "commit": {"message": "m"}}]
+    _stub(monkeypatch, lambda url, **_: _response(page))
+
+    assert github_client.fetch_commits("owner/repo")[0].sha == ""
+
+
+def test_a_non_string_commit_date_is_not_a_timestamp(monkeypatch):
+    """`_parse_ts` called `.replace` on it, which an int does not have."""
+    page = [{"sha": "abc", "commit": {"message": "m", "author": {"date": 1700000000}}}]
+    _stub(monkeypatch, lambda url, **_: _response(page))
+
+    assert github_client.fetch_commits("owner/repo")[0].committed_at is None
+
+
+def test_a_non_string_release_tag_reads_as_no_tag(monkeypatch):
+    """It reached `[:120]`, and slicing an int is a `TypeError`."""
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response([{"tag_name": 2026, "body": ["a", "list"]}])
+        if url.endswith("/commits"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo")
+
+    assert activity.new_release.tag == ""
+    assert activity.new_release.body == ""
+
+
+def test_a_release_name_falls_back_to_the_cut_tag_not_the_raw_one(monkeypatch):
+    """The fallback used to reach past the truncation to `tag_name` itself."""
+    long_tag = "v" + "9" * 254
+
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response([{"tag_name": long_tag}])
+        if url.endswith("/commits"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo")
+
+    assert activity.new_release.name == long_tag[:RELEASE_TAG_MAX_LENGTH]
+
+
+# -- Repos that moved under us --------------------------------------------- #
+
+
+def test_a_force_pushed_branch_reports_the_whole_page_rather_than_nothing(monkeypatch):
+    """The watermark is gone from history, so there is nothing to stop at.
+
+    Over-reporting is the right failure: the post says "a lot has changed",
+    which is true, rather than the scan silently deciding nothing has.
+    """
+    page = [{"sha": f"new{i}", "commit": {"message": f"m{i}"}} for i in range(100)]
+    _stub(monkeypatch, lambda url, **_: _response(page))
+
+    commits = github_client.fetch_commits("owner/repo", since_sha="rewritten-away")
+
+    assert len(commits) == 100
+
+
+def test_a_repo_that_has_moved_more_than_a_page_still_advances_its_watermark(
+    monkeypatch,
+):
+    """The head of the page is HEAD, so the next scan starts from there.
+
+    Without it the watermark would stay put and every scan would re-report the
+    same hundred commits until the repo went quiet.
+    """
+    page = [{"sha": f"c{i}", "commit": {"message": f"m{i}"}} for i in range(100)]
+
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response([])
+        if url.endswith("/commits"):
+            return _response(page)
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo", since_sha="long-gone")
+
+    assert activity.head_sha == "c0"
+    assert len(activity.new_commits) == 100
+
+
+def test_a_deleted_repo_is_a_not_found_rather_than_no_releases(monkeypatch):
+    """The repo call 404s first, so the releases fallback never gets a say."""
+    _stub(monkeypatch, lambda url, **_: _response({"message": "Not Found"}, status_code=404))
+
+    with pytest.raises(github_client.GitHubNotFound):
+        github_client.fetch_activity("owner/deleted")
+
+
+def test_an_empty_repo_keeps_a_null_watermark_rather_than_inventing_one(monkeypatch):
+    """No commits and no prior watermark. `head_sha` must stay None."""
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response([])
+        if url.endswith("/commits"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/empty")
+
+    assert activity.head_sha is None
+    assert not activity.has_news

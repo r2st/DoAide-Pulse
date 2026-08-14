@@ -41,6 +41,20 @@ if TYPE_CHECKING:
 #: the way *in* is the only version of this that works.
 RELEASE_TAG_MAX_LENGTH = 120
 
+#: How much of a commit sha the watermark column holds. Forty hex characters is
+#: a SHA-1 object name, which is every sha GitHub returns today.
+#:
+#: Named for the same reason as the tag above, and it is the same bug waiting in
+#: the same place: the sha is written straight out of a response body into a
+#: fixed-width column, from three call sites, and none of them looked at its
+#: length. Anything wider is ``StringDataRightTruncation`` on PostgreSQL from
+#: the commit that stores the watermark — a 500 on the manual scan, and in the
+#: autopilot a watermark that never advances, so the same commits are re-read
+#: and written about again on every scan for ever. Git's own SHA-256 transition
+#: doubles this to 64; that is not a thing GitHub serves yet, and it is exactly
+#: the sort of thing that arrives without asking.
+COMMIT_SHA_MAX_LENGTH = 40
+
 
 class Tone(str, Enum):
     """How a project's content should read.
@@ -152,7 +166,9 @@ class Project(Base, TimestampMixin):
     #: Watermarks: what the monitor had already seen last time it looked. A
     #: change against these is the trigger, so a first scan of an old repo
     #: records where it is rather than writing about two years of history.
-    last_seen_commit_sha: Mapped[str | None] = mapped_column(String(40))
+    last_seen_commit_sha: Mapped[str | None] = mapped_column(
+        String(COMMIT_SHA_MAX_LENGTH)
+    )
     last_seen_release_tag: Mapped[str | None] = mapped_column(
         String(RELEASE_TAG_MAX_LENGTH)
     )

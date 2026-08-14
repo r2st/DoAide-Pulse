@@ -21,7 +21,7 @@ from datetime import datetime
 import httpx
 
 from app.config import settings
-from app.models.project import RELEASE_TAG_MAX_LENGTH
+from app.models.project import COMMIT_SHA_MAX_LENGTH, RELEASE_TAG_MAX_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -192,8 +192,45 @@ def _topics(value: object) -> list[str]:
     return [topic for topic in value if isinstance(topic, str)]
 
 
-def _parse_ts(value: str | None) -> datetime | None:
-    if not value:
+def _text(value: object, limit: int | None = None) -> str:
+    """A string from the payload, optionally clipped. Never an exception.
+
+    Every field on the two dataclasses below is annotated ``str`` and every one
+    of them is read straight off somebody else's JSON. ``payload.get(x) or ""``
+    defends against the key being absent and against nothing else: a number, a
+    list or a nested object all pass it, and what they reach next is a
+    ``[:120]`` that raises ``TypeError`` or a database column that will not take
+    them. Same reasoning as :func:`_int` and :func:`_topics` — this module's one
+    rule is that it does not fail in a way its callers do not catch, and
+    ``GitHubError`` is the whole of what they catch.
+
+    *limit* is for the two values that go on to be *stored*, and clipping them
+    here rather than at the point of storage is deliberate: both are watermarks,
+    compared on the next scan against the value that was stored last time, so
+    cutting on the way out would compare a full value against a truncated one
+    and never match. See :func:`_release_from_payload`, where that reasoning was
+    written down first.
+    """
+    if not isinstance(value, str):
+        return ""
+    return value[:limit] if limit else value
+
+
+def _mapping(value: object) -> dict:
+    """A nested object from the payload, or an empty one.
+
+    ``payload.get("commit") or {}`` reads as this and is not. A commits page
+    whose entries carry a *string* under ``commit`` — a truncated body, a proxy
+    rewriting the response, a future API version — hands the next ``.get()`` a
+    ``str``, and ``AttributeError`` is not a ``GitHubError``. It escapes the
+    scan route as a 500 rather than the 502 waiting for it, and the autopilot
+    logs a crash for a repo that is merely unreadable.
+    """
+    return value if isinstance(value, dict) else {}
+
+
+def _parse_ts(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
         return None
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -202,17 +239,20 @@ def _parse_ts(value: str | None) -> datetime | None:
 
 
 def _commit_from_payload(payload: dict) -> Commit:
-    commit = payload.get("commit") or {}
-    author = (commit.get("author") or {}).get("name") or ""
+    commit = _mapping(payload.get("commit"))
+    commit_author = _mapping(commit.get("author"))
+    author = _text(commit_author.get("name"))
     # The GitHub *account* is better attribution than the git author when both
     # exist — git configs lie, accounts don't.
-    login = (payload.get("author") or {}).get("login")
+    login = _text(_mapping(payload.get("author")).get("login"))
     return Commit(
-        sha=payload.get("sha") or "",
-        message=commit.get("message") or "",
+        # Clipped, because this is the value that becomes
+        # ``Project.last_seen_commit_sha`` — see COMMIT_SHA_MAX_LENGTH.
+        sha=_text(payload.get("sha"), COMMIT_SHA_MAX_LENGTH),
+        message=_text(commit.get("message")),
         author=login or author,
-        committed_at=_parse_ts((commit.get("author") or {}).get("date")),
-        url=payload.get("html_url") or "",
+        committed_at=_parse_ts(commit_author.get("date")),
+        url=_text(payload.get("html_url")),
     )
 
 
@@ -225,12 +265,13 @@ def _release_from_payload(payload: dict) -> Release:
     # Cutting on the way in means both sides of that comparison are the same
     # string. A 120-character prefix collision between two real tags is not a
     # thing that happens.
+    tag = _text(payload.get("tag_name"), RELEASE_TAG_MAX_LENGTH)
     return Release(
-        tag=(payload.get("tag_name") or "")[:RELEASE_TAG_MAX_LENGTH],
-        name=payload.get("name") or payload.get("tag_name") or "",
-        body=payload.get("body") or "",
+        tag=tag,
+        name=_text(payload.get("name")) or tag,
+        body=_text(payload.get("body")),
         published_at=_parse_ts(payload.get("published_at")),
-        url=payload.get("html_url") or "",
+        url=_text(payload.get("html_url")),
         prerelease=bool(payload.get("prerelease")),
     )
 
