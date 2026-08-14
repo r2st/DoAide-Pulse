@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.content import CANONICAL_URL_MAX_LENGTH, Content, ContentStatus
 from app.models.metrics import ContentMetric
-from app.models.mixins import utcnow
+from app.models.mixins import as_aware, utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.webhook import WebhookEvent
@@ -194,6 +194,60 @@ def _syndication_schedule(
 
     later = (base or utcnow()) + timedelta(seconds=delay)
     return {platform: later for platform in wanted if platform != canonical}
+
+
+def retry_hold(content: Content, publication: Publication) -> datetime | None:
+    """When a hand-retried publication may go out, or ``None`` for right now.
+
+    :func:`queue` parks the syndicated copies of a cross-post behind the
+    original, and ``publish_tasks.publish_one`` refuses to claim a row before
+    its time — between them the stagger survives whoever dispatches the batch.
+    Retrying one publication went round both: ``routers.content.retry_publication``
+    clears ``scheduled_for`` and dispatches the row on the spot, which is right
+    for the case it was written for (a human clicking retry knows things the
+    backoff does not) and wrong for a copy whose original has not published yet.
+    The copy then goes out with no ``canonical_url`` on it — the one outcome the
+    stagger exists to prevent — and unlike the queue-time race this one is
+    permanent: the copy is live and there is nothing left to re-point at the
+    original.
+
+    So a copy is held the same distance behind the original that :func:`queue`
+    would have held it, measured from when the original is actually expected
+    rather than from now. Everything else retries immediately, because there is
+    nothing to wait for:
+
+    * the stagger is switched off, or this piece already has its canonical URL;
+    * this *is* the original, whose whole job is to go first;
+    * no destination here can hold a canonical URL, or the project opted out of
+      canonical handling — :func:`_original_platform` answers ``None`` to both;
+    * the original has no publication row, or its row is terminal. A failed,
+      cancelled or already-published original is not going to produce a URL that
+      does not exist yet, and waiting on it would delay the copy for nothing.
+
+    The wait is bounded by the same reasoning as the queue-time one: the hold is
+    a fixed delay, not a dependency, so a copy whose original never publishes
+    goes out on its own once the delay elapses rather than waiting forever.
+    """
+    delay = settings.syndication_delay_seconds
+    if delay <= 0 or content.canonical_url:
+        return None
+
+    canonical = _original_platform(content, {p.platform for p in content.publications})
+    if canonical is None or canonical == publication.platform:
+        return None
+
+    original = next(
+        (p for p in content.publications if p.platform == canonical), None
+    )
+    if original is None or original.is_terminal:
+        return None
+
+    now = utcnow()
+    # The original's own schedule when it has one, so a copy retried while the
+    # original is still parked waits for the original rather than for a delay
+    # counted from the click. An overdue original is due now, not in the past.
+    due = as_aware(original.scheduled_for) if original.scheduled_for else now
+    return max(due, now) + timedelta(seconds=delay)
 
 
 def _credentials_for(db: Session, user_id: int, platform: Platform) -> dict:

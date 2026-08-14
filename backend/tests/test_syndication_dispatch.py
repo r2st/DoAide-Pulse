@@ -28,6 +28,7 @@ import pytest
 
 from app.config import settings
 from app.models.content import Content, ContentStatus, ContentType
+from app.models.mixins import as_aware
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import publishing_service
@@ -276,3 +277,306 @@ def test_the_beat_sweep_picks_the_copy_up_once_the_delay_is_up(db, content, proj
     due = publishing_service.due_publications(db, now=later)
 
     assert medium.id in [p.id for p in due]
+
+
+# --------------------------------------------------------------------------- #
+# The hand retry, which went round both halves of the stagger                  #
+# --------------------------------------------------------------------------- #
+#
+# ``routers.content.retry_publication`` cleared ``scheduled_for`` and dispatched
+# the row on the spot. That is right for the case it was written for — a human
+# clicking retry knows things the backoff does not — and wrong for a syndicated
+# copy whose original has not published yet: the copy skipped the queue-time
+# stagger *and* the claim guard, because a row with no ``scheduled_for`` is due
+# now however it came to be that way. It then went out carrying no canonical
+# URL, and unlike the queue-time race that one does not come back: the copy is
+# live on the platform with nothing pointing at the original.
+
+
+def _crosspost(db, content, project, *, canonical=Platform.DEVTO):
+    """A queued cross-post: the original, and one copy parked behind it."""
+    project.canonical_platform = canonical
+    db.commit()
+    publishing_service.queue(db, content, ["devto", "medium"])
+    db.commit()
+    by_platform = {p.platform: p for p in content.publications}
+    return by_platform[Platform.DEVTO], by_platform[Platform.MEDIUM]
+
+
+def _fail(db, publication):
+    """Put a row in the state the retry button is offered for."""
+    publication.status = PublicationStatus.FAILED
+    publication.scheduled_for = None
+    publication.attempts = 3
+    publication.error = "medium said no"
+    db.commit()
+
+
+def _retry(client, auth, content, publication):
+    return client.post(
+        f"/api/v1/content/{content.id}/retry/{publication.id}", headers=auth
+    )
+
+
+def test_retrying_a_copy_does_not_jump_the_canonical(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    """The bug: the copy went out immediately, before the original had a URL."""
+    devto, medium = _crosspost(db, content, project)
+    _fail(db, medium)
+
+    dispatched: list[int] = []
+    monkeypatch.setattr(
+        "app.routers.content._dispatch", lambda ids: dispatched.extend(ids)
+    )
+
+    resp = _retry(client, auth, content, medium)
+    assert resp.status_code == 200, resp.text
+
+    db.refresh(medium)
+    assert medium.status == PublicationStatus.SCHEDULED
+    assert medium.scheduled_for is not None
+    assert as_aware(medium.scheduled_for) > datetime.now(UTC)
+    # Not handed to a worker either: ``publish_one`` would refuse the claim, and
+    # the row's route to a platform is now the beat sweep that checks its time.
+    assert dispatched == []
+    # The response says so too, rather than reporting a retry that is not
+    # happening yet — this is what the publications list renders.
+    assert resp.json()["status"] == PublicationStatus.SCHEDULED.value
+    assert resp.json()["scheduled_for"] is not None
+    # Re-armed all the same: the attempt count and the stale error are gone.
+    assert medium.attempts == 0
+    assert medium.error is None
+    assert devto.status == PublicationStatus.PENDING
+
+
+def test_retrying_the_original_itself_still_goes_out_now(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    """The original's whole job is to go first. Nothing to hold it behind."""
+    devto, _medium = _crosspost(db, content, project)
+    _fail(db, devto)
+
+    dispatched: list[int] = []
+    monkeypatch.setattr(
+        "app.routers.content._dispatch", lambda ids: dispatched.extend(ids)
+    )
+
+    resp = _retry(client, auth, content, devto)
+    assert resp.status_code == 200, resp.text
+
+    db.refresh(devto)
+    assert devto.status == PublicationStatus.PENDING
+    assert devto.scheduled_for is None
+    assert dispatched == [devto.id]
+
+
+def test_retrying_a_copy_goes_out_now_once_the_original_has_its_url(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    """With a canonical URL to carry, the copy has nothing left to wait for."""
+    _devto, medium = _crosspost(db, content, project)
+    _fail(db, medium)
+    content.canonical_url = "https://dev.to/r2st/herald-1-0"
+    db.commit()
+
+    dispatched: list[int] = []
+    monkeypatch.setattr(
+        "app.routers.content._dispatch", lambda ids: dispatched.extend(ids)
+    )
+
+    resp = _retry(client, auth, content, medium)
+    assert resp.status_code == 200, resp.text
+
+    db.refresh(medium)
+    assert medium.status == PublicationStatus.PENDING
+    assert medium.scheduled_for is None
+    assert dispatched == [medium.id]
+
+
+def test_retrying_a_copy_whose_original_gave_up_does_not_wait_for_it(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    """A terminal original is not going to produce the URL, so waiting is pure delay.
+
+    This is the case that makes the hold a delay rather than a dependency: the
+    copy is the only publication left that can still succeed, and a user
+    retrying it is asking for the piece to be *somewhere*.
+    """
+    devto, medium = _crosspost(db, content, project)
+    _fail(db, devto)
+    _fail(db, medium)
+
+    dispatched: list[int] = []
+    monkeypatch.setattr(
+        "app.routers.content._dispatch", lambda ids: dispatched.extend(ids)
+    )
+
+    resp = _retry(client, auth, content, medium)
+    assert resp.status_code == 200, resp.text
+
+    db.refresh(medium)
+    assert medium.status == PublicationStatus.PENDING
+    assert medium.scheduled_for is None
+    assert dispatched == [medium.id]
+
+
+def test_a_held_retry_waits_for_the_original_not_for_the_click(
+    db, content, project, connected
+):
+    """The distance is measured from when the original is due, as ``queue`` does.
+
+    A copy retried while the original is still parked two hours out and held
+    only ``syndication_delay_seconds`` from *now* would publish an hour and
+    three quarters before it.
+    """
+    project.canonical_platform = Platform.DEVTO
+    db.commit()
+    later = datetime.now(UTC) + timedelta(hours=2)
+    publishing_service.queue(db, content, ["devto", "medium"], scheduled_for=later)
+    db.commit()
+    medium = next(p for p in content.publications if p.platform == Platform.MEDIUM)
+    _fail(db, medium)
+
+    hold = publishing_service.retry_hold(content, medium)
+
+    assert hold is not None
+    expected = later + timedelta(seconds=settings.syndication_delay_seconds)
+    assert abs((hold - expected).total_seconds()) < 5
+
+
+def test_a_held_retry_is_not_pushed_into_the_past_by_an_overdue_original(
+    db, content, project, connected
+):
+    """An original whose time came and went is due *now*, not two hours ago."""
+    project.canonical_platform = Platform.DEVTO
+    db.commit()
+    publishing_service.queue(db, content, ["devto", "medium"])
+    db.commit()
+    devto, medium = (
+        {p.platform: p for p in content.publications}[k]
+        for k in (Platform.DEVTO, Platform.MEDIUM)
+    )
+    devto.status = PublicationStatus.SCHEDULED
+    devto.scheduled_for = datetime.now(UTC) - timedelta(hours=2)
+    db.commit()
+    _fail(db, medium)
+
+    hold = publishing_service.retry_hold(content, medium)
+
+    assert hold is not None
+    assert hold > datetime.now(UTC)
+
+
+def test_a_single_platform_retry_is_immediate_as_before(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    """The ordinary retry — one platform, nothing to syndicate — is untouched.
+
+    ``test_publish_retry_backoff`` states why this matters: a parked row must
+    not make "retry now" mean "retry in twenty minutes".
+    """
+    project.canonical_platform = Platform.DEVTO
+    db.commit()
+    devto = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    _fail(db, devto)
+
+    dispatched: list[int] = []
+    monkeypatch.setattr(
+        "app.routers.content._dispatch", lambda ids: dispatched.extend(ids)
+    )
+
+    resp = _retry(client, auth, content, devto)
+    assert resp.status_code == 200, resp.text
+
+    db.refresh(devto)
+    assert devto.status == PublicationStatus.PENDING
+    assert devto.scheduled_for is None
+    assert dispatched == [devto.id]
+
+
+def test_a_retry_is_immediate_when_the_stagger_is_switched_off(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    _devto, medium = _crosspost(db, content, project)
+    _fail(db, medium)
+    monkeypatch.setattr(
+        "app.services.publishing_service.settings.syndication_delay_seconds", 0
+    )
+
+    dispatched: list[int] = []
+    monkeypatch.setattr(
+        "app.routers.content._dispatch", lambda ids: dispatched.extend(ids)
+    )
+
+    resp = _retry(client, auth, content, medium)
+    assert resp.status_code == 200, resp.text
+
+    db.refresh(medium)
+    assert medium.scheduled_for is None
+    assert dispatched == [medium.id]
+
+
+def test_a_retry_of_a_social_copy_is_immediate(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    """Nothing in this batch can hold a canonical URL, so nothing is an original.
+
+    ``_original_platform`` answers ``None`` and the copies have nothing to wait
+    for — the same reasoning that keeps ``queue`` from staggering a batch of
+    social posts.
+    """
+    project.canonical_platform = None
+    project.auto_canonical = True
+    db.commit()
+    publishing_service.queue(db, content, ["bluesky", "mastodon"])
+    db.commit()
+    bluesky = next(p for p in content.publications if p.platform == Platform.BLUESKY)
+    _fail(db, bluesky)
+
+    dispatched: list[int] = []
+    monkeypatch.setattr(
+        "app.routers.content._dispatch", lambda ids: dispatched.extend(ids)
+    )
+
+    resp = _retry(client, auth, content, bluesky)
+    assert resp.status_code == 200, resp.text
+
+    db.refresh(bluesky)
+    assert bluesky.status == PublicationStatus.PENDING
+    assert bluesky.scheduled_for is None
+    assert dispatched == [bluesky.id]
+
+
+def test_the_held_retry_is_still_picked_up_by_the_beat_sweep(
+    db, client, auth, content, project, connected
+):
+    """Held, not dropped. The beat sweep is the row's only route out now."""
+    _devto, medium = _crosspost(db, content, project)
+    _fail(db, medium)
+
+    assert _retry(client, auth, content, medium).status_code == 200
+    db.refresh(medium)
+
+    later = as_aware(medium.scheduled_for) + timedelta(seconds=1)
+    due = publishing_service.due_publications(db, now=later)
+
+    assert medium.id in [p.id for p in due]
+
+
+def test_a_held_retry_is_not_claimed_before_its_time(
+    db, client, auth, content, project, connected, monkeypatch
+):
+    """The claim guard is the backstop, and it covers the retried row too."""
+    _devto, medium = _crosspost(db, content, project)
+    _fail(db, medium)
+
+    assert _retry(client, auth, content, medium).status_code == 200
+
+    monkeypatch.setattr(publish_tasks, "SessionLocal", _no_close(db))
+    result = publish_tasks.publish_one(medium.id)
+
+    assert result["skipped"] is True
+    db.refresh(medium)
+    assert medium.status == PublicationStatus.SCHEDULED

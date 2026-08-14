@@ -1577,7 +1577,15 @@ def retry_publication(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> PublicationOut:
-    """Re-arm one failed publication and try again."""
+    """Re-arm one failed publication and try again.
+
+    Immediately, except for a syndicated copy whose original has not published
+    yet: that one is re-armed behind the original instead, and comes back
+    ``scheduled`` for the beat sweep to pick up. Clearing ``scheduled_for`` and
+    dispatching unconditionally was the last path that could put a copy on a
+    platform before the piece had a canonical URL to point at — see
+    :func:`app.services.publishing_service.retry_hold`.
+    """
     content = _owned_content(content_id, db, user)
     publication = db.get(Publication, publication_id)
     if publication is None or publication.content_id != content.id:
@@ -1590,13 +1598,20 @@ def retry_publication(
             detail="Already published — retrying would post it twice.",
         )
 
-    publication.status = PublicationStatus.PENDING
+    hold = publishing_service.retry_hold(content, publication)
+    publication.status = (
+        PublicationStatus.SCHEDULED if hold else PublicationStatus.PENDING
+    )
     publication.attempts = 0
     publication.error = None
-    publication.scheduled_for = None
+    publication.scheduled_for = hold
     db.commit()
 
-    _dispatch([publication.id])
+    # A held row would be refused by ``publish_one``'s claim anyway; not
+    # dispatching it saves a worker the round trip and keeps the parked row's
+    # one route to a platform the beat sweep, which is where its time is checked.
+    if hold is None:
+        _dispatch([publication.id])
     db.refresh(publication)
     return PublicationOut.model_validate(publication)
 
