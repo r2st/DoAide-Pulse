@@ -13,12 +13,17 @@ from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
 from app.ratelimit import account_key, limiter
+from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.services import alerts, analytics_service, digest, mailer, velocity
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
-@router.get("/overview")
+@router.get(
+    "/overview",
+    summary="Full analytics breakdown",
+    responses=errors(*AUTHENTICATED),
+)
 def overview(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> dict:
@@ -26,7 +31,11 @@ def overview(
     return analytics_service.overview(db, user.id)
 
 
-@router.get("/engagement-trend")
+@router.get(
+    "/engagement-trend",
+    summary="Views and engagement per day",
+    responses=errors(*AUTHENTICATED),
+)
 def engagement_trend(
     days: int = Query(default=30, ge=1, le=180),
     db: Session = Depends(get_db),
@@ -36,7 +45,11 @@ def engagement_trend(
     return analytics_service.engagement_trend(db, user.id, days=days)
 
 
-@router.get("/read-time")
+@router.get(
+    "/read-time",
+    summary="Post length against performance",
+    responses=errors(*AUTHENTICATED),
+)
 def read_time(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> dict:
@@ -44,7 +57,11 @@ def read_time(
     return analytics_service.read_time(db, user.id)
 
 
-@router.get("/velocity")
+@router.get(
+    "/velocity",
+    summary="How fast posts found an audience",
+    responses=errors(*AUTHENTICATED),
+)
 def velocity_summary(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> dict:
@@ -56,7 +73,11 @@ def velocity_summary(
     return velocity.summary(db, user.id)
 
 
-@router.get("/velocity/{publication_id}")
+@router.get(
+    "/velocity/{publication_id}",
+    summary="One publication's growth curve",
+    responses=errors(*OWNED),
+)
 def velocity_curve(
     publication_id: int,
     db: Session = Depends(get_db),
@@ -84,7 +105,11 @@ def velocity_curve(
     )
 
 
-@router.get("/alerts")
+@router.get(
+    "/alerts",
+    summary="Posts underperforming your own normal",
+    responses=errors(*AUTHENTICATED),
+)
 def performance_alerts(
     limit: int = Query(default=10, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -94,7 +119,11 @@ def performance_alerts(
     return alerts.summary(db, user.id, limit=limit)
 
 
-@router.get("/digest")
+@router.get(
+    "/digest",
+    summary="This week's digest, as data",
+    responses=errors(*AUTHENTICATED),
+)
 def digest_preview(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> dict:
@@ -106,7 +135,11 @@ def digest_preview(
     return digest.build(db, user).as_dict()
 
 
-@router.post("/digest/send")
+@router.post(
+    "/digest/send",
+    summary="Mail this week's digest now",
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_digest_send, key_func=account_key)
 def digest_send(
     request: Request,
@@ -140,7 +173,11 @@ def digest_send(
     }
 
 
-@router.get("/dashboard")
+@router.get(
+    "/dashboard",
+    summary="Home-page counters and what needs attention",
+    responses=errors(*AUTHENTICATED),
+)
 def dashboard(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> dict:
