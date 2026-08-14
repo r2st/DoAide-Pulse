@@ -26,7 +26,6 @@ Two properties of the data shape everything here:
 """
 from __future__ import annotations
 
-import math
 import statistics
 from collections.abc import Collection
 from dataclasses import dataclass, field
@@ -602,8 +601,6 @@ class _SeriesFacts:
 
     #: ``len(Curve.points)``: the readings the full curve would hold.
     snapshots: int
-    first_captured_at: datetime
-    last_captured_at: datetime
     #: Clamped cumulative totals at the newest reading.
     total_views: int
     total_engagement: int
@@ -646,7 +643,6 @@ def _series_facts(
         select(
             ContentMetric.publication_id,
             func.count(ContentMetric.id),
-            func.min(ContentMetric.captured_at),
             func.max(ContentMetric.captured_at),
             func.max(ContentMetric.views),
             engagement,
@@ -658,13 +654,12 @@ def _series_facts(
     # the platform reported nothing, ever. That is a total of zero, the same
     # number the clamp in `_build_curve` carries forward.
     head = {
-        row[0]: (row[1], as_aware(row[2]), as_aware(row[3]), row[4] or 0, row[5] or 0)
-        for row in rolled
+        row[0]: (row[1], as_aware(row[2]), row[3] or 0, row[4] or 0) for row in rolled
     }
 
     published_at = {curve.publication_id: curve.published_at for curve in known}
     cutoffs: dict[int, datetime] = {}
-    for publication_id, (_, _, last, _, _) in head.items():
+    for publication_id, (_, last, _, _) in head.items():
         origin = published_at[publication_id]
         # Positioned the way `_build_curve` positions a reading, so the cutoff
         # lands on the same reading `Curve.reading_at` would pick: a snapshot
@@ -701,13 +696,11 @@ def _series_facts(
     return {
         publication_id: _SeriesFacts(
             snapshots=count,
-            first_captured_at=first,
-            last_captured_at=last,
             total_views=total,
             total_engagement=engaged,
             baseline_views=baselines.get(publication_id),
         )
-        for publication_id, (count, first, last, total, engaged) in head.items()
+        for publication_id, (count, _, total, engaged) in head.items()
     }
 
 
@@ -730,9 +723,23 @@ def _stall_verdict(
       stalled, whatever the peak turns out to be.
     * **Below it.** Any span this curve's prefix does hold is a peak the post
       really had (:meth:`Curve.observed_peak_gain`), as is the recent window
-      itself, as is — by pigeonhole — the total gain divided by the number of
-      windows it is spread over. A recent window at or under *ratio* of any
-      lower bound is at or under *ratio* of the true peak.
+      itself. A recent window at or under *ratio* of any lower bound is at or
+      under *ratio* of the true peak.
+
+    Every lower bound has to be a gain **between two readings no more than
+    *window_hours* apart**, because that is the only kind of gain
+    :meth:`Curve.peak_gain` counts. That rules out the average — the total gain
+    divided by the number of windows it is spread over — however much it looks
+    like a pigeonhole argument. Views gained across a gap in polling wider than
+    the window are in the total and in no window at all: a post that sat
+    unpolled for a fortnight while it collected a thousand views, and has
+    trickled since, has a real peak of the trickle and an "average window" of a
+    hundred. Judged against the average it is stalled; judged against its peak,
+    which is what :meth:`Curve.is_stalled` does, it is not. The bound held for
+    every densely-polled series and quietly inverted the verdict for the others,
+    which is the shape a wrong bound takes: right until the data is unusual, and
+    then confidently wrong. ``tests.test_velocity_summary_budget`` pins the
+    series that caught it.
 
     ``None`` is returned only when the recent window lands between the two
     bounds: the post grew steadily enough that where its best week sat actually
@@ -760,15 +767,7 @@ def _stall_verdict(
     if at_most == 0 or recent > at_most * ratio:
         return False
 
-    span_hours = (
-        facts.last_captured_at - facts.first_captured_at
-    ).total_seconds() / 3600
-    windows = max(1, math.ceil(span_hours / window_hours))
-    at_least = max(
-        prefix.observed_peak_gain(window_hours),
-        recent,
-        at_most // windows,
-    )
+    at_least = max(prefix.observed_peak_gain(window_hours), recent)
     if at_least > 0 and recent <= at_least * ratio:
         return True
     return None

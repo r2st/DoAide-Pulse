@@ -150,6 +150,28 @@ SHAPES: dict[str, tuple[float, list[tuple[float, int | None]]]] = {
     ),
     # Still climbing hard in its most recent window.
     "still-climbing": (24 * 30, _daily(30, lambda d: 10 * d * d)),
+    # Polled once at publication, then nothing for ten weeks while it collected
+    # a thousand views, then daily again with a trickle.
+    #
+    # The thousand-view jump sits across a gap wider than the stall window, so
+    # `peak_gain` — which only ever counts pairs of readings within one window
+    # of each other — never sees any of it. The post's real peak is the size of
+    # the trickle, the trickle is the recent window, and it is not stalled.
+    #
+    # Any bound that reasons from the *total* gain instead can be wrong here by
+    # two orders of magnitude, and wrong in the direction that puts a healthy
+    # post on the "worth a re-share" list. This is the series that caught one.
+    "gap-in-polling": (
+        _WINDOW * 12,
+        [
+            (0.0, 0),
+            (_WINDOW * 10, 1000),
+            *[
+                (_WINDOW * 10 + 24.0 * d, 1000 + d)
+                for d in range(1, int(_WINDOW * 2 / 24) + 1)
+            ],
+        ],
+    ),
 }
 
 
@@ -239,10 +261,15 @@ def test_the_shapes_exercise_both_sides_of_the_bracket_and_the_gap(
     by_name = {name: verdicts[pub.id] for name, pub in every_shape.items()}
 
     assert by_name["spike-then-flat"] is True, "settled stalled without the tail"
-    assert by_name["late-peak"] is True, "a peak no prefix saw, settled by pigeonhole"
     assert by_name["still-climbing"] is False, "settled not-stalled by the upper bound"
     assert by_name["too-young"] is False, "settled by age alone, on no rows at all"
     assert by_name["steady-for-a-year"] is None, "declined to guess, as it must"
+    # Both of these have their peak somewhere no aggregate can point at, and
+    # both are read in full. `late-peak` used to be settled here by an average
+    # standing in for a peak; `gap-in-polling` is what proved that it must not
+    # be — see `_stall_verdict`.
+    assert by_name["late-peak"] is None, "a peak no prefix saw; not guessable"
+    assert by_name["gap-in-polling"] is None, "no window ever held the jump"
 
 
 def test_the_first_window_numbers_are_untouched(db, user, every_shape):
