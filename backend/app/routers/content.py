@@ -409,6 +409,10 @@ def bulk_reject_content(
             )
             continue
         content.status = ContentStatus.ARCHIVED
+        # Rejecting a piece has to take it off the queue as well as out of the
+        # list, or the beat sweep publishes the thing that was just rejected —
+        # see :func:`app.services.publishing_service.cancel_armed`.
+        publishing_service.cancel_armed(db, content)
         succeeded.append(content_id)
     db.commit()
     return BulkResultOut(succeeded=succeeded, failed=failed)
@@ -1190,6 +1194,13 @@ def update_content(
 
     for key, value in data.items():
         setattr(content, key, value)
+
+    if content.status == ContentStatus.ARCHIVED:
+        # Whether this call archived the piece or it was already archived: in
+        # both cases the queue must agree with the column. See
+        # :func:`app.services.publishing_service.cancel_armed`.
+        publishing_service.cancel_armed(db, content)
+        content.scheduled_for = None
 
     db.commit()
     # Approving through here means the same thing as approving through the

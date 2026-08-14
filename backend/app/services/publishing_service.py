@@ -250,6 +250,36 @@ def _syndication_schedule(
     return {platform: later for platform in wanted if platform != canonical}
 
 
+#: What the row says once archiving takes it off the queue.
+ARCHIVED_ERROR = "This piece was archived before it went out."
+
+
+def cancel_armed(db: Session, content: Content) -> list[Publication]:
+    """Cancel every publication of *content* that has not run yet. Flushes.
+
+    Archiving a piece is the user saying it is not going out, and it was the one
+    way of saying that which nothing acted on. ``DELETE /content/{id}/schedule``
+    cancels the rows; archiving set a column, left the schedule armed, and the
+    beat sweep published the piece days later — so the review queue's Reject
+    button posted the thing that had just been rejected.
+
+    Terminal rows are left alone. Anything already live stays live: Herald
+    cannot unpublish, and rewriting a ``published`` row to ``cancelled`` would
+    only lose the record of where the post is. Archiving a piece that is
+    partly out cancels the copies that have not gone yet and nothing else.
+
+    Does not commit — every caller is inside a request that has more to write.
+    """
+    cancelled = [p for p in content.publications if not p.is_terminal]
+    for publication in cancelled:
+        publication.status = PublicationStatus.CANCELLED
+        publication.scheduled_for = None
+        publication.error = ARCHIVED_ERROR
+    if cancelled:
+        db.flush()
+    return cancelled
+
+
 def retry_hold(content: Content, publication: Publication) -> datetime | None:
     """When a hand-retried publication may go out, or ``None`` for right now.
 
@@ -449,6 +479,30 @@ def execute(db: Session, publication: Publication) -> Publication:
     ``publish_tasks.publish_one``.
     """
     content = publication.content
+
+    # Last gate before a platform is contacted, and the only one that sees the
+    # piece rather than the row. ``publish_one``'s claim is a conditional UPDATE
+    # over ``publications`` alone, so it cannot know the piece was archived —
+    # and the window is real: the beat sweep picks up rows armed days earlier,
+    # and a worker holding a row for the length of an HTTP call is long enough
+    # for someone to archive the piece in front of it. The archiving paths
+    # cancel these rows themselves (:func:`cancel_armed`); this is what catches
+    # the row that was already in flight, and any future path that forgets.
+    #
+    # Cancelled rather than failed: nothing failed, the piece was withdrawn.
+    if content.status == ContentStatus.ARCHIVED:
+        publication.status = PublicationStatus.CANCELLED
+        publication.scheduled_for = None
+        publication.error = ARCHIVED_ERROR
+        db.commit()
+        logger.info(
+            "publication %s to %s dropped: content %s is archived",
+            publication.id,
+            publication.platform.value,
+            content.id,
+        )
+        return publication
+
     user_id = content.project.user_id
     adapter = publishers.get_adapter(publication.platform)
 
