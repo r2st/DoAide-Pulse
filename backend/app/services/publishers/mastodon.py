@@ -120,7 +120,7 @@ class MastodonAdapter(Adapter):
             f"{self._api(instance_url)}/accounts/verify_credentials",
             headers=self._headers(token),
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
         if not data.get("acct"):
             raise CredentialError("Mastodon accepted the token but returned no account")
         # `acct` is bare for a local account, so spell out the instance either
@@ -175,7 +175,7 @@ class MastodonAdapter(Adapter):
             headers=self._headers(token, idempotency_key=request.idempotency_key),
             json_body=payload,
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
 
         status_id = data.get("id")
         if not status_id:
@@ -197,7 +197,7 @@ class MastodonAdapter(Adapter):
             f"{self._api(instance_url)}/statuses/{external_id}",
             headers=self._headers(token),
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
         # Mastodon reports no view count at all — deliberately, it does not
         # track them. `views=None` says "not reported", which is not zero.
         return MetricsSnapshot(

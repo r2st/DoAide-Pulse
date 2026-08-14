@@ -79,16 +79,25 @@ class MediumAdapter(Adapter):
 
     def _me(self, token: str) -> dict[str, Any]:
         resp = self._request("GET", f"{_API}/me", headers=self._headers(token))
-        data = (self._json(resp) or {}).get("data") or {}
+        data = self._json_object(resp).get("data") or {}
         if not data.get("id"):
             raise CredentialError("Medium accepted the token but returned no user")
         return data
 
     def verify(self, credentials: dict[str, Any]) -> str:
-        """Return the ``@username`` behind the integration token, or its full name."""
+        """Return the ``@username`` behind the integration token, or its full name.
+
+        ``_me`` guarantees an ``id`` and nothing else, so neither name is
+        guaranteed — and indexing ``name`` for the fallback raised ``KeyError``
+        on an account that had neither. That is not a :class:`PublishError`, so
+        it left the settings page with a 500 where it had a token to report on.
+        The id is a poor display name and a truthful one.
+        """
         (token,) = self._require(credentials, "integration_token")
         data = self._me(token)
-        return f"@{data.get('username')}" if data.get("username") else data["name"]
+        if data.get("username"):
+            return f"@{data['username']}"
+        return str(data.get("name") or data["id"])
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
         """Create a story, under a publication when one is configured.
@@ -127,7 +136,7 @@ class MediumAdapter(Adapter):
             url = f"{_API}/users/{self._me(token)['id']}/posts"
 
         resp = self._request("POST", url, headers=self._headers(token), json_body=payload)
-        data = (self._json(resp) or {}).get("data") or {}
+        data = self._json_object(resp).get("data") or {}
 
         post_id = data.get("id")
         if not post_id:

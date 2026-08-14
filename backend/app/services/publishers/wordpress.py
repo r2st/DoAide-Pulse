@@ -139,7 +139,7 @@ class WordPressAdapter(Adapter):
             f"{self.api_root(site_url)}/users/me",
             headers=self._headers(username, password),
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
         if not data.get("id"):
             raise CredentialError(
                 "WordPress accepted the request but returned no user — check "
@@ -159,7 +159,7 @@ class WordPressAdapter(Adapter):
             headers=self._headers(username, password),
             json_body=self.build_payload(request),
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
 
         post_id = data.get("id")
         if not post_id:

@@ -55,7 +55,7 @@ class DevToAdapter(Adapter):
         """Return the ``@username`` the API key belongs to."""
         (api_key,) = self._require(credentials, "api_key")
         resp = self._request("GET", f"{_API}/users/me", headers=self._headers(api_key))
-        data = self._json(resp)
+        data = self._json_object(resp)
         username = data.get("username")
         if not username:
             raise CredentialError("Dev.to accepted the key but returned no account")
@@ -92,7 +92,7 @@ class DevToAdapter(Adapter):
             headers=self._headers(api_key),
             json_body={"article": article},
         )
-        data = self._json(resp)
+        data = self._json_object(resp)
 
         article_id = data.get("id")
         if not article_id:
@@ -117,7 +117,7 @@ class DevToAdapter(Adapter):
         resp = self._request(
             "GET", f"{_API}/articles/{external_id}", headers=self._headers(api_key)
         )
-        data = self._json(resp)
+        data = self._json_object(resp)
         # page_views_count is only present for the article's owner — exactly the
         # case we are in, but it stays optional in case that changes.
         return MetricsSnapshot(

@@ -25,9 +25,12 @@ from app.services.publishers.base import (
     PublishResult,
 )
 from app.services.publishers.bluesky import BlueskyAdapter
+from app.services.publishers.buttondown import ButtondownAdapter
 from app.services.publishers.devto import DevToAdapter
 from app.services.publishers.hashnode import HashnodeAdapter
 from app.services.publishers.mastodon import MastodonAdapter
+from app.services.publishers.medium import MediumAdapter
+from app.services.publishers.wordpress import WordPressAdapter
 
 _URL = "https://platform.test/api"
 
@@ -124,6 +127,115 @@ def test_a_valid_json_body_still_decodes(probe, transport):
         httpx.Response(200, json={"ok": True}, request=httpx.Request("GET", _URL))
     )
     assert probe._json(probe._request("GET", _URL)) == {"ok": True}
+
+
+# -- The body that decodes into the wrong thing ---------------------------- #
+#
+# `_json` covers the body that will not decode. These cover the one that
+# decodes into something that is not an object — which every caller then
+# reached into with `.get`, raising AttributeError. Same harm, one layer in:
+# not a PublishError, so `execute` fails the publication terminally.
+
+
+@pytest.mark.parametrize(
+    "body", [["maintenance"], "maintenance", 3, True], ids=["list", "str", "int", "bool"]
+)
+def test_a_json_body_that_is_not_an_object_is_a_publish_error(probe, transport, body):
+    transport(httpx.Response(200, json=body, request=httpx.Request("GET", _URL)))
+    resp = probe._request("GET", _URL)
+
+    with pytest.raises(PublishError) as exc:
+        probe._json_object(resp)
+    assert not isinstance(exc.value, CredentialError)
+    assert "object was expected" in str(exc.value)
+
+
+def test_the_shape_error_names_what_came_back(probe, transport):
+    """The type is the diagnosis. The body is someone else's and unbounded."""
+    transport(
+        httpx.Response(
+            200, json=["maintenance"], request=httpx.Request("GET", _URL)
+        )
+    )
+    with pytest.raises(PublishError) as exc:
+        probe._json_object(probe._request("GET", _URL))
+    assert "list" in str(exc.value)
+    assert "maintenance" not in str(exc.value)
+
+
+def test_an_object_body_comes_back_unchanged(probe, transport):
+    transport(
+        httpx.Response(200, json={"ok": True}, request=httpx.Request("GET", _URL))
+    )
+    assert probe._json_object(probe._request("GET", _URL)) == {"ok": True}
+
+
+def test_a_null_body_reads_as_an_empty_object(probe, transport):
+    """What every call site meant by the ``or {}`` this replaced.
+
+    The adapter's own next line — "returned no post id" — is a better message
+    than anything the helper could invent for a body that decoded fine and
+    simply said nothing.
+    """
+    transport(
+        httpx.Response(
+            200,
+            content=b"null",
+            headers={"content-type": "application/json"},
+            request=httpx.Request("GET", _URL),
+        )
+    )
+    assert probe._json_object(probe._request("GET", _URL)) == {}
+
+
+@pytest.mark.parametrize(
+    "adapter, call",
+    [
+        (DevToAdapter(), lambda a: a.verify({"api_key": "k"})),
+        (HashnodeAdapter(), lambda a: a.verify({"api_key": "k"})),
+        (
+            MastodonAdapter(),
+            lambda a: a.verify({"access_token": "t", "base_url": "https://mastodon.test"}),
+        ),
+        (
+            BlueskyAdapter(),
+            lambda a: a.verify({"handle": "me.bsky.social", "app_password": "p"}),
+        ),
+        (MediumAdapter(), lambda a: a.verify({"integration_token": "t"})),
+        (ButtondownAdapter(), lambda a: a.verify({"api_key": "k"})),
+        (WordPressAdapter(), lambda a: a.verify(
+            {"site_url": "https://wp.test", "username": "u", "application_password": "p"}
+        )),
+    ],
+    ids=["devto", "hashnode", "mastodon", "bluesky", "medium", "buttondown", "wordpress"],
+)
+def test_no_adapter_turns_a_wrong_shaped_body_into_a_terminal_failure(
+    adapter, call, transport, monkeypatch
+):
+    """Swept, for the same reason the non-JSON case is: one adapter left out is
+    one platform that still burns a post on a gateway having a bad minute."""
+    monkeypatch.setattr(base.link_check, "unreachable_reason", lambda url: None)
+    transport(
+        httpx.Response(200, json=["maintenance"], request=httpx.Request("GET", _URL))
+    )
+
+    with pytest.raises(PublishError):
+        call(adapter)
+
+
+def test_medium_verifies_an_account_with_no_name_at_all(transport):
+    """``_me`` guarantees an id and nothing else.
+
+    Indexing ``name`` for the fallback raised ``KeyError`` on an account with
+    neither name — a 500 from the settings page on a token it could have
+    reported on.
+    """
+    transport(
+        httpx.Response(
+            200, json={"data": {"id": "1a2b"}}, request=httpx.Request("GET", _URL)
+        )
+    )
+    assert MediumAdapter().verify({"integration_token": "t"}) == "1a2b"
 
 
 # -- The adapters that read a body ----------------------------------------- #

@@ -173,7 +173,7 @@ class ButtondownAdapter(Adapter):
             ),
             json_body=self.build_payload(request),
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
 
         email_id = data.get("id")
         if not email_id:

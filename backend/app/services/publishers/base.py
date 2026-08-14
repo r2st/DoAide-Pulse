@@ -338,6 +338,36 @@ class Adapter(ABC):
             error.__cause__ = exc
             raise error from exc
 
+    def _json_object(self, response: httpx.Response) -> dict[str, Any]:
+        """The response body as an object, as a :class:`PublishError` if it is not.
+
+        :meth:`_json` covers the body that will not decode. This covers the one
+        that decodes into the wrong thing — a 200 carrying ``["maintenance"]``
+        or a bare string — which every caller then reached into with ``.get``.
+        ``AttributeError`` is not a :class:`PublishError`, so it fell to
+        ``publishing_service.execute``'s ``except Exception`` and failed the
+        publication **terminally**, with its retry budget untouched: the same
+        harm ``_json`` exists to prevent, one layer further in. The reasoning is
+        :meth:`HashnodeAdapter._gql`'s, which has carried this guard inline since
+        a GraphQL body came back as a list; a platform does not have to speak
+        GraphQL to have a gateway answer for it.
+
+        ``None`` reads as an empty object rather than an error, which is what
+        every call site meant by the ``or {}`` this replaces: the adapter's own
+        "returned no post id" check is a better message than anything this
+        function could invent, and it is the next line in each of them.
+        """
+        data = self._json(response)
+        if data is None:
+            return {}
+        if not isinstance(data, dict):
+            raise PublishError(
+                f"{self.display_name} returned a JSON "
+                f"{type(data).__name__} where an object was expected "
+                f"({response.status_code})"
+            )
+        return data
+
     def _request(
         self,
         method: str,

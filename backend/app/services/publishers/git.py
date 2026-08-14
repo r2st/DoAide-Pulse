@@ -336,7 +336,7 @@ class GitAdapter(Adapter):
         resp = self._request(
             "GET", f"{_API}/repos/{repo}", headers=self._headers(self._token(credentials))
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
         # A read-only token reads a public repo perfectly well and then fails at
         # the first commit, which is a bad time to find out.
         if not (data.get("permissions") or {}).get("push"):
@@ -367,10 +367,12 @@ class GitAdapter(Adapter):
         except PublishError:
             return None
         data = self._json(resp)
-        # A directory comes back as a list, which means the path is unusable.
+        # A directory comes back as a list, which means the path is unusable —
+        # a more useful answer than the generic shape error below, so it is
+        # checked first rather than left to ``_json_object``.
         if isinstance(data, list):
             raise PublishError(f"{path} is a directory in {repo}, not a file")
-        return data.get("sha")
+        return self._json_object(resp).get("sha")
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
         """Commit the rendered file, creating it or updating it in place.
@@ -401,7 +403,7 @@ class GitAdapter(Adapter):
             headers=self._headers(token),
             json_body=payload,
         )
-        data = self._json(resp) or {}
+        data = self._json_object(resp)
         commit = data.get("commit") or {}
         commit_sha = commit.get("sha")
         if not commit_sha:
