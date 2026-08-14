@@ -17,6 +17,7 @@ from app.models.project import Project, slugify
 from app.models.user import User
 from app.ratelimit import account_key, limiter
 from app.routers._patch import reject_nulls
+from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.schemas.project import (
     IdeaOut,
     ProjectCreate,
@@ -116,7 +117,12 @@ def _batch_counts(db: Session, project_ids: list[int]) -> dict[int, tuple[int, i
     return {pid: (total, published) for pid, total, published in rows}
 
 
-@router.get("", response_model=list[ProjectOut])
+@router.get(
+    "",
+    response_model=list[ProjectOut],
+    summary="List your projects",
+    responses=errors(*AUTHENTICATED),
+)
 def list_projects(
     response: Response,
     # Nothing caps projects per account, so this read was bounded only by how
@@ -131,6 +137,15 @@ def list_projects(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[ProjectOut]:
+    """Every project on this account, alphabetically.
+
+    Paged, and the total is in ``X-Total-Count`` rather than the body — the
+    body is a plain array so a client can hand it straight to a list view.
+
+    ``autopilot_blocked_reason`` is filled in here, which is the field worth
+    reading first: a project with the autopilot on and no way for it to fire
+    looks identical to a working one until this says otherwise.
+    """
     base = select(Project).where(Project.user_id == user.id)
 
     total = db.scalar(
@@ -157,12 +172,28 @@ def list_projects(
     ]
 
 
-@router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ProjectOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a project",
+    responses=errors(*AUTHENTICATED),
+)
 def create_project(
     payload: ProjectCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
+    """Add a project for Herald to write about.
+
+    The slug is derived from the name and made unique within the account; it is
+    not settable, because it appears in the public feed URL and a user-chosen
+    one that collides has no good resolution.
+
+    Only ``name`` is required. Everything else — the repo URL, the tone, the
+    keywords, the autopilot settings — sharpens what gets written and can be
+    filled in later.
+    """
     base_slug = _unique_slug(db, user.id, payload.name)
     project = Project(
         user_id=user.id,
@@ -189,22 +220,43 @@ def create_project(
     return _to_out(project, db=db)
 
 
-@router.get("/{project_id}", response_model=ProjectOut)
+@router.get(
+    "/{project_id}",
+    response_model=ProjectOut,
+    summary="One project",
+    responses=errors(*OWNED),
+)
 def get_project(
     project_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
+    """One project, with its content counters and autopilot state."""
     return _to_out(owned_project(project_id, db, user), db=db)
 
 
-@router.patch("/{project_id}", response_model=ProjectOut)
+@router.patch(
+    "/{project_id}",
+    response_model=ProjectOut,
+    summary="Change a project's settings",
+    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+)
 def update_project(
     project_id: int,
     payload: ProjectUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
+    """Change any of a project's settings.
+
+    A field left out is left alone. A field sent as ``null`` is an instruction
+    to clear it, which is refused with a 422 for the columns that cannot hold
+    one rather than failing at commit time as a 500 — see
+    :mod:`app.routers._patch`.
+
+    Renaming re-slugs the project, and so changes its public feed URL. A PATCH
+    that sends the same name does not.
+    """
     project = owned_project(project_id, db, user)
     data = payload.model_dump(exclude_unset=True)
     reject_nulls(Project, data)
@@ -226,18 +278,38 @@ def update_project(
     return _to_out(project, db=db)
 
 
-@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{project_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a project and everything under it",
+    responses=errors(*OWNED),
+)
 def delete_project(
     project_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """Delete a project, its content, its triggers and its publication history.
+
+    This one really deletes. Content already live on a platform stays live —
+    Herald cannot unpublish it, and this removes only Herald's record of it.
+    """
     project = owned_project(project_id, db, user)
     db.delete(project)
     db.commit()
 
 
-@router.post("/{project_id}/scan", response_model=RepoActivityOut)
+@router.post(
+    "/{project_id}/scan",
+    response_model=RepoActivityOut,
+    summary="Scan the linked repository for new work",
+    responses=errors(
+        status.HTTP_400_BAD_REQUEST,
+        *OWNED,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_502_BAD_GATEWAY,
+    ),
+)
 @limiter.limit(settings.rate_limit_repo_scan, key_func=account_key)
 def scan_repo(
     project_id: int,
@@ -347,7 +419,12 @@ def _not_refreshing(request: Request) -> bool:
     return request.query_params.get("refresh", "").strip().lower() not in _TRUTHY
 
 
-@router.get("/{project_id}/ideas", response_model=list[IdeaOut])
+@router.get(
+    "/{project_id}/ideas",
+    response_model=list[IdeaOut],
+    summary="Subjects worth writing about",
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(
     settings.rate_limit_ai_generate, key_func=account_key, exempt_when=_not_refreshing
 )

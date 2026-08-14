@@ -16,12 +16,18 @@ from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
 from app.schemas.content import CalendarEntry, CalendarOut, PublicationOut, ScheduleUpdate
+from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.services import cadence, learned_cadence, scheduling, velocity
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
 
-@router.get("", response_model=CalendarOut)
+@router.get(
+    "",
+    response_model=CalendarOut,
+    summary="Scheduled and published items in a date window",
+    responses=errors(status.HTTP_400_BAD_REQUEST, *AUTHENTICATED),
+)
 def get_calendar(
     start: datetime | None = None,
     end: datetime | None = None,
@@ -159,7 +165,16 @@ def get_calendar(
     )
 
 
-@router.patch("/content/{content_id}", response_model=list[PublicationOut])
+@router.patch(
+    "/content/{content_id}",
+    response_model=list[PublicationOut],
+    summary="Move a scheduled item to another time",
+    responses=errors(
+        *OWNED,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ),
+)
 def reschedule(
     content_id: int,
     payload: ScheduleUpdate,
@@ -236,7 +251,12 @@ def reschedule(
     return [PublicationOut.model_validate(p) for p in targets]
 
 
-@router.get("/cadence", response_model=list[dict])
+@router.get(
+    "/cadence",
+    response_model=list[dict],
+    summary="Suggested posting rhythm per platform",
+    responses=errors(*AUTHENTICATED),
+)
 def cadence_guide(
     platform: Platform | None = Query(default=None),
     db: Session = Depends(get_db),

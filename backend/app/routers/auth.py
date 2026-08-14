@@ -29,6 +29,7 @@ from app.schemas.auth import (
     UserCreate,
     UserOut,
 )
+from app.schemas.errors import AUTHENTICATED, errors
 from app.security import create_access_token, hash_password, verify_password
 from app.services import mailer, password_reset
 
@@ -77,7 +78,18 @@ def _assert_registration_allowed(invite_token: str | None) -> None:
         )
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=UserOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create an account",
+    responses=errors(
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
+)
 @limiter.limit(settings.rate_limit_register)
 def register(
     request: Request,
@@ -85,6 +97,17 @@ def register(
     payload: UserCreate,
     db: Session = Depends(get_db),
 ) -> User:
+    """Register a user, if this instance is accepting registrations.
+
+    Closed by default — Herald is single-user and the account normally comes
+    from ``python -m app.seed``. When it is open, an invite token may be
+    required; see :func:`_assert_registration_allowed` for the three
+    configurations and why the ambiguous one fails closed in production.
+
+    The 403 covers all of them, deliberately: "registration is closed" and
+    "your invite token is wrong" are the same answer to anyone who is not
+    holding a valid token.
+    """
     _assert_registration_allowed(payload.invite_token)
 
     existing = db.scalar(select(User).where(User.email == payload.email))
@@ -114,7 +137,17 @@ def register(
     return user
 
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=Token,
+    summary="Exchange credentials for an access token",
+    responses=errors(
+        status.HTTP_401_UNAUTHORIZED,
+        status.HTTP_403_FORBIDDEN,
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
+)
 @limiter.limit(settings.rate_limit_login)
 def login(
     request: Request,
@@ -122,6 +155,17 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ) -> Token:
+    """Sign in with an email address and password.
+
+    Sent as an OAuth2 password form, so the email goes in the ``username``
+    field. The returned token is a bearer token for every other endpoint here.
+
+    A wrong password and an unknown address are the same 401, and both cost the
+    same time — the handler runs bcrypt against a dummy hash when the address
+    does not exist, because "instant" versus "~100ms" is enough to enumerate
+    who has an account. A deactivated account is a 403: the credentials were
+    right, and telling the owner so is not a disclosure.
+    """
     # OAuth2PasswordRequestForm uses ``username``; we treat it as the email.
     user = db.scalar(select(User).where(User.email == form.username))
 
@@ -165,6 +209,11 @@ _RESET_REQUESTED = (
     "/password-reset",
     response_model=MessageOut,
     status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a password-reset link",
+    responses=errors(
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
 )
 @limiter.limit(settings.rate_limit_password_reset)
 def request_password_reset(
@@ -194,7 +243,16 @@ def request_password_reset(
     return MessageOut(detail=_RESET_REQUESTED)
 
 
-@router.post("/password-reset/confirm", response_model=MessageOut)
+@router.post(
+    "/password-reset/confirm",
+    response_model=MessageOut,
+    summary="Set a new password with a reset token",
+    responses=errors(
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
+)
 @limiter.limit(settings.rate_limit_password_reset)
 def confirm_password_reset(
     request: Request,
@@ -220,7 +278,12 @@ def confirm_password_reset(
     return MessageOut(detail="Password updated. You can sign in with it now.")
 
 
-@router.patch("/me", response_model=UserOut)
+@router.patch(
+    "/me",
+    response_model=UserOut,
+    summary="Update account preferences",
+    responses=errors(*AUTHENTICATED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+)
 def update_me(
     payload: PreferencesUpdate,
     db: Session = Depends(get_db),
@@ -248,11 +311,21 @@ def update_me(
     return current_user
 
 
-@router.get("/me", response_model=UserOut)
+@router.get(
+    "/me",
+    response_model=UserOut,
+    summary="The signed-in account",
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_auth_read)
 def me(
     request: Request,
     response: Response,
     current_user: User = Depends(get_current_user),
 ) -> User:
+    """Who the bearer token belongs to, and their preferences.
+
+    The cheapest way for a client to find out whether the token it is holding
+    is still good — a reset or a deactivation invalidates one mid-session.
+    """
     return current_user

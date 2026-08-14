@@ -14,6 +14,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
 from app.ratelimit import limiter
+from app.schemas.errors import AUTHENTICATED, errors
 from app.schemas.settings import DependencyOut, HealthDetailOut, HealthOut
 from app.services import llm_router, publishers
 from app.services.crypto import encryption_enabled
@@ -120,7 +121,29 @@ def _health_core(
     return healthy, db_out, redis_out
 
 
-@router.get("/health", response_model=HealthOut)
+#: A degraded health check answers with the same model as a healthy one, so its
+#: 503 is documented as ``HealthOut`` rather than the usual error body. The
+#: status code is the machine-readable half and the payload says which
+#: dependency it was.
+_DEGRADED = {
+    status.HTTP_503_SERVICE_UNAVAILABLE: {
+        "model": HealthOut,
+        "description": "A required dependency is unreachable. Same body as a "
+        "healthy response; `status` is `degraded` and the failing dependency "
+        "says so.",
+    }
+}
+
+
+@router.get(
+    "/health",
+    response_model=HealthOut,
+    summary="Liveness probe",
+    responses={
+        **_DEGRADED,
+        **errors(status.HTTP_429_TOO_MANY_REQUESTS),
+    },
+)
 @limiter.limit(settings.rate_limit_health)
 def health(
     request: Request, response: Response, db: Session = Depends(get_db)
@@ -141,7 +164,18 @@ def health(
     return HealthOut(status="ok" if healthy else "degraded", database=db_out, redis=redis_out)
 
 
-@router.get("/health/detail", response_model=HealthDetailOut)
+@router.get(
+    "/health/detail",
+    response_model=HealthDetailOut,
+    summary="Liveness probe with diagnostics",
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            **_DEGRADED[status.HTTP_503_SERVICE_UNAVAILABLE],
+            "model": HealthDetailOut,
+        },
+        **errors(*AUTHENTICATED),
+    },
+)
 def health_detail(
     response: Response,
     db: Session = Depends(get_db),

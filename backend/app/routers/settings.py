@@ -16,6 +16,7 @@ from app.models.mixins import utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform
 from app.models.user import User
+from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.schemas.settings import ConnectionCreate, ConnectionOut, PlatformCapability
 from app.services import publishers
 from app.services.crypto import CredentialEncryptionError, encrypt_credentials
@@ -29,7 +30,12 @@ from app.services.publishers.base import (
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-@router.get("/platforms", response_model=list[PlatformCapability])
+@router.get(
+    "/platforms",
+    response_model=list[PlatformCapability],
+    summary="Every publishing platform and its connection state",
+    responses=errors(*AUTHENTICATED),
+)
 def list_platforms(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> list[PlatformCapability]:
@@ -53,7 +59,18 @@ def list_platforms(
     ]
 
 
-@router.put("/connections", response_model=ConnectionOut)
+@router.put(
+    "/connections",
+    response_model=ConnectionOut,
+    summary="Connect a platform, or replace its credentials",
+    responses=errors(
+        status.HTTP_400_BAD_REQUEST,
+        *AUTHENTICATED,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status.HTTP_501_NOT_IMPLEMENTED,
+        status.HTTP_502_BAD_GATEWAY,
+    ),
+)
 def upsert_connection(
     payload: ConnectionCreate,
     db: Session = Depends(get_db),
@@ -147,13 +164,25 @@ def upsert_connection(
     return ConnectionOut.model_validate(connection)
 
 
-@router.post("/connections/{platform}/verify", response_model=ConnectionOut)
+@router.post(
+    "/connections/{platform}/verify",
+    response_model=ConnectionOut,
+    summary="Re-check stored credentials",
+    responses=errors(*OWNED),
+)
 def verify_connection(
     platform: Platform,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ConnectionOut:
-    """Re-check stored credentials, e.g. after a platform reports them invalid."""
+    """Re-check stored credentials, e.g. after a platform reports them invalid.
+
+    Always 200 once the connection exists — the verdict is in the returned
+    ``status`` and ``last_error``, not in the status code. A platform that is
+    merely unreachable leaves ``status`` alone rather than marking the
+    connection invalid: an outage is not proof the token is bad, and flipping it
+    would make the user re-enter one that works.
+    """
     from app.services.crypto import decrypt_credentials
 
     connection = db.scalar(
@@ -189,12 +218,24 @@ def verify_connection(
     return ConnectionOut.model_validate(connection)
 
 
-@router.delete("/connections/{platform}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/connections/{platform}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Disconnect a platform",
+    responses=errors(*OWNED),
+)
 def delete_connection(
     platform: Platform,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """Forget a platform's credentials.
+
+    A hard delete, unlike the rest of Herald: there is nothing here worth
+    keeping, and "deleted" has to mean the ciphertext is gone. Content already
+    published there is untouched — this removes the ability to publish again,
+    not the record of having done so.
+    """
     connection = db.scalar(
         select(PlatformConnection).where(
             PlatformConnection.user_id == user.id,
