@@ -489,3 +489,148 @@ def test_the_autopilot_dispatch_does_not_scan_inline_when_it_runs_out_of_time(
 
     assert result == {"scanned": 1, "dispatched": 0}
     assert scanned == [], "a timeout must not become an inline repo scan"
+
+
+# --------------------------------------------------------------------------- #
+# The broker outage the sweeps used to swallow                                 #
+# --------------------------------------------------------------------------- #
+#
+# All three beat sweeps answer an unreachable broker by doing the work inline,
+# which is the right trade — a dropped publish or an unpolled trigger is worse
+# than a slow sweep. What was wrong is that two of them said nothing at all and
+# the third said it at DEBUG, which is off in production. So the branch that
+# turns a fan-out across the worker fleet into a serial run on the beat thread
+# was invisible, and the summary line that *was* emitted said "dispatched N of
+# N" — which reads as though a worker took them.
+#
+# Meanwhile the three request-path dispatchers (content._dispatch,
+# webhooks.dispatch, content_pipeline.publish_now) all warn on this branch. The
+# sweeps are where the outage costs the most and where nobody is watching a
+# response code, so they are the last place it should be quiet.
+
+
+def test_a_dead_broker_is_logged_when_the_trigger_sweep_falls_back(
+    db, schedule_trigger, monkeypatch, caplog
+):
+    """The fallback still runs — but an operator can now see why it did."""
+    monkeypatch.setattr(
+        trigger_tasks.check_trigger,
+        "delay",
+        lambda _id: (_ for _ in ()).throw(ConnectionError("redis is not listening")),
+    )
+    monkeypatch.setattr(
+        trigger_tasks.trigger_service, "check", lambda _db, t: {"status": "no_news"}
+    )
+
+    with caplog.at_level("WARNING"):
+        result = trigger_tasks.check_due_triggers()
+
+    assert result == {"due": 1, "dispatched": 1}
+    assert "redis is not listening" in caplog.text
+    assert "inline" in caplog.text
+
+
+def test_the_trigger_sweep_reports_one_outage_not_one_per_trigger(
+    db, project, monkeypatch, caplog
+):
+    """A shared broker fails once; a hundred due triggers must not say so twice.
+
+    Per-item logging would bury the outage in its own repetitions, which is the
+    same as not logging it.
+    """
+    for index in range(4):
+        db.add(
+            Trigger(
+                project_id=project.id,
+                kind=TriggerKind.SCHEDULE,
+                name=f"Trigger {index}",
+                is_active=True,
+                config={"interval_hours": 1},
+                last_checked_at=utcnow() - timedelta(hours=5),
+            )
+        )
+    db.commit()
+
+    monkeypatch.setattr(
+        trigger_tasks.check_trigger,
+        "delay",
+        lambda _id: (_ for _ in ()).throw(ConnectionError("broker gone")),
+    )
+    monkeypatch.setattr(
+        trigger_tasks.trigger_service, "check", lambda _db, t: {"status": "no_news"}
+    )
+
+    with caplog.at_level("WARNING"):
+        result = trigger_tasks.check_due_triggers()
+
+    assert result["dispatched"] == 4, "every one of them still got checked"
+    outage_lines = [r for r in caplog.records if "broker unavailable" in r.message]
+    assert len(outage_lines) == 1, "one broker, one warning"
+
+
+def test_a_timeout_is_not_reported_as_a_dead_broker(
+    db, schedule_trigger, monkeypatch, caplog
+):
+    """The two branches have different causes and must not share a message.
+
+    ``SoftTimeLimitExceeded`` is an ``Exception``, so an operator told "broker
+    unavailable" on a timeout would go and restart a Redis that was fine.
+    """
+    monkeypatch.setattr(
+        trigger_tasks.check_trigger,
+        "delay",
+        lambda _id: (_ for _ in ()).throw(SoftTimeLimitExceeded()),
+    )
+
+    with caplog.at_level("WARNING"):
+        trigger_tasks.check_due_triggers()
+
+    assert "timed out" in caplog.text
+    assert "broker unavailable" not in caplog.text
+
+
+def test_a_dead_broker_is_logged_when_the_autopilot_sweep_falls_back(
+    db, project, monkeypatch, caplog
+):
+    """The costliest fallback: inline means a repo read and a model call each."""
+    monkeypatch.setattr(autopilot_tasks, "SessionLocal", _no_close(db))
+    scanned: list[int] = []
+
+    class _BrokerDown:
+        def delay(self, _project_id):
+            raise ConnectionError("redis refused the connection")
+
+        def __call__(self, project_id):
+            scanned.append(project_id)
+
+    monkeypatch.setattr(autopilot_tasks, "scan_project", _BrokerDown())
+
+    with caplog.at_level("WARNING"):
+        result = autopilot_tasks.scan_all_projects()
+
+    assert result == {"scanned": 1, "dispatched": 1}
+    assert scanned == [project.id], "the scan still happened"
+    assert "redis refused the connection" in caplog.text
+    assert "inline" in caplog.text
+
+
+def test_the_autopilot_summary_separates_inline_from_dispatched(
+    db, project, monkeypatch, caplog
+):
+    """"dispatched 1 of 1" alone claimed a worker took it. It did not."""
+    monkeypatch.setattr(autopilot_tasks, "SessionLocal", _no_close(db))
+
+    class _BrokerDown:
+        def delay(self, _project_id):
+            raise ConnectionError("broker gone")
+
+        def __call__(self, project_id):
+            pass
+
+    monkeypatch.setattr(autopilot_tasks, "scan_project", _BrokerDown())
+
+    with caplog.at_level("INFO"):
+        autopilot_tasks.scan_all_projects()
+
+    summary = [r.getMessage() for r in caplog.records if "autopilot dispatched" in r.getMessage()]
+    assert summary == ["autopilot dispatched 1 of 1 project(s), 1 inline"]

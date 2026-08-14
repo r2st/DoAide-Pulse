@@ -340,6 +340,10 @@ def scan_all_projects() -> dict:
     # Dispatch each project as a separate Celery task so they run in parallel
     # across workers instead of blocking a single task for the entire fleet.
     dispatched = 0
+    inline = 0
+    # One warning per sweep rather than per project — see the same flag in
+    # ``trigger_tasks.check_due_triggers``.
+    broker_warned = False
     for project_id in ids:
         try:
             scan_project.delay(project_id)
@@ -355,10 +359,25 @@ def scan_all_projects() -> dict:
                 len(ids),
             )
             break
-        except Exception:
+        except Exception as exc:
             # Broker down — fall back to inline.
+            #
+            # This is the most expensive of the inline fallbacks: a scan reads a
+            # repository over the network and calls a model. Doing the whole
+            # fleet's worth of that on the beat thread, serially, is a decision
+            # worth a line in the log — and the line that was here said
+            # "dispatched N of N", which reads as though a worker took them.
+            if not broker_warned:
+                logger.warning("broker unavailable, scanning projects inline: %s", exc)
+                broker_warned = True
             scan_project(project_id)
             dispatched += 1
+            inline += 1
 
-    logger.info("autopilot dispatched %d of %d project(s)", dispatched, len(ids))
+    logger.info(
+        "autopilot dispatched %d of %d project(s), %d inline",
+        dispatched,
+        len(ids),
+        inline,
+    )
     return {"scanned": len(ids), "dispatched": dispatched}

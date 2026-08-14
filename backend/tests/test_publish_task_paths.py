@@ -314,3 +314,52 @@ def test_the_sweep_does_not_count_a_row_it_dropped(db, content, monkeypatch):
 
     assert result["dispatched"] == 0
     assert result["failed"] == 1
+
+
+def test_the_broker_outage_reaches_the_log_at_a_level_production_records(
+    db, content, monkeypatch, caplog
+):
+    """This branch logged at DEBUG, which production does not record.
+
+    So the one condition that turns a fan-out across the worker fleet into a
+    serial inline publish of every due row left no trace an operator would see,
+    and no hint of *why* the broker refused. The two other beat sweeps said
+    nothing at all; all three request-path dispatchers already warned.
+    """
+    _publication(db, content)
+
+    def _broker_down(publication_id):
+        raise ConnectionError("redis is not listening")
+
+    monkeypatch.setattr(publish_tasks.publish_one, "delay", _broker_down)
+    monkeypatch.setattr(
+        publish_tasks.publishing_service, "execute", lambda session, row: None
+    )
+
+    with caplog.at_level("WARNING"):
+        publish_tasks.publish_due()
+
+    assert "redis is not listening" in caplog.text
+
+
+def test_the_sweep_reports_one_broker_outage_not_one_per_publication(
+    db, content, monkeypatch, caplog
+):
+    """One broker, one warning — however many rows were due."""
+    for platform in (Platform.DEVTO, Platform.HASHNODE, Platform.MASTODON):
+        _publication(db, content, platform=platform)
+
+    def _broker_down(publication_id):
+        raise ConnectionError("broker gone")
+
+    monkeypatch.setattr(publish_tasks.publish_one, "delay", _broker_down)
+    monkeypatch.setattr(
+        publish_tasks.publishing_service, "execute", lambda session, row: None
+    )
+
+    with caplog.at_level("WARNING"):
+        result = publish_tasks.publish_due()
+
+    assert result["dispatched"] == 3, "all three still went out"
+    outage = [r for r in caplog.records if "broker unavailable" in r.message]
+    assert len(outage) == 1

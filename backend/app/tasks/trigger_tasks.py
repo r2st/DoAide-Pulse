@@ -72,6 +72,11 @@ def check_due_triggers() -> dict:
         db.close()
 
     dispatched = 0
+    inline = 0
+    # One warning per sweep, not per trigger: the broker is a single shared
+    # thing, so a hundred due triggers would otherwise log the same outage a
+    # hundred times and bury it in its own noise.
+    broker_warned = False
     for trigger_id in ids:
         try:
             check_trigger.delay(trigger_id)
@@ -86,13 +91,29 @@ def check_due_triggers() -> dict:
                 "trigger dispatch timed out after %d of %d", dispatched, len(ids)
             )
             break
-        except Exception:
+        except Exception as exc:
             # Broker down — fall back to inline, same as the repo scan.
+            #
+            # And say so. This swallowed the error and then reported
+            # "dispatched N of N", which is the opposite of what happened:
+            # nothing was enqueued and the beat worker polled every due trigger
+            # itself, serially, inside its own soft time limit. The only symptom
+            # an operator saw was the sweep timing out with no stated cause —
+            # while the three request-path dispatchers all warn on this branch.
+            if not broker_warned:
+                logger.warning("broker unavailable, checking triggers inline: %s", exc)
+                broker_warned = True
             check_trigger(trigger_id)
             dispatched += 1
+            inline += 1
 
     if ids:
-        logger.info("dispatched %d of %d due trigger(s)", dispatched, len(ids))
+        logger.info(
+            "dispatched %d of %d due trigger(s), %d inline",
+            dispatched,
+            len(ids),
+            inline,
+        )
     return {"due": len(ids), "dispatched": dispatched}
 
 

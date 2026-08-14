@@ -151,13 +151,25 @@ def publish_due() -> dict:
 
     dispatched = 0
     failed = 0
+    inline = 0
+    # One warning per sweep — see the same flag in
+    # ``trigger_tasks.check_due_triggers``.
+    broker_warned = False
     for publication_id in ids:
         try:
             publish_one.delay(publication_id)
-        except Exception:
+        except Exception as exc:
             # Broker down — fall back to inline execution so the sweep does not
             # silently drop due publications.
-            logger.debug("broker unavailable, running publish_one inline")
+            #
+            # WARNING, not DEBUG, and carrying the exception: debug is off in
+            # production, so the one branch that turns a beat sweep into a
+            # serial inline publish of every due row logged nothing an operator
+            # would ever see, and nothing about *why* the broker refused.
+            if not broker_warned:
+                logger.warning("broker unavailable, publishing inline: %s", exc)
+                broker_warned = True
+            inline += 1
             try:
                 publish_one(publication_id)
             except Exception:
@@ -182,7 +194,10 @@ def publish_due() -> dict:
 
     if ids:
         logger.info(
-            "publish_due dispatched %d publication(s), %d failed", dispatched, failed
+            "publish_due dispatched %d publication(s), %d failed, %d inline",
+            dispatched,
+            failed,
+            inline,
         )
     # ``dispatched`` counts what was handed on, not what was selected. Reporting
     # ``len(ids)`` claimed credit for rows this pass had just dropped.
