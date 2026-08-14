@@ -27,8 +27,12 @@ supports.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.config import settings
+from app.services.velocity import window_count_key
 
 
 class _Rates(BaseModel):
@@ -203,6 +207,55 @@ class OverviewOut(BaseModel):
     read_time: ReadTimeOut
 
 
+def _window_count_keys() -> tuple[str, str]:
+    """The early and benchmark key names, as configured right now.
+
+    Read at call time rather than frozen at import: the validator has to judge
+    the payload the service is actually producing, and a process whose settings
+    were changed under it should fail loudly rather than quietly accept keys it
+    no longer documents.
+    """
+    return (
+        window_count_key(int(settings.velocity_early_window_hours)),
+        window_count_key(int(settings.velocity_benchmark_window_hours)),
+    )
+
+
+def _document_window_counts(schema: dict[str, Any]) -> None:
+    """Add the two configuration-named counts to the generated schema.
+
+    They cannot be declared as fields — their names come from
+    ``VELOCITY_EARLY_WINDOW_HOURS`` and ``VELOCITY_BENCHMARK_WINDOW_HOURS``, so
+    the class does not know them until an install is configured — but they are
+    known by the time the schema is generated, which is the moment that matters
+    for OpenAPI. Written in rather than left to ``additionalProperties`` so a
+    generated client gets two typed, named, documented fields instead of a bag
+    of ``Any``, and so ``/docs`` stops showing the velocity panel's entire
+    content as an unexplained extra.
+    """
+    properties = schema.setdefault("properties", {})
+    early, benchmark = _window_count_keys()
+    for key, window in ((early, "early"), (benchmark, "benchmark")):
+        # Left out of ``required`` by simply not being added to it: a curve too
+        # young for a window carries the key with ``null`` in it, and one built
+        # before the windows were widened may not carry it at all.
+        properties[key] = {
+            "anyOf": [{"type": "integer"}, {"type": "null"}],
+            "title": f"Views in the first {key.removeprefix('views_first_')}",
+            "description": (
+                f"Cumulative views over this publication's {window} window. "
+                "Null when no metric snapshot lands inside the window — the "
+                "post is not that old yet, or nothing polled it in time — "
+                "which is unknown, not nought. The window is "
+                f"`{window}_window_hours` on this same object, and the field "
+                "name is built from it."
+            ),
+        }
+    # The two above are the only extras there are. Saying so keeps a generated
+    # client from typing the rest of the object as an open map.
+    schema["additionalProperties"] = False
+
+
 class VelocityCurveOut(BaseModel):
     """How one publication's audience arrived.
 
@@ -213,13 +266,29 @@ class VelocityCurveOut(BaseModel):
     dropping them on the floor, which is what a strict model would do to a
     payload the frontend already reads.
 
-    They are documented here rather than renamed because the key names are the
-    API's existing contract, and the same two window sizes appear as their own
-    fields on the summary and benchmark models below, where a client can read
-    them off directly.
+    They are not renamed to something declarable because the key names are the
+    API's existing contract. What has changed is that ``extra="allow"`` no
+    longer means *anything*:
+
+    * :func:`_document_window_counts` writes both names into the generated
+      schema, so they are typed and described in OpenAPI rather than being an
+      undocumented pair a client has to know about from somewhere else.
+    * :meth:`_only_the_window_counts_may_ride_along` refuses any other extra.
+      An open model on a response is a hole in both directions — a key the
+      service starts producing reaches clients undocumented, and a key it
+      *stops* producing goes unnoticed. Two specific names are allowed through;
+      a third is a bug in whatever built the payload, and 500 is the honest
+      answer to it.
+    * ``early_window_hours`` and ``benchmark_window_hours`` are declared here as
+      well as on the summary, so the key names are derivable from a single
+      curve. Without them ``GET /analytics/velocity/{id}`` was a payload whose
+      two most interesting fields could not be located without first fetching a
+      different endpoint.
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow", json_schema_extra=_document_window_counts
+    )
 
     publication_id: int
     content_id: int
@@ -233,6 +302,23 @@ class VelocityCurveOut(BaseModel):
     engagement: int
     views_per_day: float | None = None
     stalled: bool
+    #: The two windows the ``views_first_{n}h`` keys are named for. Repeated on
+    #: every curve rather than only on the summary so that one curve, on its
+    #: own, says which keys it carries.
+    early_window_hours: int
+    benchmark_window_hours: int
+
+    @model_validator(mode="after")
+    def _only_the_window_counts_may_ride_along(self) -> VelocityCurveOut:
+        allowed = set(_window_count_keys())
+        unexpected = sorted(set(self.__pydantic_extra__ or {}) - allowed)
+        if unexpected:
+            raise ValueError(
+                f"unexpected extra field(s) {unexpected} on a velocity curve; "
+                f"the only extras this model allows are {sorted(allowed)}, "
+                "which are named from the velocity window settings"
+            )
+        return self
 
 
 class CurvePointOut(BaseModel):

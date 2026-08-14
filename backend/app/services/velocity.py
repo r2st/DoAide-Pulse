@@ -51,6 +51,18 @@ from app.models.publication import Platform, Publication, PublicationStatus
 _MIN_WINDOW_COVERAGE = 0.6
 
 
+def window_count_key(hours: int) -> str:
+    """The wire name for a curve's view count over its first *hours* hours.
+
+    The single definition of these two names. :meth:`Curve.as_dict` builds its
+    keys with it and :mod:`app.schemas.analytics` both documents and bounds them
+    with it — two places that would otherwise agree only by having the same
+    f-string written out in each, which is the arrangement that lets a rename
+    reach production as a pair of silently-dropped fields.
+    """
+    return f"views_first_{hours}h"
+
+
 @dataclass(frozen=True)
 class Point:
     """One reading, positioned relative to the moment of publication."""
@@ -202,9 +214,21 @@ class Curve:
         return recent <= peak * ratio
 
     def as_dict(self) -> dict:
+        """The wire shape of one curve.
+
+        Two of these keys are named from configuration —
+        ``views_first_{early}h`` and ``views_first_{benchmark}h`` — which is why
+        :class:`app.schemas.analytics.VelocityCurveOut` cannot declare them as
+        fields. The name is built by
+        :func:`app.schemas.analytics.window_count_key` so that the schema which
+        documents these keys and the code which produces them cannot drift
+        apart; the windows themselves ship alongside, so a client holding one
+        curve can work out which two keys it is looking at without fetching the
+        summary as well.
+        """
         self._require_full_series("as_dict")
-        early = float(settings.velocity_early_window_hours)
-        benchmark = float(settings.velocity_benchmark_window_hours)
+        early = int(settings.velocity_early_window_hours)
+        benchmark = int(settings.velocity_benchmark_window_hours)
         latest = self.points[-1] if self.points else None
         return {
             "publication_id": self.publication_id,
@@ -216,8 +240,10 @@ class Curve:
             "snapshots": len(self.points),
             "views": latest.views if latest else 0,
             "engagement": latest.engagement if latest else 0,
-            f"views_first_{int(early)}h": self.views_within(early),
-            f"views_first_{int(benchmark)}h": self.views_within(benchmark),
+            "early_window_hours": early,
+            "benchmark_window_hours": benchmark,
+            window_count_key(early): self.views_within(float(early)),
+            window_count_key(benchmark): self.views_within(float(benchmark)),
             "views_per_day": self.views_per_day(),
             "stalled": self.is_stalled(
                 window_hours=float(settings.velocity_stall_window_hours),
@@ -503,4 +529,5 @@ __all__ = [
     "benchmarks",
     "curves",
     "summary",
+    "window_count_key",
 ]
