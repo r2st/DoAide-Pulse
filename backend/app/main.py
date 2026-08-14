@@ -9,9 +9,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
+from starlette.datastructures import Headers
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import settings
 from app.logging_config import configure_logging, request_id_var
@@ -37,6 +39,110 @@ logger = logging.getLogger(__name__)
 #: content body (~200 KB max via schema validation), and this gives comfortable
 #: headroom while stopping a multi-GB upload from consuming all memory.
 MAX_BODY_BYTES = 1 * 1024 * 1024
+
+
+class BodySizeLimitMiddleware:
+    """Reject oversized request bodies, declared or not.
+
+    Two halves, because a body arrives in two ways:
+
+    * **Declared.** ``Content-Length`` is checked before the route runs, so an
+      oversized upload is refused without being read. This is the cheap half and
+      the one that answers honestly — the client learns the body was too big
+      rather than watching the connection go quiet.
+    * **Undeclared.** HTTP/1.1 lets a client send ``Transfer-Encoding: chunked``
+      with no ``Content-Length`` at all, and a guard that only reads the header
+      waves those through: the route reaches for ``await request.json()``, and
+      the server buffers however many gigabytes are on the way. So the receive
+      channel is counted as it is consumed and cut off at the same cap.
+
+    Raw ASGI rather than ``BaseHTTPMiddleware`` because this one has to sit
+    between the app and its receive channel, which is the one thing the dispatch
+    interface does not hand over.
+
+    Once the cap is passed the channel reports a disconnect instead of more
+    body. The app unwinds on its own from there — Starlette raises
+    ``ClientDisconnect`` out of the stream and FastAPI renders it as a 400 —
+    and that answer is discarded in favour of the 413 the situation actually
+    calls for. Discarding rather than raising on purpose: an exception thrown
+    from inside ``receive`` gets caught by whatever happens to be reading the
+    body (FastAPI catches everything there and calls it a parse error) or
+    arrives wrapped in a task group's exception group from the middleware above.
+    A flag crosses those boundaries unchanged.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        declared = Headers(scope=scope).get("content-length")
+        if declared:
+            try:
+                length = int(declared)
+            except (ValueError, OverflowError):
+                length = -1
+            if length < 0:
+                await _respond(scope, send, 400, "Invalid Content-Length header")
+                return
+            if length > MAX_BODY_BYTES:
+                await _respond(scope, send, 413, "Request body too large")
+                return
+
+        read = 0
+        over = False
+        started = False
+
+        async def _counted_receive() -> Message:
+            nonlocal read, over
+            if over:
+                return {"type": "http.disconnect"}
+            message = await receive()
+            if message["type"] == "http.request":
+                read += len(message.get("body", b""))
+                if read > MAX_BODY_BYTES:
+                    over = True
+                    return {"type": "http.disconnect"}
+            return message
+
+        async def _guarded_send(message: Message) -> None:
+            nonlocal started
+            # Whatever the app made of the truncated body, it is answering a
+            # question it was never given the whole of. Drop it.
+            if over:
+                return
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        await self.app(scope, _counted_receive, _guarded_send)
+
+        if over and not started:
+            await _respond(scope, send, 413, "Request body too large")
+        elif over:
+            # The route answered and then went back for more body. Its response
+            # is already on the wire and cannot be taken back, so the cap has
+            # done the half that mattered — the read stopped — and there is no
+            # second answer to send.
+            logger.warning("body cap hit after the response had started")
+
+
+async def _respond(scope: Scope, send: Send, code: int, detail: str) -> None:
+    await JSONResponse({"detail": detail}, status_code=code)(scope, _no_body, send)
+
+
+async def _no_body() -> Message:
+    """A receive channel for a response that will not read the request.
+
+    ``Response.__call__`` takes one and never calls it for a plain body, but the
+    signature requires something, and something that returns a disconnect is the
+    honest filler: by the time either caller gets here, the request body is
+    either unread by choice or already over the cap.
+    """
+    return {"type": "http.disconnect"}
 
 
 def docs_enabled() -> bool:
@@ -78,12 +184,28 @@ def traceback_responses_enabled() -> bool:
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Startup / shutdown hook.
 
-    On shutdown, dispose the SQLAlchemy engine pool so open connections are
-    returned to PostgreSQL rather than orphaned.
+    The startup line exists because the connection budget is the setting most
+    likely to be wrong and the least likely to announce it: too low and the app
+    is slow under load for no visible reason, too high and it is the fourth
+    process that cannot connect at all, in a log line belonging to some other
+    service. It is per process, so the number that matters is this one times
+    however many processes the unit file starts — which is why it is logged
+    where an operator counting them will see it once per process.
+
+    On shutdown, dispose the pool so open connections are returned to PostgreSQL
+    rather than left for it to time out.
     """
-    yield
     from app.database import engine
 
+    logger.info(
+        "serving with a connection budget of %d+%d per process "
+        "(pool_timeout=%.1fs, statement_timeout=%.1fs)",
+        settings.db_pool_size,
+        settings.db_max_overflow,
+        settings.db_pool_timeout_seconds,
+        settings.db_statement_timeout_seconds,
+    )
+    yield
     engine.dispose()
     logger.info("database pool disposed — shutting down")
 
@@ -168,32 +290,6 @@ def create_app() -> FastAPI:
             return response
 
     app.add_middleware(RequestIDMiddleware)
-
-    # Body size guard: reject oversized payloads before they reach a route.
-    class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-        async def dispatch(
-            self, request: Request, call_next: RequestResponseEndpoint
-        ) -> Response:
-            cl = request.headers.get("content-length")
-            if cl:
-                try:
-                    length = int(cl)
-                except (ValueError, OverflowError):
-                    return JSONResponse(
-                        {"detail": "Invalid Content-Length header"},
-                        status_code=400,
-                    )
-                if length < 0:
-                    return JSONResponse(
-                        {"detail": "Invalid Content-Length header"},
-                        status_code=400,
-                    )
-                if length > MAX_BODY_BYTES:
-                    return JSONResponse(
-                        {"detail": "Request body too large"},
-                        status_code=413,
-                    )
-            return await call_next(request)
 
     app.add_middleware(BodySizeLimitMiddleware)
 
