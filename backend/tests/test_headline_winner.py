@@ -33,6 +33,13 @@ def _no_close(session):
         def __getattr__(self, name):
             return getattr(session, name)
 
+        def __setattr__(self, name, value):
+            # Writes go to the real session too. Without this the proxy quietly
+            # absorbs them onto itself, so a task that configures its own session
+            # — ``expire_on_commit``, say — appears to have done so while the
+            # session under assertion carries on unchanged.
+            setattr(session, name, value)
+
         def close(self):
             # The fixture owns this session's lifetime, not the task.
             pass
@@ -488,3 +495,69 @@ def test_the_sweep_ignores_a_piece_that_never_had_a_swap(
 
     monkeypatch.setattr("app.tasks.headline_tasks.SessionLocal", _no_close(db))
     assert auto_select_headlines() == {"considered": 0, "swapped": 0}
+
+
+def test_the_sweep_does_not_re_read_every_candidate_after_the_first_swap(
+    db, project, monkeypatch, sql_log
+):
+    """A swap commits, and a commit expired every candidate still to come.
+
+    ``_candidates`` loads the whole ``Content`` for every published piece on
+    every project that opted in — unbounded by design. Applying one headline
+    commits, which expired all of them, and SQLAlchemy re-applies the original
+    loader options when it refreshes an expired instance: each remaining
+    candidate re-read its own article body, one row at a time, for a sweep that
+    only ever writes a title.
+
+    Every other test of this sweep has a single candidate, which is exactly the
+    size at which the bug cannot appear.
+    """
+    project.auto_headline_winner = True
+    db.commit()
+
+    pieces = []
+    for index in range(3):
+        content = Content(
+            project_id=project.id,
+            content_type=ContentType.ANNOUNCEMENT,
+            title="Original headline",
+            slug=f"contested-{index}",
+            body_markdown="word " * 2000,
+            status=ContentStatus.PUBLISHED,
+            created_at=_now() - timedelta(days=20),
+        )
+        db.add(content)
+        db.commit()
+        db.refresh(content)
+        publication = Publication(
+            content_id=content.id,
+            platform=Platform.DEVTO,
+            status=PublicationStatus.PUBLISHED,
+        )
+        db.add(publication)
+        db.commit()
+        db.refresh(publication)
+        _two_headline_contest(
+            db, content, publication, first_gain=4000, second_gain=200
+        )
+        pieces.append(content)
+
+    monkeypatch.setattr("app.tasks.headline_tasks.SessionLocal", _no_close(db))
+    db.expire_all()
+    sql_log.clear()
+
+    result = auto_select_headlines()
+
+    assert result == {"considered": 3, "swapped": 3}
+    # Read before asserting on behaviour: ``db.refresh`` below reads a body per
+    # piece itself, and would be counted as the sweep's.
+    bodies = [s for s in sql_log if "body_markdown" in s]
+    assert len(bodies) == 1, (
+        f"{len(bodies)} statements carried an article body for 3 candidates:\n"
+        + "\n".join(s[:200] for s in bodies)
+    )
+
+    # And all three still swap back to the winning headline.
+    for content in pieces:
+        db.refresh(content)
+        assert content.title == "Original headline"

@@ -75,6 +75,18 @@ def auto_select_headlines() -> dict:
     stop the rest, and none of this is urgent enough to retry aggressively.
     """
     db = SessionLocal()
+    # One applied swap commits, and a commit expires every candidate still to
+    # come — so the sweep re-read each remaining piece's whole ``Content``, body
+    # included, to write a title. ``_candidates`` is unbounded by design, so the
+    # cost of the first swap was one wide read per published piece on every
+    # project that opted in. Every other test of this sweep has a single
+    # candidate, which is the size at which that cannot show up.
+    #
+    # Safe here: each candidate is visited once and nothing re-reads a row a
+    # commit changed. The error arms below still ``rollback()``, which expires
+    # everything regardless — after a failure the loaded state is exactly what
+    # should not be trusted.
+    db.expire_on_commit = False
     swapped = 0
     considered = 0
     try:
