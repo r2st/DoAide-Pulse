@@ -481,6 +481,35 @@ def test_send_endpoint_explains_unconfigured_smtp(
     assert "SMTP" in resp.json()["reason"]
 
 
+def test_the_send_endpoint_mails_the_digest_it_reported_on(
+    client, auth, db, piece, publication, sent_mail, monkeypatch
+):
+    """One build, not two.
+
+    The window ends at ``utcnow()``, so a second build here is a different week:
+    the subject in the response described one digest and the inbox got another,
+    which is exactly the drift the preview endpoint exists to prevent. Anything
+    landing between the two builds — a publication finishing, a metric arriving
+    — is enough to separate them.
+    """
+    _snapshot(db, publication, days_ago=1, views=700)
+    builds = []
+    real_build = digest.build
+
+    def counted(session, user, **kwargs):
+        built = real_build(session, user, **kwargs)
+        builds.append(built)
+        return built
+
+    monkeypatch.setattr(digest, "build", counted)
+
+    resp = client.post("/api/v1/analytics/digest/send", headers=auth)
+
+    assert resp.status_code == 200, resp.text
+    assert len(builds) == 1
+    assert sent_mail[0]["subject"] == resp.json()["subject"]
+
+
 def test_digest_endpoints_need_authentication(client):
     assert client.get("/api/v1/analytics/digest").status_code == 401
     assert client.post("/api/v1/analytics/digest/send").status_code == 401

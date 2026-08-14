@@ -594,12 +594,29 @@ def render_html(digest: Digest) -> str:
     return "".join(parts)
 
 
-def send(db: Session, user: User, *, now: datetime | None = None) -> bool:
+def send(
+    db: Session,
+    user: User,
+    *,
+    now: datetime | None = None,
+    prebuilt: Digest | None = None,
+) -> bool:
     """Build and send one user's digest. Returns whether anything was sent.
 
     An empty week is not sent and is not an error — see the module docstring.
+
+    *prebuilt* is for the caller that has already assembled this user's digest
+    and needs to answer a question about it before deciding to send — the
+    "mail it now" endpoint, which reports the subject and whether the week was
+    empty. Building a second time there is not merely the same work twice: the
+    window ends at ``utcnow()``, so the copy the endpoint described and the copy
+    that reached the inbox were assembled from two different weeks, and a
+    publication landing between them made the subject in the response one the
+    email does not carry. The preview endpoint exists so that what the UI shows
+    and what lands in the inbox cannot drift; this is the same promise for the
+    send button.
     """
-    digest = build(db, user, now=now)
+    digest = prebuilt if prebuilt is not None else build(db, user, now=now)
     if digest.is_empty:
         logger.info("digest for %s skipped: nothing happened this week", user.email)
         return False

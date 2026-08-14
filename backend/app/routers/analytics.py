@@ -188,7 +188,10 @@ def digest_send(
             "sent": False,
             "reason": "SMTP is not configured — set SMTP_HOST to send mail.",
         }
-    sent = digest.send(db, user)
+    # The digest already built above, not a second one: the window ends at
+    # ``utcnow()``, so building again here would describe one week in the
+    # response and mail another.
+    sent = digest.send(db, user, prebuilt=built)
     return {
         "sent": sent,
         "reason": "" if sent else "The mail server refused the message.",
