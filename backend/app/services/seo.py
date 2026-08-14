@@ -462,6 +462,53 @@ def audit(
     return sorted(issues, key=lambda i: 0 if i.level == "error" else 1)
 
 
+def blocking_issues(
+    *,
+    title: str,
+    body_markdown: str,
+    meta_description: str,
+    keywords: list[str],
+    cover_image_url: str | None = None,
+    focus_keyword: str = "",
+    slug: str = "",
+) -> list[SeoIssue]:
+    """The :func:`audit` issues that no piece should be published carrying.
+
+    Just the ``error`` level, and the whole reason it has a name of its own is
+    that the autopilot needs to ask a different question from "what is the
+    score". :data:`SEO_SCORE_THRESHOLD` is a judgement about *quality* — a piece
+    below it is merely weak, and a human might publish it anyway. An ``error``
+    is not that: per :class:`SeoIssue`, it means a platform or a crawler will
+    visibly mishandle the post.
+
+    The two questions had one answer, and the arithmetic did not survive it. An
+    otherwise-immaculate piece with no meta description at all loses fifteen
+    points for it and five more for the cover image an automated piece never
+    has, and lands on exactly 70 — the threshold, which is a ``<`` comparison,
+    so it passed. Same for a piece with no title. Herald published, under its
+    own name and with nobody in the loop, posts whose defect the SEO panel calls
+    an error and states in one sentence.
+
+    Deductions could be re-tuned to make each error cost more than thirty
+    points, but that puts the guarantee back in an arithmetic total where the
+    next check added to :func:`seo_score` quietly weakens it again. A gate that
+    reads the level directly cannot drift.
+    """
+    return [
+        issue
+        for issue in audit(
+            title=title,
+            body_markdown=body_markdown,
+            meta_description=meta_description,
+            keywords=keywords,
+            cover_image_url=cover_image_url,
+            focus_keyword=focus_keyword,
+            slug=slug,
+        )
+        if issue.level == "error"
+    ]
+
+
 def seo_score(
     *,
     title: str,
@@ -741,6 +788,7 @@ __all__ = [
     "TITLE_MAX",
     "SeoIssue",
     "audit",
+    "blocking_issues",
     "build_excerpt",
     "build_json_ld",
     "build_meta_description",

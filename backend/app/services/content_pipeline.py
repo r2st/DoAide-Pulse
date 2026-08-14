@@ -1,7 +1,7 @@
 """Generate a piece from a signal, then decide where it goes.
 
 This is the half of the autopilot that has nothing to do with GitHub: write the
-draft, run the two quality gates, and either park it for review or queue it for
+draft, run the quality gates, and either park it for review or queue it for
 publication. It was inlined in ``autopilot_tasks`` when a repo push was the only
 thing that could start a piece. Triggers made that a problem — an RSS entry and
 a Friday morning deserve exactly the same gates, and a second copy of them would
@@ -16,9 +16,13 @@ The gates only apply to an *unreviewed* publish, which is deliberate:
 * **SEO score.** A post that would rank poorly should not go out unreviewed even
   when the model is confident it is accurate. Confidence is about truth; the
   score is about whether anyone will find it.
+* **SEO errors.** Separate from the score on purpose. The score asks whether the
+  piece is good enough and answers in points a strong piece can absorb; an
+  ``error`` from :func:`app.services.seo.audit` asks whether it is broken. A
+  piece with no meta description scored exactly the threshold and went out.
 
-Both demote to review rather than throwing the piece away, and so does the third
-thing that can stop an unreviewed publish: having nowhere to send it. See
+They all demote to review rather than throwing the piece away, and so does the
+last thing that can stop an unreviewed publish: having nowhere to send it. See
 :func:`publishable_destinations`, which drops a destination the owner never
 connected instead of queueing a publication that can only fail.
 """
@@ -82,6 +86,9 @@ class RoutedContent:
     confidence: float
     seo_score: int
     dead_links: list[str] = field(default_factory=list)
+    #: ``error``-level SEO issues, which hold a piece back on their own however
+    #: it scored — see :func:`app.services.seo.blocking_issues`.
+    seo_errors: list[str] = field(default_factory=list)
     platforms: list[str] = field(default_factory=list)
     is_fallback: bool = False
 
@@ -100,6 +107,8 @@ class RoutedContent:
         }
         if self.dead_links:
             body["dead_links"] = self.dead_links
+        if self.seo_errors:
+            body["seo_errors"] = self.seo_errors
         if self.platforms:
             body["platforms"] = self.platforms
         return body
@@ -189,15 +198,16 @@ def generate_and_route(
             )
 
     slug = unique_content_slug(db, project.id, generated.title)
-    score = seo.seo_score(
-        title=generated.title,
-        body_markdown=generated.body_markdown,
-        meta_description=generated.meta_description,
-        keywords=generated.keywords,
-        focus_keyword=generated.focus_keyword,
-        slug=slug,
-        cover_image_url=None,  # an automated piece rarely has one
-    )
+    seo_fields = {
+        "title": generated.title,
+        "body_markdown": generated.body_markdown,
+        "meta_description": generated.meta_description,
+        "keywords": generated.keywords,
+        "focus_keyword": generated.focus_keyword,
+        "slug": slug,
+        "cover_image_url": None,  # an automated piece rarely has one
+    }
+    score = seo.seo_score(**seo_fields)
     if auto and score < seo.SEO_SCORE_THRESHOLD:
         auto = False
         logger.info(
@@ -205,6 +215,27 @@ def generate_and_route(
             generated.title,
             score,
             seo.SEO_SCORE_THRESHOLD,
+        )
+
+    # A second gate, and not a redundant one: the score asks whether the piece
+    # is good enough, and this asks whether it is broken. The two came apart at
+    # exactly the wrong place — a piece with no meta description loses fifteen
+    # points for it and five for the cover image an automated piece never has,
+    # scoring 70 against a `< 70` threshold. It passed by a rounding of the
+    # deductions, and Herald auto-published, under the user's name, a post whose
+    # own SEO panel led with "No meta description". See `seo.blocking_issues`.
+    #
+    # Asked even when `auto` is already false so the reason is banked on the row
+    # either way: a reviewer looking at a held-back piece should see every
+    # reason it was held, not the first one that fired.
+    seo_errors = [issue.message for issue in seo.blocking_issues(**seo_fields)]
+    if auto and seo_errors:
+        auto = False
+        logger.info(
+            "held %r back from auto-publish: %d SEO error(s): %s",
+            generated.title,
+            len(seo_errors),
+            "; ".join(seo_errors),
         )
 
     content = content_generator.content_from_generated(
@@ -218,6 +249,7 @@ def generate_and_route(
             "fallback": generated.is_fallback,
             "dead_links": dead_links,
             "seo_score": score,
+            "seo_errors": seo_errors,
             # Alongside the gate results and for the same reason: a reviewer
             # looking at a piece that was meant to publish itself should be able
             # to see why it did not without reading the logs.
@@ -240,6 +272,7 @@ def generate_and_route(
                 "content": webhook_payloads.content_payload(content),
                 "confidence": generated.confidence,
                 "seo_score": score,
+                "seo_errors": seo_errors,
                 "dead_links": dead_links,
                 "review_url": f"{settings.frontend_url.rstrip('/')}/content/{content.id}",
             },
@@ -250,6 +283,7 @@ def generate_and_route(
             confidence=generated.confidence,
             seo_score=score,
             dead_links=dead_links,
+            seo_errors=seo_errors,
             is_fallback=generated.is_fallback,
         )
 
