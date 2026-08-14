@@ -16,7 +16,7 @@ import hashlib
 import secrets
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -60,13 +60,38 @@ def preview_url(raw_token: str) -> str:
     return f"{settings.frontend_url.rstrip('/')}/preview/{raw_token}"
 
 
-def list_for_content(db: Session, content_id: int) -> list[PreviewLink]:
-    """Every link ever issued for a draft, newest first."""
+def count_for_content(db: Session, content_id: int) -> int:
+    """How many links have ever been issued for a draft, before paging."""
+    return (
+        db.scalar(
+            select(func.count(PreviewLink.id)).where(
+                PreviewLink.content_id == content_id
+            )
+        )
+        or 0
+    )
+
+
+def list_for_content(
+    db: Session, content_id: int, *, limit: int = 100, offset: int = 0
+) -> list[PreviewLink]:
+    """A page of the links issued for a draft, newest first.
+
+    Paged because nothing bounds the underlying rows. Issuing does not prune
+    and :func:`revoke` deliberately keeps the row — the view count is the only
+    record that a share happened at all — so a draft passed round a team over
+    a few months accumulates links indefinitely, and this listing had no
+    ceiling of any kind. ``id`` breaks ties in the sort: several links minted
+    in the same second are ordinary here (one per reviewer), and a page
+    boundary inside a tied group otherwise drops and repeats rows.
+    """
     return list(
         db.scalars(
             select(PreviewLink)
             .where(PreviewLink.content_id == content_id)
-            .order_by(PreviewLink.created_at.desc())
+            .order_by(PreviewLink.created_at.desc(), PreviewLink.id.desc())
+            .offset(offset)
+            .limit(limit)
         )
     )
 
@@ -102,6 +127,7 @@ def resolve(db: Session, raw_token: str) -> Content | None:
 
 
 __all__ = [
+    "count_for_content",
     "hash_token",
     "issue",
     "list_for_content",

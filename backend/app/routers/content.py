@@ -908,14 +908,33 @@ def _to_preview_link(link: PreviewLink, *, url: str | None = None) -> PreviewLin
 )
 def list_preview_links(
     content_id: int,
+    response: Response,
+    # The one listing here that had no ceiling at all. Nothing prunes preview
+    # links and revoking keeps the row, so a draft that goes round a team for a
+    # few months accumulates them without limit — see
+    # ``preview_links.list_for_content``. Same bounds and the same
+    # ``X-Total-Count`` as every other listing in this router.
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PreviewLinkOut]:
-    """Every link ever issued for this draft. The URL only ever appears once,
-    at creation — a listing can show that a link exists and let it be revoked,
-    not what it is."""
+    """The links issued for this draft, newest first.
+
+    The URL only ever appears once, at creation — a listing can show that a
+    link exists and let it be revoked, not what it is. The total before paging
+    is in ``X-Total-Count``.
+    """
     content = _owned_content(content_id, db, user)
-    return [_to_preview_link(link) for link in preview_links.list_for_content(db, content.id)]
+    response.headers["X-Total-Count"] = str(
+        preview_links.count_for_content(db, content.id)
+    )
+    return [
+        _to_preview_link(link)
+        for link in preview_links.list_for_content(
+            db, content.id, limit=limit, offset=offset
+        )
+    ]
 
 
 @router.post(
