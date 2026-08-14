@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -62,10 +63,64 @@ def queue(
 
     When this batch contains both the piece's original and somewhere else to
     syndicate to, the copies are held back — see :func:`_syndication_schedule`.
+
+    "Re-arm rather than add a second row" is decided from ``content.publications``,
+    which is only as fresh as the moment the caller loaded the piece. Two requests
+    that read it before either wrote — a double-clicked Publish button is the whole
+    of what that takes — both saw no row for the platform and both inserted one,
+    and the loser of that race hit the unique constraint. It surfaced as a 500 on a
+    button whose second press should have been a no-op. So the insert goes in a
+    savepoint: a conflict rolls back only this arming, the piece re-reads its
+    publications, and the row the winner just wrote is re-armed exactly as a
+    sequential re-queue would have. One retry, for the same reason
+    ``routers.content`` retries a colliding slug once — a second conflict means a
+    third writer, and the caller is better told than looped.
+    """
+    schedule = _syndication_schedule(content, platforms, base=scheduled_for)
+
+    try:
+        with db.begin_nested():
+            out = _arm(db, content, platforms, schedule, scheduled_for, as_draft)
+    except IntegrityError:
+        # The savepoint has already taken the INSERTs back. What it does not undo
+        # is the Python side: rows this attempt *modified* keep their new attribute
+        # values on the instance, and one of those attributes — ``status`` — is
+        # what the "already live" branch reads. Expiring the collection and then
+        # the rows it comes back with puts both in step with the database, which
+        # now includes the row the other writer committed.
+        db.expire(content, ["publications"])
+        for publication in content.publications:
+            db.expire(publication)
+        with db.begin_nested():
+            out = _arm(db, content, platforms, schedule, scheduled_for, as_draft)
+
+    # Canonical first, so a caller that dispatches in order gives the original a
+    # head start even when the delay is switched off. Then the destinations that
+    # host the article, ahead of the ones that only carry a link to it: when no
+    # canonical platform is named, whichever publishes first becomes the piece's
+    # canonical, and a plain alphabetical order handed that to Bluesky.
+    canonical = _canonical_platform(content)
+    out.sort(key=lambda p: (p.platform != canonical, *_original_rank(p.platform)))
+    return out
+
+
+def _arm(
+    db: Session,
+    content: Content,
+    platforms: Sequence[Platform | str],
+    schedule: dict[Platform, datetime | None],
+    scheduled_for: datetime | None,
+    as_draft: bool,
+) -> list[Publication]:
+    """One pass of :func:`queue`'s create-or-re-arm, flushed.
+
+    Split out so it can be run twice: once optimistically, and once more against
+    a re-read of ``content.publications`` when a concurrent writer got there
+    first. It builds its own view of what already exists on every call, which is
+    the whole point — the second call must not reuse the first call's.
     """
     existing = {p.platform: p for p in content.publications}
     out: list[Publication] = []
-    schedule = _syndication_schedule(content, platforms, base=scheduled_for)
 
     for raw in platforms:
         platform = raw if isinstance(raw, Platform) else Platform(raw)
@@ -91,13 +146,6 @@ def queue(
         out.append(publication)
 
     db.flush()
-    # Canonical first, so a caller that dispatches in order gives the original a
-    # head start even when the delay is switched off. Then the destinations that
-    # host the article, ahead of the ones that only carry a link to it: when no
-    # canonical platform is named, whichever publishes first becomes the piece's
-    # canonical, and a plain alphabetical order handed that to Bluesky.
-    canonical = _canonical_platform(content)
-    out.sort(key=lambda p: (p.platform != canonical, *_original_rank(p.platform)))
     return out
 
 
