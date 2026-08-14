@@ -38,6 +38,7 @@ alone.
 from __future__ import annotations
 
 import statistics
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import time
 
@@ -240,7 +241,10 @@ def learn(
 def describe_all(
     db: Session,
     user_id: int,
-    platforms: list[Platform | str],
+    # ``Sequence`` for the same reason as ``scheduling.optimal_slots``: both
+    # callers hold a list of one concrete element type, and ``list`` is
+    # invariant. Read-only here, so the covariant type is the honest one.
+    platforms: Sequence[Platform | str],
     *,
     known: list[velocity.Curve] | None = None,
 ) -> list[dict]:

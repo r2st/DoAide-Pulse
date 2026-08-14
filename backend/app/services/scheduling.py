@@ -27,6 +27,7 @@ one.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -121,7 +122,12 @@ class Slot:
 def optimal_slots(
     db: Session,
     user_id: int,
-    platforms: list[Platform | str],
+    # ``Sequence``, not ``list``: callers hold a ``list[Platform]`` (the router
+    # builds one from the request), and ``list`` is invariant, so the narrower
+    # element type is not assignable to ``list[Platform | str]``. Nothing here
+    # mutates the argument, so the covariant read-only type is both accurate and
+    # what lets those callers pass what they already have.
+    platforms: Sequence[Platform | str],
     *,
     after: datetime | None = None,
     canonical: Platform | None = None,

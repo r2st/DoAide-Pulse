@@ -126,6 +126,23 @@ def test_describe_all_still_builds_its_own_curves_when_not_given_any(db, user):
     assert rows[0]["platform"] == "devto"
 
 
+def test_describe_all_takes_any_sequence_of_either_spelling(db, user):
+    """Same widening as ``scheduling.optimal_slots``, for the same reason.
+
+    Both call sites in ``routers/calendar`` hold one concrete element type —
+    ``list[Platform]`` from the connected platforms, ``list[str]`` from the
+    query parameter — and ``list`` is invariant, so neither satisfied a
+    ``list[Platform | str]`` parameter. Nothing here mutates the argument.
+    """
+    from app.services import learned_cadence
+
+    from_tuple = learned_cadence.describe_all(db, user.id, (Platform.DEVTO,), known=[])
+    from_strings = learned_cadence.describe_all(db, user.id, ["devto"], known=[])
+
+    assert [row["platform"] for row in from_tuple] == ["devto"]
+    assert from_strings == from_tuple
+
+
 def test_an_empty_curve_list_is_not_mistaken_for_no_curves_at_all(db, user):
     """``known=[]`` means "I looked and there were none", not "I did not look".
 

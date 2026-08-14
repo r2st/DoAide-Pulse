@@ -111,6 +111,21 @@ def test_a_slot_lands_on_a_good_day_and_hour_for_the_platform(db, user):
     assert slots[0].rationale
 
 
+def test_platforms_may_be_any_sequence_of_either_spelling(db, user):
+    """``platforms`` is a ``Sequence[Platform | str]``, not a list.
+
+    ``list`` is invariant, so declaring the parameter as ``list[Platform | str]``
+    rejected the ``list[Platform]`` both routers actually hold — the calendar
+    endpoint and ``/content/{id}/schedule`` — even though nothing here mutates
+    it or cares which spelling arrives. The two arms below are what the widened
+    annotation promises: any sequence, either element type, same answer."""
+    from_tuple = scheduling.optimal_slots(db, user.id, (Platform.DEVTO,))
+    from_strings = scheduling.optimal_slots(db, user.id, ["devto"])
+
+    assert [s.platform for s in from_tuple] == [Platform.DEVTO]
+    assert [s.platform for s in from_strings] == [Platform.DEVTO]
+
+
 def test_a_cross_post_staggers_rather_than_firing_at_once(db, user):
     slots = scheduling.optimal_slots(
         db, user.id, [Platform.DEVTO, Platform.MEDIUM, Platform.MASTODON]
