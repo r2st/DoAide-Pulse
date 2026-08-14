@@ -25,10 +25,10 @@ from datetime import datetime, timedelta
 from html import escape
 
 from sqlalchemy import and_, func, select
-from sqlalchemy.orm import Session, joinedload, lazyload
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
-from app.models.content import Content, ContentStatus
+from app.models.content import Content, ContentStatus, read_minutes_of
 from app.models.metrics import ContentMetric
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
@@ -268,6 +268,23 @@ def _gains(
     ), per_content
 
 
+def _published_facts(db: Session, content_ids: list[int]) -> dict[int, tuple[str, int]]:
+    """Title and reading time for each of *content_ids*, read once per piece.
+
+    The body is only here because reading time is computed from it; nothing else
+    in the digest looks at an article's text. Keyed by id so the caller's
+    per-publication rows can share one read — see the note on ``published_rows``.
+    """
+    if not content_ids:
+        return {}
+    rows = db.execute(
+        select(Content.id, Content.title, Content.body_markdown).where(
+            Content.id.in_(set(content_ids))
+        )
+    ).all()
+    return {cid: (title, read_minutes_of(body)) for cid, title, body in rows}
+
+
 def build(
     db: Session, user: User, *, days: int | None = None, now: datetime | None = None
 ) -> Digest:
@@ -278,15 +295,17 @@ def build(
 
     movement, per_content = _gains(db, user.id, since=since, until=until)
 
+    # A row per *publication*: a piece syndicated to Dev.to, Hashnode and Medium
+    # in the same week appears three times. Selecting the ``Content`` entity
+    # here therefore carried its whole body three times — to compute one reading
+    # time, which is a property of the piece and identical on every copy — plus
+    # four JSON columns and, without the ``lazyload``, a second SELECT over every
+    # *other* publication of every piece. Three narrow columns instead; the body
+    # is read once per piece by ``_reading_minutes`` below.
     published_rows = db.execute(
-        select(Content, Publication)
+        select(Content.id, Publication.platform, Publication.external_url)
         .join(Publication, Publication.content_id == Content.id)
         .join(Project, Project.id == Content.project_id)
-        # The publication this row is about is already the second element of
-        # the pair. Letting ``lazy="selectin"`` also fetch every *other*
-        # publication of every piece is a second query for rows the loop below
-        # does not read, on top of the join that produced them.
-        .options(lazyload(Content.publications))
         .where(
             Project.user_id == user.id,
             Publication.status == PublicationStatus.PUBLISHED,
@@ -297,22 +316,28 @@ def build(
         .order_by(Publication.published_at.desc())
     ).all()
 
+    # One read of each published piece's title and body, keyed by id, for the
+    # loop below. Bounded by how much went out in the window rather than by how
+    # many platforms it went out on.
+    facts = _published_facts(db, [content_id for content_id, _, _ in published_rows])
+
     published: dict[int, dict] = {}
-    for content, publication in published_rows:
+    for content_id, platform, external_url in published_rows:
+        title, read_minutes = facts.get(content_id, ("", 0))
         entry = published.setdefault(
-            content.id,
+            content_id,
             {
-                "content_id": content.id,
-                "title": content.title,
-                "read_minutes": content.read_minutes,
+                "content_id": content_id,
+                "title": title,
+                "read_minutes": read_minutes,
                 "platforms": [],
                 "url": None,
-                "views": per_content.get(content.id, 0),
+                "views": per_content.get(content_id, 0),
             },
         )
-        entry["platforms"].append(publication.platform.value)
-        if entry["url"] is None and publication.external_url:
-            entry["url"] = publication.external_url
+        entry["platforms"].append(platform.value)
+        if entry["url"] is None and external_url:
+            entry["url"] = external_url
 
     # Two columns, not entities. The only thing read below is the title, and a
     # ``Content`` row to reach it is the whole body, four JSON columns and —

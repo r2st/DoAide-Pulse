@@ -165,3 +165,81 @@ def test_a_publication_first_seen_inside_the_window_counts_its_whole_reading(
     assert built.movement.views == 400
     # Nothing before the comparison window, so its own gain is the whole 1000.
     assert built.movement.previous_views == 1000
+
+
+def _body_reads(statements: list[str]) -> list[str]:
+    """Statements that carry ``content.body_markdown`` back to Python."""
+    return [s for s in statements if "content.body_markdown" in s]
+
+
+def _syndicate(db, publication, *platforms) -> None:
+    """The same piece, live on more platforms, inside the reported window."""
+    for index, platform in enumerate(platforms):
+        db.add(
+            Publication(
+                content_id=publication.content_id,
+                platform=platform,
+                status=PublicationStatus.PUBLISHED,
+                published_at=_now() - timedelta(days=3),
+                external_url=f"https://{platform.value}.example/x-{index}",
+            )
+        )
+    db.commit()
+
+
+def test_the_digest_reads_one_body_per_piece_not_per_platform(
+    db, user, publication, sql_log
+):
+    """Reading time is a property of the piece, not of where it went out.
+
+    ``published_rows`` has a row per publication, so selecting the ``Content``
+    entity there carried a whole article once per platform it was syndicated to
+    — three copies of the same body to compute the same reading time three
+    times.
+
+    Neither a query count nor a count of body-reading statements can see this:
+    it was one statement before and it is one statement now, with the same three
+    rows. What changed is the *width* of those rows, so the assertion is that no
+    statement joining ``publications`` carries a body at all — the bodies come
+    from a separate read keyed by content id, which is one row per piece by
+    construction.
+    """
+    publication.published_at = _now() - timedelta(days=3)
+    db.commit()
+    _syndicate(db, publication, Platform.HASHNODE, Platform.MEDIUM)
+    user = _forget_everything(db, user)
+
+    sql_log.clear()
+    digest.build(db, user)
+
+    multiplied = [s for s in _body_reads(sql_log) if "publications" in s]
+    assert multiplied == [], "\n".join(s[:300] for s in multiplied)
+    # And the piece's body is still read — once — for the reading time.
+    assert len(_body_reads(sql_log)) == 1, "\n".join(
+        s[:300] for s in _body_reads(sql_log)
+    )
+
+
+def test_a_syndicated_piece_is_one_digest_entry_listing_every_platform(
+    db, user, publication
+):
+    """The narrowing must not change what the email says.
+
+    One entry per piece, every platform it went out on, the first external URL
+    seen, and a reading time computed from the body — the same four things the
+    entity-shaped read produced.
+    """
+    publication.published_at = _now() - timedelta(days=3)
+    db.commit()
+    _syndicate(db, publication, Platform.HASHNODE, Platform.MEDIUM)
+    user = _forget_everything(db, user)
+
+    built = digest.build(db, user)
+
+    assert len(built.published) == 1
+    entry = built.published[0]
+    assert entry["title"] == "A long-running piece"
+    assert sorted(entry["platforms"]) == ["devto", "hashnode", "medium"]
+    assert entry["url"] is not None
+    # "Body." — under a minute of reading, floored at one.
+    assert entry["read_minutes"] == 1
