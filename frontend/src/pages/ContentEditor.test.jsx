@@ -806,6 +806,45 @@ describe("the header line", () => {
     expect(await screen.findByDisplayValue("Saved title")).toBeInTheDocument();
   });
 
+  it("keeps the editor and the unsaved text when a background refresh fails", async () => {
+    // Approve reloads the piece, and so do a publication retry and the publish
+    // dialog — refreshes the author never asked for. Rendering their failure in
+    // place of the editor unmounted a textarea that may hold minutes of unsaved
+    // writing, which is the same thing the null-response guard on `persist`
+    // exists to prevent, arriving by the other door.
+    api.approveContent.mockResolvedValue({ publications: [] });
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    await userEvent.type(title, "!");
+
+    api.getContent.mockRejectedValue(new Error("Service Unavailable"));
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(await screen.findByText("Service Unavailable")).toBeInTheDocument();
+    // Still the editor, still holding what was typed.
+    expect(screen.getByLabelText(/^Title/i)).toHaveValue("Saved title!");
+  });
+
+  it("drops that banner once the server answers again", async () => {
+    // A save is a round trip that succeeded, so the last refresh's complaint is
+    // no longer true — and a stale "Service Unavailable" over an editor that has
+    // demonstrably just reached the server is worse than no banner at all.
+    api.approveContent.mockResolvedValue({ publications: [] });
+    api.updateContent.mockResolvedValue(content({ title: "Saved title!" }));
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    await userEvent.type(title, "!");
+
+    api.getContent.mockRejectedValue(new Error("Service Unavailable"));
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await screen.findByText("Service Unavailable");
+
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(screen.queryByText("Service Unavailable")).not.toBeInTheDocument(),
+    );
+  });
+
   it("names the model that wrote it, and says nothing when a person did", async () => {
     // Herald's own output and something typed by hand read identically once
     // saved; the byline is the only thing that distinguishes them.

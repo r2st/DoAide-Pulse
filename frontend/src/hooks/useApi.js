@@ -40,5 +40,8 @@ export function useApi(loader, deps = []) {
     run();
   }, [run]);
 
-  return { data, error, loading, reload: run, setData };
+  // `setError` is exposed alongside `setData` for the same reason: a caller
+  // that has just talked to the server itself knows something this hook's last
+  // attempt does not, and has no other way to say so.
+  return { data, error, loading, reload: run, setData, setError };
 }

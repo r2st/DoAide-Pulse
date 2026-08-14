@@ -67,7 +67,7 @@ export default function ContentEditor() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const { data, error, loading, reload, setData } = useApi(
+  const { data, error, loading, reload, setData, setError } = useApi(
     () => api.getContent(contentId),
     [contentId],
   );
@@ -224,7 +224,22 @@ export default function ContentEditor() {
   }, [dirty]);
 
   if (loading && !data) return <Skeleton rows={6} />;
-  if (error) return <ErrorBanner message={error} onRetry={reload} />;
+  // `!data` as well as `error`: the banner takes the whole page only when there
+  // is no page to take it over from.
+  //
+  // Every reload after the first is a background refresh the author did not
+  // ask for — the one Approve fires, the one a publication retry fires, the one
+  // the publish dialog fires on the way out — and any of them can fail on a
+  // blip while the textarea holds minutes of unsaved writing. Returning the
+  // banner unconditionally unmounted the editor and took that text off the
+  // screen, which is the same failure the null-response guard in `persist`
+  // exists to prevent, arriving by the other door. It is also exactly what the
+  // SectionBoundary around each panel below refuses to allow: a background
+  // thing going wrong costs you that background thing, not the draft.
+  //
+  // With data on hand the error is rendered inline instead, above the header,
+  // with the same Retry.
+  if (error && !data) return <ErrorBanner message={error} onRetry={reload} />;
   if (!data || !draft) return null;
 
   const set = (key) => (event) =>
@@ -272,6 +287,11 @@ export default function ContentEditor() {
       throw new Error("The server did not return the saved piece — not saved.");
     }
     setData(updated);
+    // The server has just answered with the current piece, so whatever a
+    // failed background reload is still complaining about above is no longer
+    // true. Leaving it there would sit a stale "Service Unavailable" over an
+    // editor that has demonstrably just reached the server.
+    setError(null);
     // Take the server's copy — which may have normalised a keyword list or a
     // trimmed URL — only if the fields still hold what was sent. Anything typed
     // while the request was in flight is newer than the response, and is what
@@ -435,6 +455,10 @@ export default function ContentEditor() {
 
   return (
     <div className="space-y-6">
+      {/* A refresh that failed while the piece is on screen. Said here rather
+          than in place of the editor — see the guard above. */}
+      {error && <ErrorBanner message={error} onRetry={reload} />}
+
       {recovered && (
         <RecoveryBanner
           at={recovered.at}
