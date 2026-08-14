@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import SocialPreview from "./SocialPreview";
@@ -115,6 +115,27 @@ it("renders the cover image at the ratio the networks crop to", () => {
   expect(image.className).toContain("aspect-[1.91/1]");
 });
 
+it("falls back to the text-only card when the cover URL does not load", () => {
+  // A URL that is absolute and ends in .png still 404s, and the panel exists to
+  // predict the unfurl — a broken image rendered as a broken image would show
+  // the browser's placeholder rather than the card a crawler will actually
+  // build, which is the text-only one.
+  render(<SocialPreview draft={draft()} url="https://e.com/p" />);
+
+  const image = document.querySelector("img");
+  expect(image).not.toBeNull();
+  act(() => {
+    fireEvent.error(image);
+  });
+
+  // Swapped for the same grey-box layout a missing cover gets. The audit above
+  // still reports the card as clean, which is right — the URL is well-formed,
+  // and only fetching it says otherwise.
+  expect(document.querySelector("img")).toBeNull();
+  expect(document.querySelector("svg[aria-hidden]")).not.toBeNull();
+  expect(screen.getByText("Shipping Herald v2")).toBeInTheDocument();
+});
+
 it("falls back to the small text-only card when there is no cover", () => {
   render(<SocialPreview draft={draft({ cover_image_url: "" })} url="https://e.com/p" />);
 
@@ -164,6 +185,22 @@ it("fetches and shows the meta tags on request", async () => {
     ),
   );
   expect(api.socialCards).toHaveBeenCalledWith(7);
+});
+
+it("selects the whole tag block on focus, since it is pasted whole", async () => {
+  // The textarea is read-only and its entire contents are what goes into a
+  // template's <head>. Selecting on focus means the keyboard path is click,
+  // ⌘C — without it, a six-row block has to be dragged over exactly.
+  api.socialCards.mockResolvedValue({ meta_html: '<meta name="a" content="b">' });
+  render(<SocialPreview draft={draft()} url="https://e.com/p" contentId={7} />);
+  await userEvent.click(screen.getByRole("button", { name: "Show" }));
+  const field = await screen.findByLabelText(/meta tags/i);
+
+  act(() => field.focus());
+
+  expect(field.selectionStart).toBe(0);
+  expect(field.selectionEnd).toBe(field.value.length);
+  expect(field.value.length).toBeGreaterThan(0);
 });
 
 it("surfaces a failure to load the tags", async () => {

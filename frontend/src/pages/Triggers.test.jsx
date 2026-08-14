@@ -244,6 +244,19 @@ describe("empty and error states", () => {
     expect(screen.getByRole("button", { name: "Add your first trigger" })).toBeEnabled();
   });
 
+  it("the empty state's button opens the same builder the header does", async () => {
+    // Enabled was asserted above; that it is wired to anything was not. It is a
+    // separate element from the header's, and the only one on screen for an
+    // account that has never made a trigger.
+    api.listTriggers.mockResolvedValue([]);
+    draw();
+    await screen.findByText("Nothing is watching yet");
+
+    await userEvent.click(screen.getByRole("button", { name: "Add your first trigger" }));
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("surfaces a failed load with a retry", async () => {
     api.listTriggers.mockRejectedValueOnce(new Error("Service unavailable"));
     draw();
@@ -361,6 +374,67 @@ describe("the builder", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
+  it("sends the settings every kind shares, in the types the API stores them as", async () => {
+    // Three controls of three different types feed one config object: a select,
+    // a textarea, and — on a webhook — a checkbox that must arrive as a boolean
+    // rather than as the string an input would otherwise hand over.
+    api.createTrigger.mockResolvedValue(trigger({ kind: "webhook" }));
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Add trigger" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("radio", { name: /Webhook/ }));
+
+    await userEvent.click(within(dialog).getByLabelText(/Require a signature/));
+    await userEvent.selectOptions(within(dialog).getByLabelText(/Write a/), "changelog");
+    await userEvent.type(
+      within(dialog).getByLabelText(/Standing instructions/),
+      "Keep it under 400 words.",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create trigger" }));
+
+    await waitFor(() => expect(api.createTrigger).toHaveBeenCalled());
+    expect(api.createTrigger.mock.calls[0][0].config).toMatchObject({
+      require_signature: true,
+      content_type: "changelog",
+      instructions: "Keep it under 400 words.",
+    });
+  });
+
+  it("attaches the trigger to the project chosen, not the first one listed", async () => {
+    api.listProjects.mockResolvedValue([
+      { id: 7, name: "Herald" },
+      { id: 8, name: "Second" },
+    ]);
+    api.createTrigger.mockResolvedValue(trigger());
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Add trigger" }));
+    const dialog = screen.getByRole("dialog");
+
+    await userEvent.selectOptions(within(dialog).getByLabelText(/Project/), "8");
+    await userEvent.type(
+      within(dialog).getByLabelText(/Feed URL/),
+      "https://example.com/f.xml",
+    );
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create trigger" }));
+
+    await waitFor(() => expect(api.createTrigger).toHaveBeenCalled());
+    expect(api.createTrigger.mock.calls[0][0].project_id).toBe(8);
+  });
+
+  it("closes without creating anything on cancel", async () => {
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Add trigger" }));
+    await userEvent.type(
+      within(screen.getByRole("dialog")).getByLabelText(/Feed URL/),
+      "https://example.com/f.xml",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(api.createTrigger).not.toHaveBeenCalled();
+  });
+
   it("cannot change a trigger's kind after it exists", async () => {
     // The stored watermark belongs to the kind that wrote it.
     draw();
@@ -388,6 +462,27 @@ describe("the signing secret", () => {
 
     expect(await screen.findByText("s3cr3t-value")).toBeInTheDocument();
     expect(screen.getByText(/never again/)).toBeInTheDocument();
+  });
+
+  it("is dismissable, and does not come back once dismissed", async () => {
+    // It is the only time the secret is ever readable, so the panel stays put
+    // until the user says they have it — and once they have, showing it again
+    // on the next render would undo the "shown once" the copy promises.
+    api.createTrigger.mockResolvedValue({
+      ...trigger({ kind: "webhook", config: {} }),
+      inbound_url: "https://herald.test/api/v1/triggers/inbound/tok",
+      secret: "s3cr3t-value",
+    });
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Add trigger" }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("radio", { name: /Webhook/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create trigger" }));
+    await screen.findByText("s3cr3t-value");
+
+    await userEvent.click(screen.getByRole("button", { name: /I’ve saved it/ }));
+
+    expect(screen.queryByText("s3cr3t-value")).not.toBeInTheDocument();
   });
 
   it("is not shown for a kind that has no inbound URL", async () => {

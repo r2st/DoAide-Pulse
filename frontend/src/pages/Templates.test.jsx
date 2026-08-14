@@ -201,6 +201,43 @@ describe("the editor", () => {
     expect(payload.variables).toHaveLength(1);
   });
 
+  it("saves every part of a declared blank, not only its name", async () => {
+    // Four controls describe one variable, each wired to the form separately.
+    // A field that renders its value but never writes it back looks right on
+    // screen and saves the old one, so the assertion is on the payload.
+    const user = userEvent.setup();
+    api.updateTemplate.mockResolvedValue(template());
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await user.clear(screen.getByLabelText("Asked for as"));
+    await user.type(screen.getByLabelText("Asked for as"), "What shipped");
+    await user.type(screen.getByLabelText("Default"), "Nothing this week.");
+    await user.click(screen.getByRole("checkbox", { name: /Required/ }));
+    await user.click(screen.getByRole("button", { name: /save template/i }));
+
+    await waitFor(() => expect(api.updateTemplate).toHaveBeenCalled());
+    expect(api.updateTemplate.mock.calls[0][1].variables[0]).toMatchObject({
+      name: "summary",
+      label: "What shipped",
+      default: "Nothing this week.",
+      required: false,
+    });
+  });
+
+  it("saves the kind of piece the template writes", async () => {
+    const user = userEvent.setup();
+    api.updateTemplate.mockResolvedValue(template());
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await user.selectOptions(screen.getByLabelText("Kind of piece"), "changelog");
+    await user.click(screen.getByRole("button", { name: /save template/i }));
+
+    await waitFor(() => expect(api.updateTemplate).toHaveBeenCalled());
+    expect(api.updateTemplate.mock.calls[0][1].content_type).toBe("changelog");
+  });
+
   it("relabels the body when the template briefs the model instead", async () => {
     const user = userEvent.setup();
     api.listTemplates.mockResolvedValue([]);
@@ -265,6 +302,27 @@ describe("using one", () => {
       values: { summary: "Templates landed." },
       project_id: 1,
     });
+  });
+
+  it("writes the draft into whichever project is chosen, not the default", async () => {
+    // The template carries a default project, and the select exists to override
+    // it. A draft filed under the wrong project is only visible once it is
+    // written, and moving it afterwards is not something this UI offers.
+    api.listProjects.mockResolvedValue([
+      { id: 1, name: "Herald" },
+      { id: 2, name: "Second" },
+    ]);
+    api.useTemplate.mockResolvedValue({ id: 42 });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Use" }));
+    await user.type(screen.getByLabelText(/summary/i), "Templates landed.");
+    await user.selectOptions(await screen.findByLabelText("For project"), "2");
+    await user.click(screen.getByRole("button", { name: /create draft/i }));
+
+    await waitFor(() => expect(api.useTemplate).toHaveBeenCalled());
+    expect(api.useTemplate.mock.calls[0][1].project_id).toBe(2);
   });
 
   it("keeps the dialog open when the write fails", async () => {

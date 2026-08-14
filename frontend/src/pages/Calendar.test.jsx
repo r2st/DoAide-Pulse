@@ -610,6 +610,22 @@ describe("changing month", () => {
 
     expect(await screen.findByText("July 2026")).toBeInTheDocument();
   });
+
+  it("returns to this month from wherever you wandered to", async () => {
+    // Three clicks out is far enough that clicking back is the wrong way home,
+    // and the month heading is the only thing saying where you are.
+    respond([]);
+    draw();
+    await screen.findByText("August 2026");
+    await userEvent.click(screen.getByLabelText("Next month"));
+    await userEvent.click(screen.getByLabelText("Next month"));
+    await userEvent.click(screen.getByLabelText("Next month"));
+    await screen.findByText("November 2026");
+
+    await userEvent.click(screen.getByRole("button", { name: "Today" }));
+
+    expect(await screen.findByText("August 2026")).toBeInTheDocument();
+  });
 });
 
 /**

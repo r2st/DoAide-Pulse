@@ -287,4 +287,51 @@ describe("generating a draft", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(api.generateContent).not.toHaveBeenCalled();
   });
+
+  it("opens from the header button once the list has something in it", async () => {
+    // The empty state's button and the header's are separate elements, and the
+    // empty one stops rendering the moment there is a first piece — so the
+    // header is the only way in for every account past its first draft.
+    api.listContent.mockResolvedValue([item()]);
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("A retry budget that outlasts the outage");
+
+    await user.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(screen.getByRole("dialog", { name: "Generate content" })).toBeInTheDocument();
+  });
+
+  it("sends every field the form collects, not just the ones it defaults", async () => {
+    // Each control is wired separately, so a select that renders its value but
+    // never writes it back looks correct on screen and silently submits the
+    // default. The assertion is on the payload, not on the inputs.
+    api.listProjects.mockResolvedValue([
+      PROJECT,
+      { id: 2, name: "Second", repo_full_name: "r2st/Second" },
+    ]);
+    api.generateContent.mockResolvedValue({ id: 9 });
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Nothing written yet");
+    await user.click(screen.getByRole("button", { name: "Generate a draft" }));
+
+    const dialog = screen.getByRole("dialog");
+    await user.selectOptions(within(dialog).getByLabelText("Project"), "2");
+    await user.selectOptions(within(dialog).getByLabelText("Type"), "changelog");
+    await user.type(
+      within(dialog).getByLabelText(/Direction/),
+      "Mention the retry budget.",
+    );
+    await user.click(within(dialog).getByRole("checkbox"));
+    await user.click(within(dialog).getByRole("button", { name: "Generate" }));
+
+    expect(api.generateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: 2,
+        content_type: "changelog",
+        instructions: "Mention the retry budget.",
+      }),
+    );
+  });
 });
