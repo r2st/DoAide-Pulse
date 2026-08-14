@@ -13,13 +13,17 @@
  * would be louder, but React calls it *during a render*, where a throw can be
  * swallowed by whatever is between it and the runner — an error boundary above
  * the component under test, most of all — and vanish in exactly the case the
- * guard was installed for. Herald has no boundary today and the guard should
- * not be the reason it cannot get one. Recording always survives; `release()`
- * hands the messages back and the caller fails the test with them.
+ * guard was installed for. Herald now has boundaries at the root, on every
+ * route and around a few sections (`components/ErrorBoundary.jsx`), so that is
+ * no longer hypothetical. Recording always survives; `release()` hands the
+ * messages back and the caller fails the test with them.
  *
  * A test that means to provoke console output spies on it
  * (`vi.spyOn(console, "error")`); the spy replaces this wrapper for the
- * duration and `release()` leaves it alone.
+ * duration and `release()` leaves it alone. A test that means to provoke a
+ * *caught* error — where React's report is expected rather than incidental —
+ * should use `whileCaught` from `./caught`, which does the spying and the
+ * restoring around one render.
  */
 
 /** The two methods that mean "something is wrong", as opposed to `log`/`info`. */
