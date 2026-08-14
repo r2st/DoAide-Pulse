@@ -11,7 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.config import settings
-from app.database import get_db
+from app.database import get_db, refresh_all
 from app.deps import get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
 from app.models.preview_link import PreviewLink
@@ -1298,6 +1298,13 @@ def _queue_publish(
     content.scheduled_for = when
     db.commit()
 
+    # Before the dispatch filter below, not after: the commit expired every one
+    # of these instances, so reading ``p.id`` or ``p.scheduled_for`` off one is
+    # itself a SELECT. Refreshing first turns what was a round trip per
+    # publication — twice over, once for the filter and once for the refresh
+    # loop that used to sit at the end of this function — into a single query.
+    refresh_all(db, publications)
+
     # Nothing scheduled goes out now. Scheduled work waits for the beat task.
     #
     # "Nothing scheduled" is per publication, not per request: an immediate
@@ -1307,8 +1314,6 @@ def _queue_publish(
     if when is None:
         _dispatch([p.id for p in publications if p.scheduled_for is None])
 
-    for publication in publications:
-        db.refresh(publication)
     return publications
 
 
@@ -1482,8 +1487,7 @@ def schedule_content(
             )
             publication.status = PublicationStatus.SCHEDULED
         db.commit()
-        for publication in publications:
-            db.refresh(publication)
+        refresh_all(db, publications)
 
     return [PublicationOut.model_validate(p) for p in publications]
 
@@ -1515,8 +1519,7 @@ def unschedule_content(
         publication.scheduled_for = None
     content.scheduled_for = None
     db.commit()
-    for publication in targets:
-        db.refresh(publication)
+    refresh_all(db, targets)
     return [PublicationOut.model_validate(p) for p in targets]
 
 

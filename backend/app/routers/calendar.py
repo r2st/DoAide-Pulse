@@ -8,7 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
+from app.database import get_db, refresh_all
 from app.deps import get_current_user
 from app.models.content import Content, ContentStatus
 from app.models.mixins import as_aware, utcnow
@@ -246,8 +246,7 @@ def reschedule(
         content.scheduled_for = when
 
     db.commit()
-    for publication in targets:
-        db.refresh(publication)
+    refresh_all(db, targets)
     return [PublicationOut.model_validate(p) for p in targets]
 
 
