@@ -34,6 +34,7 @@ from app.models.template import ContentTemplate, TemplateMode
 from app.models.user import User
 from app.ratelimit import account_key, limiter
 from app.schemas.content import ContentDetail
+from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.schemas.template import (
     MAX_TEMPLATES_PER_USER,
     BuiltinOut,
@@ -114,7 +115,12 @@ def _resolve_project(
     return project if project is not None and project.user_id == user.id else None
 
 
-@router.get("/builtins", response_model=list[BuiltinOut])
+@router.get(
+    "/builtins",
+    response_model=list[BuiltinOut],
+    summary="Placeholders every template can use",
+    responses=errors(*AUTHENTICATED),
+)
 def list_builtins(
     user: User = Depends(get_current_user),
 ) -> list[BuiltinOut]:
@@ -126,7 +132,13 @@ def list_builtins(
     return [BuiltinOut(name=name, description=desc) for name, desc in BUILTINS.items()]
 
 
-@router.get("", response_model=list[TemplateOut])
+@router.get(
+    "",
+    response_model=list[TemplateOut],
+    summary="Your templates",
+    # 404 only on the narrowed form, as on `GET /triggers`.
+    responses=errors(*OWNED),
+)
 def list_templates(
     project_id: int | None = Query(default=None),
     db: Session = Depends(get_db),
@@ -144,12 +156,24 @@ def list_templates(
     return [_to_out(row) for row in db.scalars(query)]
 
 
-@router.post("", response_model=TemplateOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=TemplateOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a template",
+    responses=errors(*OWNED, status.HTTP_409_CONFLICT),
+)
 def create_template(
     payload: TemplateCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TemplateOut:
+    """Save a new template.
+
+    Two different 409s: one for the per-account ceiling, one for a name this
+    account has already used. Names are unique per user because they are how
+    the editor's template picker refers to them.
+    """
     if payload.default_project_id is not None:
         owned_project(payload.default_project_id, db, user)
 
@@ -191,16 +215,31 @@ def create_template(
     return _to_out(template)
 
 
-@router.get("/{template_id}", response_model=TemplateOut)
+@router.get(
+    "/{template_id}",
+    response_model=TemplateOut,
+    summary="One template",
+    responses=errors(*OWNED),
+)
 def get_template(
     template_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TemplateOut:
+    """One template in full, including its variable definitions."""
     return _to_out(_owned(template_id, db, user))
 
 
-@router.patch("/{template_id}", response_model=TemplateOut)
+@router.patch(
+    "/{template_id}",
+    response_model=TemplateOut,
+    summary="Change a template",
+    responses=errors(
+        *OWNED,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ),
+)
 def update_template(
     template_id: int,
     payload: TemplateUpdate,
@@ -258,7 +297,12 @@ def update_template(
     return _to_out(template)
 
 
-@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{template_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a template",
+    responses=errors(*OWNED),
+)
 def delete_template(
     template_id: int,
     db: Session = Depends(get_db),
@@ -269,7 +313,12 @@ def delete_template(
     db.commit()
 
 
-@router.post("/{template_id}/preview", response_model=RenderOut)
+@router.post(
+    "/{template_id}/preview",
+    response_model=RenderOut,
+    summary="Render a template without saving",
+    responses=errors(*OWNED),
+)
 def preview_template(
     template_id: int,
     payload: RenderRequest,
@@ -298,6 +347,12 @@ def preview_template(
     "/{template_id}/use",
     response_model=ContentDetail,
     status_code=status.HTTP_201_CREATED,
+    summary="Turn a filled-in template into a draft",
+    responses=errors(
+        *OWNED,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
 )
 @limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def use_template(
