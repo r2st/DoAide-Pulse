@@ -987,6 +987,63 @@ describe("the use dialog, beyond the happy path", () => {
     expect(api.previewTemplate.mock.calls.length).toBeLessThan(typed.length);
   });
 
+  it("ignores a superseded preview that lands after the one replacing it", async () => {
+    // The debounce only stops a request that has not left yet. Two previews can
+    // be in flight at once — pause long enough to send one, then type again —
+    // and nothing makes the server answer them in the order they were asked.
+    // The pane must show the render of what is in the fields, not whichever
+    // response happened to arrive last.
+    const user = userEvent.setup();
+    const pending = [];
+    api.previewTemplate.mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve)),
+    );
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Use" }));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    await user.type(screen.getByLabelText(/summary/i), "A");
+    await waitFor(() => expect(pending).toHaveLength(2));
+    await user.type(screen.getByLabelText(/summary/i), "B");
+    await waitFor(() => expect(pending).toHaveLength(3));
+
+    // Newest answers first, and the request it superseded lands second.
+    pending[2]({ title: "AB", body: "rendered AB" });
+    expect(await screen.findByText("rendered AB")).toBeInTheDocument();
+
+    pending[1]({ title: "A", body: "rendered A" });
+    await waitFor(() => expect(screen.queryByText("rendered A")).not.toBeInTheDocument());
+    expect(screen.getByText("rendered AB")).toBeInTheDocument();
+  });
+
+  it("does not let a superseded rejection replace the preview it beat home", async () => {
+    // The mirror of the case above, and the reason the guard is on the catch
+    // too: a stale error banner would hide a preview that is perfectly current.
+    const user = userEvent.setup();
+    const pending = [];
+    api.previewTemplate.mockImplementation(
+      () =>
+        new Promise((resolve, reject) => {
+          pending.push({ resolve, reject });
+        }),
+    );
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Use" }));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    await user.type(screen.getByLabelText(/summary/i), "A");
+    await waitFor(() => expect(pending).toHaveLength(2));
+
+    pending[1].resolve({ title: "A", body: "rendered A" });
+    expect(await screen.findByText("rendered A")).toBeInTheDocument();
+
+    pending[0].reject(new Error("Template body is malformed."));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByText("rendered A")).toBeInTheDocument();
+  });
+
   it("closes without writing anything on Cancel", async () => {
     const user = userEvent.setup();
     renderPage();

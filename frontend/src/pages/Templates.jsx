@@ -610,7 +610,18 @@ function UseDialog({ template, projects, onClose, onDone }) {
 
   // Debounced: the preview is a round trip, and one per keystroke would both
   // hammer the API and flicker the pane on every letter of a headline.
+  //
+  // `cancelled` covers the half the debounce cannot. Clearing the timer only
+  // stops a request that has not left yet; once one is in flight the next
+  // keystroke cannot recall it, and two overlapping previews can land in either
+  // order. The late one wins by arriving last, so a slow render of "A" would
+  // overwrite the fast render of "AB" and leave the pane showing a preview of
+  // text the fields no longer contain — while Create still posts "AB". That
+  // makes the preview a guess, which is the one thing this dialog promises it
+  // is not. Same for the error: a stale rejection would clear a good preview,
+  // and a stale success would clear a live error banner.
   useEffect(() => {
+    let cancelled = false;
     const timer = setTimeout(() => {
       api
         .previewTemplate(template.id, {
@@ -618,12 +629,19 @@ function UseDialog({ template, projects, onClose, onDone }) {
           project_id: projectId ? Number(projectId) : null,
         })
         .then((result) => {
+          if (cancelled) return;
           setPreview(result);
           setPreviewError(null);
         })
-        .catch((err) => setPreviewError(err.message));
+        .catch((err) => {
+          if (cancelled) return;
+          setPreviewError(err.message);
+        });
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [template.id, values, projectId]);
 
   async function create() {
