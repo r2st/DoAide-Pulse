@@ -24,6 +24,7 @@ from fastapi.routing import APIRoute
 
 from app.config import settings
 from app.main import app
+from app.models.content import Content, ContentStatus, ContentType
 from app.routers import misc
 
 FEED = "/api/v1/projects/{}/feed.xml"
@@ -168,10 +169,29 @@ def test_the_authenticated_surface_is_not_accidentally_anonymous():
 # --------------------------------------------------------------------------- #
 
 
-def test_the_public_feed_is_limited(client, project):
+@pytest.fixture
+def feed_project(project, db):
+    """A project whose feed answers 200.
+
+    The bare ``project`` fixture publishes nothing, and a feed with no
+    published items is a 404 — it would otherwise name the project to an
+    anonymous caller walking ids. These tests are about the limiter, so they
+    need the served case, not the enumeration guard.
+    """
+    db.add(
+        Content(
+            project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
+            title="Herald 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+        )
+    )
+    db.commit()
+    return project
+
+
+def test_the_public_feed_is_limited(client, feed_project):
     """20/minute. The 21st request is refused rather than served."""
     assert settings.rate_limit_public_feed.startswith("20/minute")
-    url = FEED.format(project.id)
+    url = FEED.format(feed_project.id)
 
     for _ in range(20):
         assert client.get(url).status_code == 200
@@ -182,14 +202,14 @@ def test_the_public_feed_is_limited(client, project):
     assert resp.headers.get("retry-after")
 
 
-def test_the_feed_budget_is_per_caller_not_global(client, project):
+def test_the_feed_budget_is_per_caller_not_global(client, feed_project):
     """One noisy reader must not take the feed down for everyone else.
 
     This is the failure mode a global counter would introduce while fixing the
     other one, and it matters more here than on login: the feed is a thing real
     readers poll on a schedule nobody controls.
     """
-    url = FEED.format(project.id)
+    url = FEED.format(feed_project.id)
     for _ in range(20):
         client.get(url, headers={"X-Forwarded-For": "203.0.113.10"})
     assert (
@@ -212,9 +232,9 @@ def test_a_missing_project_still_spends_the_budget(client):
     assert client.get(FEED.format(999_999)).status_code == 429
 
 
-def test_the_limit_does_not_change_what_the_feed_serves(client, project):
+def test_the_limit_does_not_change_what_the_feed_serves(client, feed_project):
     """A limit that altered the response would be a different bug."""
-    resp = client.get(FEED.format(project.id))
+    resp = client.get(FEED.format(feed_project.id))
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/rss+xml")
     assert "<rss" in resp.text

@@ -383,6 +383,14 @@ def project_feed(
     claims: this is two queries and an XML render, the project id is a small
     integer anyone can walk, and it was the one anonymous endpoint in the API
     that would answer as fast as it was asked.
+
+    A project with nothing published answers 404, not an empty feed. The
+    channel block is built from ``name``, ``description`` and ``live_url``,
+    which are the project's own metadata and not published content — serving
+    them for an empty feed turned a walkable integer id into an inventory of
+    every project on the instance, including private ones that had never
+    published anywhere. "Only published content is included" has to cover the
+    channel, not just the items.
     """
     project = db.get(Project, project_id)
     if project is None:
@@ -396,6 +404,11 @@ def project_feed(
             .limit(rss.FEED_ITEM_LIMIT)
         )
     )
+    if not items:
+        # Same status and same detail as a project id that does not exist:
+        # a caller must not be able to tell the two apart.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
     xml = rss.build_feed(project, items, self_url=str(request.url))
     return Response(content=xml, media_type="application/rss+xml")
 

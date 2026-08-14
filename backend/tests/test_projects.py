@@ -241,6 +241,63 @@ def test_feed_404s_for_a_nonexistent_project(client):
     assert resp.status_code == 404
 
 
+def test_feed_404s_for_a_project_with_nothing_published(client, project, db):
+    """An empty feed used to answer 200 and name the project in the channel.
+
+    ``project_id`` is a small integer and this endpoint takes no token, so
+    serving the channel block for a project with no published items published
+    ``name``, ``description`` and ``live_url`` for every project on the
+    instance to anyone willing to count. None of those three are published
+    content.
+    """
+    db.add(
+        Content(
+            project_id=project.id, content_type=ContentType.HOW_TO,
+            title="Unfinished thing", slug="unfinished-thing", status=ContentStatus.DRAFT,
+        )
+    )
+    db.commit()
+
+    resp = client.get(f"/api/v1/projects/{project.id}/feed.xml")
+    assert resp.status_code == 404
+    assert project.name not in resp.text
+    assert project.description not in resp.text
+    assert project.live_url not in resp.text
+
+
+def test_feed_does_not_distinguish_empty_from_absent(client, project):
+    """The two 404s must be one response.
+
+    A different status, detail or body for "exists but published nothing"
+    versus "no such project" answers the enumeration question anyway, just one
+    step further along.
+    """
+    empty = client.get(f"/api/v1/projects/{project.id}/feed.xml")
+    absent = client.get("/api/v1/projects/999999/feed.xml")
+
+    assert empty.status_code == absent.status_code == 404
+    assert empty.json() == absent.json()
+
+
+def test_feed_returns_once_something_is_published(client, project, db):
+    """The 404 above is about having no published items, not about the project.
+
+    Guards the obvious over-correction: 404-ing the whole endpoint would also
+    make this test pass if it only asserted on the empty case.
+    """
+    db.add(
+        Content(
+            project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
+            title="Herald 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+        )
+    )
+    db.commit()
+
+    resp = client.get(f"/api/v1/projects/{project.id}/feed.xml")
+    assert resp.status_code == 200
+    assert "Herald 1.0" in resp.text
+
+
 # --------------------------------------------------------------------------- #
 # Platform casing                                                              #
 # --------------------------------------------------------------------------- #
