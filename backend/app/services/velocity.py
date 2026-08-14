@@ -278,6 +278,7 @@ def curves(
     *,
     project_id: int | None = None,
     platform: Platform | None = None,
+    publication_id: int | None = None,
     now: datetime | None = None,
     within_hours: float | None = None,
 ) -> list[Curve]:
@@ -286,6 +287,13 @@ def curves(
     Publications with no ``published_at`` are skipped rather than defaulted to
     their first snapshot: every window here is measured from the moment the post
     went live, and a guessed origin would silently shift all of them.
+
+    Pass *publication_id* when only one curve is wanted. The filter belongs in
+    the query rather than in the caller: the detail endpoint used to build every
+    curve on the account and then keep one, so opening a chart for a single post
+    read the whole snapshot history of every post the account had ever
+    published. It stays a ``list`` — empty when the id is not this user's, which
+    is what makes "not yours" and "not there" the same answer there.
 
     Two queries regardless of how many publications there are — the snapshots
     are fetched in one pass and grouped in Python, because the alternative is a
@@ -324,6 +332,8 @@ def curves(
         query = query.where(Content.project_id == project_id)
     if platform is not None:
         query = query.where(Publication.platform == platform)
+    if publication_id is not None:
+        query = query.where(Publication.id == publication_id)
 
     rows = db.execute(query).all()
     if not rows:

@@ -99,26 +99,30 @@ def velocity_curve(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """One publication's full growth curve, for the detail chart."""
-    for curve in velocity.curves(db, user.id):
-        if curve.publication_id == publication_id:
-            return {
-                **curve.as_dict(),
-                "points": [
-                    {
-                        "hours": round(p.hours, 2),
-                        "views": p.views,
-                        "engagement": p.engagement,
-                    }
-                    for p in curve.points
-                ],
-            }
-    # Also the answer for a publication belonging to someone else: the
-    # ownership filter is in the query, so "not yours" and "not there" are
-    # indistinguishable from here, which is the intended behaviour.
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
-    )
+    """One publication's full growth curve, for the detail chart.
+
+    The id is filtered in the query, not after it. Building every curve on the
+    account to keep one made opening a single chart cost the entire snapshot
+    history of every post the account had published — the same unbounded read
+    :mod:`app.services.velocity` bounds for the calendar, on a page reached by
+    clicking a row.
+    """
+    found = velocity.curves(db, user.id, publication_id=publication_id)
+    if not found:
+        # Also the answer for a publication belonging to someone else: the
+        # ownership filter is in the query, so "not yours" and "not there" are
+        # indistinguishable from here, which is the intended behaviour.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
+        )
+    curve = found[0]
+    return {
+        **curve.as_dict(),
+        "points": [
+            {"hours": round(p.hours, 2), "views": p.views, "engagement": p.engagement}
+            for p in curve.points
+        ],
+    }
 
 
 @router.get(
