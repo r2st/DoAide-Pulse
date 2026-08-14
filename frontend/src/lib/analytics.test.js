@@ -117,6 +117,29 @@ describe("platformShares", () => {
     expect(platformShares(undefined)).toEqual([]);
   });
 
+  it("returns zero publication shares when nothing has been published at all", () => {
+    // Views with no publications behind them is what a project looks like after
+    // its publication rows are pruned and the view counters are not — the row
+    // survives the filter on views alone, and there is no output to take a
+    // share of.
+    const result = platformShares([
+      { platform: "devto", published: 0, views: 900 },
+      { platform: "bluesky", published: 0, views: 100 },
+    ]);
+    expect(result.map((r) => r.publicationShare)).toEqual([0, 0]);
+    expect(result[0].viewShare).toBeCloseTo(0.9);
+  });
+
+  it("gives a row with no views of its own a zero share of the ones there are", () => {
+    const result = platformShares([
+      { platform: "devto", published: 2, views: 500 },
+      { platform: "bluesky", published: 4, views: 0 },
+    ]);
+    const bluesky = result.find((r) => r.platform === "bluesky");
+    expect(bluesky.viewShare).toBe(0);
+    expect(bluesky.publicationShare).toBeCloseTo(2 / 3);
+  });
+
   it("reads a row that omits its counters as zero, not as NaN", () => {
     // A platform row whose counters have not been backfilled yet still has to
     // divide: one `undefined` in the numerator makes every share on the panel
