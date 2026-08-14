@@ -82,6 +82,37 @@ def _owned_content(content_id: int, db: Session, user: User) -> Content:
     return content
 
 
+def _is_live(content: Content) -> bool:
+    """Whether any of this piece is readable on a platform right now.
+
+    The edit freeze in :func:`update_content` asks this rather than reading the
+    status column, because the column stops saying ``published`` before the post
+    stops being live. Archiving is the case: it is the one edit a published
+    piece accepts, it means "stop showing me this" rather than "this never went
+    out", and it moves the status to ``archived`` — which took the piece out of
+    the freeze while it was still up on Dev.to. Two calls then did what one was
+    refused:
+
+        PATCH {"body_markdown": ...}   -> 409, already published
+        PATCH {"status": "archived"}   -> 200
+        PATCH {"body_markdown": ...}   -> 200, and the slug moves with the title
+
+    Leaving Herald's copy of a live post saying something the post does not,
+    under a slug that is no longer the one the canonical link was published
+    with. The reason the freeze gives — that editing here would not change what
+    is live on the platforms — is exactly as true after archiving, so the
+    question it asks is "did any of this go out", not "what does the column
+    say".
+
+    ``publications`` is ``lazy="selectin"`` and ``_owned_content`` has already
+    loaded the piece, so this costs no query of its own.
+    """
+    return content.status == ContentStatus.PUBLISHED or any(
+        publication.status == PublicationStatus.PUBLISHED
+        for publication in content.publications
+    )
+
+
 def _owned_content_map(
     content_ids: Sequence[int], db: Session, user: User
 ) -> dict[int, Content]:
@@ -1179,7 +1210,7 @@ def update_content(
     data = payload.model_dump(exclude_unset=True)
     reject_nulls(Content, data)
 
-    if content.status == ContentStatus.PUBLISHED and set(data) - {"status", "scheduled_for"}:
+    if _is_live(content) and set(data) - {"status", "scheduled_for"}:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This piece is already published. Editing it here would not "
