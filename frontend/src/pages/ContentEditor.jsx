@@ -257,6 +257,20 @@ export default function ContentEditor() {
       // The API rejects a relative path and reads "" as "no image".
       cover_image_url: sent.cover_image_url.trim() || null,
     });
+    // A 2xx is not proof there is a piece in the reply. `lib/api` reads a body
+    // it cannot parse as "no structured body" and answers `null` — which is the
+    // right call there, because a gateway timeout page and a proxy's error HTML
+    // are not Herald talking. Here it was committed into state regardless, and
+    // the next render read `draftFrom(null).title` and threw: the editor
+    // disappeared into its error boundary, taking the author's unsaved text off
+    // the screen at the exact moment the save had failed to store it.
+    //
+    // Refusing it puts the failure on the path built for one. The text stays in
+    // the fields, the recovery buffer is untouched, and the status line says the
+    // save did not land — which is all true, and none of it was before.
+    if (!updated || typeof updated !== "object") {
+      throw new Error("The server did not return the saved piece — not saved.");
+    }
     setData(updated);
     // Take the server's copy — which may have normalised a keyword list or a
     // trimmed URL — only if the fields still hold what was sent. Anything typed

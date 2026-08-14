@@ -349,6 +349,27 @@ describe("auto-save", () => {
     expect(draftStore.load(3)?.draft.title).toBe("Saved title!");
   });
 
+  it("treats a 2xx with no piece in it as a save that did not land", async () => {
+    // `lib/api` answers `null` for a body it cannot parse — a gateway timeout
+    // page, a proxy's error HTML, anything that is not Herald talking. That is
+    // the right reading there, and this is what happened to it here: `null`
+    // went into state, the next render read `draftFrom(null).title`, and the
+    // editor disappeared into its error boundary — taking the author's unsaved
+    // text off the screen at the moment the save had failed to store it.
+    api.updateContent.mockResolvedValue(null);
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    useClock();
+
+    typeInto(title, "Saved title!");
+    await settle();
+
+    // Still the editor, still holding the text, saying what happened.
+    expect(screen.getByLabelText(/^Title/i)).toHaveValue("Saved title!");
+    expect(screen.getByText("Auto-save failed")).toBeInTheDocument();
+    expect(draftStore.load(3)?.draft.title).toBe("Saved title!");
+  });
+
   it("does not retry a failed save until there is something new to send", async () => {
     api.updateContent.mockRejectedValue(new Error("Service unavailable"));
     draw();

@@ -120,6 +120,15 @@ beforeEach(() => {
   api.getContent.mockResolvedValue(content());
   api.platforms.mockResolvedValue([]);
   api.listPreviewLinks.mockResolvedValue([]);
+  // The auto-save is on a real 2-second timer in this file, and several tests
+  // here type into a field — so on a machine slow enough for the typing itself
+  // to outlast the debounce, the timer fires *during* the test rather than
+  // being cleared by the unmount after it. An unstubbed `updateContent` then
+  // resolves `undefined`, which the editor took for a saved piece and crashed
+  // on: a failure with no connection to what the test was about, appearing only
+  // under load. Answering the way the server does costs nothing and makes the
+  // file's timing irrelevant.
+  api.updateContent.mockResolvedValue(content());
 });
 
 // --------------------------------------------------------------------------- //
