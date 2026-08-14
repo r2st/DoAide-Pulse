@@ -600,3 +600,54 @@ def test_an_empty_repo_keeps_a_null_watermark_rather_than_inventing_one(monkeypa
 
     assert activity.head_sha is None
     assert not activity.has_news
+
+
+# -- A branch that was rewritten under us ------------------------------------ #
+#
+# `fetch_commits` truncates the page at the watermark. When the watermark is not
+# *in* the page the whole page comes back, and the module docstring calls that
+# the right failure: over-reporting means the post says "a lot has changed",
+# never that a change was missed. What makes it a recoverable failure rather
+# than a permanent one is `head_sha` — it has to advance to the page's newest
+# commit. Falling back to the vanished watermark would re-report the same page
+# on every scan for as long as the branch stayed rewritten.
+
+
+def test_a_force_push_that_orphans_the_watermark_reports_the_page_and_moves_on(
+    monkeypatch,
+):
+    page = [
+        {"sha": f"new{i}", "commit": {"message": f"rewritten {i}"}} for i in range(5)
+    ]
+
+    def handler(url, **_):
+        if url.endswith("/commits"):
+            return _response(page)
+        if url.endswith("/releases"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo", since_sha="orphaned")
+
+    assert len(activity.new_commits) == 5
+    # The new HEAD, not "orphaned" — otherwise every later scan repeats this one.
+    assert activity.head_sha == "new0"
+
+
+def test_a_repo_that_moved_more_than_a_page_reports_the_page_and_moves_on(monkeypatch):
+    """Same shape, different cause: the watermark is real but too far back."""
+    page = [{"sha": f"c{i}", "commit": {"message": f"commit {i}"}} for i in range(100)]
+
+    def handler(url, **_):
+        if url.endswith("/commits"):
+            return _response(page)
+        if url.endswith("/releases"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo", since_sha="a-thousand-back")
+
+    assert len(activity.new_commits) == 100
+    assert activity.head_sha == "c0"
