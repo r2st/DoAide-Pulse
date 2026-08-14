@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.orm import Session, lazyload
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.content import Content
@@ -330,7 +330,7 @@ class Curve:
 
 def _build_curve(
     publication: Publication,
-    content: Content,
+    title: str,
     metrics: list[ContentMetric],
     *,
     now: datetime,
@@ -359,7 +359,7 @@ def _build_curve(
         publication_id=publication.id,
         content_id=publication.content_id,
         platform=publication.platform,
-        title=content.title,
+        title=title,
         published_at=published_at,
         age_hours=max(0.0, (now - published_at).total_seconds() / 3600),
         points=points,
@@ -424,17 +424,18 @@ def curves(
         return []
 
     query = (
-        select(Publication, Content)
+        # ``_build_curve`` reads exactly one field off the content: its title.
+        # Selecting the entity to reach it brought the whole row — the article
+        # body, the JSON keyword and metadata columns — once per publication,
+        # and through ``Content.publications``' ``lazy="selectin"`` every
+        # publication of every published piece as well. The column answers both
+        # at once: there is no entity left to trigger a relationship load, so
+        # the ``lazyload`` that used to hold back the second problem is gone
+        # with the first. This function has nine callers, including the alert
+        # pass that both the dashboard and the weekly digest run.
+        select(Publication, Content.title)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
-        # ``_build_curve`` reads exactly one field off the content: its title.
-        # ``Content.publications`` is ``lazy="selectin"`` for the content list's
-        # sake, so without this every caller of this function also fetched every
-        # publication of every published piece the user has — and this function
-        # has nine callers, including the alert pass that both the dashboard and
-        # the weekly digest run. ``lazyload``, not ``noload``: a curve that
-        # someday needs a publication should be slow, not wrong.
-        .options(lazyload(Content.publications))
         .where(
             Project.user_id == user_id,
             Publication.status == PublicationStatus.PUBLISHED,
@@ -480,9 +481,9 @@ def curves(
 
     built = [
         _build_curve(
-            pub, content, by_publication[pub.id], now=moment, within_hours=within_hours
+            pub, title, by_publication[pub.id], now=moment, within_hours=within_hours
         )
-        for pub, content in rows
+        for pub, title in rows
     ]
     return sorted(built, key=lambda c: c.published_at, reverse=True)
 
