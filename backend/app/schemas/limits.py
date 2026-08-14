@@ -11,6 +11,10 @@ on to a JSON column — which, unlike a ``String(n)``, has no width of its own t
 refuse them — and from there into an LLM prompt (``project.tech_stack``) or
 straight out to a publishing adapter (``content.tags``).
 
+A ``dict[str, str]`` field has the same hole twice over, because a mapping has
+two sides: ``ConnectionCreate.credentials`` said ``min_length=1``, which is a
+floor on the number of entries and a bound on nothing at all.
+
 These are annotations rather than validators on purpose: a constraint declared
 in the type appears in the generated OpenAPI, so a client can see the limit
 before it sends anything, and a validator's ``ValueError`` cannot say which
@@ -46,4 +50,50 @@ Keyword = Annotated[str, StringConstraints(max_length=KEYWORD_MAX_LENGTH)]
 #: the size.
 TechStackEntry = Annotated[str, StringConstraints(max_length=TAG_MAX_LENGTH)]
 
-__all__ = ["Keyword", "Tag", "TechStackEntry"]
+#: The most credential fields one platform connection may carry.
+#:
+#: The widest adapter asks for five (``git``). Twenty is room for one that has
+#: not been written yet, and still a bound — the router refuses any key the
+#: adapter did not declare, but it does that *after* pydantic has parsed the
+#: body, so a payload of a million keys was a million keys parsed before
+#: anything looked at them.
+MAX_CREDENTIAL_FIELDS = 20
+
+#: The longest a credential *key* may be.
+#:
+#: Every real one is an identifier of twenty characters or fewer
+#: (``application_password`` is the longest). The bound matters because an
+#: unknown key is echoed back in the 400 that rejects it — the message names
+#: which field was not recognised, which is only useful if the field name is
+#: something a human could have typed.
+CREDENTIAL_KEY_MAX_LENGTH = 100
+
+#: The longest a credential *value* may be.
+#:
+#: Deliberately generous: these are API keys, app passwords, handles, repo
+#: paths and site URLs, none of which run past a few hundred characters, but a
+#: signed token can be long and refusing a legitimate one would lock a user out
+#: of their own platform. What matters is that the ceiling exists. Without it
+#: an oversized value was handed to ``adapter.verify`` — which sends it to the
+#: platform over the network — and then encrypted and written to a ``Text``
+#: column with no width of its own to refuse it.
+CREDENTIAL_VALUE_MAX_LENGTH = 2000
+
+#: One key in a ``credentials`` mapping.
+CredentialKey = Annotated[str, StringConstraints(max_length=CREDENTIAL_KEY_MAX_LENGTH)]
+
+#: One value in a ``credentials`` mapping.
+CredentialValue = Annotated[
+    str, StringConstraints(max_length=CREDENTIAL_VALUE_MAX_LENGTH)
+]
+
+__all__ = [
+    "CREDENTIAL_KEY_MAX_LENGTH",
+    "CREDENTIAL_VALUE_MAX_LENGTH",
+    "MAX_CREDENTIAL_FIELDS",
+    "CredentialKey",
+    "CredentialValue",
+    "Keyword",
+    "Tag",
+    "TechStackEntry",
+]

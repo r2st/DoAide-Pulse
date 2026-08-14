@@ -11,13 +11,26 @@ from pydantic import BaseModel, Field
 
 from app.models.platform_connection import ConnectionStatus
 from app.models.publication import Platform
+from app.schemas.limits import (
+    MAX_CREDENTIAL_FIELDS,
+    CredentialKey,
+    CredentialValue,
+)
 
 
 class ConnectionCreate(BaseModel):
     platform: Platform
     #: Keys match the adapter's ``credential_fields``. Validated against them by
     #: the router, so a typo is rejected rather than silently stored.
-    credentials: dict[str, str] = Field(min_length=1)
+    #:
+    #: Bounded on all three axes, because a mapping has more than one. The
+    #: ``min_length=1`` here was a floor on the entry count and nothing else:
+    #: neither key nor value had a ceiling, and the router's own checks run
+    #: after parsing, so an oversized value reached ``adapter.verify`` — which
+    #: puts it on the network — before anything had looked at its size.
+    credentials: dict[CredentialKey, CredentialValue] = Field(
+        min_length=1, max_length=MAX_CREDENTIAL_FIELDS
+    )
 
 
 class ConnectionOut(BaseModel):
