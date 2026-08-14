@@ -281,3 +281,247 @@ describe("retrying", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
   });
 });
+
+/**
+ * The connection pill.
+ *
+ * Four states, three of which mean "this platform will not publish tonight" and
+ * for three different reasons — no adapter, no key, a key the platform has
+ * stopped accepting. The grid is where an operator looks to find out why a post
+ * did not go out, and collapsing any two of these into one badge sends them to
+ * the wrong fix.
+ */
+describe("what a platform tile says about the connection", () => {
+  it("marks a platform with a working key as connected", async () => {
+    draw();
+
+    expect(await screen.findByText("connected")).toBeInTheDocument();
+  });
+
+  it("marks a platform with no key at all as not connected", async () => {
+    api.platforms.mockResolvedValue([{ ...DEVTO, connection: null }]);
+    draw();
+
+    expect(await screen.findByText("not connected")).toBeInTheDocument();
+  });
+
+  it("marks a key the platform has stopped accepting as needing a reconnect", async () => {
+    api.platforms.mockResolvedValue([
+      { ...DEVTO, connection: { status: "invalid" } },
+    ]);
+    draw();
+
+    expect(await screen.findByText("reconnect")).toBeInTheDocument();
+  });
+
+  it("marks an adapter Herald has not written as not built, whatever the key says", async () => {
+    // `implemented` wins over the connection: a stored credential for an
+    // adapter that does not exist is not a working connection, and saying
+    // "connected" would send someone hunting for a bug in the credential.
+    api.platforms.mockResolvedValue([
+      {
+        platform: "medium",
+        display_name: "Medium",
+        implemented: false,
+        connection: { status: "connected" },
+      },
+    ]);
+    draw();
+
+    expect(await screen.findByText("not built")).toBeInTheDocument();
+    expect(screen.queryByText("connected")).not.toBeInTheDocument();
+  });
+
+  it("counts failures on the tile, and only when there are some", async () => {
+    api.analytics.mockResolvedValue({
+      by_platform: [{ platform: "devto", published: 12, views: 3400, failed: 3 }],
+      by_content_type: [],
+      top_content: [],
+    });
+    draw();
+
+    expect(await screen.findByText("3 failed")).toBeInTheDocument();
+  });
+
+  it("says nothing about failures when there are none", async () => {
+    draw();
+
+    await screen.findByText("12 published");
+    expect(screen.queryByText(/failed/)).not.toBeInTheDocument();
+  });
+
+  it("repeats the adapter's caveat on the tile", async () => {
+    api.platforms.mockResolvedValue([
+      { ...DEVTO, caveat: "Posts land as drafts; you publish them by hand." },
+    ]);
+    draw();
+
+    expect(
+      await screen.findByText("Posts land as drafts; you publish them by hand."),
+    ).toBeInTheDocument();
+  });
+});
+
+/**
+ * The two sections below the grid, both of which appear only when analytics has
+ * something to put in them.
+ *
+ * Each is a whole `<section>` behind a `length > 0` guard rather than an empty
+ * state, which is right — a "What performs" header over nothing is a worse
+ * answer than no header — but it means the guard is the only thing standing
+ * between a working page and two headers with hairlines under them.
+ */
+describe("the performance sections", () => {
+  const WITH_ANALYTICS = {
+    by_platform: [{ platform: "devto", published: 12, views: 3400, failed: 0 }],
+    by_content_type: [
+      {
+        content_type: "announcement",
+        label: "Announcement",
+        publications: 5,
+        views: 3000,
+        avg_views: 600,
+      },
+    ],
+    top_content: [
+      { content_id: 3, title: "Shipping the trigger engine", views: 2400, engagement: 180 },
+    ],
+  };
+
+  it("breaks views down by kind of piece", async () => {
+    api.analytics.mockResolvedValue(WITH_ANALYTICS);
+    draw();
+
+    const row = (await screen.findByText("Announcement")).closest("li");
+    expect(within(row).getByText("5 pub")).toBeInTheDocument();
+    expect(within(row).getByText("3,000 views")).toBeInTheDocument();
+    expect(within(row).getByText("600 avg")).toBeInTheDocument();
+  });
+
+  it("dashes an average nobody has measured rather than calling it zero", async () => {
+    api.analytics.mockResolvedValue({
+      ...WITH_ANALYTICS,
+      by_content_type: [{ ...WITH_ANALYTICS.by_content_type[0], avg_views: null }],
+    });
+    draw();
+
+    const row = (await screen.findByText("Announcement")).closest("li");
+    expect(within(row).getByText("—")).toBeInTheDocument();
+  });
+
+  it("links the best-performing pieces to their own editor", async () => {
+    api.analytics.mockResolvedValue(WITH_ANALYTICS);
+    draw();
+
+    const link = await screen.findByRole("link", {
+      name: "Shipping the trigger engine",
+    });
+    expect(link).toHaveAttribute("href", "/content/3");
+    const row = link.closest("li");
+    expect(within(row).getByText("2,400 views")).toBeInTheDocument();
+    expect(within(row).getByText("180 eng")).toBeInTheDocument();
+  });
+
+  it("shows neither header when analytics has nothing to break down", async () => {
+    draw();
+
+    await screen.findByText("12 published");
+    expect(screen.queryByText("What performs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Best performing")).not.toBeInTheDocument();
+  });
+
+  it("shows neither header while analytics is still out", async () => {
+    // `analytics.data?.by_content_type?.length > 0` is `undefined > 0`, which
+    // is false — the guard has to survive the loading state as well as the
+    // empty one, and it does so by accident of the optional chaining.
+    api.analytics.mockReturnValue(new Promise(() => {}));
+    draw();
+
+    await screen.findByText("Dev.to");
+    expect(screen.queryByText("What performs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Best performing")).not.toBeInTheDocument();
+  });
+});
+
+describe("what a queue row says", () => {
+  function queued(overrides = {}) {
+    return {
+      id: 1,
+      content_id: 7,
+      platform: "devto",
+      status: "pending",
+      scheduled_for: null,
+      attempts: 0,
+      error: null,
+      ...overrides,
+    };
+  }
+
+  it("says a pending row is waiting on a worker rather than showing no time", async () => {
+    api.publicationQueue.mockResolvedValue([queued()]);
+    draw();
+
+    expect(
+      await screen.findByText(/as soon as a worker picks it up/),
+    ).toBeInTheDocument();
+  });
+
+  it("counts a single attempt in the singular", async () => {
+    api.publicationQueue.mockResolvedValue([
+      queued({ status: "failed", attempts: 1, error: "401 Unauthorized" }),
+    ]);
+    draw();
+
+    expect(await screen.findByText(/1 attempt(?!s)/)).toBeInTheDocument();
+  });
+
+  it("counts several attempts in the plural", async () => {
+    api.publicationQueue.mockResolvedValue([
+      queued({ status: "failed", attempts: 3, error: "401 Unauthorized" }),
+    ]);
+    draw();
+
+    expect(await screen.findByText(/3 attempts/)).toBeInTheDocument();
+  });
+
+  it("says nothing about attempts on a row that has not been tried", async () => {
+    api.publicationQueue.mockResolvedValue([queued()]);
+    draw();
+
+    await screen.findByText(/as soon as a worker/);
+    expect(screen.queryByText(/attempt/)).not.toBeInTheDocument();
+  });
+
+  it("shows what the platform actually said when it refused", async () => {
+    api.publicationQueue.mockResolvedValue([
+      queued({ status: "failed", attempts: 1, error: "422 title too long" }),
+    ]);
+    draw();
+
+    expect(await screen.findByText("422 title too long")).toBeInTheDocument();
+  });
+
+  it("links the row to the piece it is trying to publish", async () => {
+    api.publicationQueue.mockResolvedValue([queued()]);
+    draw();
+
+    expect(await screen.findByRole("link", { name: "Devto" })).toHaveAttribute(
+      "href",
+      "/content/7",
+    );
+  });
+
+  it("draws a placeholder rather than 'nothing queued' while the queue loads", async () => {
+    // The wrong answer here is the confident one: an empty state that says
+    // "Nothing queued" over a queue that has not arrived tells the user their
+    // posts are gone.
+    api.publicationQueue.mockReturnValue(new Promise(() => {}));
+    const { container } = draw();
+
+    // Waits for the two calls that *do* answer, so their state lands inside
+    // `act`; the queue is still out at this point and stays out.
+    await screen.findByText("Dev.to");
+    expect(container.querySelector("[aria-hidden='true']")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing queued")).not.toBeInTheDocument();
+  });
+});
