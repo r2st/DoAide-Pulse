@@ -21,7 +21,15 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-filterwarnings = ["ignore::DeprecationWarning"]
+# `error`, not `ignore::DeprecationWarning`. The blanket ignore was hiding
+# nothing — with it lifted the suite emitted exactly one deprecation, from
+# Starlette's test client — but it also meant the *next* one would arrive
+# silently, and a deprecation is a dated notice that some dependency is about
+# to stop working. Herald tracks FastAPI and Starlette closely enough that the
+# notice period is the only warning it gets. Anything genuinely unfixable from
+# here belongs below this line with a reason attached, not under a category
+# ignore that also covers everything nobody has looked at yet.
+filterwarnings = ["error"]
 
 # Coverage is configured here rather than passed on the command line, so that a
 # bare `pytest --cov` is the whole gate: source, branch mode and the regression
