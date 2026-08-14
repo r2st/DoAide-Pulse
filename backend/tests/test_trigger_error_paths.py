@@ -575,3 +575,80 @@ def test_a_signal_carrying_no_news_is_skipped_before_the_model_is_called(
     assert event is not None
     assert event.status == TriggerEventStatus.SKIPPED
     assert "nothing to write about" in event.detail
+
+
+# --------------------------------------------------------------------------- #
+# A failure that arrives as a failed *commit*                                  #
+# --------------------------------------------------------------------------- #
+#
+# The two handlers below are written to turn a crash into a recorded reason on a
+# row. Both of them then have to write that reason — and if the crash was a
+# commit failing, the session refuses to emit SQL until somebody rolls back. So
+# the recovery path was itself unreachable in exactly the case where the session
+# is dirty, and what came out instead was a ``PendingRollbackError`` from inside
+# the ``except`` arm.
+#
+# ``tests/test_sweep_survives_a_failed_write.py`` covers the same rule for the
+# periodic sweeps.
+
+
+def _poison(session) -> None:
+    """Leave *session* as a failed commit leaves it: dirty, refusing SQL."""
+    from app.models.content import Content
+
+    session.add(Content(project_id=None, title="x", slug="x", body_markdown=""))
+    session.commit()
+
+
+def test_a_generation_whose_commit_fails_still_lands_on_the_event_row(
+    db, writing_project, monkeypatch, caplog
+):
+    """A dirty session must not cost the user the only record of the failure.
+
+    ``generate_and_route`` commits, so "it blew up" and "its commit blew up" are
+    both ordinary outcomes. The second one used to escape the handler on the log
+    line — ``trigger.id`` needs a SELECT the session will not run — leaving the
+    event ``pending`` forever with nothing to say why.
+    """
+    trigger = _trigger(db, writing_project, TriggerKind.WEBHOOK)
+
+    def explode_on_commit(session, *args, **kwargs):
+        _poison(session)
+
+    monkeypatch.setattr(content_pipeline, "generate_and_route", explode_on_commit)
+
+    with caplog.at_level("ERROR"):
+        event = triggers.fire(db, trigger, _signal())
+
+    assert event is not None
+    assert event.status == TriggerEventStatus.FAILED
+    assert "Generation failed" in event.detail
+
+
+def test_a_poll_whose_commit_fails_still_records_the_error_on_the_trigger(
+    db, project, monkeypatch, caplog
+):
+    """``_mark_checked`` is the only thing that counts a failure. It has to run.
+
+    An RSS or GitHub poll that finds news writes an event and commits, so the
+    handler in ``check`` can be entered with a dirty session. Its own commit then
+    raised, so the error never reached the row — and a trigger failing this way
+    could never accumulate the ``consecutive_failures`` that deactivate it.
+    """
+    trigger = _trigger(
+        db, project, TriggerKind.RSS, feed_url="https://example.test/feed.xml"
+    )
+
+    def explode_on_commit(session, _trigger_row):
+        _poison(session)
+
+    monkeypatch.setattr(triggers, "_check_rss", explode_on_commit)
+
+    with caplog.at_level("ERROR"):
+        result = triggers.check(db, trigger)
+
+    assert result["status"] == "error"
+    db.refresh(trigger)
+    assert trigger.consecutive_failures == 1
+    assert "Unexpected error" in trigger.last_error
+    assert trigger.last_checked_at is not None

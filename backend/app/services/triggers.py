@@ -442,8 +442,15 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
             },
         )
     except Exception as exc:
-        logger.exception("trigger %s failed while writing: %s", trigger.id, exc)
+        # Rollback before the log line, not after. ``generate_and_route`` commits,
+        # and a commit that fails leaves the session unable to emit SQL — so
+        # reading ``trigger.id`` to name the trigger raised ``PendingRollbackError``
+        # from inside this handler. That escaped the whole of ``_generate_for``,
+        # which meant the event stayed ``pending`` forever: the two lines below,
+        # the only thing that ever records a generation failure on it, were never
+        # reached.
         db.rollback()
+        logger.exception("trigger %s failed while writing: %s", trigger.id, exc)
         event.status = TriggerEventStatus.FAILED
         event.detail = f"Generation failed: {exc}"
         db.commit()
@@ -508,6 +515,15 @@ def check(db: Session, trigger: Trigger) -> dict[str, Any]:
         _mark_checked(db, trigger, str(exc))
         return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
     except Exception as exc:
+        # The checks above write — an RSS or GitHub poll that finds news records
+        # a ``TriggerEvent`` and commits — so this handler can be entered with a
+        # session that has a failed flush behind it and will refuse to emit SQL.
+        # Without the rollback, ``_mark_checked``'s own commit raised
+        # ``PendingRollbackError`` on the way out, so the error this arm exists to
+        # record was never written to the row and never counted against
+        # ``consecutive_failures``: a trigger failing this way could not reach the
+        # threshold that deactivates it, and the sweep saw the raise instead.
+        db.rollback()
         logger.exception("trigger %s crashed: %s", trigger.id, exc)
         _mark_checked(db, trigger, f"Unexpected error: {exc}")
         return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
