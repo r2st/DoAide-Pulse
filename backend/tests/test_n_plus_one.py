@@ -18,8 +18,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.models.content import Content, ContentStatus, ContentType
+from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.project import AutopilotMode, Project, Tone
 from app.models.publication import Platform, Publication, PublicationStatus
+from app.services.crypto import encrypt_credentials
 from app.tasks import publish_tasks
 
 
@@ -539,3 +541,83 @@ def test_the_dashboard_does_not_carry_an_article_body(client, auth, db, user, sq
     # and a qualified match walked straight past the wider of the two bugs.
     bodies = [s for s in sql_log if "body_markdown" in s]
     assert bodies == [], "\n".join(s[:300] for s in bodies)
+
+
+def _seed_releasable(db, user_id: int, count: int) -> None:
+    """Approved pieces the sweep will actually release.
+
+    ``_seed_approved`` above gives its projects no destinations, so
+    ``release_approved`` returns at the destination check and never commits.
+    That is what keeps its inserts out of the query log — and it is also what
+    hides the cost of the commits from every assertion written against it.
+    """
+    db.add(
+        PlatformConnection(
+            user_id=user_id,
+            platform=Platform.DEVTO,
+            status=ConnectionStatus.CONNECTED,
+            encrypted_credentials=encrypt_credentials({"api_key": "k"}),
+        )
+    )
+    for i in range(count):
+        project = Project(
+            user_id=user_id,
+            name=f"Releasable {i}",
+            slug=f"releasable-{i}",
+            description="A thing that ships.",
+            tone=Tone.TECHNICAL,
+            autopilot_mode=AutopilotMode.AUTO,
+            autopilot_platforms=[Platform.DEVTO],
+        )
+        db.add(project)
+        db.flush()
+        db.add(
+            Content(
+                project_id=project.id,
+                content_type=ContentType.ANNOUNCEMENT,
+                status=ContentStatus.APPROVED,
+                title=f"Releasable {i}",
+                slug=f"releasable-{i}",
+                body_markdown="word " * 2000,
+            )
+        )
+    db.commit()
+    db.expire_all()
+
+
+def test_the_approved_sweep_survives_the_commits_it_makes(
+    db, user, monkeypatch, sql_log
+):
+    """The eager load has to outlive the first release, and it did not.
+
+    ``release_approved`` commits for every piece it queues, and a commit expires
+    the session. SQLAlchemy re-applies the original loader options when it
+    refreshes an expired instance, so each subsequent piece re-ran the whole
+    joined read — its ``Content`` with the article body, its project, its owner —
+    one row at a time. The eager load made the first row cheap and nothing else.
+
+    Assertions on both halves: flat query count with the destinations configured,
+    and at most one statement carrying a body for the whole sweep.
+    """
+    monkeypatch.setattr(publish_tasks, "SessionLocal", lambda: db)
+    monkeypatch.setattr(db, "close", lambda: None)
+    # The dispatch is not what this measures, and inline publishing would put a
+    # platform call in the middle of the sweep.
+    monkeypatch.setattr(publish_tasks.content_pipeline, "publish_now", lambda pid: None)
+
+    _seed_releasable(db, user.id, 5)
+    sql_log.clear()
+
+    result = publish_tasks.release_approved_content()
+
+    # Behaviour first: narrowing the reads must not change what gets released.
+    assert result == {"found": 5, "released": 5}
+    assert db.query(Publication).count() == 5
+
+    bodies = [s for s in sql_log if "body_markdown" in s]
+    assert len(bodies) == 1, (
+        f"{len(bodies)} statements carried an article body for 5 pieces:\n"
+        + "\n".join(s[:200] for s in bodies)
+    )
+    assert _selects(sql_log, "projects") == []
+    assert _selects(sql_log, "users") == []

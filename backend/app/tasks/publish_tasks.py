@@ -230,6 +230,20 @@ def release_approved_content() -> dict:
     only for a piece that has no publications at all.
     """
     db = SessionLocal()
+    # ``release_approved`` commits for every piece it queues, and a commit
+    # expires the session — so the eager load below survived exactly until the
+    # first piece was released, and every piece after it re-read its whole
+    # ``Content`` (article body and all) along with the project and owner the
+    # WHERE clause had already filtered on. The eager load made the *first* row
+    # cheap and nothing else, which is why the sweep's budget test only sees it
+    # green: that test's projects have no destinations, so nothing releases and
+    # nothing commits.
+    #
+    # Nothing in this loop re-reads a row that the commits change — each piece
+    # is visited once, and the publication rows ``release_approved`` inserts are
+    # dispatched by id — so keeping the loaded state is safe as well as cheaper.
+    # The session belongs to this task and is closed below.
+    db.expire_on_commit = False
     try:
         stuck = list(
             db.scalars(
