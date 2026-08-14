@@ -15,6 +15,7 @@ from app.models.content import (
 )
 from app.models.project import Tone
 from app.models.publication import Platform, PublicationStatus
+from app.schemas.limits import Keyword, Tag
 from app.services import inline_edit
 
 
@@ -125,8 +126,8 @@ class ContentCreate(BaseModel):
     body_markdown: str = Field(default="", max_length=BODY_MARKDOWN_MAX_LENGTH)
     excerpt: str = Field(default="", max_length=1000)
     meta_description: str = Field(default="", max_length=META_DESCRIPTION_MAX_LENGTH)
-    keywords: list[str] = Field(default=[], max_length=30)
-    tags: list[str] = Field(default=[], max_length=30)
+    keywords: list[Keyword] = Field(default=[], max_length=30)
+    tags: list[Tag] = Field(default=[], max_length=30)
     canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
     #: The primary SEO keyword. Defaults to the first keyword when omitted.
@@ -152,8 +153,8 @@ class ContentUpdate(BaseModel):
     meta_description: str | None = Field(
         default=None, max_length=META_DESCRIPTION_MAX_LENGTH
     )
-    keywords: list[str] | None = Field(default=None, max_length=30)
-    tags: list[str] | None = Field(default=None, max_length=30)
+    keywords: list[Keyword] | None = Field(default=None, max_length=30)
+    tags: list[Tag] | None = Field(default=None, max_length=30)
     canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
     focus_keyword: str | None = Field(default=None, max_length=100)

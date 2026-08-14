@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.project import AutopilotMode, Tone
 from app.models.publication import Platform
+from app.schemas.limits import Keyword, TechStackEntry
 
 
 def _publishable(platform: Platform) -> Platform:
@@ -90,7 +91,15 @@ class ProjectCreate(ProjectBase):
     unfinished platform before this check existed must still be readable —
     otherwise the one endpoint that would let the user fix it is the endpoint
     that 500s.
+
+    The two list fields are redeclared here for exactly that reason. Their
+    per-entry bounds are new, so rows written before them exist; putting the
+    bound on the base would make reading one an error rather than a thing the
+    user could go and shorten.
     """
+
+    tech_stack: list[TechStackEntry] = Field(default=[], max_length=25)
+    keywords: list[Keyword] = Field(default=[], max_length=25)
 
     @field_validator("autopilot_platforms")
     @classmethod
@@ -113,9 +122,9 @@ class ProjectUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=5000)
     repo_url: str | None = Field(default=None, max_length=500)
     live_url: str | None = Field(default=None, max_length=500)
-    tech_stack: list[str] | None = Field(default=None, max_length=25)
+    tech_stack: list[TechStackEntry] | None = Field(default=None, max_length=25)
     target_audience: str | None = Field(default=None, max_length=500)
-    keywords: list[str] | None = Field(default=None, max_length=25)
+    keywords: list[Keyword] | None = Field(default=None, max_length=25)
     tone: Tone | None = None
     is_active: bool | None = None
     autopilot_mode: AutopilotMode | None = None

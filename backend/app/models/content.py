@@ -68,6 +68,20 @@ BODY_MARKDOWN_MAX_LENGTH = 200_000
 #: of the things written into it — see
 #: ``app.services.publishing_service._adopt_canonical``.
 CANONICAL_URL_MAX_LENGTH = 500
+#: The longest one entry in ``tags`` may be.
+#:
+#: ``tags`` and ``keywords`` are JSON columns, so the count cap on the schema
+#: field was the *only* bound either list had: thirty entries of any size each.
+#: A keyword at least met :data:`app.services.seo.KEYWORD_MAX_LENGTH` on the way
+#: through — ``normalize_keywords`` drops the over-long ones — but a tag met
+#: nothing at all between the request body and the adapter that posts it, and
+#: ``normalize_tags`` strips characters rather than length.
+#:
+#: Same number as the keyword cap on purpose. Both are short labels, both are
+#: shown in the same editor panel, and a tag allowed to be longer than a keyword
+#: would be a distinction with no reason behind it. Per-platform truncation
+#: stays where it belongs, in ``publishers.formatting``.
+TAG_MAX_LENGTH = 100
 
 
 class ContentType(str, Enum):
