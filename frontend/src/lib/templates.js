@@ -127,6 +127,12 @@ export function formFromTemplate(template) {
  *
  * The one conversion that matters: `default_project_id` is a select, so it is
  * a string or "", and the API wants a number or null.
+ *
+ * Every variable in `form.variables` is sent. A row with no name never reaches
+ * here: `nameProblem` calls a blank name a problem, and the editor refuses to
+ * save while any variable has one. Dropping it here instead would be the worse
+ * half of the choice — the save would succeed and the row the user just added
+ * would be gone without a word. `templates.test.js` pins that coupling.
  */
 export function payloadFromForm(form) {
   return {
@@ -136,15 +142,13 @@ export function payloadFromForm(form) {
     content_type: form.content_type,
     title_template: form.title_template,
     body_template: form.body_template,
-    variables: form.variables
-      .filter((v) => v.name.trim())
-      .map((v) => ({
-        name: v.name.trim(),
-        label: v.label.trim(),
-        description: v.description.trim(),
-        default: v.default,
-        required: Boolean(v.required),
-      })),
+    variables: form.variables.map((v) => ({
+      name: v.name.trim(),
+      label: v.label.trim(),
+      description: v.description.trim(),
+      default: v.default,
+      required: Boolean(v.required),
+    })),
     default_project_id: form.default_project_id
       ? Number(form.default_project_id)
       : null,

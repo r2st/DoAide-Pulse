@@ -158,14 +158,37 @@ describe("form conversions", () => {
     expect(payloadFromForm(form).default_project_id).toBeNull();
   });
 
-  it("drops a half-added variable with no name", () => {
+  // `payloadFromForm` sends every row, which is only safe because the editor
+  // will not let a nameless one exist at save time. The two halves are in
+  // different files, so assert the half this one leans on.
+  it("leaves a half-added variable to the editor, which refuses to save it", () => {
+    expect(nameProblem("  ", [])).toBeTruthy();
+  });
+
+  it("sends every named variable rather than silently dropping any", () => {
     const form = {
       ...formFromTemplate(null),
       name: "T",
-      variables: [blankVariable("real"), blankVariable("  ")],
+      variables: [blankVariable("first"), blankVariable("second")],
     };
 
-    expect(payloadFromForm(form).variables).toHaveLength(1);
+    expect(payloadFromForm(form).variables.map((v) => v.name)).toEqual([
+      "first",
+      "second",
+    ]);
+  });
+
+  it("trims a variable's name and label the way it trims the template's", () => {
+    const form = {
+      ...formFromTemplate(null),
+      name: "T",
+      variables: [{ ...blankVariable("  spaced  "), label: "  Spaced  " }],
+    };
+
+    expect(payloadFromForm(form).variables[0]).toMatchObject({
+      name: "spaced",
+      label: "Spaced",
+    });
   });
 
   it("trims the name so a stray space is not saved as part of it", () => {

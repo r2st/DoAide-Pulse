@@ -633,8 +633,9 @@ describe("the editor, on the parts the live check does not cover", () => {
     await user.click(await screen.findByRole("button", { name: "Edit" }));
     await user.click(screen.getByRole("button", { name: /add a blank/i }));
 
-    // `payloadFromForm` would drop the row, so saving would succeed and quietly
-    // discard what the user just added. Blocking says so instead.
+    // The alternative is dropping the row in `payloadFromForm`, which saves
+    // successfully and quietly discards what the user just added. Blocking says
+    // so instead, and is why that function sends every row it is given.
     expect(await screen.findByText("Needs a name.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save template/i })).toBeDisabled();
 
