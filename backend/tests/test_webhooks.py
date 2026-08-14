@@ -871,3 +871,76 @@ def test_the_receiver_sees_one_delivery_id_across_every_attempt(
     seen = {r.headers[webhooks.DELIVERY_HEADER] for r in endpoint.requests}
     assert seen == {str(delivery.id)}
     assert {json.loads(r.content)["id"] for r in endpoint.requests} == {delivery.id}
+
+
+# --------------------------------------------------------------------------- #
+# Paging the listing                                                           #
+# --------------------------------------------------------------------------- #
+
+
+def _endpoints(db, user_id: int, count: int) -> None:
+    for index in range(count):
+        db.add(
+            Webhook(
+                user_id=user_id,
+                url=f"https://hooks.example.com/{index}",
+                description=f"Endpoint {index}",
+                events=["content.published"],
+            )
+        )
+    db.commit()
+
+
+def test_the_listing_pages_and_counts(client, auth, db, user):
+    """``MAX_WEBHOOKS_PER_USER`` is checked in ``create``, not on this read.
+
+    Written straight to the table for that reason: the point of paging the
+    listing is that a row can exist without ``create`` having agreed to it —
+    seeded, or left behind by a cap that was lowered.
+    """
+    _endpoints(db, user.id, 5)
+
+    resp = client.get("/api/v1/webhooks?limit=2&offset=1", headers=auth)
+
+    assert resp.status_code == 200, resp.text
+    assert [row["description"] for row in resp.json()] == ["Endpoint 1", "Endpoint 2"]
+    assert resp.headers["X-Total-Count"] == "5"
+
+
+def test_the_listing_still_answers_with_everything_by_default(client, auth, db, user):
+    _endpoints(db, user.id, 3)
+
+    resp = client.get("/api/v1/webhooks", headers=auth)
+
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()) == 3
+    assert resp.headers["X-Total-Count"] == "3"
+
+
+def test_the_count_is_this_account_s_alone(client, auth, db, user):
+    """The header is a count of the same query the page came from, not of the table."""
+    from app.models.user import User
+    from app.security import hash_password
+
+    stranger = User(
+        email="counted@example.com",
+        full_name="Stranger",
+        hashed_password=hash_password("hunter2hunter2"),
+    )
+    db.add(stranger)
+    db.commit()
+
+    _endpoints(db, user.id, 2)
+    _endpoints(db, stranger.id, 4)
+
+    resp = client.get("/api/v1/webhooks", headers=auth)
+
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()) == 2
+    assert resp.headers["X-Total-Count"] == "2"
+
+
+@pytest.mark.parametrize("limit", [-1, 0, 21])
+def test_a_limit_outside_the_range_is_refused(client, auth, limit):
+    resp = client.get(f"/api/v1/webhooks?limit={limit}", headers=auth)
+    assert resp.status_code == 422, resp.text

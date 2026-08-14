@@ -98,16 +98,30 @@ def list_events(request: Request, response: Response) -> list[WebhookEventOut]:
     responses=errors(*AUTHENTICATED),
 )
 def list_webhooks(
-    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+    response: Response,
+    limit: int = Query(default=MAX_WEBHOOKS_PER_USER, ge=1, le=MAX_WEBHOOKS_PER_USER),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[WebhookOut]:
     """Every webhook on this account, oldest first.
 
     Never carries a signing secret: the plaintext exists only in the response
     that minted it, and the stored copy is encrypted.
+
+    Paged, with the total in ``X-Total-Count``, like every other listing here.
+    ``MAX_WEBHOOKS_PER_USER`` is a check in ``create``, not a constraint on the
+    table: rows can predate a lowered cap, and a read whose only bound is a rule
+    enforced on a different endpoint is a read with no bound of its own.
     """
-    rows = db.scalars(
-        select(Webhook).where(Webhook.user_id == user.id).order_by(Webhook.id)
+    query = select(Webhook).where(Webhook.user_id == user.id)
+
+    total = db.scalar(
+        select(func.count()).select_from(query.with_only_columns(Webhook.id).subquery())
     )
+    response.headers["X-Total-Count"] = str(total or 0)
+
+    rows = db.scalars(query.order_by(Webhook.id).limit(limit).offset(offset))
     return [WebhookOut.model_validate(row) for row in rows]
 
 
