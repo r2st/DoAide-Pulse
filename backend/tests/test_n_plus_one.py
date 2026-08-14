@@ -621,3 +621,63 @@ def test_the_approved_sweep_survives_the_commits_it_makes(
     )
     assert _selects(sql_log, "projects") == []
     assert _selects(sql_log, "users") == []
+
+
+def test_the_rss_feed_does_not_read_an_article_body(client, db, user, sql_log):
+    """The public feed renders titles and excerpts. It was reading whole articles.
+
+    ``lazyload(Content.publications)`` already took the second query off this
+    endpoint, and the assertion that came with it — a query count — is exactly
+    the shape that cannot see what was left: the remaining query selected whole
+    ``Content`` rows. ``FEED_ITEM_LIMIT`` is 50, and this is the unauthenticated
+    endpoint every reader polls on a timer, so a busy project's feed shipped
+    fifty article bodies out of the database to render fifty ``<item>`` blocks
+    that quote none of them.
+
+    Both halves are pinned here, because narrowing the columns is the kind of
+    fix that can reintroduce an N+1: ``load_only`` defers what it does not name,
+    so a field ``build_feed`` reads without being listed would come back one
+    SELECT at a time.
+    """
+    project = Project(
+        user_id=user.id,
+        name="Feedy",
+        slug="feedy",
+        description="A thing that ships.",
+        live_url="https://feedy.example.com",
+        tone=Tone.TECHNICAL,
+    )
+    db.add(project)
+    db.flush()
+    for i in range(10):
+        db.add(
+            Content(
+                project_id=project.id,
+                content_type=ContentType.ANNOUNCEMENT,
+                status=ContentStatus.PUBLISHED,
+                title=f"Item {i}",
+                slug=f"item-{i}",
+                excerpt=f"Excerpt {i}.",
+                body_markdown="word " * 5000,
+                published_at=datetime.now(UTC) - timedelta(days=i),
+            )
+        )
+    db.commit()
+    db.expire_all()
+
+    sql_log.clear()
+    resp = client.get(f"/api/v1/projects/{project.id}/feed.xml")
+
+    assert resp.status_code == 200, resp.text
+    # The feed still says everything it is for.
+    assert "<title>Item 0</title>" in resp.text
+    assert "<description>Excerpt 0.</description>" in resp.text
+    assert "https://feedy.example.com/item-0" in resp.text
+    assert resp.text.count("<item>") == 10
+    # And none of it came at the price of the articles themselves.
+    bodies = [s for s in sql_log if "body_markdown" in s]
+    assert bodies == [], "\n".join(s[:300] for s in bodies)
+    # One read for the ten items, not one per item.
+    assert len(_selects(sql_log, "content")) == 1, "\n".join(
+        s[:200] for s in _selects(sql_log, "content")
+    )

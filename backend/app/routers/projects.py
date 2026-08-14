@@ -6,7 +6,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, lazyload, selectinload
+from sqlalchemy.orm import Session, lazyload, load_only, selectinload
 
 from app.config import settings
 from app.database import get_db
@@ -405,7 +405,28 @@ def project_feed(
             # list's sake, so serving this feed ran two queries where one is
             # needed — and this is the unauthenticated endpoint, the one that
             # gets polled by every reader on a timer.
-            .options(lazyload(Content.publications))
+            #
+            # The same sentence decides the columns. Suppressing the second
+            # query left the first one selecting whole ``Content`` rows —
+            # ``FEED_ITEM_LIMIT`` is 50, so every poll of a busy project's feed
+            # read fifty article bodies to render fifty titles and excerpts, and
+            # a query-count assertion cannot see a byte of that.
+            #
+            # ``load_only`` defers everything not named, so a field added to
+            # ``build_feed`` without being added here would come back as a
+            # SELECT per item. ``test_the_rss_feed_does_not_read_an_article_body``
+            # pins both halves: no body, and still one query.
+            .options(
+                lazyload(Content.publications),
+                load_only(
+                    Content.title,
+                    Content.slug,
+                    Content.excerpt,
+                    Content.meta_description,
+                    Content.canonical_url,
+                    Content.published_at,
+                ),
+            )
             .where(Content.project_id == project.id, Content.status == ContentStatus.PUBLISHED)
             .order_by(Content.published_at.desc())
             .limit(rss.FEED_ITEM_LIMIT)
