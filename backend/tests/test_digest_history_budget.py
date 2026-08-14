@@ -168,8 +168,15 @@ def test_a_publication_first_seen_inside_the_window_counts_its_whole_reading(
 
 
 def _body_reads(statements: list[str]) -> list[str]:
-    """Statements that carry ``content.body_markdown`` back to Python."""
-    return [s for s in statements if "content.body_markdown" in s]
+    """Statements that carry an article body back to Python.
+
+    Matched on the bare column name, not on ``content.body_markdown``: a
+    ``joinedload`` renders the eagerly-loaded entity under an alias, so the
+    widest read of all — a whole ``Content`` fetched to reach one string —
+    spells it ``content_1.body_markdown`` and a qualified match walks straight
+    past it.
+    """
+    return [s for s in statements if "body_markdown" in s]
 
 
 def _syndicate(db, publication, *platforms) -> None:
@@ -243,3 +250,46 @@ def test_a_syndicated_piece_is_one_digest_entry_listing_every_platform(
     assert entry["url"] is not None
     # "Body." — under a minute of reading, floored at one.
     assert entry["read_minutes"] == 1
+
+
+def test_the_failed_and_upcoming_blocks_read_a_title_not_a_piece(
+    db, user, publication, sql_log
+):
+    """Both lists render a title and three scalars per row.
+
+    Reaching the title through ``joinedload(Publication.content)`` brought back
+    the whole entity for one string, and the digest beat runs this for every user
+    on the instance. Bounded at five rows each, so the harm is width, not count
+    — no assertion in this file could see it.
+    """
+    content_id = publication.content_id
+    db.add(
+        Publication(
+            content_id=content_id,
+            platform=Platform.MEDIUM,
+            status=PublicationStatus.FAILED,
+            error="Platform said no." * 20,
+        )
+    )
+    db.add(
+        Publication(
+            content_id=content_id,
+            platform=Platform.HASHNODE,
+            status=PublicationStatus.SCHEDULED,
+            scheduled_for=_now() + timedelta(days=1),
+        )
+    )
+    db.commit()
+    user = _forget_everything(db, user)
+
+    sql_log.clear()
+    built = digest.build(db, user)
+
+    assert [row["title"] for row in built.failed] == ["A long-running piece"]
+    assert [row["title"] for row in built.upcoming] == ["A long-running piece"]
+    assert built.failed[0]["error"].startswith("Platform said no.")
+    # The only body read left in a digest run is the one reading time needs, and
+    # nothing published inside the window here means not even that.
+    assert _body_reads(sql_log) == [], "\n".join(
+        s[:300] for s in _body_reads(sql_log)
+    )

@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from html import escape
 
 from sqlalchemy import and_, func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.content import Content, ContentStatus, read_minutes_of
@@ -370,24 +370,27 @@ def build(
         .where(Project.user_id == user.id, Content.status == ContentStatus.REVIEW)
     ) or 0
 
+    # Both blocks below name ``Content.title`` as a column on a join that is
+    # already visiting ``content`` to filter. Eager-loading the relationship
+    # instead brought back the whole entity — the article body and four JSON
+    # columns — for one string, and, without a ``lazyload`` on the far side, the
+    # eagerly-loaded ``Content`` fired its own ``lazy="selectin"`` publications
+    # load on top. Each is bounded at five rows, but the digest beat runs this
+    # for every user on the instance.
     failed = [
         {
-            "content_id": p.content_id,
-            "title": p.content.title,
-            "platform": p.platform.value,
-            "error": (p.error or "")[:200],
+            "content_id": content_id,
+            "title": title,
+            "platform": platform.value,
+            "error": (error or "")[:200],
         }
-        # The join here only filters; reading ``p.content.title`` above is what
-        # populates the relationship, and it lazy-loads once per row without
-        # this. Bounded at five, but the digest runs for every user on the
-        # instance, so it is five avoidable round trips times the user count.
-        for p in db.scalars(
-            select(Publication)
-            # ``lazyload`` on the far side: the eagerly-loaded ``Content`` would
-            # otherwise fire its own ``lazy="selectin"`` publications load, so
-            # asking for a publication's content fetched every sibling
-            # publication back with it. Only the title is read.
-            .options(joinedload(Publication.content).lazyload(Content.publications))
+        for content_id, title, platform, error in db.execute(
+            select(
+                Publication.content_id,
+                Content.title,
+                Publication.platform,
+                Publication.error,
+            )
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
             .where(
@@ -402,18 +405,18 @@ def build(
 
     upcoming = [
         {
-            "content_id": p.content_id,
-            "title": p.content.title,
-            "platform": p.platform.value,
-            "scheduled_for": as_aware(p.scheduled_for) if p.scheduled_for else None,
+            "content_id": content_id,
+            "title": title,
+            "platform": platform.value,
+            "scheduled_for": as_aware(scheduled_for) if scheduled_for else None,
         }
-        for p in db.scalars(
-            select(Publication)
-            # ``lazyload`` on the far side: the eagerly-loaded ``Content`` would
-            # otherwise fire its own ``lazy="selectin"`` publications load, so
-            # asking for a publication's content fetched every sibling
-            # publication back with it. Only the title is read.
-            .options(joinedload(Publication.content).lazyload(Content.publications))
+        for content_id, title, platform, scheduled_for in db.execute(
+            select(
+                Publication.content_id,
+                Content.title,
+                Publication.platform,
+                Publication.scheduled_for,
+            )
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
             .where(
