@@ -285,7 +285,7 @@ def test_a_platform_named_twice_is_only_published_to_once(db, project, connect):
     project.autopilot_platforms = ["devto", "devto", "mastodon"]
     db.commit()
 
-    assert content_pipeline._publishable_destinations(project).usable == [
+    assert content_pipeline.publishable_destinations(project).usable == [
         Platform.DEVTO,
         Platform.MASTODON,
     ]

@@ -537,7 +537,7 @@ def execute(db: Session, publication: Publication) -> Publication:
     # not news, and firing "published" per platform would make the event mean
     # something different from its name.
     was_published = content.status == ContentStatus.PUBLISHED
-    _sync_content_status(content)
+    sync_content_status(content)
     db.commit()
     if not was_published and content.status == ContentStatus.PUBLISHED:
         _notify_published(db, content, publication)
@@ -828,7 +828,7 @@ def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) 
         # a time in the future, on a row nothing will ever come back for, which
         # the calendar and the publications list both read as "still to come".
         publication.scheduled_for = None
-        _sync_content_status(publication.content)
+        sync_content_status(publication.content)
     else:
         wait = retry_defer_seconds(publication.attempts)
         publication.status = PublicationStatus.SCHEDULED
@@ -847,14 +847,54 @@ def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) 
         _notify_failed(db, publication)
 
 
-def _sync_content_status(content: Content) -> None:
+def sync_content_status(content: Content) -> None:
     """Derive the content's status from its publications.
 
     One success is enough to call the piece published — see the module
-    docstring. It only becomes ``failed`` when every platform is terminal and
-    none succeeded.
+    docstring. It only becomes ``failed`` when every platform Herald was still
+    going to try is terminal and none of them succeeded.
+
+    **A cancelled row is not evidence of anything.** Cancelling is the user
+    saying "not this platform", and the piece's status should read as though the
+    row had never been armed. Counting it as terminal made the two words mean
+    the same thing in opposite directions:
+
+    * a piece whose every publication the user cancelled — which is all that
+      ``DELETE /content/{id}/schedule`` does — was one call to this function
+      away from being reported ``failed``, when nothing about it had failed;
+    * and a piece with one failed platform and one the user then cancelled came
+      out ``failed`` only because the cancel happened to be counted, which is
+      the right answer reached from the wrong premise. Excluding cancelled rows
+      keeps that answer: the failed row is the only one left, it is terminal,
+      and no platform succeeded.
+
+    So the verdict is taken over the rows that were still in play. When every
+    row is cancelled there is nothing to derive from and the status is left
+    alone — the piece is exactly as approved (or as drafted) as it was before
+    anything was queued for it, which is what a caller undoing a schedule meant.
+
+    Public because the cancelling paths have to call it too. ``execute`` and
+    ``_fail`` reach a verdict by finishing a publication; ``unschedule_content``
+    and the ``cancel_publication`` task reach one by *removing* the last
+    publication that could still have changed it, and for a while neither said
+    so. A piece with one failed platform and one scheduled elsewhere sat
+    ``approved`` after the schedule was cancelled: no worker would ever touch it
+    again, no sweep would look at it (``release_approved`` declines a piece that
+    has publications, and ``publish_due`` sees no armed rows), and the only
+    thing still claiming it was on its way was the status column.
+
+    **``failed`` is not a ratchet.** The last arm below is what makes this a
+    function of the publications rather than a one-way walk through them. Arming
+    a row on a failed piece — retrying one platform, re-publishing to another —
+    makes "every platform gave up" untrue again, and until the piece said so a
+    user who clicked Retry watched a worker publish a piece the UI went on
+    calling failed, right up until it succeeded. ``draft`` and ``review`` are
+    left alone: those are states nothing has been queued from yet, and a piece
+    is not approved just because a row exists.
     """
-    publications = content.publications
+    publications = [
+        p for p in content.publications if p.status != PublicationStatus.CANCELLED
+    ]
     if not publications:
         return
 
@@ -864,6 +904,8 @@ def _sync_content_status(content: Content) -> None:
             content.published_at = utcnow()
     elif all(p.is_terminal for p in publications):
         content.status = ContentStatus.FAILED
+    elif content.status == ContentStatus.FAILED:
+        content.status = ContentStatus.APPROVED
 
 
 def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
@@ -912,7 +954,7 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
                 Publication.status == PublicationStatus.PUBLISHING,
                 Publication.updated_at <= cutoff,
             )
-            # The row that spends its retries here calls ``_sync_content_status``,
+            # The row that spends its retries here calls ``sync_content_status``,
             # which walks ``publication.content`` and then that content's own
             # publications. Both hops were lazy, so a sweep after a worker died
             # mid-batch paid two SELECTs per burned row — and the moment this
@@ -939,7 +981,7 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
                 "The worker publishing this stopped before it finished, and the "
                 "retries are spent. Retry it by hand once the cause is known."
             )
-            _sync_content_status(publication.content)
+            sync_content_status(publication.content)
         else:
             publication.status = PublicationStatus.PENDING
             publication.error = (

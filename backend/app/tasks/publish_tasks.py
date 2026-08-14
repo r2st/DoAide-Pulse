@@ -310,13 +310,20 @@ def release_approved_content() -> dict:
     name="app.tasks.publish_tasks.cancel_publication", soft_time_limit=30, time_limit=60
 )
 def cancel_publication(publication_id: int) -> dict:
-    """Stop a scheduled publication before it goes out."""
+    """Stop a scheduled publication before it goes out.
+
+    Re-derives the piece's status afterwards, for the reason
+    :func:`app.routers.content.unschedule_content` gives: cancelling the last
+    row a worker was still going to touch settles what the piece is, and until
+    this said so the piece went on claiming it was on its way out.
+    """
     db = SessionLocal()
     try:
         publication = db.get(Publication, publication_id)
         if publication is None or publication.is_terminal:
             return {"publication_id": publication_id, "cancelled": False}
         publication.status = PublicationStatus.CANCELLED
+        publishing_service.sync_content_status(publication.content)
         db.commit()
         return {"publication_id": publication_id, "cancelled": True}
     finally:

@@ -1339,6 +1339,9 @@ def _queue_publish(
     if content.status in (ContentStatus.DRAFT, ContentStatus.REVIEW):
         content.status = ContentStatus.APPROVED
     content.scheduled_for = when
+    # Queueing a platform on a piece that had run out of them makes ``failed``
+    # untrue again; this is the arm of the derivation that takes it back.
+    publishing_service.sync_content_status(content)
     db.commit()
 
     # Before the dispatch filter below, not after: the commit expired every one
@@ -1551,6 +1554,13 @@ def unschedule_content(
     Scheduled rows are cancelled rather than returned to ``pending``: pending
     means "go out on the next sweep", which is the opposite of what somebody
     clicking unschedule asked for. Re-publishing later re-arms the same rows.
+
+    Cancelling the last row that could still change the piece's mind is a
+    verdict on the piece, so the status is re-derived afterwards — see
+    :func:`app.services.publishing_service.sync_content_status`. Without it, a
+    piece that had failed on one platform and was scheduled on another stayed
+    ``approved`` after this call: nothing would ever publish it and nothing
+    would ever say so.
     """
     content = _owned_content(content_id, db, user)
     targets = [
@@ -1561,6 +1571,7 @@ def unschedule_content(
         publication.status = PublicationStatus.CANCELLED
         publication.scheduled_for = None
     content.scheduled_for = None
+    publishing_service.sync_content_status(content)
     db.commit()
     refresh_all(db, targets)
     return [PublicationOut.model_validate(p) for p in targets]
@@ -1651,6 +1662,10 @@ def retry_publication(
     publication.attempts = 0
     publication.error = None
     publication.scheduled_for = hold
+    # The piece is no longer out of platforms to try. Without this it went on
+    # reading ``failed`` while a worker was publishing it — see
+    # :func:`app.services.publishing_service.sync_content_status`.
+    publishing_service.sync_content_status(content)
     db.commit()
 
     # A held row would be refused by ``publish_one``'s claim anyway; not

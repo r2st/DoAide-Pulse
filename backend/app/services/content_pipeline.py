@@ -19,7 +19,7 @@ The gates only apply to an *unreviewed* publish, which is deliberate:
 
 Both demote to review rather than throwing the piece away, and so does the third
 thing that can stop an unreviewed publish: having nowhere to send it. See
-:func:`_publishable_destinations`, which drops a destination the owner never
+:func:`publishable_destinations`, which drops a destination the owner never
 connected instead of queueing a publication that can only fail.
 """
 from __future__ import annotations
@@ -170,7 +170,7 @@ def generate_and_route(
         else AutopilotMode(project.autopilot_mode)
     )
     confident = generated.confidence >= settings.autopilot_auto_publish_confidence
-    destinations = _publishable_destinations(project)
+    destinations = publishable_destinations(project)
     auto = bool(mode == AutopilotMode.AUTO and confident and destinations.usable)
 
     dead_links: list[str] = []
@@ -321,7 +321,7 @@ def release_approved(db: Session, content: Content) -> list[Publication]:
     if mode != AutopilotMode.AUTO:
         return []
 
-    platforms = _publishable_destinations(project).usable
+    platforms = publishable_destinations(project).usable
     if not platforms:
         return []
 
@@ -356,7 +356,7 @@ class _Destinations:
     unconnected: list[str]
 
 
-def _publishable_destinations(project: Project) -> _Destinations:
+def publishable_destinations(project: Project) -> _Destinations:
     """The autopilot destinations Herald can actually post to.
 
     ``autopilot_platforms`` is a plain JSON column. Values written before the
@@ -370,7 +370,7 @@ def _publishable_destinations(project: Project) -> _Destinations:
     A platform the owner has never connected is dropped for that second reason,
     which is the same reason and the same outcome. ``_credentials_for`` raises
     ``NotConnected``, ``execute`` treats it as terminal — correctly, since no
-    amount of retrying connects an account — and ``_sync_content_status`` then
+    amount of retrying connects an account — and ``sync_content_status`` then
     walks a piece whose every publication is terminal to ``failed``. So a
     project set to ``auto`` with one destination it had never connected wrote a
     piece, approved it, queued it, burned it on the first attempt, and left the
@@ -438,5 +438,6 @@ __all__ = [
     "RoutedContent",
     "generate_and_route",
     "publish_now",
+    "publishable_destinations",
     "release_approved",
 ]

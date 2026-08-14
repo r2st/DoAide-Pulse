@@ -115,7 +115,7 @@ def test_content_with_no_publications_keeps_its_status(db, project):
     content = _content(db, project, status=ContentStatus.APPROVED)
     db.commit()
 
-    publishing_service._sync_content_status(content)
+    publishing_service.sync_content_status(content)
 
     assert content.status == ContentStatus.APPROVED
 
@@ -128,7 +128,7 @@ def test_one_success_among_failures_still_publishes_the_piece(db, project):
     )
     db.commit()
 
-    publishing_service._sync_content_status(content)
+    publishing_service.sync_content_status(content)
 
     assert content.status == ContentStatus.PUBLISHED
     assert content.published_at is not None
@@ -142,7 +142,7 @@ def test_every_platform_terminal_and_none_published_is_a_failed_piece(db, projec
     )
     db.commit()
 
-    publishing_service._sync_content_status(content)
+    publishing_service.sync_content_status(content)
 
     assert content.status == ContentStatus.FAILED
 
@@ -158,7 +158,7 @@ def test_a_published_piece_keeps_the_timestamp_it_already_had(db, project):
     )
     db.commit()
 
-    publishing_service._sync_content_status(content)
+    publishing_service.sync_content_status(content)
 
     # SQLite hands the column back naive; the instant is what matters here.
     assert content.published_at.replace(tzinfo=UTC) == first

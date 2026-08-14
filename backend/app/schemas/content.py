@@ -91,7 +91,7 @@ def _absolute_canonical_url(value: str | None) -> str | None:
 
 #: The statuses a caller may set directly. ``published`` and ``failed`` are
 #: derived from the piece's publications by
-#: :func:`app.services.publishing_service._sync_content_status`, and setting
+#: :func:`app.services.publishing_service.sync_content_status`, and setting
 #: either by hand makes the content row disagree with what is actually live —
 #: a piece counted as published in the analytics with nothing behind it, or one
 #: marked failed while a publication is still in flight.

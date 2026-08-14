@@ -2,7 +2,7 @@
 
 ``reclaim_stuck`` re-arms every publication a dead worker left in ``publishing``,
 and the row that has spent its retries is failed outright — which means calling
-``_sync_content_status``, which reads ``publication.content`` and then that
+``sync_content_status``, which reads ``publication.content`` and then that
 content's own publications to decide whether the piece as a whole is finished.
 
 Both hops were lazy. ``Publication.content`` is a plain relationship, so each
@@ -37,7 +37,7 @@ def _seed_stuck(db, project_id: int, count: int, *, offset: int = 0) -> None:
 
     ``attempts`` starts one below the ceiling so the increment ``reclaim_stuck``
     applies takes each row terminal — the branch that calls
-    ``_sync_content_status``, and the only one that touches the relationships
+    ``sync_content_status``, and the only one that touches the relationships
     this module is about.
     """
     stale = utcnow() - timedelta(seconds=settings.publish_stuck_after_seconds + 60)
@@ -127,7 +127,7 @@ def test_the_sweep_still_burns_the_rows_it_reclaims(db, project):
 
 
 def test_the_pieces_behind_them_are_marked_failed(db, project):
-    # ``_sync_content_status`` is what the eager load exists to feed, and its
+    # ``sync_content_status`` is what the eager load exists to feed, and its
     # whole output is this: every publication of the piece is terminal and none
     # succeeded, so the piece itself failed.
     _seed_stuck(db, project.id, 3)

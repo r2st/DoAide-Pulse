@@ -171,7 +171,7 @@ def connect(db, user):
     """Give the account a live connection to one or more platforms.
 
     The autopilot only queues destinations the owner has actually connected —
-    see ``content_pipeline._publishable_destinations``, which drops the rest
+    see ``content_pipeline.publishable_destinations``, which drops the rest
     rather than queueing a publication that can only fail terminally and take
     the piece to ``failed`` with it. So a test about *routing* has to say which
     platforms are connected, or the routing it means to exercise does not

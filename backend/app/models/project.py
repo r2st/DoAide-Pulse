@@ -203,6 +203,27 @@ class Project(Base, TimestampMixin):
         inbound webhook — drives the project through the same pipeline without a
         repo, so a project with one is not blocked. Callers that serialize more
         than one project should eager-load the relationship.
+
+        **Two ways to be blocked, not one.** The check above is about *starting*
+        a piece, and for a while it was the whole of this property — so a project
+        on ``auto`` whose destinations it could never publish to reported nothing
+        wrong. That project writes: the autopilot fires, the piece is generated,
+        and then ``publishable_destinations`` drops every destination and
+        ``generate_and_route`` parks the piece in review because there is nowhere
+        to send it. From the outside that is indistinguishable from the quality
+        gates doing their job, and the switch still says ``auto``. It is the
+        failure this project had in production — an autopilot destination the
+        owner had never connected — and the badge that exists to explain a silent
+        autopilot said the autopilot was fine.
+
+        The finishing check applies only to ``auto``. On ``draft`` the pieces are
+        *meant* to stop for a human, so having no destination is the setting
+        rather than a fault.
+
+        Reads ``self.user.connected_platforms`` on that path, which is one extra
+        pair of loads per *account* rather than per project — every project in a
+        listing has the same owner. Eager-load ``Project.user`` alongside the
+        triggers if the identity map will not already hold it.
         """
         mode = (
             self.autopilot_mode
@@ -211,6 +232,11 @@ class Project(Base, TimestampMixin):
         )
         if mode == AutopilotMode.OFF:
             return None
+
+        return self._cannot_start() or self._cannot_finish(mode)
+
+    def _cannot_start(self) -> str | None:
+        """Why nothing will ever *write* a piece for this project."""
         if any(trigger.is_active for trigger in self.triggers):
             return None
         if not self.repo_url:
@@ -224,6 +250,38 @@ class Project(Base, TimestampMixin):
                 "kind the scan can read."
             )
         return None
+
+    def _cannot_finish(self, mode: AutopilotMode) -> str | None:
+        """Why a piece this project writes will never *publish* itself."""
+        if mode != AutopilotMode.AUTO:
+            return None
+
+        # Imported here rather than at module scope: the pipeline imports the
+        # publisher registry, which imports this module.
+        from app.services.content_pipeline import publishable_destinations
+
+        destinations = publishable_destinations(self)
+        if destinations.usable:
+            return None
+        if destinations.unconnected:
+            return (
+                "Autopilot publishes to "
+                + ", ".join(destinations.unconnected)
+                + ", which this account is not connected to, so every piece "
+                "stops for review. Connect them in Settings."
+            )
+        if not self.autopilot_platforms:
+            return (
+                "Autopilot is set to publish on its own but names no platforms, "
+                "so every piece stops for review."
+            )
+        # Named platforms that survived neither the enum nor the registry:
+        # a value from before the schema validators, or an adapter that is not
+        # finished. `publishable_destinations` logs which.
+        return (
+            "None of the platforms autopilot names can be published to, so "
+            "every piece stops for review."
+        )
 
     def brief(self) -> dict[str, Any]:
         """The project facts a prompt needs, in one dict."""

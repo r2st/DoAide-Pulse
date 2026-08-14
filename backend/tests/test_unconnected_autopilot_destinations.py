@@ -1,6 +1,6 @@
 """An autopilot destination nobody connected must not cost the piece.
 
-``_publishable_destinations`` already drops two kinds of destination before
+``publishable_destinations`` already drops two kinds of destination before
 anything is queued, and its docstring says why: an unknown platform string would
 raise out of a beat sweep, and a platform with no finished adapter "fails the
 publication terminally, which drives the piece to ``failed`` instead of leaving
@@ -10,7 +10,7 @@ A platform the owner has never connected is the third kind, and it was not
 dropped. It fails for a different reason and with the identical consequence:
 ``_credentials_for`` raises ``NotConnected``, ``execute`` treats it as terminal —
 correctly, since no amount of retrying connects an account — and
-``_sync_content_status`` then walks a piece whose every publication is terminal
+``sync_content_status`` then walks a piece whose every publication is terminal
 to ``failed``.
 
 So a project set to ``auto`` with one destination it had never connected did
@@ -91,7 +91,7 @@ def auto_project(db, project):
 
 
 def test_an_unconnected_destination_is_not_publishable(db, auto_project):
-    found = content_pipeline._publishable_destinations(auto_project)
+    found = content_pipeline.publishable_destinations(auto_project)
 
     assert found.usable == []
     assert found.unconnected == ["bluesky"]
@@ -100,7 +100,7 @@ def test_an_unconnected_destination_is_not_publishable(db, auto_project):
 def test_a_connected_destination_still_is(db, auto_project, connect):
     connect("bluesky")
 
-    found = content_pipeline._publishable_destinations(auto_project)
+    found = content_pipeline.publishable_destinations(auto_project)
 
     assert found.usable == [Platform.BLUESKY]
     assert found.unconnected == []
@@ -114,7 +114,7 @@ def test_only_the_unconnected_half_is_dropped(db, project, connect):
     project.autopilot_platforms = ["devto", "bluesky"]
     db.commit()
 
-    found = content_pipeline._publishable_destinations(project)
+    found = content_pipeline.publishable_destinations(project)
 
     assert found.usable == [Platform.DEVTO]
     assert found.unconnected == ["bluesky"]
@@ -129,7 +129,7 @@ def test_a_platform_named_twice_is_only_reported_once(db, project):
     project.autopilot_platforms = ["bluesky", "bluesky"]
     db.commit()
 
-    assert content_pipeline._publishable_destinations(project).unconnected == ["bluesky"]
+    assert content_pipeline.publishable_destinations(project).unconnected == ["bluesky"]
 
 
 def test_a_connection_that_went_invalid_is_not_a_connection(db, auto_project, connect):
@@ -146,7 +146,7 @@ def test_a_connection_that_went_invalid_is_not_a_connection(db, auto_project, co
     row.status = ConnectionStatus.INVALID
     db.commit()
 
-    assert content_pipeline._publishable_destinations(auto_project).usable == []
+    assert content_pipeline.publishable_destinations(auto_project).usable == []
 
 
 # ---- What that means for the piece ---------------------------------------- #
@@ -193,7 +193,7 @@ def test_the_old_behaviour_would_have_failed_the_piece(
     """
     monkeypatch.setattr(
         content_pipeline,
-        "_publishable_destinations",
+        "publishable_destinations",
         lambda project: content_pipeline._Destinations(
             usable=[Platform.BLUESKY], unconnected=[]
         ),

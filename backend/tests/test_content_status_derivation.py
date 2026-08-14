@@ -1,6 +1,6 @@
 """How a piece's status is derived from the platforms it was sent to.
 
-``_sync_content_status`` is the one place that decides whether a piece counts as
+``sync_content_status`` is the one place that decides whether a piece counts as
 published, and it is asked after every attempt. The rule is asymmetric on
 purpose:
 
@@ -19,7 +19,7 @@ import pytest
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.mixins import as_aware
 from app.models.publication import Platform, Publication, PublicationStatus
-from app.services.publishing_service import _sync_content_status
+from app.services.publishing_service import sync_content_status
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def test_one_success_among_failures_still_counts_as_published(db, piece):
     _publish(db, piece, Platform.DEVTO, PublicationStatus.PUBLISHED)
     _publish(db, piece, Platform.MEDIUM, PublicationStatus.FAILED)
 
-    _sync_content_status(piece)
+    sync_content_status(piece)
 
     assert piece.status == ContentStatus.PUBLISHED
     assert piece.published_at is not None
@@ -59,11 +59,11 @@ def test_one_success_among_failures_still_counts_as_published(db, piece):
 
 def test_published_at_is_not_moved_by_a_later_platform(db, piece):
     _publish(db, piece, Platform.DEVTO, PublicationStatus.PUBLISHED)
-    _sync_content_status(piece)
+    sync_content_status(piece)
     first = piece.published_at
 
     _publish(db, piece, Platform.MEDIUM, PublicationStatus.PUBLISHED)
-    _sync_content_status(piece)
+    sync_content_status(piece)
 
     # Through ``as_aware`` because the commit in between round-trips the column
     # via SQLite, which hands it back without a timezone.
@@ -74,7 +74,7 @@ def test_every_platform_terminal_and_none_succeeded_is_failed(db, piece):
     _publish(db, piece, Platform.DEVTO, PublicationStatus.FAILED)
     _publish(db, piece, Platform.MEDIUM, PublicationStatus.CANCELLED)
 
-    _sync_content_status(piece)
+    sync_content_status(piece)
 
     assert piece.status == ContentStatus.FAILED
 
@@ -89,13 +89,13 @@ def test_one_platform_still_in_flight_holds_the_verdict_open(db, piece, unfinish
     _publish(db, piece, Platform.DEVTO, PublicationStatus.FAILED)
     _publish(db, piece, Platform.MEDIUM, unfinished)
 
-    _sync_content_status(piece)
+    sync_content_status(piece)
 
     assert piece.status == ContentStatus.APPROVED
     assert piece.published_at is None
 
 
 def test_a_piece_with_no_publications_is_left_alone(db, piece):
-    _sync_content_status(piece)
+    sync_content_status(piece)
 
     assert piece.status == ContentStatus.APPROVED
