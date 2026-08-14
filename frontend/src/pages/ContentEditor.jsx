@@ -47,8 +47,10 @@ function draftFrom(content) {
     body_markdown: content.body_markdown,
     excerpt: content.excerpt,
     meta_description: content.meta_description,
-    keywords: (content.keywords ?? []).join(", "),
-    tags: (content.tags ?? []).join(", "),
+    keywords: content.keywords.join(", "),
+    tags: content.tags.join(", "),
+    // The one field `ContentDetail` declares nullable; the two lists above
+    // carry `[]` as their schema default and cannot arrive absent.
     cover_image_url: content.cover_image_url ?? "",
   };
 }
@@ -998,7 +1000,7 @@ function PreviewLinksPanel({ contentId }) {
         </p>
       )}
 
-      {justCreated && !justCreated.revoked_at && (
+      {justCreated && (
         <div className="rounded-lg border border-line bg-canvas px-3 py-2">
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-ink-700">
@@ -1006,6 +1008,17 @@ function PreviewLinksPanel({ contentId }) {
             </code>
             <button className="btn-quiet shrink-0" onClick={() => copy(justCreated.url)}>
               Copy
+            </button>
+            {/* The list below deliberately excludes this link, so without a
+                revoke here a URL created by mistake — pasted into the wrong
+                chat, say — cannot be taken back until the page is reloaded.
+                That is the one moment the user most wants it gone. */}
+            <button
+              className="btn-quiet shrink-0 text-bad"
+              onClick={() => revoke(justCreated.id)}
+              disabled={busyId === justCreated.id}
+            >
+              Revoke
             </button>
           </div>
           <p className="mt-1 text-xs text-ink-400">

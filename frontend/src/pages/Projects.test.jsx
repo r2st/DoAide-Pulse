@@ -125,6 +125,51 @@ describe("a project card", () => {
     expect(screen.getByText("4 pieces")).toBeInTheDocument();
     expect(screen.getByText("3 published")).toBeInTheDocument();
   });
+
+  it("says '1 piece', not '1 pieces'", async () => {
+    api.listProjects.mockResolvedValue([project({ content_count: 1 })]);
+    draw();
+
+    await screen.findByText("Herald");
+    expect(screen.getByText("1 piece")).toBeInTheDocument();
+  });
+
+  it("colours the badge differently for each autopilot mode", async () => {
+    // Three modes, three meanings — off, drafts-for-review, and publishing on
+    // its own. A card that showed the last of those in the same neutral grey as
+    // "off" would make the one mode worth noticing the one you cannot see.
+    api.listProjects.mockResolvedValue([
+      project({ id: 1, name: "Off", autopilot_mode: "off" }),
+      project({ id: 2, name: "Draft", autopilot_mode: "draft" }),
+      project({ id: 3, name: "Auto", autopilot_mode: "auto" }),
+    ]);
+    draw();
+
+    await screen.findByText("Off");
+    const [off, drafting, auto] = screen.getAllByTitle("Autopilot mode");
+    expect(off).toHaveTextContent("off");
+    expect(auto).toHaveTextContent("auto");
+    expect(off.className).not.toBe(auto.className);
+    expect(drafting.className).not.toBe(off.className);
+    expect(drafting.className).not.toBe(auto.className);
+  });
+
+  it("shows when the repo was last scanned, and omits it when never", async () => {
+    api.listProjects.mockResolvedValue([
+      project({ last_scanned_at: "2026-08-13T09:00:00Z" }),
+    ]);
+    const { unmount } = draw();
+    await screen.findByText("Herald");
+
+    expect(screen.getByTitle("Last repo scan")).toBeInTheDocument();
+    unmount();
+
+    api.listProjects.mockResolvedValue([project({ last_scanned_at: null })]);
+    draw();
+    await screen.findByText("Herald");
+
+    expect(screen.queryByTitle("Last repo scan")).not.toBeInTheDocument();
+  });
 });
 
 describe("scanning a repo", () => {
@@ -215,6 +260,23 @@ describe("deleting a project", () => {
     expect(api.deleteProject).not.toHaveBeenCalled();
     expect(screen.getByText("Herald")).toBeInTheDocument();
   });
+
+  it("toasts a refused delete and leaves the card where it was", async () => {
+    // The server refuses this when something still references the project. The
+    // card staying put is the point: a row that vanished and came back on the
+    // next reload would read as the delete having half-worked.
+    confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    api.listProjects.mockResolvedValue([project()]);
+    api.deleteProject.mockRejectedValue(new Error("Project has queued publications"));
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Herald");
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(toast.error).toHaveBeenCalledWith("Project has queued publications");
+    expect(screen.getByText("Herald")).toBeInTheDocument();
+  });
 });
 
 describe("the add/edit dialog", () => {
@@ -278,6 +340,86 @@ describe("the add/edit dialog", () => {
     const select = await screen.findByLabelText("Primary destination");
     expect(within(select).getByText("Dev.to")).toBeInTheDocument();
     expect(within(select).queryByText("Twitter / X")).not.toBeInTheDocument();
+  });
+
+  it("opens empty from the header button when projects already exist", async () => {
+    // The empty state's button and this one are separate elements, and only the
+    // empty one was ever clicked — so the header's path to the dialog, which is
+    // the only one a user with projects can take, went untested.
+    api.listProjects.mockResolvedValue([project()]);
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Herald");
+
+    await user.click(screen.getByRole("button", { name: "Add project" }));
+
+    expect(screen.getByRole("heading", { name: "Add a project" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("");
+  });
+
+  it("reads the nullable URL fields as empty strings rather than uncontrolled inputs", async () => {
+    // `repo_url`, `live_url` and `canonical_platform` are the three fields
+    // ProjectOut declares nullable. Passing null straight into a value prop
+    // makes React drop the input to uncontrolled and warn.
+    api.listProjects.mockResolvedValue([
+      project({ repo_url: null, live_url: null, canonical_platform: null }),
+    ]);
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Herald");
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(screen.getByLabelText(/Repo URL/)).toHaveValue("");
+    expect(screen.getByLabelText(/Live URL/)).toHaveValue("");
+    expect(await screen.findByLabelText("Primary destination")).toHaveValue("");
+  });
+
+  it("explains what naming a primary destination changes", async () => {
+    api.listProjects.mockResolvedValue([project({ canonical_platform: "devto" })]);
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Herald");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await screen.findByLabelText("Primary destination");
+
+    expect(screen.getByText(/Only this destination can claim/)).toBeInTheDocument();
+    expect(screen.queryByText(/No destination is privileged/)).not.toBeInTheDocument();
+  });
+
+  it("turning off automatic canonicals disables choosing a destination for one", async () => {
+    // The two controls describe one decision. Leaving the select live under an
+    // unchecked box invites picking a primary destination that does nothing.
+    api.listProjects.mockResolvedValue([project()]);
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Herald");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    const auto = screen.getByLabelText(/Set the canonical URL automatically/);
+    expect(auto).toBeChecked();
+    expect(await screen.findByLabelText("Primary destination")).toBeEnabled();
+
+    await user.click(auto);
+
+    expect(auto).not.toBeChecked();
+    expect(screen.getByLabelText("Primary destination")).toBeDisabled();
+  });
+
+  it("toggling UTM tagging on enables the campaign name field", async () => {
+    api.listProjects.mockResolvedValue([project({ utm_enabled: false })]);
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Herald");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    const utm = screen.getByLabelText(/Tag published links with UTM/);
+    expect(utm).not.toBeChecked();
+
+    await user.click(utm);
+
+    expect(utm).toBeChecked();
+    expect(screen.getByLabelText("Campaign name")).toBeEnabled();
   });
 
   it("disables the campaign name field until UTM tagging is on", async () => {

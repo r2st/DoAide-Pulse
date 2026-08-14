@@ -207,18 +207,24 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
     project
       ? {
           name: project.name,
-          description: project.description ?? "",
+          description: project.description,
+          // `?? ""` on exactly the three fields `ProjectOut` declares nullable
+          // (see backend/app/schemas/project.py). The rest carry non-null
+          // defaults in the schema, and coalescing them here only hid the
+          // question of which ones a form actually has to defend against.
+          // An input handed `undefined` goes uncontrolled, which the console
+          // guard in the test setup turns into a failure rather than a shrug.
           repo_url: project.repo_url ?? "",
           live_url: project.live_url ?? "",
-          tech_stack: (project.tech_stack ?? []).join(", "),
-          target_audience: project.target_audience ?? "",
-          keywords: (project.keywords ?? []).join(", "),
+          tech_stack: project.tech_stack.join(", "),
+          target_audience: project.target_audience,
+          keywords: project.keywords.join(", "),
           tone: project.tone,
           autopilot_mode: project.autopilot_mode,
-          auto_canonical: project.auto_canonical ?? true,
+          auto_canonical: project.auto_canonical,
           canonical_platform: project.canonical_platform ?? "",
-          utm_enabled: project.utm_enabled ?? true,
-          utm_campaign: project.utm_campaign ?? "",
+          utm_enabled: project.utm_enabled,
+          utm_campaign: project.utm_campaign,
         }
       : EMPTY_FORM,
   );

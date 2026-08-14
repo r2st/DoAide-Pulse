@@ -60,6 +60,11 @@ function draw() {
     <MemoryRouter future={ROUTER_FUTURE} initialEntries={["/content/3"]}>
       <Routes>
         <Route path="/content/:contentId" element={<ContentEditor />} />
+        {/* The editor navigates here after a delete, and links here from its
+            header. Without the destination mounted, both leave the router
+            warning about an unmatched location — which the console guard in
+            the test setup turns into a failure. */}
+        <Route path="/content" element={<p>All content</p>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -686,6 +691,177 @@ describe("approving", () => {
 
     expect(toast.success).toHaveBeenCalledWith("Approved — ready to publish");
   });
+
+  it("does not claim anything was queued when the response omits publications", async () => {
+    // `approveContent` is read for its `publications` list, and a 204-shaped or
+    // trimmed response has none. Reading `.map` off that would throw inside the
+    // success path and toast the TypeError as if approving had failed.
+    api.getContent.mockResolvedValue(content({ status: "review" }));
+    api.approveContent.mockResolvedValue(undefined);
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(toast.success).toHaveBeenCalledWith("Approved — ready to publish");
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("toasts a refused approval and leaves the piece in review", async () => {
+    api.getContent.mockResolvedValue(content({ status: "review" }));
+    api.approveContent.mockRejectedValue(new Error("No platform is connected"));
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("No platform is connected"),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+  });
+});
+
+describe("deleting a piece", () => {
+  let confirmSpy;
+
+  afterEach(() => {
+    confirmSpy?.mockRestore();
+  });
+
+  it("asks for confirmation naming the piece, then leaves for the list", async () => {
+    confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    api.deleteContent.mockResolvedValue(undefined);
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: /Delete this piece/ }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("Saved title"));
+    expect(api.deleteContent).toHaveBeenCalledWith(3);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Deleted"));
+    // Navigating away is the only thing that makes the editor's own route
+    // survivable — staying put would leave the form editing a 404.
+    expect(await screen.findByText("All content")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Saved title")).not.toBeInTheDocument();
+  });
+
+  it("does nothing when the confirmation is declined", async () => {
+    confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: /Delete this piece/ }));
+
+    expect(api.deleteContent).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue("Saved title")).toBeInTheDocument();
+  });
+
+  it("toasts a refused delete and stays on the piece", async () => {
+    confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    api.deleteContent.mockRejectedValue(new Error("Already published"));
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: /Delete this piece/ }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Already published"));
+    expect(screen.getByDisplayValue("Saved title")).toBeInTheDocument();
+  });
+});
+
+describe("the header line", () => {
+  it("shows a retryable error instead of the form when the piece will not load", async () => {
+    api.getContent.mockRejectedValue(new Error("Service Unavailable"));
+    draw();
+
+    expect(await screen.findByText("Service Unavailable")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Saved title")).not.toBeInTheDocument();
+
+    api.getContent.mockResolvedValue(content());
+    await userEvent.click(screen.getByRole("button", { name: /Retry|Try again/i }));
+
+    expect(await screen.findByDisplayValue("Saved title")).toBeInTheDocument();
+  });
+
+  it("names the model that wrote it, and says nothing when a person did", async () => {
+    // Herald's own output and something typed by hand read identically once
+    // saved; the byline is the only thing that distinguishes them.
+    api.getContent.mockResolvedValue(
+      content({ generated_by_model: "claude-opus-5" }),
+    );
+    const { unmount } = draw();
+
+    expect(await screen.findByTitle("Which model wrote it")).toHaveTextContent(
+      "claude-opus-5",
+    );
+    unmount();
+
+    api.getContent.mockResolvedValue(content({ generated_by_model: null }));
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    expect(screen.queryByTitle("Which model wrote it")).not.toBeInTheDocument();
+  });
+});
+
+describe("leaving with unsaved work", () => {
+  // localStorage covers a crash; it cannot cover a reload, because the tree is
+  // gone before anything in it can offer the buffer back. The browser's own
+  // prompt is the only thing left, and it only appears if the handler both
+  // preventDefaults and sets returnValue.
+  /**
+   * `Event.returnValue` is a legacy accessor on the prototype that mirrors
+   * `defaultPrevented`, so reading it back would only re-assert preventDefault.
+   * An own data property shadows it, which is what lets the assignment itself
+   * be observed — and it is the assignment, not preventDefault, that some
+   * browsers still require before they will show the prompt.
+   */
+  function beforeUnload() {
+    const event = new Event("beforeunload", { cancelable: true });
+    Object.defineProperty(event, "returnValue", {
+      value: undefined,
+      writable: true,
+    });
+    window.dispatchEvent(event);
+    return event;
+  }
+
+  it("asks the browser to confirm a reload once the draft is dirty", async () => {
+    draw();
+    const title = await screen.findByDisplayValue("Saved title");
+
+    await userEvent.type(title, "!");
+    const event = beforeUnload();
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(event.returnValue).toBe("");
+  });
+
+  it("does not interrupt a reload when nothing has been edited", async () => {
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    const event = beforeUnload();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(event.returnValue).toBeUndefined();
+  });
+
+  it("stops asking once the edit is saved", async () => {
+    api.updateContent.mockResolvedValue(content({ title: "Saved title!" }));
+    draw();
+    const title = await screen.findByDisplayValue("Saved title");
+    await userEvent.type(title, "!");
+
+    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await screen.findByRole("button", { name: "Saved" });
+
+    const event = beforeUnload();
+
+    expect(event.defaultPrevented).toBe(false);
+  });
 });
 
 describe("sharing a preview link", () => {
@@ -797,5 +973,139 @@ describe("sharing a preview link", () => {
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument(),
     );
+  });
+
+  it("toasts a failed creation instead of leaving the button spinning", async () => {
+    api.listPreviewLinks.mockResolvedValue([]);
+    api.createPreviewLink.mockRejectedValue(new Error("Preview links are disabled"));
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: "New link" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Preview links are disabled"),
+    );
+    expect(screen.getByRole("button", { name: "New link" })).toBeEnabled();
+  });
+
+  it("tells the user to copy by hand when the clipboard is refused", async () => {
+    // Clipboard writes need a permission and a secure context; over plain http,
+    // or with the permission denied, this rejects and the URL is still on
+    // screen — so the advice is to select it, not to try again.
+    api.listPreviewLinks.mockResolvedValue([]);
+    api.createPreviewLink.mockResolvedValue({
+      id: 9,
+      url: "https://herald.example.com/preview/abc123",
+      expires_at: "2026-08-16T10:00:00Z",
+      revoked_at: null,
+      view_count: 0,
+      last_viewed_at: null,
+    });
+    navigator.clipboard.writeText.mockRejectedValue(new Error("NotAllowedError"));
+    draw();
+    await screen.findByDisplayValue("Saved title");
+    await userEvent.click(screen.getByRole("button", { name: "New link" }));
+    await screen.findByText("https://herald.example.com/preview/abc123");
+
+    await userEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not copy — select the link and copy it manually.",
+      ),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(
+      screen.getByText("https://herald.example.com/preview/abc123"),
+    ).toBeInTheDocument();
+  });
+
+  it("toasts a failed revoke and keeps the link listed", async () => {
+    api.listPreviewLinks.mockResolvedValue([
+      {
+        id: 4,
+        url: null,
+        expires_at: "2026-08-16T10:00:00Z",
+        revoked_at: null,
+        view_count: 0,
+        last_viewed_at: null,
+      },
+    ]);
+    api.revokePreviewLink.mockRejectedValue(new Error("Link already expired"));
+    draw();
+    await screen.findByText(/never opened/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Link already expired"),
+    );
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeEnabled();
+  });
+
+  it("can revoke the link it just created, and takes the callout down with it", async () => {
+    // The new link is deliberately kept out of the list below, so before this
+    // there was no revoke for it anywhere: a URL pasted into the wrong chat
+    // could not be taken back until the page was reloaded, which is the one
+    // moment the user most wants it gone.
+    api.listPreviewLinks.mockResolvedValue([]);
+    api.createPreviewLink.mockResolvedValue({
+      id: 9,
+      url: "https://herald.example.com/preview/abc123",
+      expires_at: "2026-08-16T10:00:00Z",
+      revoked_at: null,
+      view_count: 0,
+      last_viewed_at: null,
+    });
+    api.revokePreviewLink.mockResolvedValue(undefined);
+    draw();
+    await screen.findByDisplayValue("Saved title");
+    await userEvent.click(screen.getByRole("button", { name: "New link" }));
+    await screen.findByText("https://herald.example.com/preview/abc123");
+
+    await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
+
+    expect(api.revokePreviewLink).toHaveBeenCalledWith(3, 9);
+    await waitFor(() =>
+      expect(
+        screen.queryByText("https://herald.example.com/preview/abc123"),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("does not list the just-created link twice when the reload returns it", async () => {
+    // The callout and the list are fed from different places — one from the
+    // create response, one from the reload that follows it — and both describe
+    // the same link for as long as it is the newest one.
+    api.listPreviewLinks.mockResolvedValueOnce([]).mockResolvedValue([
+      {
+        id: 9,
+        url: null,
+        expires_at: "2026-08-16T10:00:00Z",
+        revoked_at: null,
+        view_count: 0,
+        last_viewed_at: null,
+      },
+    ]);
+    api.createPreviewLink.mockResolvedValue({
+      id: 9,
+      url: "https://herald.example.com/preview/abc123",
+      expires_at: "2026-08-16T10:00:00Z",
+      revoked_at: null,
+      view_count: 0,
+      last_viewed_at: null,
+    });
+    draw();
+    await screen.findByDisplayValue("Saved title");
+
+    await userEvent.click(screen.getByRole("button", { name: "New link" }));
+    await screen.findByText("https://herald.example.com/preview/abc123");
+
+    await waitFor(() => expect(api.listPreviewLinks).toHaveBeenCalledTimes(2));
+    // One Revoke — the callout's. The list entry for the same link is filtered
+    // out, so the reload does not grow a second row saying the same thing.
+    expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    expect(screen.queryByText(/never opened/)).not.toBeInTheDocument();
   });
 });
