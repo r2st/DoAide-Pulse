@@ -85,6 +85,13 @@ describe("cadence provenance", () => {
     );
   });
 
+  it("says zero rather than 'undefined posts' when the count is missing", () => {
+    // A learned entry always carries its sample; a cached response from before
+    // the field existed does not, and "Learned from undefined posts" is a worse
+    // answer than an honest zero.
+    expect(cadenceProvenance(fullyLearned)).toBe("Learned from 0 posts");
+  });
+
   it("credits only the hour when the days are still the table's", () => {
     // The two clear the evidence bar separately: enough posts at 07:00 to name
     // an hour, no single weekday with enough of its own to name a rota. The

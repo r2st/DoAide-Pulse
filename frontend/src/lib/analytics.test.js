@@ -116,6 +116,21 @@ describe("platformShares", () => {
   it("survives an absent list", () => {
     expect(platformShares(undefined)).toEqual([]);
   });
+
+  it("reads a row that omits its counters as zero, not as NaN", () => {
+    // A platform row whose counters have not been backfilled yet still has to
+    // divide: one `undefined` in the numerator makes every share on the panel
+    // NaN, and NaN renders as an empty bar rather than as an error.
+    const result = platformShares([
+      { platform: "devto", views: 400 },
+      { platform: "bluesky", published: 4, views: 100 },
+    ]);
+    expect(result.map((r) => r.platform)).toEqual(["devto", "bluesky"]);
+    expect(result[0].published).toBe(0);
+    expect(result[0].publicationShare).toBe(0);
+    expect(result[0].viewShare).toBeCloseTo(0.8);
+    expect(result[1].publicationShare).toBe(1);
+  });
 });
 
 describe("bestPlatform", () => {
@@ -137,6 +152,20 @@ describe("bestPlatform", () => {
       { platform: "mastodon", views: 1, engagement_rate: 1 },
     ]);
     expect(best.platform).toBe("devto");
+  });
+
+  it("keeps the leader when a later platform does not beat it", () => {
+    // The reduce walks in order, so the winner arriving first is the arm that
+    // has to hold — otherwise the answer depends on how the API sorted its rows.
+    const best = bestPlatform([
+      { platform: "bluesky", views: 100, engagement_rate: 0.2 },
+      { platform: "devto", views: 900, engagement_rate: 0.01 },
+    ]);
+    expect(best.platform).toBe("bluesky");
+  });
+
+  it("treats a platform with no view count as having none", () => {
+    expect(bestPlatform([{ platform: "devto", engagement_rate: 0.9 }])).toBeNull();
   });
 
   it("ignores a platform whose rate is unknown rather than low", () => {

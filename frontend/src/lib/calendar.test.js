@@ -73,6 +73,11 @@ describe("filterEntries", () => {
     expect(filterEntries(entries)).toHaveLength(4);
   });
 
+  it("filters nothing into nothing while the month is still loading", () => {
+    expect(filterEntries(undefined, { platform: "devto" })).toEqual([]);
+    expect(filterEntries(undefined)).toEqual([]);
+  });
+
   it("filters by platform", () => {
     expect(filterEntries(entries, { platform: "devto" }).map((e) => e.content_id)).toEqual([
       1, 4,
@@ -166,6 +171,13 @@ describe("summarize", () => {
 
   it("counts an empty calendar as empty", () => {
     expect(summarize([])).toEqual({ published: 0, upcoming: 0, failed: 0, total: 0 });
+    // The header line renders before the month's first response arrives.
+    expect(summarize(undefined)).toEqual({
+      published: 0,
+      upcoming: 0,
+      failed: 0,
+      total: 0,
+    });
   });
 });
 

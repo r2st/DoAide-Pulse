@@ -50,6 +50,14 @@ describe("normalizeSelection", () => {
     const selection = normalizeSelection("short body text", 0, 999);
     expect(selection.text).toBe("short body text");
   });
+
+  it("is null when either offset is not a number", () => {
+    // A textarea that has never been focused reports null for both, and the
+    // toolbar asks on every render — including the first, before any click.
+    expect(normalizeSelection(BODY, null, 21)).toBeNull();
+    expect(normalizeSelection(BODY, 0, null)).toBeNull();
+    expect(normalizeSelection(BODY, undefined, undefined)).toBeNull();
+  });
 });
 
 describe("selectionProblem", () => {

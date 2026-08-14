@@ -83,6 +83,14 @@ describe("nameProblem", () => {
     expect(nameProblem("  ", BUILTINS)).toMatch(/name/i);
   });
 
+  it("refuses an absent name the same way as a blank one", () => {
+    // A row added by the editor has `name: ""`, but a template imported with a
+    // malformed variable has no `name` key at all, and `undefined.trim()` would
+    // take the whole editor down rather than flag the row.
+    expect(nameProblem(undefined, BUILTINS)).toMatch(/name/i);
+    expect(nameProblem(null, BUILTINS)).toMatch(/name/i);
+  });
+
   it("refuses spaces and leading digits", () => {
     expect(nameProblem("release version", BUILTINS)).toMatch(/letters/i);
     expect(nameProblem("9lives", BUILTINS)).toMatch(/letters/i);
@@ -108,6 +116,11 @@ describe("labelFor", () => {
   it("turns a variable name into something a form can ask for", () => {
     expect(labelFor("release_version")).toBe("Release version");
     expect(labelFor("summary")).toBe("Summary");
+  });
+
+  it("labels a nameless variable as nothing rather than throwing", () => {
+    expect(labelFor(undefined)).toBe("");
+    expect(labelFor(null)).toBe("");
   });
 });
 
@@ -218,6 +231,18 @@ describe("initialValues and stillMissing", () => {
 
   it("treats whitespace as empty, like the server does", () => {
     expect(stillMissing(variables, { summary: "   " })).toEqual(["summary"]);
+  });
+
+  it("counts a required variable missing from the values entirely", () => {
+    // Not the same as an empty string: this is the shape when a template gains
+    // a variable while a half-filled use dialog is already open.
+    expect(stillMissing(variables, {})).toEqual(["summary"]);
+  });
+
+  it("seeds a variable that declares no default with an empty string", () => {
+    expect(initialValues([{ name: "summary", required: true }])).toEqual({
+      summary: "",
+    });
   });
 });
 
