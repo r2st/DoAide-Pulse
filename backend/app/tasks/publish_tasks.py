@@ -21,12 +21,12 @@ from app.models.project import AutopilotMode, Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
 from app.services import content_pipeline, publishing_service
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@task(
     name="app.tasks.publish_tasks.publish_one",
     soft_time_limit=120,
     time_limit=150,
@@ -121,7 +121,7 @@ def publish_one(publication_id: int) -> dict:
         db.close()
 
 
-@celery_app.task(
+@task(
     name="app.tasks.publish_tasks.publish_due",
     soft_time_limit=300,
     time_limit=360,
@@ -204,7 +204,7 @@ def publish_due() -> dict:
     return {"dispatched": dispatched, "failed": failed, "reclaimed": reclaimed}
 
 
-@celery_app.task(
+@task(
     name="app.tasks.publish_tasks.release_approved_content",
     soft_time_limit=300,
     time_limit=360,
@@ -281,7 +281,7 @@ def release_approved_content() -> dict:
     return {"found": len(stuck), "released": released}
 
 
-@celery_app.task(
+@task(
     name="app.tasks.publish_tasks.cancel_publication", soft_time_limit=30, time_limit=60
 )
 def cancel_publication(publication_id: int) -> dict:

@@ -12,12 +12,12 @@ from app.database import SessionLocal
 from app.models.content import Content
 from app.models.publication import Publication, PublicationStatus
 from app.services import publishers, publishing_service
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@task(
     name="app.tasks.metrics_tasks.collect_all_metrics",
     soft_time_limit=300,
     time_limit=360,
@@ -94,7 +94,7 @@ def collect_all_metrics() -> dict:
     return {"polled": len(publications), "recorded": recorded}
 
 
-@celery_app.task(
+@task(
     name="app.tasks.metrics_tasks.collect_one",
     soft_time_limit=60,
     time_limit=90,

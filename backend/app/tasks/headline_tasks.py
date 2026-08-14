@@ -19,7 +19,7 @@ from app.models.content import Content, ContentStatus
 from app.models.project import Project
 from app.models.user import User
 from app.services import headlines
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def _candidates(db: Session) -> list[Content]:
     return [row for row in rows if row.headline_history]
 
 
-@celery_app.task(
+@task(
     name="app.tasks.headline_tasks.auto_select_headlines",
     soft_time_limit=300,
     time_limit=360,

@@ -20,12 +20,12 @@ from sqlalchemy.exc import OperationalError
 from app.database import SessionLocal
 from app.models.trigger import Trigger
 from app.services import triggers as trigger_service
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@task(
     name="app.tasks.trigger_tasks.check_trigger",
     soft_time_limit=180,
     time_limit=210,
@@ -53,7 +53,7 @@ def check_trigger(trigger_id: int) -> dict:
         db.close()
 
 
-@celery_app.task(
+@task(
     name="app.tasks.trigger_tasks.check_due_triggers",
     soft_time_limit=120,
     time_limit=150,

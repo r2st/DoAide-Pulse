@@ -15,12 +15,12 @@ from sqlalchemy.exc import OperationalError
 from app.database import SessionLocal
 from app.models.webhook import WebhookDelivery
 from app.services import webhooks
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@task(
     name="app.tasks.webhook_tasks.deliver_one",
     soft_time_limit=60,
     time_limit=90,
@@ -50,7 +50,7 @@ def deliver_one(delivery_id: int) -> dict:
         db.close()
 
 
-@celery_app.task(
+@task(
     name="app.tasks.webhook_tasks.deliver_due",
     soft_time_limit=300,
     time_limit=360,

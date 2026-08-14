@@ -16,12 +16,12 @@ from app.models.preview_link import PreviewLink
 from app.models.trigger import TriggerEvent, TriggerEventStatus
 from app.models.webhook import DeliveryStatus, WebhookDelivery
 from app.services import password_reset
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@task(
     name="app.tasks.maintenance_tasks.purge_expired_tokens",
     soft_time_limit=30,
     time_limit=60,
@@ -42,7 +42,7 @@ def purge_expired_tokens() -> dict:
         db.close()
 
 
-@celery_app.task(
+@task(
     name="app.tasks.maintenance_tasks.purge_old_webhook_deliveries",
     soft_time_limit=60,
     time_limit=120,
@@ -76,7 +76,7 @@ def purge_old_webhook_deliveries() -> dict:
         db.close()
 
 
-@celery_app.task(
+@task(
     name="app.tasks.maintenance_tasks.purge_old_trigger_events",
     soft_time_limit=60,
     time_limit=120,
@@ -112,7 +112,7 @@ def purge_old_trigger_events() -> dict:
         db.close()
 
 
-@celery_app.task(
+@task(
     name="app.tasks.maintenance_tasks.purge_old_preview_links",
     soft_time_limit=60,
     time_limit=120,

@@ -1,12 +1,49 @@
 """Celery application + beat schedule."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from celery import Celery
 from celery.schedules import crontab
 from celery.signals import setup_logging
 
 from app.config import settings
 from app.logging_config import configure_logging
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Any, ParamSpec, Protocol, TypeVar
+
+    from celery.result import AsyncResult
+
+    _P = ParamSpec("_P")
+    _R_co = TypeVar("_R_co", covariant=True)
+
+    class _Task(Protocol[_P, _R_co]):
+        """A ``@task``-decorated function, as this tree actually uses one."""
+
+        name: str
+
+        # Run it here and now, on the calling thread. This is the inline
+        # fallback every dispatch site has when the broker is unreachable.
+        def __call__(self, *args: _P.args, **kwargs: _P.kwargs) -> _R_co: ...
+
+        # Hand it to the broker.
+        def delay(self, *args: _P.args, **kwargs: _P.kwargs) -> AsyncResult: ...
+
+        # The same, with delivery options.
+        def apply_async(
+            self,
+            args: tuple[object, ...] | None = ...,
+            kwargs: dict[str, object] | None = ...,
+            **options: Any,
+        ) -> AsyncResult: ...
+
+    class _TaskDecorator(Protocol):
+        def __call__(
+            self, **opts: Any
+        ) -> Callable[[Callable[_P, _R_co]], _Task[_P, _R_co]]:
+            ...
 
 
 @setup_logging.connect
@@ -66,6 +103,14 @@ celery_app.conf.update(
     broker_transport_options={"socket_connect_timeout": 2, "socket_timeout": 2},
     task_publish_retry=False,
 )
+
+# ``celery_app.task``, with a signature. Celery ships no ``py.typed``, so a type
+# checker reading its source infers the decorator as returning the undecorated
+# function — which typechecks the inline calls fine but loses ``.delay``, the
+# whole point of the decorator, at every dispatch site. The annotation is
+# never evaluated (``from __future__ import annotations``); at runtime this is
+# the identical object, so task registration is unchanged.
+task: _TaskDecorator = celery_app.task
 
 # Periodic jobs.
 #

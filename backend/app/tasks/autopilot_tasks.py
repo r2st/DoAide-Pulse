@@ -48,7 +48,7 @@ from app.models.project import AutopilotMode, Project
 from app.models.trigger import Trigger, TriggerKind
 from app.models.user import User
 from app.services import content_generator, content_pipeline, github_client
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ def _daily_count(db: Session, project_id: int) -> int:
     )
 
 
-@celery_app.task(
+@task(
     name="app.tasks.autopilot_tasks.scan_project",
     soft_time_limit=180,
     time_limit=210,
@@ -273,7 +273,7 @@ def _act_on(
     return routed.summary()
 
 
-@celery_app.task(
+@task(
     name="app.tasks.autopilot_tasks.scan_all_projects",
     soft_time_limit=120,
     time_limit=150,

@@ -15,12 +15,12 @@ from sqlalchemy.exc import OperationalError
 from app.database import SessionLocal
 from app.models.user import User
 from app.services import digest, mailer
-from app.tasks.celery_app import celery_app
+from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(
+@task(
     name="app.tasks.digest_tasks.send_weekly_digests",
     soft_time_limit=300,
     time_limit=360,
