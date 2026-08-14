@@ -153,9 +153,30 @@ export default function ContentEditor() {
 
   // Look for a recovery buffer once per piece, on arrival, and take the chance
   // to drop everyone else's stale ones while we are here.
+  //
+  // "Once per piece" is the ref, not the dependency list. `saved` is derived
+  // from `data`, so this effect re-runs on every background refresh — the one
+  // Approve fires, the one a publication retry fires — and by then the buffer
+  // holds what the author is *currently typing*. It differs from the server's
+  // copy because it is meant to; that is what being mid-edit means. So the
+  // banner appeared, unprompted, offering to restore the text already on
+  // screen.
+  //
+  // Which would be merely baffling if the banner did not also stop the writing
+  // being saved: an unanswered offer suspends the mirror and disables the
+  // auto-save, both deliberately, because nothing may resolve the question on
+  // the author's behalf. So an offer raised about live text turns the
+  // auto-save off underneath someone who is still typing and has no idea they
+  // have been asked anything.
+  //
+  // The suite could not see it. `mockResolvedValue` hands back one object for
+  // every call, and React bails out of a `setData` with an unchanged identity,
+  // so a reload in a test never actually changed `data`.
+  const recoveryCheckedId = useRef(null);
   useEffect(() => {
     draftStore.prune();
-    if (!saved || locked) return;
+    if (!saved || locked || recoveryCheckedId.current === contentId) return;
+    recoveryCheckedId.current = contentId;
     const stored = draftStore.load(contentId);
     // Only interesting if it still says something the server does not. A
     // buffer that matches what was since saved is noise.

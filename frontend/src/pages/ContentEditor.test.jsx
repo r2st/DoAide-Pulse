@@ -160,6 +160,102 @@ describe("recovering unsaved work", () => {
     await screen.findByDisplayValue("Saved title");
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
+
+  // The offer is made once per piece, on arrival. Everything below is the same
+  // bug from a different angle: the lookup used to re-run on every change of
+  // `data`, and a background refresh mid-edit found the author's own live
+  // typing in the buffer and offered it back to them.
+  //
+  // These cases all need `mockImplementation` rather than
+  // `mockResolvedValue`. One resolved value is one object for every call, and
+  // React bails out of a `setData` whose identity has not changed — so a
+  // reload in a test never actually changed `data`, and the whole class was
+  // invisible to the suite.
+  describe("after a background refresh", () => {
+    beforeEach(() => {
+      api.getContent.mockImplementation(() => Promise.resolve(content()));
+      api.approveContent.mockResolvedValue(content({ status: "approved" }));
+    });
+
+    /** Type, then make the editor refetch the piece behind the author. */
+    async function typeThenRefresh() {
+      const title = await screen.findByLabelText(/^Title/i);
+      await userEvent.type(title, "!");
+      await waitFor(() => expect(draftStore.load(3)?.draft.title).toBe("Saved title!"));
+
+      await userEvent.click(screen.getByRole("button", { name: "Approve" }));
+      await waitFor(() => expect(api.getContent).toHaveBeenCalledTimes(2));
+      return title;
+    }
+
+    it("does not offer to recover the text being typed right now", async () => {
+      draw();
+      await typeThenRefresh();
+
+      expect(screen.queryByText(/Unsaved edits/)).not.toBeInTheDocument();
+    });
+
+    it("keeps mirroring what is typed after it", async () => {
+      // An unanswered offer suspends the mirror, so one raised about live text
+      // stops the buffer following the writing it is supposedly protecting.
+      draw();
+      const title = await typeThenRefresh();
+      await userEvent.type(title, "?");
+
+      await waitFor(() =>
+        expect(draftStore.load(3)?.draft.title).toBe("Saved title!?"),
+      );
+    });
+
+    it("keeps auto-saving, which an unanswered offer would have stopped", async () => {
+      // The half that made this more than a baffling banner. An offer on
+      // screen also disables the auto-save — deliberately, so nothing answers
+      // the question for the user. Raised about live text, that turns the
+      // auto-save off underneath someone who is still typing and has not been
+      // told they were asked anything.
+      //
+      // The clock is faked before the edit, because `useFakeTimers` does not
+      // adopt a timer that is already running — which means `fireEvent` for
+      // the rest, as everywhere else in this file that drives the debounce.
+      // And it is advanced in two steps: the refresh has to land *inside* the
+      // debounce window, or the save the assertion is about already went out
+      // before there was anything to stop it.
+      api.updateContent.mockImplementation(() =>
+        Promise.resolve(content({ title: "Saved title!" })),
+      );
+      draw();
+      const title = await screen.findByLabelText(/^Title/i);
+
+      vi.useFakeTimers();
+      try {
+        fireEvent.change(title, { target: { value: "Saved title!" } });
+        fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(100);
+        });
+        expect(api.getContent).toHaveBeenCalledTimes(2);
+        expect(api.updateContent).not.toHaveBeenCalled();
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2000);
+        });
+        expect(api.updateContent).toHaveBeenCalledWith(
+          3,
+          expect.objectContaining({ title: "Saved title!" }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("still offers a buffer left by a crashed tab on first arrival", async () => {
+      // The guard is "once per piece", not "never" — the feature still works.
+      storeBuffer({ title: "Rescued title" });
+      draw();
+
+      expect(await screen.findByText(/Unsaved edits/)).toBeInTheDocument();
+    });
+  });
 });
 
 describe("mirroring edits", () => {
