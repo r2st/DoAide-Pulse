@@ -73,6 +73,39 @@ def _statement_timeout_option(seconds: float) -> dict[str, str]:
     return {"options": f"-c statement_timeout={math.ceil(seconds * 1000)}"}
 
 
+def _connect_options(seconds: float) -> dict[str, str]:
+    """Every libpq startup setting Herald needs, as one ``connect_args``.
+
+    ``timezone=UTC`` is here because Herald has exactly one clock and had no way
+    of insisting on it. Timestamp columns are ``timestamptz``, and a driver
+    reading one converts it to the *session* time zone before handing it back —
+    a zone that comes from ``postgresql.conf``, the role, or the server's own
+    locale, and that nothing in this repo was setting. So on a box that is not
+    on UTC every timestamp arrived shifted, and the code that reads a field off
+    one read the wrong field:
+
+    * the dashboard's daily charts group readings by ``captured_at.date()`` and
+      label their buckets from a UTC window, so near either end of the day a
+      reading landed in a bucket the labels do not contain and was dropped from
+      the chart without trace;
+    * ``learned_cadence`` learns what hour of the day a post does well at from
+      ``published.hour``, and hands it to a scheduler that means UTC — a whole
+      publishing rhythm off by the server's offset.
+
+    None of it shows in the tests: SQLite has no time zones and returns the
+    naive UTC that was written. It is a bug that exists only where it is
+    expensive, and it is one connection parameter.
+
+    Merged with the timeout rather than sent separately because libpq takes a
+    single ``options`` string; two keys would silently keep the last one.
+    """
+    settings_ = ["-c timezone=UTC"]
+    timeout = _statement_timeout_option(seconds).get("options")
+    if timeout:
+        settings_.append(timeout)
+    return {"options": " ".join(settings_)}
+
+
 def _make_engine(url: str) -> Engine:
     # SQLite (tests) needs a special connect arg for multithreaded access, and
     # has no pool to tune: the in-memory database is one connection by
@@ -98,7 +131,7 @@ def _make_engine(url: str) -> Engine:
         max_overflow=settings.db_max_overflow,
         pool_timeout=settings.db_pool_timeout_seconds,
         pool_recycle=settings.db_pool_recycle_seconds,
-        connect_args=_statement_timeout_option(settings.db_statement_timeout_seconds),
+        connect_args=_connect_options(settings.db_statement_timeout_seconds),
     )
 
 

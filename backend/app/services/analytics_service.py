@@ -19,7 +19,7 @@ from __future__ import annotations
 import dataclasses
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
@@ -32,7 +32,7 @@ from app.models.content import (
     read_minutes_for,
 )
 from app.models.metrics import ContentMetric
-from app.models.mixins import utcnow
+from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 
@@ -468,6 +468,24 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
     return sorted(out, key=lambda d: d["views"], reverse=True)[:limit]
 
 
+def utc_day(value: datetime) -> str:
+    """Which UTC day a stored timestamp falls on, as the bucket key for it.
+
+    ``value.date()`` is the date *in whatever zone the value carries*, and a
+    ``timestamptz`` arrives in the database session's zone. Herald pins that to
+    UTC at connect time (:func:`app.database._connect_options`), which is the
+    real fix; this is the same statement made where the buckets are built, so a
+    reading cannot be filed under a day the labels do not contain.
+
+    That is the failure worth naming: the labels below run from
+    :func:`window_start` and are UTC by construction, so a reading shifted into
+    the day after the last label does not move buckets — it matches none of
+    them and leaves the chart entirely. A silent subtraction, on the one screen
+    whose job is to be counted on.
+    """
+    return as_aware(value).astimezone(UTC).date().isoformat()
+
+
 def window_start(days: int) -> datetime:
     """Midnight UTC on the first day a *days*-long daily chart draws.
 
@@ -518,7 +536,7 @@ def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
 
     counts: dict[str, int] = defaultdict(int)
     for (published_at,) in rows:
-        counts[published_at.date().isoformat()] += 1
+        counts[utc_day(published_at)] += 1
 
     start = since.date()
     return [
@@ -578,7 +596,7 @@ def _daily_gains(
     running = dict(opening)
     closing: dict[str, dict[str, int]] = {}
     for metric in sorted(snapshots, key=lambda m: (m.captured_at, m.id)):
-        day = metric.captured_at.date().isoformat()
+        day = utc_day(metric.captured_at)
         for field_ in _TREND_FIELDS:
             value = _field_of(metric, field_)
             if value is None:
