@@ -61,6 +61,28 @@ describe("renderMarkdown", () => {
     expect(renderMarkdown(null)).toBe("");
   });
 
+  it("renders a horizontal rule from any of the three markers", () => {
+    // `---` is also how a list item starts, and `***` is also emphasis. The rule
+    // branch runs before neither of those, so the anchored full-line match is
+    // the only thing keeping a section break from becoming an empty bullet.
+    for (const marker of ["---", "***", "___", "-----"]) {
+      expect(renderMarkdown(marker)).toContain("<hr />");
+    }
+  });
+
+  it("closes the paragraph above a horizontal rule instead of absorbing it", () => {
+    const html = renderMarkdown("before\n---\nafter");
+    expect(html.indexOf("<p>before</p>")).toBeLessThan(html.indexOf("<hr />"));
+    expect(html.indexOf("<hr />")).toBeLessThan(html.indexOf("<p>after</p>"));
+  });
+
+  it("leaves a dashed line that is not a rule as ordinary text", () => {
+    // Two dashes is an em dash people type, not a section break.
+    expect(renderMarkdown("--")).not.toContain("<hr />");
+    expect(renderMarkdown("- item")).not.toContain("<hr />");
+    expect(renderMarkdown("--- trailing words")).not.toContain("<hr />");
+  });
+
   it("renders a blockquote", () => {
     // Regression: escapeHtml runs over the whole document first, so by the time
     // the blockquote branch sees the line the marker is `&gt;`, not `>`. The

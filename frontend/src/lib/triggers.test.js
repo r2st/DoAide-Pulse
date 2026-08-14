@@ -150,8 +150,16 @@ describe("describeTrigger", () => {
   });
 
   it("falls back to what the trigger will do when nothing is configured", () => {
+    expect(describeTrigger({ kind: "rss", config: {} })).toBe("a feed");
     expect(describeTrigger({ kind: "github", config: {} })).toBe("the project's repo");
     expect(describeTrigger({ kind: "schedule", config: {} })).toBe("a recurring piece");
+  });
+
+  it("falls back for a trigger stored without a config at all", () => {
+    // `config` is nullable on the server, and a row written before a kind grew
+    // its fields comes back with none — the list still has to render a line.
+    expect(describeTrigger({ kind: "rss" })).toBe("a feed");
+    expect(describeTrigger({ kind: "webhook" })).toBe("any signed or unsigned POST");
   });
 
   it("says whether a webhook demands a signature", () => {
@@ -186,6 +194,15 @@ describe("triggerHealth", () => {
     });
     expect(health.label).toBe("Failing (9×)");
     expect(health.title).toBe("404 Not Found");
+  });
+
+  it("omits the tooltip when a failing trigger recorded no error text", () => {
+    // `title=""` renders an empty tooltip box on hover, which reads as "we know
+    // nothing" rather than "there is nothing to show".
+    const health = triggerHealth({ ...base, consecutive_failures: 2, last_error: "" });
+
+    expect(health.label).toBe("Failing (2×)");
+    expect(health.title).toBeUndefined();
   });
 
   it("does not claim a trigger is healthy before it has ever fired", () => {
@@ -245,5 +262,53 @@ describe("summarizeCheck", () => {
   it("has something to say about a status it has never seen", () => {
     expect(summarizeCheck({ status: "brand_new_status" })).toBe("brand_new_status");
     expect(summarizeCheck(null)).toBe("Checked.");
+  });
+
+  it("still says something when the server sends a result with no status at all", () => {
+    // `null` is handled a line earlier; this is the shape that reaches the
+    // switch and falls off the end of it, where returning undefined would
+    // render the check button's result line as empty and look like a hang.
+    expect(summarizeCheck({})).toBe("Checked.");
+    expect(summarizeCheck({ status: "" })).toBe("Checked.");
+  });
+
+  it("describes a first look that found nothing to count", () => {
+    // A feed whose response the server did not enumerate: still baselined, but
+    // "0 entries noted" would read as a broken feed rather than a fresh one.
+    expect(summarizeCheck({ status: "baselined" })).toBe(
+      "Connected. Herald writes about what happens next.",
+    );
+  });
+
+  it("counts zero commits rather than saying 'undefined new commits'", () => {
+    expect(summarizeCheck({ status: "below_threshold" })).toMatch(/^0 new commits/);
+  });
+
+  it("explains that an interval has not elapsed instead of implying no news", () => {
+    // "Nothing new" and "not looked yet" are different answers, and a user who
+    // just pressed Check now needs to know which one they got.
+    expect(summarizeCheck({ status: "not_due" })).toMatch(/interval has not elapsed/);
+    expect(summarizeCheck({ status: "not_due" })).not.toBe(
+      summarizeCheck({ status: "no_news" }),
+    );
+  });
+
+  it("explains that a webhook has nothing to poll", () => {
+    expect(summarizeCheck({ status: "not_polled" })).toMatch(/POSTs to its URL/);
+  });
+
+  it("confirms an inbound firing that produced no draft of its own", () => {
+    expect(summarizeCheck({ status: "received" })).toBe("Fired.");
+  });
+
+  it("falls back to a plain reason when a skip or failure carries no detail", () => {
+    expect(summarizeCheck({ status: "skipped" })).toBe("Skipped.");
+    expect(summarizeCheck({ status: "failed" })).toMatch(/generating failed/);
+  });
+
+  it("prefers the server's reason for a failure over the generic one", () => {
+    expect(summarizeCheck({ status: "failed", detail: "The model timed out." })).toBe(
+      "The model timed out.",
+    );
   });
 });

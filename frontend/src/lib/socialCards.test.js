@@ -207,6 +207,36 @@ describe("audit", () => {
     expect(fields(issues, "warn").has("cover_image_url")).toBe(true);
   });
 
+  it("flags a missing description differently from a short one", () => {
+    // Nothing at all is not "a bit thin" — the card renders as the title on a
+    // line by itself, and the fix is to write one rather than lengthen one.
+    const missing = audit({
+      title: "A fine title",
+      cover_image_url: "https://cdn.e.com/c.png",
+    });
+    const short = audit({
+      title: "A fine title",
+      meta_description: "Too short.",
+      cover_image_url: "https://cdn.e.com/c.png",
+    });
+
+    const only = (issues) => issues.filter((i) => i.field === "meta_description");
+    expect(only(missing)).toHaveLength(1);
+    expect(only(missing)[0].level).toBe("warn");
+    expect(only(missing)[0].message).not.toMatch(/characters/);
+    expect(only(short)[0].message).toMatch(/characters/);
+  });
+
+  it("treats an empty description the same as an absent one", () => {
+    const issues = audit({
+      title: "A fine title",
+      meta_description: "   ",
+      cover_image_url: "https://cdn.e.com/c.png",
+    });
+
+    expect(issues.filter((i) => i.field === "meta_description")).toHaveLength(1);
+  });
+
   it("flags a description that is too short to fill the card", () => {
     const issues = audit({
       title: "A fine title",

@@ -162,6 +162,17 @@ describe("clear", () => {
     expect(load(1)).toBe(null);
     expect(load(2).draft.title).toBe("Two");
   });
+
+  it("reports failure for a missing content id rather than clearing 'undefined'", () => {
+    // The editor calls this from the recovery banner, which can render for a
+    // beat before the route param resolves. Keying off `undefined` would build
+    // a real key and delete a real draft belonging to nobody.
+    save(1, draft({ title: "One" }), draft());
+
+    expect(clear(undefined)).toBe(false);
+    expect(clear(null)).toBe(false);
+    expect(load(1).draft.title).toBe("One");
+  });
 });
 
 describe("prune", () => {
@@ -224,5 +235,76 @@ describe("when storage is unavailable", () => {
     save(1, draft({ title: "Old" }), draft(), 0);
 
     expect(() => prune(8 * DAY)).not.toThrow();
+  });
+
+  it("clear reports failure instead of throwing", () => {
+    vi.spyOn(window.localStorage, "removeItem").mockImplementation(() => {
+      throw new Error("SecurityError");
+    });
+
+    expect(clear(ID)).toBe(false);
+  });
+});
+
+describe("when reaching localStorage at all throws", () => {
+  // Not the same failure as a refused write: some privacy configurations throw
+  // on the property access itself, so the module never gets an object to guard
+  // against. Every entry point has to survive that, because the editor calls
+  // them on mount before the user has done anything.
+  beforeEach(() => {
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        throw new Error("SecurityError: access is denied for this document");
+      },
+      configurable: true,
+    });
+  });
+
+  it("save reports failure", () => {
+    expect(save(ID, draft({ title: "Edited" }), draft())).toBe(false);
+  });
+
+  it("load offers nothing back", () => {
+    expect(load(ID)).toBe(null);
+  });
+
+  it("clear reports failure", () => {
+    expect(clear(ID)).toBe(false);
+  });
+
+  it("prune counts nothing removed", () => {
+    expect(prune()).toBe(0);
+  });
+});
+
+describe("missing fields are read as empty rather than undefined", () => {
+  it("differs treats a field absent on either side as empty", () => {
+    // The two sides come from different places — one from React state, one from
+    // the server's JSON — so either can be the one missing a key. Comparing
+    // undefined against "" would mark a pristine draft dirty and nag on load.
+    const { cover_image_url: _a, ...noCover } = draft();
+    expect(differs(draft({ cover_image_url: "" }), noCover)).toBe(false);
+    expect(differs(noCover, draft({ cover_image_url: "" }))).toBe(false);
+  });
+
+  it("save stores an absent field as empty rather than dropping it", () => {
+    const { tags: _t, ...noTags } = draft({ title: "Edited" });
+
+    expect(save(ID, noTags, draft())).toBe(true);
+    expect(load(ID).draft.tags).toBe("");
+  });
+
+  it("load fills in a field a stored blob never had", () => {
+    // A draft written before a field existed still has to be offerable, or an
+    // upgrade silently strands whatever the user had unsaved at the time.
+    window.localStorage.setItem(
+      `herald:draft:${ID}`,
+      JSON.stringify({ at: 0, draft: { title: "Half a draft" } }),
+    );
+
+    const stored = load(ID, 1000);
+    expect(stored.draft.title).toBe("Half a draft");
+    for (const field of DRAFT_FIELDS) expect(stored.draft[field]).toBeTypeOf("string");
+    expect(stored.draft.body_markdown).toBe("");
   });
 });
