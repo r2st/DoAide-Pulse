@@ -92,6 +92,25 @@ def test_a_multibyte_secret_is_measured_in_bytes_not_characters():
     assert s.jwt_secret == wide
 
 
+def test_the_suites_own_secret_clears_the_production_floor():
+    """The fixture key is short-secret-legal, but it must not be short.
+
+    Nothing forces this — ``ENVIRONMENT=development`` in ``conftest`` means the
+    validator above waves any length through. It is pinned anyway for a reason
+    that is not about strength: PyJWT emits ``InsecureKeyLengthWarning`` on
+    every ``decode()`` under a sub-32-byte key, and almost every test in this
+    suite authenticates. The 26-byte value this fixture used to carry produced
+    roughly seven hundred warnings a run — enough that a genuine one arriving
+    from anywhere else would have scrolled past unread.
+    """
+    from app.config import settings
+
+    assert len(settings.jwt_secret.encode("utf-8")) >= _MIN_JWT_SECRET_BYTES, (
+        "tests/conftest.py must set a JWT_SECRET of at least "
+        f"{_MIN_JWT_SECRET_BYTES} bytes, or the suite drowns in PyJWT warnings"
+    )
+
+
 def test_prod_is_spelled_both_ways():
     """``ENVIRONMENT=prod`` must not be a way around the check."""
     with pytest.raises(ValidationError, match="JWT_SECRET"):

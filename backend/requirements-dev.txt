@@ -3,6 +3,13 @@
 pytest>=8.2
 pytest-cov>=5.0
 ruff>=0.5
+# `starlette.testclient` — which `fastapi.testclient.TestClient` is — drives the
+# app over httpx2 now, and warns (StarletteDeprecationWarning) when it has to
+# fall back to httpx 0.x. Test-only: the runtime still speaks httpx to the LLM
+# providers and platform APIs, and the two packages install side by side under
+# different names. Pinned here rather than in requirements.txt so the production
+# image does not carry an HTTP stack nothing imports.
+httpx2>=2.0
 # Herald writes YAML front matter by hand (app.services.publishers.formatting)
 # rather than depending on a serializer at runtime. The tests check that output
 # against a real parser, because hand-rolled escaping is exactly the thing that

@@ -13,7 +13,14 @@ import os
 # Use direct assignment (not setdefault) so the production .env file on the
 # server cannot leak into the test suite via pydantic-settings.
 os.environ["DATABASE_URL"] = "sqlite://"
-os.environ["JWT_SECRET"] = "test-secret-not-a-real-one"
+# Long enough to clear app.config._MIN_JWT_SECRET_BYTES. The old 26-byte value
+# was accepted here only because the length floor is a production-only rule —
+# but PyJWT warns on every `decode()` with a key shorter than the SHA-256 output
+# (InsecureKeyLengthWarning, RFC 7518 §3.2), and nearly every test in the suite
+# decodes a token. That was ~700 warnings a run, all of them noise, and noise on
+# that scale is where a real warning goes to hide. The fixture now signs with a
+# key the size production demands. Pinned by tests/test_jwt_secret_strength.py.
+os.environ["JWT_SECRET"] = "test-secret-not-a-real-one-but-long-enough"
 os.environ["CELERY_ENABLED"] = "false"
 os.environ["ENVIRONMENT"] = "development"
 # Registration is closed in production; the tests that exercise the happy path

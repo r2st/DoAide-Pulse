@@ -76,8 +76,11 @@ class TestJWT:
         assert decode_access_token(tampered) is None
 
     def test_wrong_secret_returns_none(self):
+        # Over 32 bytes, like the fixture key it is standing in for: what this
+        # test is about is that the key *differs*, and a short one would only
+        # add a PyJWT InsecureKeyLengthWarning to say so.
         token = create_access_token(1)
-        with patch.object(settings, "jwt_secret", "different-secret-entirely"):
+        with patch.object(settings, "jwt_secret", "a-different-secret-entirely-and-long-enough"):
             assert decode_access_token(token) is None
 
     def test_wrong_token_type_returns_none(self):
