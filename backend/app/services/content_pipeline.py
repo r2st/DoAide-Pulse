@@ -118,13 +118,22 @@ def generate_and_route(
     without reading the logs.
 
     *defer_on_outage* decides what happens when no provider answers at all, and
-    the right value follows from one question: **can this signal be read
-    again?** A repo scan and a feed poll can — the watermark is still where it
-    was — so they pass ``True``, nothing is written, and the next sweep produces
-    a real piece instead of a template that permanently occupies the slot.
-    An inbound webhook cannot: the request is gone once it returns, so it keeps
-    the default and takes the template, which is worse than a post and much
-    better than silence.
+    the right value follows from one question: **can this exact signal arrive
+    again, unchanged, on the next sweep?** Only one caller can say yes — the
+    project-level repo scan in :mod:`app.tasks.autopilot_tasks`, whose watermark
+    is a column it has not written yet. It passes ``True``, nothing is stored,
+    and the next scan reads the same commits and writes about them properly.
+
+    Every other caller keeps the default and takes the template, which is worse
+    than a post and much better than silence. An inbound webhook cannot re-read
+    anything: the request is gone once it returns. A *trigger* — RSS, GitHub or
+    schedule — cannot either, and the reason is worth stating because the source
+    behind it plainly could: by the time generation starts, ``triggers.fire``
+    has already committed a ``TriggerEvent`` carrying the signal's dedupe key,
+    and ``_check_rss``/``_check_github`` have already committed the ``seen_ids``
+    or ``last_sha`` watermark. Deferring there would leave a signal that the
+    next poll dedupes away and never writes at all, which is strictly worse than
+    a stub in the review queue with ``confidence=0.0`` on it.
 
     Raises :class:`GenerationUnavailable` on that path, having written nothing.
     """
