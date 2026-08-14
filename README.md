@@ -22,6 +22,10 @@ destinations on a schedule, and tracks which pieces actually got read.
 | **Velocity** | How fast each piece found its audience, read from the whole snapshot series rather than the latest number, and which posts have stopped growing. |
 | **Alerts** | Posts running far under *your own* median for that platform, flagged while a headline swap can still change the outcome. |
 | **Autopilot** | Watch repos, write when something ships, publish without review only when the model is confident and you've said it may. |
+| **Templates** | Your own reusable shapes. A `literal` template fills its variables and produces a finished draft with no model call at all; a `prompt` template hands the rendered text to the generator instead. Preview renders half-filled rather than erroring. |
+| **Triggers** | Fire the pipeline on something other than a commit — RSS, GitHub, a schedule, or an inbound webhook. The inbound URL is the only unauthenticated endpoint in the API: the 256-bit token in the path is the credential, and an HMAC signature can be required on top. |
+| **Webhooks** | Outbound notifications with a delivery log, an on-demand test delivery, and a redeliver button — enough to debug one without server access. |
+| **Digests** | A weekly summary on a calendar schedule rather than an interval, because a report that lands at 03:12 on a Thursday is one nobody opens. |
 
 ## Stack
 
@@ -94,10 +98,16 @@ cd backend  && .venv/bin/python -m pytest && .venv/bin/ruff check app tests
 cd frontend && npm test && npm run build
 ```
 
-The Python suite is 2144 tests across two roots — 2084 under `backend/tests` and
-60 under `marketing/tests` — and needs no external services. The root
-`pytest.ini` is what makes one command cover both; `backend/pyproject.toml`
-still configures a run started from `backend/`, so that keeps working as it did.
+The Python suite is 3571 tests across two roots — 3511 under `backend/tests` and
+60 under `marketing/tests` — and needs no external services. It runs in about a
+minute. The root `pytest.ini` is what makes one command cover both;
+`backend/pyproject.toml` still configures a run started from `backend/`, so that
+keeps working as it did. Two of the 3511 skip themselves: the tenant-isolation
+sweep walks every route that takes an object id, and two `/settings/connections`
+routes are keyed by platform instead, so there is no other tenant's id to try.
+
+The frontend suite is 501 tests over 28 files under `frontend/src`, run by
+Vitest against jsdom.
 
 #### Coverage
 
@@ -108,12 +118,14 @@ cd backend && .venv/bin/python -m pytest --cov   # fails under the floor
 Everything the run needs — `source`, branch mode, the exclusions and the
 regression floor — lives in `[tool.coverage.*]` in `backend/pyproject.toml`, so
 the bare `--cov` above is the whole gate. It is deliberately not in `addopts`:
-the suite takes about seven minutes without instrumentation, and making every
-ordinary run pay the tracer cost is how a suite stops being run at all.
+the tracer costs about a third again on top of the bare run, and that is a
+price worth paying on the gate rather than on every ordinary one.
 
-Coverage sits at **98.96% of statements and 94.73% of branches** (98.15%
-combined, which is the number the floor is set against). Raise `fail_under` when
-the real number moves up; never lower it to make a red run green.
+Coverage is **100.00%** — 8848 statements and 2020 branches, none missed. The
+floor is `fail_under = 99.9` rather than 100 so a work-in-progress commit is not
+blocked by a single uncovered line; that slack is roughly ten statements, and it
+is not budget to spend. Raise the floor when the real number moves up; never
+lower it to make a red run green.
 
 ---
 
@@ -211,10 +223,25 @@ the status code is not decorative (`deploy/DEPLOYMENT.md` has the table).
 
 ## Deployment
 
-Built for a single Hetzner box, like the sibling projects: `docker compose up -d`
-behind nginx with TLS, `frontend/` built to static files and served by nginx,
-`/api` proxied to the API container. The compose file already separates worker
-from beat, so scaling workers doesn't duplicate the schedule.
+Built for a single Hetzner box shared with the sibling projects.
+`deploy/DEPLOYMENT.md` is the operational document — host, ports, units,
+rollback, the Caddyfile edit that bites; read that one before touching
+production. The shape of it:
+
+- **Production is not Docker.** `docker-compose.yml` in the repo root is
+  local-dev only. The box runs four systemd units — `herald-api`,
+  `herald-web`, `herald-worker`, `herald-beat` — in front of the host's
+  PostgreSQL and Redis. Worker and beat are separate units for the same reason
+  the compose file separates them: scaling workers must not duplicate the
+  schedule.
+- **TLS and routing are Caddy's**, in a shared container, one origin with
+  `/api/*` split to the API. The vhost lives in `/opt/knol/Caddyfile`; the
+  canonical copy of the block is `deploy/Caddyfile.herald`.
+- **The frontend is built on your machine, never on the server** — 4 GB is
+  shared between six applications, and `frontend/dist/` is rsynced.
+- `./deploy/deploy.sh` does the whole thing: build, rsync, dependencies,
+  migrations, restart, and a health check it retries so it does not race
+  uvicorn's bind. `--no-build` skips the frontend for a backend-only change.
 
 Before going live:
 
@@ -234,7 +261,8 @@ backend/
     security.py deps.py  JWT, password hashing, current-user
     models/              user, project, content, publication, connection, metrics
     ratelimit.py         slowapi limiter for /auth/*
-    routers/             auth, projects, content, calendar, analytics, settings
+    routers/             auth, projects, content, calendar, analytics, settings,
+                         templates, triggers, webhooks, misc
     schemas/             pydantic request/response models
     services/
       llm_router.py      provider chain + circuit breaker
@@ -251,15 +279,21 @@ backend/
       velocity.py        growth curves over the snapshot series
       alerts.py          posts under your own median for that platform
       publishers/        base, registry, formatting, one module per platform
-    tasks/               celery app, publish, autopilot, metrics
+    tasks/               celery app + publish, autopilot, metrics, headline,
+                         digest, webhook, trigger, maintenance
     seed.py
   alembic/               migrations
-  tests/                 78 tests, no external services
+  tests/                 3511 tests, no external services
+marketing/               standalone campaign scripts + 60 tests
 frontend/
   src/
     pages/               Dashboard, Projects, ContentList, ContentEditor,
-                         Calendar, Publish, Settings, Login
-    components/          Shell + ui bits
+                         Calendar, Publish, Analytics, Templates, Triggers,
+                         Settings, Login, PreviewPage
+    components/          Shell, SocialPreview, ReadTimePanel + ui bits
     hooks/               useAuth, useApi
-    lib/                 api client, formatters, markdown renderer
+    lib/                 api client, formatters, markdown renderer, and the
+                         pure logic each page leans on (calendar, analytics,
+                         alerts, templates, triggers, read time, social cards,
+                         editor stats, draft store, passage edit)
 ```

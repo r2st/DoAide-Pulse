@@ -26,8 +26,8 @@ filterwarnings = ["ignore::DeprecationWarning"]
 # Coverage is configured here rather than passed on the command line, so that a
 # bare `pytest --cov` is the whole gate: source, branch mode and the regression
 # floor all come from this file. It is deliberately *not* in `addopts` — the
-# suite takes ~7 minutes without instrumentation, and paying the tracer cost on
-# every ordinary run would push it past the point where anyone runs it locally.
+# bare suite is ~60s and the traced one ~80s, and that third again belongs on
+# the gate rather than on every ordinary run.
 [tool.coverage.run]
 source = ["app"]
 branch = true
@@ -41,7 +41,7 @@ skip_covered = true
 # adds a line or two of straight-line code does not trip it. Raise it when the
 # real number moves up; never lower it to make a red run go green.
 #
-# Measured 100.00% (8387 statements, 1970 branches, none missed). The floor is
+# Measured 100.00% (8848 statements, 2020 branches, none missed). The floor is
 # 99.9 rather than 100 so that a work-in-progress commit is not blocked by a
 # single uncovered line, which leaves roughly ten statements of slack out of
 # ten thousand. If a branch turns out to be genuinely unreachable, mark it
