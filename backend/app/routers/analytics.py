@@ -13,6 +13,17 @@ from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
 from app.ratelimit import account_key, limiter
+from app.schemas.analytics import (
+    AlertsOut,
+    DashboardOut,
+    DigestOut,
+    DigestSendOut,
+    EngagementTrendPointOut,
+    OverviewOut,
+    ReadTimeOut,
+    VelocityCurveDetailOut,
+    VelocitySummaryOut,
+)
 from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.services import alerts, analytics_service, digest, mailer, velocity
 
@@ -21,6 +32,7 @@ router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 @router.get(
     "/overview",
+    response_model=OverviewOut,
     summary="Full analytics breakdown",
     responses=errors(*AUTHENTICATED),
 )
@@ -33,6 +45,7 @@ def overview(
 
 @router.get(
     "/engagement-trend",
+    response_model=list[EngagementTrendPointOut],
     summary="Views and engagement per day",
     responses=errors(*AUTHENTICATED),
 )
@@ -47,6 +60,7 @@ def engagement_trend(
 
 @router.get(
     "/read-time",
+    response_model=ReadTimeOut,
     summary="Post length against performance",
     responses=errors(*AUTHENTICATED),
 )
@@ -59,6 +73,7 @@ def read_time(
 
 @router.get(
     "/velocity",
+    response_model=VelocitySummaryOut,
     summary="How fast posts found an audience",
     responses=errors(*AUTHENTICATED),
 )
@@ -75,6 +90,7 @@ def velocity_summary(
 
 @router.get(
     "/velocity/{publication_id}",
+    response_model=VelocityCurveDetailOut,
     summary="One publication's growth curve",
     responses=errors(*OWNED),
 )
@@ -107,6 +123,7 @@ def velocity_curve(
 
 @router.get(
     "/alerts",
+    response_model=AlertsOut,
     summary="Posts underperforming your own normal",
     responses=errors(*AUTHENTICATED),
 )
@@ -121,6 +138,7 @@ def performance_alerts(
 
 @router.get(
     "/digest",
+    response_model=DigestOut,
     summary="This week's digest, as data",
     responses=errors(*AUTHENTICATED),
 )
@@ -137,6 +155,7 @@ def digest_preview(
 
 @router.post(
     "/digest/send",
+    response_model=DigestSendOut,
     summary="Mail this week's digest now",
     responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
@@ -175,6 +194,7 @@ def digest_send(
 
 @router.get(
     "/dashboard",
+    response_model=DashboardOut,
     summary="Home-page counters and what needs attention",
     responses=errors(*AUTHENTICATED),
 )
