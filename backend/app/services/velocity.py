@@ -26,11 +26,13 @@ Two properties of the data shape everything here:
 """
 from __future__ import annotations
 
+import math
 import statistics
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -74,6 +76,34 @@ class Point:
     engagement: int
 
 
+@dataclass(frozen=True)
+class Lifetime:
+    """A whole series reduced to the four numbers a summary row needs from it.
+
+    :meth:`Curve.as_dict` describes a post's whole life: how many times it was
+    polled, where its counters ended up, and whether it has stopped growing.
+    None of that can be read off a curve built with ``within_hours`` — which is
+    why :meth:`Curve._require_full_series` refuses it — but all of it can be
+    *computed by the database*, because the monotonic clamp makes every one of
+    these an aggregate. :func:`_series_facts` computes them.
+
+    Attaching one to a truncated curve is therefore not a way around the guard;
+    it is the answer the guard demanded, arriving from somewhere other than a
+    list of rows in memory. A curve holding one may describe itself; a curve
+    holding neither the tail nor this still may not.
+    """
+
+    #: How many readings the whole series holds — ``len(Curve.points)`` would
+    #: undercount it on a truncated curve.
+    snapshots: int
+    #: Clamped cumulative totals at the newest reading.
+    views: int
+    engagement: int
+    #: The verdict from :meth:`Curve.is_stalled`, settled against the whole
+    #: series one way or another — see :func:`_stall_verdict`.
+    stalled: bool
+
+
 @dataclass
 class Curve:
     """One publication's growth, as observed.
@@ -99,6 +129,10 @@ class Curve:
     #: the failure mode otherwise is silent: a post with a year of history read
     #: through its first day looks like a post that stopped growing after a day.
     observed_hours: float | None = None
+    #: The whole-series numbers, when the caller has them from somewhere other
+    #: than ``points`` — see :class:`Lifetime`. ``None`` on a curve that either
+    #: holds its own tail or has no business describing itself.
+    lifetime: Lifetime | None = None
 
     # ---- Reading the curve ------------------------------------------------ #
 
@@ -159,15 +193,22 @@ class Curve:
 
     # ---- Decay ------------------------------------------------------------ #
 
-    def peak_gain(self, window_hours: float) -> int | None:
-        """The most views this post ever gained in any span of *window_hours*.
+    def observed_peak_gain(self, window_hours: float) -> int:
+        """The best gain over any *window_hours* span **among the readings held**.
 
-        The yardstick a quiet week is measured against. ``None`` with fewer
-        than two readings, which is not enough to observe a gain at all.
+        A lower bound on :meth:`peak_gain`, and equal to it whenever the series
+        is whole — it maximises over the same pairs of readings, just only the
+        ones this curve happens to have. That is why this one does not call
+        :meth:`_require_full_series`: a truncated curve cannot say what the peak
+        *was*, but it can honestly say the peak was *at least* this, and the
+        name says which of the two is on offer.
+
+        The bound is what lets :func:`summary` settle most stall verdicts
+        without reading a year of snapshots — see :func:`_stall_verdict`. Zero
+        with fewer than two readings, which is a true lower bound and not a
+        claim that nothing was gained; the caller that needs "unknown" told
+        apart from "none" wants :meth:`peak_gain`.
         """
-        self._require_full_series("peak_gain")
-        if len(self.points) < 2:
-            return None
         best = 0
         end = 0
         for start, point in enumerate(self.points):
@@ -180,6 +221,17 @@ class Curve:
                 end += 1
             best = max(best, self.points[end].views - point.views)
         return best
+
+    def peak_gain(self, window_hours: float) -> int | None:
+        """The most views this post ever gained in any span of *window_hours*.
+
+        The yardstick a quiet week is measured against. ``None`` with fewer
+        than two readings, which is not enough to observe a gain at all.
+        """
+        self._require_full_series("peak_gain")
+        if len(self.points) < 2:
+            return None
+        return self.observed_peak_gain(window_hours)
 
     def recent_gain(self, window_hours: float) -> int | None:
         """Views gained in the last *window_hours* of observation.
@@ -213,6 +265,28 @@ class Curve:
             return False
         return recent <= peak * ratio
 
+    def _whole_life(self, question: str) -> Lifetime:
+        """The lifetime numbers, from an attached :class:`Lifetime` or the tail.
+
+        The single place the two sources meet, so the curve that reads its own
+        series and the curve handed the database's aggregates of it cannot
+        answer differently. A curve with neither still refuses — that is
+        :meth:`_require_full_series` doing its job.
+        """
+        if self.lifetime is not None:
+            return self.lifetime
+        self._require_full_series(question)
+        latest = self.points[-1] if self.points else None
+        return Lifetime(
+            snapshots=len(self.points),
+            views=latest.views if latest else 0,
+            engagement=latest.engagement if latest else 0,
+            stalled=self.is_stalled(
+                window_hours=float(settings.velocity_stall_window_hours),
+                ratio=settings.velocity_stall_ratio,
+            ),
+        )
+
     def as_dict(self) -> dict:
         """The wire shape of one curve.
 
@@ -226,10 +300,9 @@ class Curve:
         curve can work out which two keys it is looking at without fetching the
         summary as well.
         """
-        self._require_full_series("as_dict")
+        life = self._whole_life("as_dict")
         early = int(settings.velocity_early_window_hours)
         benchmark = int(settings.velocity_benchmark_window_hours)
-        latest = self.points[-1] if self.points else None
         return {
             "publication_id": self.publication_id,
             "content_id": self.content_id,
@@ -237,26 +310,23 @@ class Curve:
             "title": self.title,
             "published_at": self.published_at,
             "age_hours": round(self.age_hours, 1),
-            "snapshots": len(self.points),
-            "views": latest.views if latest else 0,
-            "engagement": latest.engagement if latest else 0,
+            "snapshots": life.snapshots,
+            "views": life.views,
+            "engagement": life.engagement,
             "early_window_hours": early,
             "benchmark_window_hours": benchmark,
             window_count_key(early): self.views_within(float(early)),
             window_count_key(benchmark): self.views_within(float(benchmark)),
             "views_per_day": self.views_per_day(),
-            "stalled": self.is_stalled(
-                window_hours=float(settings.velocity_stall_window_hours),
-                ratio=settings.velocity_stall_ratio,
-            ),
+            "stalled": life.stalled,
         }
 
     def views_per_day(self) -> float | None:
         """Lifetime views divided by days live — the crude comparable rate."""
-        self._require_full_series("views_per_day")
-        if not self.points or self.age_hours <= 0:
+        life = self._whole_life("views_per_day")
+        if not life.snapshots or self.age_hours <= 0:
             return None
-        return round(self.points[-1].views / (self.age_hours / 24), 2)
+        return round(life.views / (self.age_hours / 24), 2)
 
 
 def _build_curve(
@@ -305,6 +375,7 @@ def curves(
     project_id: int | None = None,
     platform: Platform | None = None,
     publication_id: int | None = None,
+    publication_ids: Collection[int] | None = None,
     now: datetime | None = None,
     within_hours: float | None = None,
 ) -> list[Curve]:
@@ -320,6 +391,13 @@ def curves(
     read the whole snapshot history of every post the account had ever
     published. It stays a ``list`` — empty when the id is not this user's, which
     is what makes "not yours" and "not there" the same answer there.
+
+    Pass *publication_ids* for the same reason with more than one id — the shape
+    :func:`summary` needs, where the whole series is wanted for the handful of
+    publications it will actually render and for nothing else. Both filters are
+    ``AND``-ed when both are given, and an empty collection selects nothing
+    rather than everything, because the caller that computed an empty shortlist
+    meant an empty shortlist.
 
     Two queries regardless of how many publications there are — the snapshots
     are fetched in one pass and grouped in Python, because the alternative is a
@@ -343,6 +421,8 @@ def curves(
     questions a truncated series cannot honestly answer — see there.
     """
     moment = now or utcnow()
+    if publication_ids is not None and not publication_ids:
+        return []
 
     query = (
         select(Publication, Content)
@@ -360,6 +440,8 @@ def curves(
         query = query.where(Publication.platform == platform)
     if publication_id is not None:
         query = query.where(Publication.id == publication_id)
+    if publication_ids is not None:
+        query = query.where(Publication.id.in_(publication_ids))
 
     rows = db.execute(query).all()
     if not rows:
@@ -499,38 +581,319 @@ def benchmark_excluding(
     return _median(others)
 
 
-def summary(db: Session, user_id: int) -> dict:
-    """Everything the velocity panel shows, in one pass over the series."""
-    all_curves = curves(db, user_id)
-    early = float(settings.velocity_early_window_hours)
+#: How many of each list the velocity panel shows.
+_FASTEST_SHOWN = 5
+_STALLED_SHOWN = 10
 
-    fastest = sorted(
-        (c for c in all_curves if c.views_within(early) is not None),
-        key=lambda c: c.views_within(early) or 0,
-        reverse=True,
-    )[:5]
-    stalled = [
-        c
-        for c in all_curves
-        if c.is_stalled(
-            window_hours=float(settings.velocity_stall_window_hours),
-            ratio=settings.velocity_stall_ratio,
+
+@dataclass(frozen=True)
+class _SeriesFacts:
+    """What the stall check needs from a whole series, without reading it.
+
+    Every field here is an aggregate the database can compute over the
+    ``(publication_id, captured_at)`` index, so a publication contributes one
+    row to each of the two queries in :func:`_series_facts` no matter how long
+    it has been polled. The monotonic clamp in :func:`_build_curve` is what
+    makes this possible: because the running series is a running ``MAX``, the
+    clamped value at any moment ``T`` is exactly ``MAX(views)`` over the rows
+    captured at or before ``T`` — a fact the database can answer and Python
+    would otherwise have to rebuild row by row.
+    """
+
+    #: ``len(Curve.points)``: the readings the full curve would hold.
+    snapshots: int
+    first_captured_at: datetime
+    last_captured_at: datetime
+    #: Clamped cumulative totals at the newest reading.
+    total_views: int
+    total_engagement: int
+    #: Clamped cumulative views one stall window before the newest reading.
+    #: ``None`` when no reading is that old, which is exactly the case
+    #: :meth:`Curve.recent_gain` answers ``None`` for.
+    baseline_views: int | None
+
+
+def _series_facts(
+    db: Session, known: list[Curve], *, window_hours: float
+) -> dict[int, _SeriesFacts]:
+    """Aggregate each publication's whole series into a handful of numbers.
+
+    Two queries for the whole account, each returning one row per publication.
+    The second one needs the first one's answer — the recent window is measured
+    back from each publication's *newest reading* rather than from now (see
+    :meth:`Curve.recent_gain`), so the cutoff is per publication and cannot be
+    known before ``MAX(captured_at)`` is.
+
+    That per-publication cutoff is an ``OR`` of one predicate each, the same
+    shape and for the same reason as the ``within_hours`` bound in
+    :func:`curves`.
+    """
+    ids = [curve.publication_id for curve in known]
+    if not ids:
+        return {}
+
+    # The same arithmetic as `ContentMetric.engagement`, in the database: every
+    # interaction the platform reported, treating a missing one as zero. The
+    # sum has to happen inside the MAX — a per-column maximum would mix
+    # readings and could exceed anything the platform ever actually reported.
+    engagement = func.max(
+        func.coalesce(ContentMetric.reactions, 0)
+        + func.coalesce(ContentMetric.comments, 0)
+        + func.coalesce(ContentMetric.clicks, 0)
+        + func.coalesce(ContentMetric.shares, 0)
+    )
+    rolled = db.execute(
+        select(
+            ContentMetric.publication_id,
+            func.count(ContentMetric.id),
+            func.min(ContentMetric.captured_at),
+            func.max(ContentMetric.captured_at),
+            func.max(ContentMetric.views),
+            engagement,
         )
-    ]
+        .where(ContentMetric.publication_id.in_(ids))
+        .group_by(ContentMetric.publication_id)
+    ).all()
+    # ``MAX(views)`` is NULL for a publication whose every reading was NULL —
+    # the platform reported nothing, ever. That is a total of zero, the same
+    # number the clamp in `_build_curve` carries forward.
+    head = {
+        row[0]: (row[1], as_aware(row[2]), as_aware(row[3]), row[4] or 0, row[5] or 0)
+        for row in rolled
+    }
+
+    published_at = {curve.publication_id: curve.published_at for curve in known}
+    cutoffs: dict[int, datetime] = {}
+    for publication_id, (_, _, last, _, _) in head.items():
+        origin = published_at[publication_id]
+        # Positioned the way `_build_curve` positions a reading, so the cutoff
+        # lands on the same reading `Curve.reading_at` would pick: a snapshot
+        # captured before the recorded publish time sits at hour zero, not at a
+        # negative offset.
+        latest_hours = max(0.0, (last - origin).total_seconds() / 3600)
+        if latest_hours < window_hours:
+            # No reading is a full window old, so there is no baseline to
+            # subtract and the recent gain is unknown rather than zero.
+            continue
+        cutoffs[publication_id] = origin + timedelta(hours=latest_hours - window_hours)
+
+    baselines: dict[int, int] = {}
+    if cutoffs:
+        baselines = {
+            publication_id: value or 0
+            for publication_id, value in db.execute(
+                select(ContentMetric.publication_id, func.max(ContentMetric.views))
+                .where(
+                    or_(
+                        *(
+                            and_(
+                                ContentMetric.publication_id == publication_id,
+                                ContentMetric.captured_at <= cutoff,
+                            )
+                            for publication_id, cutoff in cutoffs.items()
+                        )
+                    )
+                )
+                .group_by(ContentMetric.publication_id)
+            ).all()
+        }
 
     return {
+        publication_id: _SeriesFacts(
+            snapshots=count,
+            first_captured_at=first,
+            last_captured_at=last,
+            total_views=total,
+            total_engagement=engaged,
+            baseline_views=baselines.get(publication_id),
+        )
+        for publication_id, (count, first, last, total, engaged) in head.items()
+    }
+
+
+def _stall_verdict(
+    prefix: Curve, facts: _SeriesFacts | None, *, window_hours: float, ratio: float
+) -> bool | None:
+    """What :meth:`Curve.is_stalled` would say, or ``None`` if it takes the tail.
+
+    :meth:`Curve.is_stalled` asks whether the most recent window came in at or
+    under *ratio* of the best window this post ever had. The recent window is
+    cheap — it is two clamped readings, and :func:`_series_facts` has both
+    exactly. The peak is the expensive half, because "ever" means every pair of
+    readings in the post's life.
+
+    So the peak is bracketed rather than computed, and most verdicts fall
+    outside the bracket:
+
+    * **Above it.** ``peak_gain`` can never exceed the gain across the whole
+      observed series, so a recent window larger than *ratio* of that is not
+      stalled, whatever the peak turns out to be.
+    * **Below it.** Any span this curve's prefix does hold is a peak the post
+      really had (:meth:`Curve.observed_peak_gain`), as is the recent window
+      itself, as is — by pigeonhole — the total gain divided by the number of
+      windows it is spread over. A recent window at or under *ratio* of any
+      lower bound is at or under *ratio* of the true peak.
+
+    ``None`` is returned only when the recent window lands between the two
+    bounds: the post grew steadily enough that where its best week sat actually
+    decides the answer. :func:`summary` reads the whole series for those, which
+    is the only honest thing to do and, on a real account, a short list.
+
+    Every branch here returns what the full-series check would return. The
+    guarantee is asserted directly in :mod:`tests.test_velocity_summary_budget`,
+    against the real :meth:`Curve.is_stalled`, because a bound that is merely
+    plausible is a wrong answer waiting for the right data.
+    """
+    if prefix.age_hours < window_hours * 2:
+        return False  # Not two full windows old; no verdict, same as is_stalled.
+    if facts is None or facts.snapshots < 2 or facts.baseline_views is None:
+        return False  # `peak_gain` or `recent_gain` would be None.
+
+    recent = max(0, facts.total_views - facts.baseline_views)
+
+    # The first reading the prefix holds is the first reading there is, unless
+    # the first poll landed after the prefix window — in which case zero is
+    # still a floor for it, and a floor is what an upper bound on the gain
+    # needs.
+    first_views = prefix.points[0].views if prefix.points else 0
+    at_most = max(0, facts.total_views - first_views)
+    if at_most == 0 or recent > at_most * ratio:
+        return False
+
+    span_hours = (
+        facts.last_captured_at - facts.first_captured_at
+    ).total_seconds() / 3600
+    windows = max(1, math.ceil(span_hours / window_hours))
+    at_least = max(
+        prefix.observed_peak_gain(window_hours),
+        recent,
+        at_most // windows,
+    )
+    if at_least > 0 and recent <= at_least * ratio:
+        return True
+    return None
+
+
+def summary(db: Session, user_id: int) -> dict:
+    """Everything the velocity panel shows, without reading every snapshot.
+
+    Three of the four things on this panel are questions about the beginning of
+    a post's life: ``publications`` counts them, ``benchmarks`` medians their
+    first two windows, and ``fastest`` ranks them by the first. The fourth,
+    ``stalled``, is a question about the end, and it used to drag the other
+    three along with it — ``summary`` built every curve on the account whole, so
+    a post polled every six hours for a year put some 1,400 rows through the
+    dashboard to contribute one number to a median. The panel's cost tracked how
+    long the account had been open rather than how much was on it, and this was
+    the last read in the service that did.
+
+    So it is done in passes, each bounded:
+
+    #. **A prefix of every publication**, ``max(early, benchmark)`` hours of it —
+       four readings on the default cadence. Everything ``publications``,
+       ``benchmarks`` and the ``fastest`` ranking need, and nothing else. These
+       curves carry :attr:`Curve.observed_hours` and refuse anything further.
+    #. **Two aggregates over the whole series**, one row per publication. Most
+       stall verdicts follow from these without reading a single snapshot (see
+       :func:`_stall_verdict`), and so does every lifetime number the rendered
+       rows carry (see :class:`Lifetime`) — the snapshot count, the final
+       counters, the views-per-day. That is what keeps pass 3 from having to
+       happen for the rows that are merely *shown*.
+    #. **The whole series, only where the bracket could not settle a verdict.**
+       A post that grew steadily enough that where its best week sat decides the
+       answer gets read in full, because nothing cheaper is honest. Usually
+       nobody is on this list.
+
+    The answers are identical to reading everything, and the tests assert that
+    against the unbounded computation rather than against a fixture. What
+    changed is that the rows read no longer grow with how long the account has
+    been open.
+    """
+    early = float(settings.velocity_early_window_hours)
+    benchmark = float(settings.velocity_benchmark_window_hours)
+    window = float(settings.velocity_stall_window_hours)
+    ratio = settings.velocity_stall_ratio
+    # One moment for every pass, so `age_hours` cannot differ between a curve
+    # built in pass 1 and the same curve rebuilt in pass 3 — which would let a
+    # publication sit on the far side of the `age_hours < window * 2` gate in
+    # one pass and the near side in the next.
+    moment = utcnow()
+
+    shape = {
         "early_window_hours": settings.velocity_early_window_hours,
         "benchmark_window_hours": settings.velocity_benchmark_window_hours,
-        "publications": len(all_curves),
-        "benchmarks": [b.as_dict() for b in benchmarks(db, user_id, known=all_curves)],
-        "fastest": [c.as_dict() for c in fastest],
-        "stalled": [c.as_dict() for c in stalled[:10]],
+    }
+
+    prefixes = curves(
+        db, user_id, now=moment, within_hours=max(early, benchmark)
+    )
+    if not prefixes:
+        return {**shape, "publications": 0, "benchmarks": [], "fastest": [], "stalled": []}
+
+    # `sorted` is stable, so ties here keep the newest-first order `curves`
+    # returned — the tie-break the unbounded version had, kept deliberately.
+    fastest_ids = [
+        curve.publication_id
+        for curve in sorted(
+            (c for c in prefixes if c.views_within(early) is not None),
+            key=lambda c: c.views_within(early) or 0,
+            reverse=True,
+        )[:_FASTEST_SHOWN]
+    ]
+
+    facts = _series_facts(db, prefixes, window_hours=window)
+    verdicts = {
+        curve.publication_id: _stall_verdict(
+            curve,
+            facts.get(curve.publication_id),
+            window_hours=window,
+            ratio=ratio,
+        )
+        for curve in prefixes
+    }
+
+    unsettled = [pid for pid, verdict in verdicts.items() if verdict is None]
+    for curve in curves(db, user_id, publication_ids=unsettled, now=moment):
+        verdicts[curve.publication_id] = curve.is_stalled(
+            window_hours=window, ratio=ratio
+        )
+
+    shown = {
+        curve.publication_id: curve
+        for curve in prefixes
+        if curve.publication_id in fastest_ids
+        or verdicts[curve.publication_id]
+    }
+    for publication_id, curve in shown.items():
+        # The prefix curve is now allowed to describe itself: everything it
+        # could not see has been fetched, and this is where it is handed over.
+        # A publication with no snapshots at all has no facts row, and its
+        # lifetime is the zeroes `as_dict` used to read off an empty `points`.
+        found = facts.get(publication_id)
+        curve.lifetime = Lifetime(
+            snapshots=found.snapshots if found else 0,
+            views=found.total_views if found else 0,
+            engagement=found.total_engagement if found else 0,
+            stalled=bool(verdicts[publication_id]),
+        )
+
+    stalled_ids = [
+        curve.publication_id for curve in prefixes if verdicts[curve.publication_id]
+    ][:_STALLED_SHOWN]
+
+    return {
+        **shape,
+        "publications": len(prefixes),
+        "benchmarks": [b.as_dict() for b in benchmarks(db, user_id, known=prefixes)],
+        "fastest": [shown[pid].as_dict() for pid in fastest_ids],
+        "stalled": [shown[pid].as_dict() for pid in stalled_ids],
     }
 
 
 __all__ = [
     "Benchmark",
     "Curve",
+    "Lifetime",
     "Point",
     "benchmark_excluding",
     "benchmarks",
