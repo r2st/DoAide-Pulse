@@ -133,7 +133,18 @@ def get_calendar(
         .where(
             Project.user_id == user.id,
             Content.scheduled_for.is_not(None),
-            Content.status != ContentStatus.PUBLISHED,
+            # PUBLISHED is excluded because a piece that went out is drawn from
+            # its publications, above, not from the date it was aiming for.
+            # ARCHIVED is excluded because it is not going out at all: it was
+            # still being drawn as an upcoming, ``movable=True`` entry, so the
+            # calendar showed a rejected piece as this coming Tuesday's post and
+            # the cadence suggester below counted its slot as ``taken`` and
+            # steered the user's next real post away from it. Archiving now
+            # clears the column too (``publishing_service.cancel_armed``), so
+            # this is what covers the rows archived before that shipped.
+            Content.status.not_in(
+                (ContentStatus.PUBLISHED, ContentStatus.ARCHIVED)
+            ),
             ~Content.publications.any(),
         )
     ).all()
@@ -227,6 +238,21 @@ def reschedule(
     if content is None or content.project.user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Content not found"
+        )
+
+    # Rescheduling is arming: the loop below puts every target back to
+    # ``SCHEDULED`` with its attempts reset, cancelled rows included. On an
+    # archived piece that would undo the cancellation archiving just performed,
+    # and the piece would sit armed until a worker reached
+    # ``publishing_service.execute`` and cancelled it again. Nothing on the
+    # calendar drags here any more — an archived piece is no longer drawn — so
+    # this is the API surface, and the answer is the same one the publish
+    # endpoints give.
+    if content.status == ContentStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is archived, which means it is not going out. "
+            "Take it out of the archive first.",
         )
 
     try:

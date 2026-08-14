@@ -411,7 +411,8 @@ def bulk_reject_content(
         content.status = ContentStatus.ARCHIVED
         # Rejecting a piece has to take it off the queue as well as out of the
         # list, or the beat sweep publishes the thing that was just rejected —
-        # see :func:`app.services.publishing_service.cancel_armed`.
+        # see :func:`app.services.publishing_service.cancel_armed`, which clears
+        # the piece's own calendar date along with the publications.
         publishing_service.cancel_armed(db, content)
         succeeded.append(content_id)
     db.commit()
@@ -1200,7 +1201,6 @@ def update_content(
         # both cases the queue must agree with the column. See
         # :func:`app.services.publishing_service.cancel_armed`.
         publishing_service.cancel_armed(db, content)
-        content.scheduled_for = None
 
     db.commit()
     # Approving through here means the same thing as approving through the
@@ -1302,6 +1302,20 @@ def _queue_publish(
     piece belongs to them, and the walk is two lazy hops per piece that the
     bulk endpoint pays again after every commit in its loop.
     """
+    # Archiving means "not going out", and
+    # :func:`app.services.publishing_service.execute` enforces that at the last
+    # gate before a platform is contacted. So arming an archived piece here
+    # cannot publish it — it can only build rows a worker will cancel, after
+    # this endpoint has returned 200 and told the caller their piece is queued.
+    # Refusing is the honest half of that gate, and it leaves the invariant
+    # total: an archived piece has nothing armed, ever. Un-archive it first.
+    if content.status == ContentStatus.ARCHIVED:
+        raise _PublishError(
+            "This piece is archived, which means it is not going out. Take it "
+            "out of the archive first.",
+            status.HTTP_409_CONFLICT,
+        )
+
     try:
         when = scheduling.normalize(payload.scheduled_for)
     except scheduling.ScheduleError as exc:

@@ -255,7 +255,7 @@ ARCHIVED_ERROR = "This piece was archived before it went out."
 
 
 def cancel_armed(db: Session, content: Content) -> list[Publication]:
-    """Cancel every publication of *content* that has not run yet. Flushes.
+    """Take *content* off the queue: cancel what has not run, drop its date.
 
     Archiving a piece is the user saying it is not going out, and it was the one
     way of saying that which nothing acted on. ``DELETE /content/{id}/schedule``
@@ -268,6 +268,14 @@ def cancel_armed(db: Session, content: Content) -> list[Publication]:
     only lose the record of where the post is. Archiving a piece that is
     partly out cancels the copies that have not gone yet and nothing else.
 
+    ``content.scheduled_for`` goes with them. It is the piece's own date rather
+    than any platform's, and it is a queue entry in its own right: the calendar
+    draws a piece that has no publications from that column alone, and the slot
+    it sits in is one the cadence suggester then refuses to suggest. Clearing it
+    here rather than at each call site is why ``POST /content/bulk/reject`` no
+    longer leaves a rejected piece sitting on next Tuesday, which is the shape
+    the single-piece path had already been fixed into by hand.
+
     Does not commit — every caller is inside a request that has more to write.
     """
     cancelled = [p for p in content.publications if not p.is_terminal]
@@ -275,8 +283,8 @@ def cancel_armed(db: Session, content: Content) -> list[Publication]:
         publication.status = PublicationStatus.CANCELLED
         publication.scheduled_for = None
         publication.error = ARCHIVED_ERROR
-    if cancelled:
-        db.flush()
+    content.scheduled_for = None
+    db.flush()
     return cancelled
 
 

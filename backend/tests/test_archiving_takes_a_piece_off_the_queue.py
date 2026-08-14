@@ -197,6 +197,20 @@ def test_rejecting_a_piece_does_not_then_publish_it(db, client, auth, piece):
     assert _due_next_week(db) == []
 
 
+def test_rejecting_a_piece_takes_its_own_date_off_the_calendar(db, client, auth, piece):
+    """The bulk path cleared the publications and left the piece dated Friday.
+
+    ``content.scheduled_for`` is a queue entry of its own: the calendar draws a
+    piece that has no publications from that column alone.
+    """
+    client.post(
+        "/api/v1/content/bulk/reject", headers=auth, json={"content_ids": [piece.id]}
+    )
+
+    db.expire_all()
+    assert db.get(Content, piece.id).scheduled_for is None
+
+
 # --------------------------------------------------------------------------- #
 # The worker, for the row that was already in flight                           #
 # --------------------------------------------------------------------------- #
@@ -235,6 +249,114 @@ def test_the_gate_does_not_settle_the_piece_as_failed(db, piece, connect):
 
     db.expire_all()
     assert db.get(Content, piece.id).status == ContentStatus.ARCHIVED
+
+
+# --------------------------------------------------------------------------- #
+# Nothing re-arms an archived piece                                            #
+# --------------------------------------------------------------------------- #
+
+
+def test_an_archived_piece_is_not_drawn_on_the_calendar(db, client, auth, piece):
+    """It was drawn as an upcoming, movable entry — a rejected piece as Tuesday.
+
+    Archiving clears the date now, so this is the row archived before that
+    shipped, or archived straight in the database.
+    """
+    piece.status = ContentStatus.ARCHIVED
+    db.commit()
+
+    resp = client.get("/api/v1/calendar", headers=auth)
+    assert resp.status_code == 200, resp.text
+
+    assert [e for e in resp.json()["entries"] if e["content_id"] == piece.id] == []
+
+
+def test_publishing_an_archived_piece_is_refused(db, client, auth, piece, connect):
+    """200 then a silent cancel is a lie; the gate's honest half is the refusal."""
+    connect(Platform.DEVTO)
+    piece.status = ContentStatus.ARCHIVED
+    db.commit()
+
+    resp = client.post(
+        f"/api/v1/content/{piece.id}/publish",
+        headers=auth,
+        json={"platforms": ["devto"]},
+    )
+
+    assert resp.status_code == 409, resp.text
+    assert "archive" in resp.json()["detail"].lower()
+    db.expire_all()
+    assert db.get(Content, piece.id).publications == []
+
+
+def test_scheduling_an_archived_piece_is_refused(db, client, auth, piece, connect):
+    connect(Platform.DEVTO)
+    piece.status = ContentStatus.ARCHIVED
+    db.commit()
+
+    resp = client.post(
+        f"/api/v1/content/{piece.id}/schedule",
+        headers=auth,
+        json={
+            "platforms": ["devto"],
+            "scheduled_for": (utcnow() + timedelta(days=2)).isoformat(),
+        },
+    )
+
+    assert resp.status_code == 409, resp.text
+    db.expire_all()
+    assert db.get(Content, piece.id).publications == []
+
+
+def test_bulk_publish_fails_only_the_archived_piece(db, client, auth, project, connect):
+    """One archived piece in a batch does not take the others down with it."""
+    connect(Platform.DEVTO)
+    rows = []
+    for index, status_ in enumerate(
+        (ContentStatus.APPROVED, ContentStatus.ARCHIVED, ContentStatus.APPROVED)
+    ):
+        row = Content(
+            project_id=project.id,
+            content_type=ContentType.TUTORIAL,
+            status=status_,
+            title=f"Piece {index}",
+            slug=f"piece-{index}",
+            body_markdown="Body.",
+        )
+        db.add(row)
+        rows.append(row)
+    db.commit()
+
+    resp = client.post(
+        "/api/v1/content/bulk/publish",
+        headers=auth,
+        json={"content_ids": [r.id for r in rows], "platforms": ["devto"]},
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["succeeded"] == [rows[0].id, rows[2].id]
+    assert [f["content_id"] for f in body["failed"]] == [rows[1].id]
+
+
+def test_dragging_an_archived_piece_does_not_revive_its_cancelled_row(
+    db, client, auth, piece
+):
+    """Rescheduling is arming, and it re-arms cancelled rows with attempts reset."""
+    cancelled = _pub(db, piece, Platform.DEVTO, PublicationStatus.CANCELLED)
+    piece.status = ContentStatus.ARCHIVED
+    db.commit()
+
+    resp = client.patch(
+        f"/api/v1/calendar/content/{piece.id}",
+        headers=auth,
+        json={"scheduled_for": (utcnow() + timedelta(days=4)).isoformat()},
+    )
+
+    assert resp.status_code == 409, resp.text
+    db.expire_all()
+    assert db.get(Publication, cancelled.id).status == PublicationStatus.CANCELLED
+    assert _due_next_week(db) == []
 
 
 # --------------------------------------------------------------------------- #
