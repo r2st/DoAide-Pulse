@@ -170,6 +170,32 @@ def build(
     :func:`_underperformance` declines once a post is too old for a headline to
     change its distribution, which is the point at which :func:`_stalled`'s
     remedy, a re-share, becomes the one on offer.
+
+    **This reads every series whole, and that is not an oversight.**
+    :func:`velocity.summary` had the same shape and was bounded by bracketing
+    the stall verdict (see :func:`velocity._stall_verdict`), so the obvious next
+    move is to do the same here. It does not work, and the reason is worth
+    writing down rather than rediscovering:
+
+    ``summary`` only ever asks *whether* a post is stalled, and the bracket
+    answers that from two aggregates. :func:`_stalled` has to write a sentence
+    quoting the post's ``peak_gain`` — the best gain across any pair of readings
+    within one window of each other — and no aggregate produces that. Every post
+    that yields a stalled alert therefore needs its tail anyway, and those are
+    exactly the old posts with the long histories. The bracket only rules out
+    posts under two stall windows old, or ones whose last week is a large share
+    of their whole life; both are short series to begin with.
+
+    Measured on an account shipping weekly for a year — 52 posts, 38,600
+    snapshots — a prefix-plus-bracket pass read *more* rows than this does, by
+    about 1%: it pays for a prefix of every publication and still fetches every
+    tail. The prefix is pure overhead the moment the tails are needed.
+
+    A real bound would have to compute ``peak_gain`` in SQL. It is expressible
+    as a window function over the monotonic clamp, but the frame it needs is
+    ``RANGE`` over an interval, which Postgres has and SQLite does not — and the
+    suite runs on SQLite. That is the trade to weigh if this ever needs solving,
+    not another pass over the same aggregates.
     """
     all_curves = velocity.curves(db, user_id, now=now)
     grouped: dict[Platform, list[Curve]] = {}
