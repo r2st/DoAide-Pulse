@@ -143,6 +143,44 @@ describe("needs you", () => {
     expect(rows[1]).toHaveTextContent("A post that stopped growing");
   });
 
+  it("marks a warning alert differently from a notice", async () => {
+    // Both rows are the same shape and sit in the same list, so the chip is the
+    // only thing saying which one is a problem and which is an observation.
+    api.dashboard.mockResolvedValue(
+      payload({
+        alerts: [
+          {
+            content_id: 9,
+            publication_id: 9,
+            kind: "stalled",
+            severity: "info",
+            platform: "devto",
+            title: "A post that stopped growing",
+            message: "Growth has flattened.",
+            ratio: 0.2,
+          },
+          {
+            content_id: 10,
+            publication_id: 10,
+            kind: "underperforming",
+            severity: "warning",
+            platform: "devto",
+            title: "A post nobody read",
+            message: "Well below its usual first day.",
+            ratio: 0.05,
+          },
+        ],
+      }),
+    );
+    draw();
+
+    const notice = (await screen.findByText("A post that stopped growing")).closest("a");
+    const warning = screen.getByText("A post nobody read").closest("a");
+
+    expect(within(notice).getByText("Stalled").className).toContain("text-ink-500");
+    expect(within(warning).getByText("Underperforming").className).toContain("text-bad");
+  });
+
   it("renders an alert missing entirely from an older cached response", async () => {
     const data = payload();
     delete data.alerts;

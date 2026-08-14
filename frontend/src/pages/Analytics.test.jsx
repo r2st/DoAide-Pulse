@@ -238,6 +238,25 @@ describe("the headline figures", () => {
     draw();
     expect(await screen.findByText("no platform reports clicks")).toBeInTheDocument();
   });
+
+  it("says the same about reads, which fewer platforms report at all", async () => {
+    // Read rate is the figure most likely to have no source behind it — most
+    // destinations report views and nothing else. "0.0%" there would read as
+    // "nobody finished it" rather than "nobody counted".
+    api.analytics.mockResolvedValue(
+      overview({ totals: totals({ reads_reported: 0, read_rate: null }) }),
+    );
+    draw();
+
+    expect(await screen.findByText("no platform reports reads")).toBeInTheDocument();
+    expect(screen.queryByText(/read to the end/)).not.toBeInTheDocument();
+  });
+
+  it("counts the reads when a platform does report them", async () => {
+    draw();
+
+    expect(await screen.findByText("900 read to the end")).toBeInTheDocument();
+  });
 });
 
 describe("reach over time", () => {

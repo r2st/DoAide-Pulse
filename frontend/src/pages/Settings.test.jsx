@@ -208,6 +208,26 @@ describe("platform rows", () => {
     expect(await screen.findByText(/@you/)).toBeInTheDocument();
   });
 
+  it("says when the key was last known to work, and stays quiet when never", async () => {
+    // A stored key is only evidence that something was pasted in; the verified
+    // time is the evidence it still opens the door. Saying nothing is right for
+    // a key nobody has checked — a blank date would look like a bug.
+    api.platforms.mockResolvedValue([
+      platform({ connection: connection({ last_verified_at: "2026-08-13T09:00:00Z" }) }),
+    ]);
+    const { unmount } = draw();
+
+    expect(await screen.findByText(/@you · verified /)).toBeInTheDocument();
+    unmount();
+
+    api.platforms.mockResolvedValue([platform({ connection: connection() })]);
+    draw();
+
+    // Scoped to the handle line — the panel's own subtitle also says
+    // "verified", about when keys are checked rather than about this one.
+    expect(await screen.findByText("@you")).toHaveTextContent(/^@you$/);
+  });
+
   it("says so when a platform will never report views", async () => {
     api.platforms.mockResolvedValue([platform({ supports_metrics: false })]);
     draw();

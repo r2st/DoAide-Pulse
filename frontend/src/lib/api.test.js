@@ -394,3 +394,115 @@ describe("endpoint shapes", () => {
     expect(init.method).toBe("POST");
   });
 });
+
+/**
+ * Every remaining endpoint, as a path and a verb.
+ *
+ * The cases above each exist because something specific about them was once
+ * wrong. This block exists for the opposite reason: the methods it covers are
+ * one-line wrappers with nothing interesting in them, which is exactly why a
+ * typo in a path or a read left as the default GET survives review. Every page
+ * test mocks this module wholesale, so without this the only thing checking
+ * these strings was production.
+ *
+ * The list is asserted to be exhaustive at the end, so a new endpoint added
+ * without a row here fails rather than passing unnoticed.
+ */
+describe("every endpoint's path and verb", () => {
+  function stubOk() {
+    const fetchMock = respondWith({ status: 200, body: "{}" });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // [method name, arguments, expected path, expected verb]
+  const ENDPOINTS = [
+    ["me", [], "/auth/me", "GET"],
+    ["health", [], "/health", "GET"],
+    ["healthDetail", [], "/health/detail", "GET"],
+
+    ["listProjects", [], "/projects", "GET"],
+    ["createProject", [{ name: "H" }], "/projects", "POST"],
+    ["updateProject", [5, { name: "H" }], "/projects/5", "PATCH"],
+    ["deleteProject", [5], "/projects/5", "DELETE"],
+    ["scanProject", [5], "/projects/5/scan", "POST"],
+
+    ["listContent", [], "/content", "GET"],
+    ["getContent", [3], "/content/3", "GET"],
+    ["checkLinks", [3], "/content/3/links", "GET"],
+    ["socialCards", [3], "/content/3/social", "GET"],
+    ["generateContent", [{ project_id: 1 }], "/content/generate", "POST"],
+    ["editPassage", [3, { selection: "x" }], "/content/3/edit", "POST"],
+    ["updateContent", [3, { title: "t" }], "/content/3", "PATCH"],
+    ["deleteContent", [3], "/content/3", "DELETE"],
+    ["approveContent", [3], "/content/3/approve", "POST"],
+    ["publishContent", [3, { platforms: [] }], "/content/3/publish", "POST"],
+    ["retryPublication", [3, 8], "/content/3/retry/8", "POST"],
+    ["reviewQueue", [], "/content/queue/review", "GET"],
+    ["publicationQueue", [], "/content/queue/publications", "GET"],
+
+    ["listPreviewLinks", [3], "/content/3/preview-links", "GET"],
+    ["createPreviewLink", [3], "/content/3/preview-links", "POST"],
+    ["revokePreviewLink", [3, 9], "/content/3/preview-links/9", "DELETE"],
+    ["publicPreview", ["tok"], "/content/preview/tok", "GET"],
+
+    ["calendar", [], "/calendar", "GET"],
+    ["reschedule", [3, { scheduled_for: null }], "/calendar/content/3", "PATCH"],
+
+    ["dashboard", [], "/analytics/dashboard", "GET"],
+    ["analytics", [], "/analytics/overview", "GET"],
+    ["readTime", [], "/analytics/read-time", "GET"],
+    ["engagementTrend", [30], "/analytics/engagement-trend?days=30", "GET"],
+    ["velocity", [], "/analytics/velocity", "GET"],
+    ["alerts", [5], "/analytics/alerts?limit=5", "GET"],
+
+    ["triggerKinds", [], "/triggers/kinds", "GET"],
+    ["listTriggers", [], "/triggers", "GET"],
+    ["createTrigger", [{ kind: "rss" }], "/triggers", "POST"],
+    ["updateTrigger", [2, { is_active: false }], "/triggers/2", "PATCH"],
+    ["deleteTrigger", [2], "/triggers/2", "DELETE"],
+    ["rotateTriggerSecret", [2], "/triggers/2/rotate-secret", "POST"],
+    ["checkTrigger", [2], "/triggers/2/check", "POST"],
+    ["triggerEvents", [2], "/triggers/2/events", "GET"],
+
+    ["templateBuiltins", [], "/templates/builtins", "GET"],
+    ["listTemplates", [], "/templates", "GET"],
+    ["createTemplate", [{ name: "t" }], "/templates", "POST"],
+    ["updateTemplate", [4, { name: "t" }], "/templates/4", "PATCH"],
+    ["deleteTemplate", [4], "/templates/4", "DELETE"],
+    ["previewTemplate", [4, { values: {} }], "/templates/4/preview", "POST"],
+    ["useTemplate", [4, { values: {} }], "/templates/4/use", "POST"],
+
+    ["platforms", [], "/settings/platforms", "GET"],
+    ["saveConnection", ["devto", {}], "/settings/connections", "PUT"],
+    ["verifyConnection", ["devto"], "/settings/connections/devto/verify", "POST"],
+    ["deleteConnection", ["devto"], "/settings/connections/devto", "DELETE"],
+  ];
+
+  it.each(ENDPOINTS)("%s hits %s as %s", async (name, args, path, verb) => {
+    const fetchMock = stubOk();
+
+    await api[name](...args);
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`/api/v1${path}`);
+    expect(init.method).toBe(verb);
+  });
+
+  it("covers every method on the client", () => {
+    // `login`, `register` and `logout` are covered by their own cases above —
+    // one sends a form, one is unauthenticated, and one touches no network at
+    // all, so none of them fits the shape this table asserts.
+    const exempt = new Set(["login", "register", "logout"]);
+    const covered = new Set(ENDPOINTS.map(([name]) => name));
+
+    const uncovered = Object.keys(api).filter(
+      (name) => !covered.has(name) && !exempt.has(name),
+    );
+    expect(uncovered).toEqual([]);
+  });
+});
