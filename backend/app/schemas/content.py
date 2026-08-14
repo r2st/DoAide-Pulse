@@ -5,7 +5,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.models.content import ContentStatus, ContentType
+from app.models.content import (
+    CANONICAL_URL_MAX_LENGTH,
+    META_DESCRIPTION_MAX_LENGTH,
+    TITLE_MAX_LENGTH,
+    ContentStatus,
+    ContentType,
+)
 from app.models.project import Tone
 from app.models.publication import Platform, PublicationStatus
 from app.services import inline_edit
@@ -114,13 +120,13 @@ class ContentCreate(BaseModel):
 
     project_id: int
     content_type: ContentType = ContentType.FEATURE_SPOTLIGHT
-    title: str = Field(min_length=1, max_length=300)
+    title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
     body_markdown: str = Field(default="", max_length=200_000)
     excerpt: str = Field(default="", max_length=1000)
-    meta_description: str = Field(default="", max_length=500)
+    meta_description: str = Field(default="", max_length=META_DESCRIPTION_MAX_LENGTH)
     keywords: list[str] = Field(default=[], max_length=30)
     tags: list[str] = Field(default=[], max_length=30)
-    canonical_url: str | None = Field(default=None, max_length=700)
+    canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
     #: The primary SEO keyword. Defaults to the first keyword when omitted.
     focus_keyword: str = Field(default="", max_length=100)
@@ -139,13 +145,15 @@ class ContentCreate(BaseModel):
 
 
 class ContentUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=300)
+    title: str | None = Field(default=None, min_length=1, max_length=TITLE_MAX_LENGTH)
     body_markdown: str | None = Field(default=None, max_length=200_000)
     excerpt: str | None = Field(default=None, max_length=1000)
-    meta_description: str | None = Field(default=None, max_length=500)
+    meta_description: str | None = Field(
+        default=None, max_length=META_DESCRIPTION_MAX_LENGTH
+    )
     keywords: list[str] | None = Field(default=None, max_length=30)
     tags: list[str] | None = Field(default=None, max_length=30)
-    canonical_url: str | None = Field(default=None, max_length=700)
+    canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
     focus_keyword: str | None = Field(default=None, max_length=100)
     content_type: ContentType | None = None
@@ -381,7 +389,7 @@ class HeadlineVariantsOut(BaseModel):
 class HeadlineApplyIn(BaseModel):
     """Swap the live headline. Allowed even on published content."""
 
-    title: str = Field(min_length=1, max_length=300)
+    title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
 
 
 class HeadlineWindowOut(BaseModel):

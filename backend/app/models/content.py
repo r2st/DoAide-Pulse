@@ -37,6 +37,29 @@ if TYPE_CHECKING:
     from app.models.publication import Publication
 
 
+#: Column widths that something outside this module has to agree with.
+#:
+#: They live here, next to the ``mapped_column`` that uses them, because the
+#: schema layer's ``max_length`` is not an opinion about how long a description
+#: ought to be — it is a claim about what the column can hold, and a claim wider
+#: than the truth is a 500 rather than a lenient API. PostgreSQL answers an
+#: over-long INSERT with ``StringDataRightTruncation``, which is not
+#: ``IntegrityError``, so nothing in the tree catches it and the caller gets
+#: "Internal server error" for a request the API had already validated. SQLite
+#: ignores VARCHAR lengths altogether, which is exactly why a suite at 100%
+#: coverage ran green over it for both fields below.
+#:
+#: Importing the name rather than repeating the number is what keeps the two
+#: layers honest; ``tests/test_schema_caps_fit_their_columns.py`` pins the rest
+#: of the tree, where the numbers are still written twice.
+TITLE_MAX_LENGTH = 300
+META_DESCRIPTION_MAX_LENGTH = 320
+#: Deliberately narrower than ``Publication.external_url`` (700), which is one
+#: of the things written into it — see
+#: ``app.services.publishing_service._adopt_canonical``.
+CANONICAL_URL_MAX_LENGTH = 500
+
+
 class ContentType(str, Enum):
     """What kind of piece this is. Drives the prompt and the target length.
 
@@ -115,7 +138,7 @@ class Content(Base, TimestampMixin):
         nullable=False,
     )
 
-    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
     slug: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
     #: The canonical body. Markdown — every adapter converts *from* this.
     body_markdown: Mapped[str] = mapped_column(Text, default="", nullable=False)
@@ -123,7 +146,9 @@ class Content(Base, TimestampMixin):
     excerpt: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
     # ---- SEO ----
-    meta_description: Mapped[str] = mapped_column(String(320), default="", nullable=False)
+    meta_description: Mapped[str] = mapped_column(
+        String(META_DESCRIPTION_MAX_LENGTH), default="", nullable=False
+    )
     keywords: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     #: The single keyword this piece is optimised for. Drives the SEO audit
     #: score (keyword density, first-paragraph presence, subheading inclusion).
@@ -133,7 +158,7 @@ class Content(Base, TimestampMixin):
     tags: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     #: Set when the piece is published somewhere first and syndicated after —
     #: the adapters send it as rel=canonical so the copies don't compete.
-    canonical_url: Mapped[str | None] = mapped_column(String(500))
+    canonical_url: Mapped[str | None] = mapped_column(String(CANONICAL_URL_MAX_LENGTH))
 
     # ---- Media ----
     #: The image the platform shows beside this post in its feed, and the one

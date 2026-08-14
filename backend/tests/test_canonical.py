@@ -241,6 +241,56 @@ def test_a_relative_or_empty_url_is_not_adopted(db, content, connected, monkeypa
     assert content.canonical_url is None
 
 
+def test_a_url_longer_than_the_column_is_not_adopted(db, content, connected, monkeypatch):
+    """``external_url`` is String(700); ``canonical_url`` is String(500).
+
+    So a URL a platform returned and Herald stored without complaint can still
+    be one this column cannot hold, and this is the worst place in the tree for
+    that to be discovered. The post is already live by the time ``_adopt_canonical``
+    runs, and on PostgreSQL the over-long assignment fails the *same commit* that
+    records the publication as PUBLISHED — leaving the piece on the platform and
+    Herald convinced it never went out, which is precisely the state the retry
+    logic then tries to fix by publishing it again.
+
+    Declining to adopt costs a rel=canonical the author can still type in. Every
+    adapter already handles the field being empty.
+    """
+    long_url = "https://dev.to/r2st/" + "s" * 500
+    assert len(long_url) > 500
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: PublishResult(external_id="9", external_url=long_url),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    publishing_service.execute(db, publication)
+
+    assert content.canonical_url is None
+    # The publish itself still succeeded — declining the canonical is not a
+    # failure of the thing the user asked for.
+    assert publication.status == PublicationStatus.PUBLISHED
+    assert publication.external_url == long_url
+
+
+def test_a_url_that_exactly_fills_the_column_is_still_adopted(
+    db, content, connected, monkeypatch
+):
+    """The boundary, so the guard cannot quietly become "shorter than 500"."""
+    exact = "https://dev.to/r2st/" + "s" * (500 - len("https://dev.to/r2st/"))
+    assert len(exact) == 500
+    monkeypatch.setattr(
+        DevToAdapter,
+        "publish",
+        lambda self, req, creds: PublishResult(external_id="9", external_url=exact),
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    publishing_service.execute(db, publication)
+
+    assert content.canonical_url == exact
+
+
 # --------------------------------------------------------------------------- #
 # Syndication order                                                            #
 # --------------------------------------------------------------------------- #

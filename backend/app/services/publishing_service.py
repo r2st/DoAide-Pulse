@@ -20,7 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.content import Content, ContentStatus
+from app.models.content import CANONICAL_URL_MAX_LENGTH, Content, ContentStatus
 from app.models.metrics import ContentMetric
 from app.models.mixins import utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
@@ -493,7 +493,8 @@ def _adopt_canonical(
       original and the article is the copy;
     * the post was staged as a draft, whose URL is a private editor link that
       would 404 for a crawler;
-    * the platform did not return an absolute ``http(s)`` URL to use.
+    * the platform did not return an absolute ``http(s)`` URL to use;
+    * the URL is longer than the column that would hold it — see below.
     """
     project = content.project
     if project is None or not project.auto_canonical or content.canonical_url:
@@ -507,6 +508,25 @@ def _adopt_canonical(
 
     url = (result.external_url or "").strip()
     if not url.startswith(("http://", "https://")):
+        return
+    # ``external_url`` is String(700) and ``canonical_url`` is String(500), so a
+    # URL a platform happily returned can be one this column cannot hold. That
+    # made this the worst place in the tree to overflow a column: the post is
+    # already live, the request that published it is what raises, and on
+    # PostgreSQL a StringDataRightTruncation here rolls back the same commit
+    # that records the publication as PUBLISHED — so the piece is on the
+    # platform and Herald still believes it is not. Declining to adopt is the
+    # sixth case where leaving the field empty beats guessing; every adapter
+    # already handles an empty canonical, and the author can still type one.
+    if len(url) > CANONICAL_URL_MAX_LENGTH:
+        logger.info(
+            "content %s did not adopt %s's URL as canonical: %d characters, "
+            "over the %d the column holds",
+            content.id,
+            publication.platform.value,
+            len(url),
+            CANONICAL_URL_MAX_LENGTH,
+        )
         return
 
     content.canonical_url = url

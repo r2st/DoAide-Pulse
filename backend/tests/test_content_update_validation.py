@@ -170,3 +170,80 @@ def test_creating_with_a_relative_canonical_is_refused(client, auth, project):
         },
     )
     assert resp.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Lengths the column has to be able to hold                                    #
+# --------------------------------------------------------------------------- #
+#
+# Both fields below accepted more than their column: ``meta_description`` took
+# 500 characters into a ``String(320)``, ``canonical_url`` 700 into a
+# ``String(500)``. On SQLite that is invisible — VARCHAR lengths are not
+# enforced, so the value went in and every assertion about it passed. On
+# PostgreSQL it is a ``StringDataRightTruncation``, which is a ``DataError`` and
+# not an ``IntegrityError``, so the retry in ``_commit_content`` does not catch
+# it and neither does anything else: the caller gets a 500 for a body the API
+# had already validated.
+#
+# So these tests assert the *status code*, which is the part SQLite cannot lie
+# about. ``tests/test_schema_caps_fit_their_columns.py`` pins the numbers
+# themselves against the mappers.
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("meta_description", "m" * 321),
+        ("canonical_url", "https://herald.example.com/" + "p" * 480),
+    ],
+)
+def test_a_value_too_long_for_its_column_is_refused_on_patch(
+    client, auth, db, content, field, value
+):
+    assert len(value) > 320 if field == "meta_description" else len(value) > 500
+
+    resp = _patch(client, auth, content, {field: value})
+
+    assert resp.status_code == 422, resp.text
+    db.refresh(content)
+    assert getattr(content, field) != value
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("meta_description", "m" * 321),
+        ("canonical_url", "https://herald.example.com/" + "p" * 480),
+    ],
+)
+def test_a_value_too_long_for_its_column_is_refused_on_create(
+    client, auth, project, field, value
+):
+    resp = client.post(
+        "/api/v1/content",
+        headers=auth,
+        json={
+            "project_id": project.id,
+            "title": "Hand written",
+            "body_markdown": "x",
+            field: value,
+        },
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("meta_description", "m" * 320),
+        ("canonical_url", "https://a.example.com/" + "p" * 478),
+    ],
+)
+def test_a_value_that_exactly_fills_its_column_is_still_accepted(
+    client, auth, content, field, value
+):
+    """The other edge: narrowing a cap must not cost the last usable character."""
+    resp = _patch(client, auth, content, {field: value})
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()[field] == value
