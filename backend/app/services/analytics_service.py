@@ -468,14 +468,42 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
     return sorted(out, key=lambda d: d["views"], reverse=True)[:limit]
 
 
+def window_start(days: int) -> datetime:
+    """Midnight UTC on the first day a *days*-long daily chart draws.
+
+    The window has to start where the first bucket starts, and ``utcnow() -
+    timedelta(days=days)`` does not: it lands at the current time of day. Both
+    daily series below label their first bucket ``since.date()`` and then filter
+    on ``>= since``, so that bucket was drawn for a whole day and filled from
+    the sliver of it after the current clock time. A dashboard loaded at 21:00
+    charted the first day of the month from 21:00 onwards and reported the other
+    twenty-one hours as nothing having happened — and because the number moved
+    every time the page was opened, the shortfall read as a quiet day rather
+    than as a bug.
+
+    Flooring to midnight makes every bucket a whole UTC day except today's,
+    which is partial by definition and is the one bucket a reader expects to be.
+    The labels do not change (the date of ``now - days`` is the same either
+    way), so this only ever adds the readings the first bucket was already
+    claiming to count.
+
+    UTC because that is the only clock Herald stores anything in — see
+    :mod:`app.services.cadence`; the frontend renders these dates as given.
+    """
+    return (utcnow() - timedelta(days=days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+
 def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
     """Publications per day over the last *days*, for the dashboard sparkline.
 
     Every day in the window is present, including the empty ones — a chart that
     silently omits zero days compresses a quiet fortnight into a flat line and
-    makes it look like activity.
+    makes it look like activity. Every day is also *whole* — see
+    :func:`window_start`.
     """
-    since = utcnow() - timedelta(days=days)
+    since = window_start(days)
     rows = db.execute(
         select(Publication.published_at)
         .join(Content, Content.id == Publication.content_id)
@@ -660,8 +688,16 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
     happen here rather than in the UI: a day's reads span pieces of different
     lengths, and multiplying a daily total by an average reading time invents
     attention that was never paid to any particular post.
+
+    The window starts at midnight UTC, so the first day charted is a whole day
+    rather than the part of it after the current clock time — see
+    :func:`window_start`. It hid more here than in :func:`timeline`, where a
+    missing publish is at least a missing *row*: a first-day gain is measured
+    against the last reading before the window, so an un-floored window took its
+    baseline from a reading inside the day it was charting. The morning's gain
+    was subtracted away as part of the baseline and appeared in no bucket at all.
     """
-    since = utcnow() - timedelta(days=days)
+    since = window_start(days)
     rows = db.execute(
         # ``Publication.content_id`` — an integer already on the row being
         # joined through — rather than the body it points at. Reading time is
