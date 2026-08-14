@@ -246,4 +246,71 @@ def test_the_sweep_publishes_inline_when_the_broker_is_unreachable(
 
 
 def test_the_sweep_reports_nothing_when_nothing_is_due(_task_session):
-    assert publish_tasks.publish_due() == {"dispatched": 0, "reclaimed": 0}
+    assert publish_tasks.publish_due() == {
+        "dispatched": 0,
+        "failed": 0,
+        "reclaimed": 0,
+    }
+
+
+def test_one_unpublishable_row_does_not_end_the_sweep(db, content, monkeypatch):
+    """The isolation every other sweep states outright and this one lacked.
+
+    The inline branch runs the publish on the sweep's own thread, so anything
+    ``publish_one`` does not catch lands in this loop. Letting it escape would
+    not lose one publication — it would drop every later row in the batch, and
+    the next pass selects the same rows in the same order and dies in the same
+    place, so one poison row is a standing outage of the whole pipeline rather
+    than one failed post.
+    """
+    first = _publication(db, content, platform=Platform.DEVTO)
+    second = _publication(db, content, platform=Platform.HASHNODE)
+    third = _publication(db, content, platform=Platform.MASTODON)
+    assert first.id < second.id < third.id
+
+    published: list[int] = []
+
+    def _broker_down(publication_id):
+        raise ConnectionError("no broker")
+
+    def _execute(session, row):
+        if row.id == second.id:
+            raise RuntimeError("adapter blew up outside execute's own try")
+        published.append(row.id)
+
+    monkeypatch.setattr(publish_tasks.publish_one, "delay", _broker_down)
+    monkeypatch.setattr(publish_tasks.publishing_service, "execute", _execute)
+
+    result = publish_tasks.publish_due()
+
+    # The row after the bad one still went out.
+    assert third.id in published
+    assert published == [first.id, third.id]
+    assert result["failed"] == 1
+    assert result["dispatched"] == 2
+
+
+def test_the_sweep_does_not_count_a_row_it_dropped(db, content, monkeypatch):
+    """``dispatched`` used to report the number *selected*.
+
+    A pass that published nothing and reported "dispatched 3" is the kind of
+    silent failure that makes a queue look healthy in the logs while nothing
+    leaves it.
+    """
+    _publication(db, content)
+
+    def _broker_down(publication_id):
+        raise ConnectionError("no broker")
+
+    def _always_blows_up(session, row):
+        raise RuntimeError("nope")
+
+    monkeypatch.setattr(publish_tasks.publish_one, "delay", _broker_down)
+    monkeypatch.setattr(
+        publish_tasks.publishing_service, "execute", _always_blows_up
+    )
+
+    result = publish_tasks.publish_due()
+
+    assert result["dispatched"] == 0
+    assert result["failed"] == 1

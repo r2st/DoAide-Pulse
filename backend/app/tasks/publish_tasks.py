@@ -149,6 +149,8 @@ def publish_due() -> dict:
     finally:
         db.close()
 
+    dispatched = 0
+    failed = 0
     for publication_id in ids:
         try:
             publish_one.delay(publication_id)
@@ -156,11 +158,35 @@ def publish_due() -> dict:
             # Broker down — fall back to inline execution so the sweep does not
             # silently drop due publications.
             logger.debug("broker unavailable, running publish_one inline")
-            publish_one(publication_id)
+            try:
+                publish_one(publication_id)
+            except Exception:
+                # Same rule every other sweep states outright: one row's bad day
+                # must not end the pass. This branch runs the publish *here*, so
+                # anything `publish_one` does not catch lands in this loop —
+                # `publishing_service.execute` promises never to raise, but the
+                # work it does before its own `try` (resolving the adapter,
+                # walking to the owner, the flush) is outside that promise.
+                #
+                # Escaping the loop would not lose one publication, it would
+                # drop every later one in the batch, and the next pass selects
+                # the same rows in the same order and dies in the same place.
+                # An unpublishable row would take the whole publishing pipeline
+                # down with it for as long as it sat there.
+                logger.exception(
+                    "inline publish of publication %s failed", publication_id
+                )
+                failed += 1
+                continue
+        dispatched += 1
 
     if ids:
-        logger.info("publish_due dispatched %d publication(s)", len(ids))
-    return {"dispatched": len(ids), "reclaimed": reclaimed}
+        logger.info(
+            "publish_due dispatched %d publication(s), %d failed", dispatched, failed
+        )
+    # ``dispatched`` counts what was handed on, not what was selected. Reporting
+    # ``len(ids)`` claimed credit for rows this pass had just dropped.
+    return {"dispatched": dispatched, "failed": failed, "reclaimed": reclaimed}
 
 
 @celery_app.task(

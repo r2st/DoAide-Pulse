@@ -157,5 +157,5 @@ def test_the_sweep_reclaims_before_it_dispatches(db, content, monkeypatch):
 
     result = publish_tasks.publish_due()
 
-    assert result == {"dispatched": 1, "reclaimed": 1}
+    assert result == {"dispatched": 1, "failed": 0, "reclaimed": 1}
     assert dispatched == [publication.id]
