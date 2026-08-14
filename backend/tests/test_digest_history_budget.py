@@ -194,22 +194,21 @@ def _syndicate(db, publication, *platforms) -> None:
     db.commit()
 
 
-def test_the_digest_reads_one_body_per_piece_not_per_platform(
-    db, user, publication, sql_log
-):
+def test_the_digest_reads_no_article_body_at_all(db, user, publication, sql_log):
     """Reading time is a property of the piece, not of where it went out.
 
     ``published_rows`` has a row per publication, so selecting the ``Content``
     entity there carried a whole article once per platform it was syndicated to
     — three copies of the same body to compute the same reading time three
-    times.
+    times. Keying the read by content id fixed the multiplication; storing
+    ``word_count`` on the row removed the last copy, because the digest never
+    wanted the text, only its length.
 
-    Neither a query count nor a count of body-reading statements can see this:
-    it was one statement before and it is one statement now, with the same three
-    rows. What changed is the *width* of those rows, so the assertion is that no
-    statement joining ``publications`` carries a body at all — the bodies come
-    from a separate read keyed by content id, which is one row per piece by
-    construction.
+    Neither a query count nor a count of body-reading statements could see the
+    multiplication: it was one statement before and one after, with the same
+    three rows, differing only in *width*. So both halves are pinned — nothing
+    joining ``publications`` carries a body, and no statement anywhere in a
+    digest run carries one either.
     """
     publication.published_at = _now() - timedelta(days=3)
     db.commit()
@@ -221,10 +220,12 @@ def test_the_digest_reads_one_body_per_piece_not_per_platform(
 
     multiplied = [s for s in _body_reads(sql_log) if "publications" in s]
     assert multiplied == [], "\n".join(s[:300] for s in multiplied)
-    # And the piece's body is still read — once — for the reading time.
-    assert len(_body_reads(sql_log)) == 1, "\n".join(
+    # And no body is read anywhere else either: the reading time comes off
+    # ``content.word_count``, which the keyed read selects instead.
+    assert _body_reads(sql_log) == [], "\n".join(
         s[:300] for s in _body_reads(sql_log)
     )
+    assert [s for s in sql_log if "content.word_count" in s]
 
 
 def test_a_syndicated_piece_is_one_digest_entry_listing_every_platform(
@@ -288,8 +289,7 @@ def test_the_failed_and_upcoming_blocks_read_a_title_not_a_piece(
     assert [row["title"] for row in built.failed] == ["A long-running piece"]
     assert [row["title"] for row in built.upcoming] == ["A long-running piece"]
     assert built.failed[0]["error"].startswith("Platform said no.")
-    # The only body read left in a digest run is the one reading time needs, and
-    # nothing published inside the window here means not even that.
+    # No digest run reads an article body — see the test above.
     assert _body_reads(sql_log) == [], "\n".join(
         s[:300] for s in _body_reads(sql_log)
     )

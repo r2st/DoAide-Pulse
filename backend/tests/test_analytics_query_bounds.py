@@ -10,7 +10,10 @@ Three unbounded reads sat behind ``GET /analytics/overview``:
 * ``read_time`` and ``engagement_trend`` selected whole ``Content`` entities to
   reach ``read_minutes``, a property derived from ``body_markdown`` alone —
   and ``Content.publications`` is ``lazy="selectin"``, so each of those reads
-  dragged in every publication attached to every piece as well.
+  dragged in every publication attached to every piece as well. Narrowing them
+  to the one column left the last of it: the *body* still crossed the wire to
+  produce one integer per row, which is why the count is stored on the row now
+  and these two read ``word_count`` instead.
 
 The correctness half matters as much as the cost: restricting a MAX(id) GROUP
 BY to one user's publications cannot change which id is greatest within a
@@ -297,8 +300,19 @@ def test_the_engagement_trend_weights_by_the_piece_its_reads_belong_to(
 
 
 def _body_reads(statements: list[str]) -> list[str]:
-    """Statements that carry ``content.body_markdown`` back to Python."""
+    """Statements that carry ``content.body_markdown`` back to Python.
+
+    Nothing in this module should produce any. Reading time is derived from the
+    stored ``word_count`` now, so the article text has no reason to leave the
+    database for a dashboard — the assertions below expect this list empty and
+    ``_word_count_reads`` to hold the one keyed read that replaced it.
+    """
     return [s for s in statements if "content.body_markdown" in s]
+
+
+def _word_count_reads(statements: list[str]) -> list[str]:
+    """Statements that carry ``content.word_count`` back to Python."""
+    return [s for s in statements if "content.word_count" in s]
 
 
 def _snapshot_reads(statements: list[str]) -> list[str]:
@@ -345,16 +359,20 @@ def test_the_engagement_trend_reads_a_body_per_piece_not_per_snapshot(
         "the per-snapshot read ships a whole article body per poll:\n"
         + "\n".join(s[:200] for s in carrying_bodies)
     )
-    assert len(_body_reads(sql_log)) == 1, (
-        "expected exactly one keyed read of the bodies, got "
+    assert not _body_reads(sql_log), (
+        "the trend has no reason to read an article body at all:\n"
         + "\n".join(s[:200] for s in _body_reads(sql_log))
+    )
+    assert len(_word_count_reads(sql_log)) == 1, (
+        "expected exactly one keyed read of the counts, got "
+        + "\n".join(s[:200] for s in _word_count_reads(sql_log))
     )
 
 
-def test_the_engagement_trend_reads_one_body_for_a_piece_on_two_platforms(
+def test_the_engagement_trend_counts_one_piece_once_across_two_platforms(
     db, user, project, sql_log
 ):
-    """Publications share a piece; the body behind them is read once, not once each.
+    """Publications share a piece; the count behind them is read once, not once each.
 
     Keying the fetch by content id rather than publication id is what makes
     this true, and syndication — the same article on Dev.to, Hashnode and
@@ -387,8 +405,9 @@ def test_the_engagement_trend_reads_one_body_for_a_piece_on_two_platforms(
 
     # 3000 words → 14 minutes, applied to both publications' reads.
     assert sum(day["reader_minutes"] for day in days) == (40 + 5) * 14
-    assert len(_body_reads(sql_log)) == 1, "\n".join(
-        s[:200] for s in _body_reads(sql_log)
+    assert not _body_reads(sql_log), "\n".join(s[:200] for s in _body_reads(sql_log))
+    assert len(_word_count_reads(sql_log)) == 1, "\n".join(
+        s[:200] for s in _word_count_reads(sql_log)
     )
     assert first.id != second.id
 
@@ -396,14 +415,16 @@ def test_the_engagement_trend_reads_one_body_for_a_piece_on_two_platforms(
 def test_read_minutes_is_the_same_number_from_the_column_and_the_property(db, mine):
     """The free function and the property must not drift.
 
-    ``analytics_service`` applies ``read_minutes_of`` to a selected column while
-    every other caller reads ``content.read_minutes``; two spellings of the
-    formula would put the dashboard and the content API on different numbers.
+    ``analytics_service`` applies ``read_minutes_for`` to a selected column
+    while every other caller reads ``content.read_minutes``; two spellings of
+    the formula would put the dashboard and the content API on different
+    numbers. The second assertion is the other half of the same worry, now that
+    the count is stored: the column has to agree with the body it came from.
     """
-    from app.models.content import read_minutes_of, word_count_of
+    from app.models.content import read_minutes_for, word_count_of
 
     for content, _ in mine:
-        assert read_minutes_of(content.body_markdown) == content.read_minutes
+        assert read_minutes_for(content.word_count) == content.read_minutes
         assert word_count_of(content.body_markdown) == content.word_count
 
 
@@ -447,8 +468,9 @@ def test_read_time_reads_one_body_per_piece_not_per_publication(
     assert result["total_words"] == 3000
     # 14 minutes, against every publication's own reads.
     assert result["reader_minutes"] == (40 + 5 + 5) * 14
-    assert len(_body_reads(sql_log)) == 1, "\n".join(
-        s[:200] for s in _body_reads(sql_log)
+    assert not _body_reads(sql_log), "\n".join(s[:200] for s in _body_reads(sql_log))
+    assert len(_word_count_reads(sql_log)) == 1, "\n".join(
+        s[:200] for s in _word_count_reads(sql_log)
     )
     assert first.id
 
@@ -458,7 +480,7 @@ def test_read_time_still_bands_a_piece_whose_status_was_walked_back(
 ):
     """A publication can outlive its piece's ``PUBLISHED`` status.
 
-    The shared body read is scoped to "published, or holds a publication" for
+    The shared count read is scoped to "published, or holds a publication" for
     exactly this row: it is absent from the word counts, which ask about
     published work, and present in the bands, which ask about publications.
     Scoping it to ``PUBLISHED`` alone would leave the band loop without a

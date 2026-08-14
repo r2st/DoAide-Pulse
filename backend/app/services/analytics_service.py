@@ -29,8 +29,7 @@ from app.models.content import (
     Content,
     ContentStatus,
     ContentType,
-    read_minutes_of,
-    word_count_of,
+    read_minutes_for,
 )
 from app.models.metrics import ContentMetric
 from app.models.mixins import utcnow
@@ -433,7 +432,7 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
     if not scores:
         return []
 
-    # Columns rather than entities, the way ``read_minutes_of``'s docstring
+    # Columns rather than entities, the way ``read_minutes_for``'s docstring
     # asks callers to: five fields are wanted, and loading ``Content`` to reach
     # them brings the JSON columns nothing here reads and fires the
     # ``lazy="selectin"`` load of every publication on every piece — which is
@@ -448,7 +447,7 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
                 Content.content_type,
                 Content.project_id,
                 Content.published_at,
-                Content.body_markdown,
+                Content.word_count,
             ).where(Content.id.in_(scores))
         )
     }
@@ -459,7 +458,7 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
             "content_type": content_rows[cid].content_type.value,
             "project_id": content_rows[cid].project_id,
             "published_at": content_rows[cid].published_at,
-            "read_minutes": read_minutes_of(content_rows[cid].body_markdown),
+            "read_minutes": read_minutes_for(content_rows[cid].word_count),
             **data,
             **_rates(data),
         }
@@ -602,12 +601,12 @@ def _pre_window_readings(
 def _read_minutes_by_publication(
     db: Session, user_id: int, since: datetime, content_of: dict[int, int]
 ) -> dict[int, int]:
-    """Reading time per publication, reading each piece's body exactly once.
+    """Reading time per publication, counting each piece exactly once.
 
     *content_of* maps publication id to the content id behind it, which is what
     the caller already learned from its own rows. Several publications of the
-    same piece — the normal case, one per platform — share one body, so the
-    bodies are fetched keyed by *content* id and then spread back across the
+    same piece — the normal case, one per platform — share one reading time, so
+    the counts are fetched keyed by *content* id and then spread back across the
     publications.
 
     The ids come from a subquery repeating the caller's own predicate rather
@@ -627,9 +626,9 @@ def _read_minutes_by_publication(
         .distinct()
     )
     minutes_of_content = {
-        content_id: read_minutes_of(body)
-        for content_id, body in db.execute(
-            select(Content.id, Content.body_markdown).where(Content.id.in_(in_window))
+        content_id: read_minutes_for(words)
+        for content_id, words in db.execute(
+            select(Content.id, Content.word_count).where(Content.id.in_(in_window))
         )
     }
     return {
@@ -768,22 +767,23 @@ def read_time(db: Session, user_id: int) -> dict:
     alongside — a zero here often means "nowhere you publish counts reads",
     not "nobody read it".
     """
-    # ``body_markdown`` rather than the whole entity, in both queries below.
-    # Reading time and word count are derived from the body and nothing else,
-    # but ``Content`` carries ``lazy="selectin"`` publications, so selecting the
+    # ``word_count`` rather than the whole entity, in both queries below.
+    # Reading time and total words are both derived from the count, but
+    # ``Content`` carries ``lazy="selectin"`` publications, so selecting the
     # entity pulled every publication of every published piece into memory as
     # well — for two sums and an average. Neither read is bounded by anything
-    # except how much the account has written.
+    # except how much the account has written, which is what makes this the
+    # widest read in the module: it has no ``limit`` and no window.
     #
-    # One read of the bodies rather than two, keyed by content id. The second
-    # query below has a row per *publication*, so reading the body there billed
-    # a syndicated piece once per platform it went out on — for a reading time
+    # One read of the counts rather than two, keyed by content id. The second
+    # query below has a row per *publication*, so counting there billed a
+    # syndicated piece once per platform it went out on — for a reading time
     # that is a property of the piece, identical on every one of them. The
     # ``or_`` is what lets the two share this: a piece can hold a publication
     # without still being ``PUBLISHED`` — a status walked back after the fact —
     # and the band loop below needs a reading time for it either way.
-    bodies = db.execute(
-        select(Content.id, Content.body_markdown, Content.status)
+    counts = db.execute(
+        select(Content.id, Content.word_count, Content.status)
         .join(Project, Project.id == Content.project_id)
         .where(
             Project.user_id == user_id,
@@ -793,8 +793,10 @@ def read_time(db: Session, user_id: int) -> dict:
             ),
         )
     ).all()
-    published = [body for _, body, status in bodies if status == ContentStatus.PUBLISHED]
-    minutes_of_content = {cid: read_minutes_of(body) for cid, body, _ in bodies}
+    published = [
+        words for _, words, status in counts if status == ContentStatus.PUBLISHED
+    ]
+    minutes_of_content = {cid: read_minutes_for(words) for cid, words, _ in counts}
 
     latest = _latest_metric_subquery(user_id)
     rows = db.execute(
@@ -839,11 +841,11 @@ def read_time(db: Session, user_id: int) -> dict:
     return {
         "published_pieces": len(published),
         "avg_read_minutes": round(
-            sum(read_minutes_of(body) for body in published) / len(published), 1
+            sum(read_minutes_for(words) for words in published) / len(published), 1
         )
         if published
         else None,
-        "total_words": sum(word_count_of(body) for body in published),
+        "total_words": sum(published),
         #: Reading time actually spent, as far as the platforms will say.
         "reader_minutes": reader_minutes,
         #: How many publications contributed to it. Zero means no platform you

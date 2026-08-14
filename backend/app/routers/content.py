@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.orm import Session, defer, joinedload, selectinload
 
 from app.config import settings
 from app.database import get_db, refresh_all
@@ -110,6 +110,14 @@ def _owned_content_map(
 
 
 def _to_out(content: Content) -> ContentOut:
+    """A listing row. Reads no article text — see the ``defer`` on its callers.
+
+    ``word_count`` and ``read_minutes`` both come off the stored count now, so
+    the only field here that would touch ``body_markdown`` is one nobody added.
+    The paged callers below defer that column so a listing of 500 pieces stops
+    shipping 500 article bodies to render 500 word counts; ``_to_detail``, which
+    genuinely wants the text, does not defer it.
+    """
     return ContentOut(
         **{
             key: getattr(content, key)
@@ -227,7 +235,7 @@ def list_content(
     # endpoint returns up to 500 of them.
     query = (
         base
-        .options(joinedload(Content.project))
+        .options(joinedload(Content.project), defer(Content.body_markdown))
         .order_by(Content.created_at.desc())
         .offset(offset)
         .limit(limit)
@@ -266,7 +274,7 @@ def review_queue(
     )
     response.headers["X-Total-Count"] = str(total or 0)
     rows = db.scalars(
-        base.options(joinedload(Content.project))
+        base.options(joinedload(Content.project), defer(Content.body_markdown))
         .order_by(Content.created_at.desc())
         .offset(offset)
         .limit(limit)

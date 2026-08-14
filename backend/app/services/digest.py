@@ -28,7 +28,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.content import Content, ContentStatus, read_minutes_of
+from app.models.content import Content, ContentStatus, read_minutes_for
 from app.models.metrics import ContentMetric
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
@@ -271,18 +271,19 @@ def _gains(
 def _published_facts(db: Session, content_ids: list[int]) -> dict[int, tuple[str, int]]:
     """Title and reading time for each of *content_ids*, read once per piece.
 
-    The body is only here because reading time is computed from it; nothing else
-    in the digest looks at an article's text. Keyed by id so the caller's
-    per-publication rows can share one read — see the note on ``published_rows``.
+    Two narrow columns: nothing in the digest looks at an article's text, and
+    reading time comes off the stored ``word_count``. Keyed by id so the
+    caller's per-publication rows can share one read — see the note on
+    ``published_rows``.
     """
     if not content_ids:
         return {}
     rows = db.execute(
-        select(Content.id, Content.title, Content.body_markdown).where(
+        select(Content.id, Content.title, Content.word_count).where(
             Content.id.in_(set(content_ids))
         )
     ).all()
-    return {cid: (title, read_minutes_of(body)) for cid, title, body in rows}
+    return {cid: (title, read_minutes_for(words)) for cid, title, words in rows}
 
 
 def build(

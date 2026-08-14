@@ -26,7 +26,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SAEnum,
 )
-from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
+from sqlalchemy.orm import Mapped, Session, mapped_column, relationship, validates
 
 from app.database import Base
 from app.models.mixins import TimestampMixin
@@ -85,23 +85,30 @@ TAG_MAX_LENGTH = 100
 
 
 def word_count_of(body_markdown: str) -> int:
-    """Words in a body. The definition :attr:`Content.word_count` uses."""
+    """Words in a body. The definition :attr:`Content.word_count` stores.
+
+    The single place the count is defined. :meth:`Content._sync_word_count`
+    applies it on every write to ``body_markdown``, and the backfill in
+    migration ``p0j2f4h6i8e0`` applies it to the rows that predate the column,
+    so a body and its stored count are the same fact spelled twice rather than
+    two facts that can disagree.
+    """
     return len(body_markdown.split())
 
 
-def read_minutes_of(body_markdown: str) -> int:
+def read_minutes_for(word_count: int) -> int:
     """Reading time at ~220wpm, floored at one minute.
 
-    Free functions as well as properties because both quantities are derived
-    from the body and nothing else, and the aggregations in
-    :mod:`app.services.analytics_service` want them over thousands of rows.
-    Reading a ``Content`` entity per row to reach the property loads every
-    column plus, through ``lazy="selectin"``, every publication attached to it —
-    to arrive at a number that only ever needed ``body_markdown``. The callers
-    select that one column and apply this; the property below is the same
-    function, so the two cannot drift.
+    Takes the count rather than the body: reading time is derived from
+    ``word_count`` and nothing else, and the aggregations in
+    :mod:`app.services.analytics_service` and :mod:`app.services.digest` want it
+    over thousands of rows. Selecting ``body_markdown`` to reach it ships every
+    article's full text to compute one small integer per row — the whole reason
+    the count is stored. Those callers select ``Content.word_count`` and apply
+    this; the property below is the same function over the same column, so the
+    two cannot drift.
     """
-    return max(1, round(word_count_of(body_markdown) / 220))
+    return max(1, round(word_count / 220))
 
 
 class ContentType(str, Enum):
@@ -189,6 +196,21 @@ class Content(Base, TimestampMixin):
     )
     #: The canonical body. Markdown — every adapter converts *from* this.
     body_markdown: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    #: Words in :attr:`body_markdown`, denormalized.
+    #:
+    #: Derived data in a column, which is a thing to justify. The count is read
+    #: far more often than the body it comes from — every content listing, the
+    #: review queue, the digest, four analytics aggregations — and every one of
+    #: those reads it for many rows at once. As a property it could only be
+    #: reached by selecting ``body_markdown``, so "how long is this piece?"
+    #: asked over 500 rows shipped 500 article bodies out of the database to
+    #: produce 500 integers. ``BODY_MARKDOWN_MAX_LENGTH`` is 200_000, so that is
+    #: a page measured in tens of megabytes to render a column of word counts.
+    #:
+    #: Kept in sync by :meth:`_sync_word_count` below rather than by each
+    #: caller, so there is no write path that can set a body and forget the
+    #: count — see that method for the one shape it cannot see.
+    word_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     #: One- or two-sentence summary; doubles as the social blurb.
     excerpt: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
@@ -250,15 +272,30 @@ class Content(Base, TimestampMixin):
         back_populates="content", cascade="all, delete-orphan"
     )
 
-    @property
-    def word_count(self) -> int:
-        """Words in the body. Whitespace-split, so markdown markers count."""
-        return word_count_of(self.body_markdown)
+    @validates("body_markdown")
+    def _sync_word_count(self, _key: str, body: str | None) -> str | None:
+        """Recount on every write to the body, whoever makes it.
+
+        On the mapped attribute rather than in the routers because the write
+        paths are many — the content router's POST and its PATCH's ``setattr``
+        loop, the generator, the pipeline, the template instantiation, the
+        repurposer, the seeder, and every test that builds a ``Content`` by
+        hand. A rule each of them has to remember is one a new one will not.
+        This fires for all of them, including the declarative constructor, and
+        does not fire on load from the database, where the stored count is
+        already the right answer.
+
+        What it cannot see is a bulk ``update(Content).values(body_markdown=…)``,
+        which goes to SQL without visiting an instance. Nothing does that today,
+        and ``test_word_count_denormalization`` pins that it stays true.
+        """
+        self.word_count = word_count_of(body or "")
+        return body
 
     @property
     def read_minutes(self) -> int:
         """Reading time at ~220wpm, floored at one minute."""
-        return read_minutes_of(self.body_markdown)
+        return read_minutes_for(self.word_count)
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<Content id={self.id} title={self.title!r} status={self.status}>"

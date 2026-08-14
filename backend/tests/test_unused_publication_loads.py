@@ -239,7 +239,7 @@ def test_top_content_still_reports_every_field_it_used_to(db, user, sql_log):
     That is the substitution most likely to go wrong — the property and the
     function are the same arithmetic, and this asserts they stayed that way.
     """
-    from app.models.content import read_minutes_of
+    from app.models.content import read_minutes_for, word_count_of
     from app.services import analytics_service
 
     _seed(db, user.id, 2)
@@ -251,7 +251,9 @@ def test_top_content_still_reports_every_field_it_used_to(db, user, sql_log):
         assert row["content_type"] == ContentType.ANNOUNCEMENT.value
         assert row["project_id"]
         assert row["published_at"] is not None
-        assert row["read_minutes"] == read_minutes_of("Body words here.")
+        assert row["read_minutes"] == read_minutes_for(
+            word_count_of("Body words here.")
+        )
 
 
 def test_top_content_publication_queries_do_not_grow_with_content(db, user, sql_log):
