@@ -21,7 +21,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Subquery
 
@@ -774,20 +774,31 @@ def read_time(db: Session, user_id: int) -> dict:
     # entity pulled every publication of every published piece into memory as
     # well — for two sums and an average. Neither read is bounded by anything
     # except how much the account has written.
-    published = list(
-        db.scalars(
-            select(Content.body_markdown)
-            .join(Project, Project.id == Content.project_id)
-            .where(
-                Project.user_id == user_id,
+    #
+    # One read of the bodies rather than two, keyed by content id. The second
+    # query below has a row per *publication*, so reading the body there billed
+    # a syndicated piece once per platform it went out on — for a reading time
+    # that is a property of the piece, identical on every one of them. The
+    # ``or_`` is what lets the two share this: a piece can hold a publication
+    # without still being ``PUBLISHED`` — a status walked back after the fact —
+    # and the band loop below needs a reading time for it either way.
+    bodies = db.execute(
+        select(Content.id, Content.body_markdown, Content.status)
+        .join(Project, Project.id == Content.project_id)
+        .where(
+            Project.user_id == user_id,
+            or_(
                 Content.status == ContentStatus.PUBLISHED,
-            )
+                Content.publications.any(),
+            ),
         )
-    )
+    ).all()
+    published = [body for _, body, status in bodies if status == ContentStatus.PUBLISHED]
+    minutes_of_content = {cid: read_minutes_of(body) for cid, body, _ in bodies}
 
     latest = _latest_metric_subquery(user_id)
     rows = db.execute(
-        select(Content.body_markdown, ContentMetric)
+        select(Content.id, ContentMetric)
         .join(Publication, Publication.content_id == Content.id)
         .join(ContentMetric, ContentMetric.publication_id == Publication.id)
         .join(latest, latest.c.metric_id == ContentMetric.id)
@@ -808,8 +819,8 @@ def read_time(db: Session, user_id: int) -> dict:
     total_views = total_reads = 0
     reads_reported = 0
 
-    for body_markdown, metric in rows:
-        minutes = read_minutes_of(body_markdown)
+    for content_id, metric in rows:
+        minutes = minutes_of_content[content_id]
         bucket = bands[_band_for(minutes)]
         bucket["publications"] += 1
         bucket["read_minutes"] += minutes

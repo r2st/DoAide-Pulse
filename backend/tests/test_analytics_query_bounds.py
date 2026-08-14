@@ -405,3 +405,77 @@ def test_read_minutes_is_the_same_number_from_the_column_and_the_property(db, mi
     for content, _ in mine:
         assert read_minutes_of(content.body_markdown) == content.read_minutes
         assert word_count_of(content.body_markdown) == content.word_count
+
+
+def test_read_time_reads_one_body_per_piece_not_per_publication(
+    db, user, project, sql_log
+):
+    """Reading time is a property of the piece, not of where it went out.
+
+    The band query has a row per publication, so a piece syndicated to three
+    platforms billed its body three times to compute the same number three
+    times. The bodies are read once, keyed by content id, and shared with the
+    word-count query that had to read them anyway.
+    """
+    content, first = _publish(
+        db, project, title="Syndicated", body="word " * 3000, views=90, reads=40
+    )
+    for index, platform in enumerate((Platform.HASHNODE, Platform.MEDIUM)):
+        publication = Publication(
+            content_id=content.id,
+            platform=platform,
+            status=PublicationStatus.PUBLISHED,
+            published_at=utcnow() - timedelta(days=5),
+            external_id=f"ext-{content.id}-{index}",
+        )
+        db.add(publication)
+        db.flush()
+        db.add(
+            ContentMetric(
+                publication_id=publication.id,
+                views=10,
+                reads=5,
+                captured_at=utcnow() - timedelta(days=4),
+            )
+        )
+    db.commit()
+
+    sql_log.clear()
+    result = analytics_service.read_time(db, user.id)
+
+    assert result["published_pieces"] == 1
+    assert result["total_words"] == 3000
+    # 14 minutes, against every publication's own reads.
+    assert result["reader_minutes"] == (40 + 5 + 5) * 14
+    assert len(_body_reads(sql_log)) == 1, "\n".join(
+        s[:200] for s in _body_reads(sql_log)
+    )
+    assert first.id
+
+
+def test_read_time_still_bands_a_piece_whose_status_was_walked_back(
+    db, user, project
+):
+    """A publication can outlive its piece's ``PUBLISHED`` status.
+
+    The shared body read is scoped to "published, or holds a publication" for
+    exactly this row: it is absent from the word counts, which ask about
+    published work, and present in the bands, which ask about publications.
+    Scoping it to ``PUBLISHED`` alone would leave the band loop without a
+    reading time for it.
+    """
+    content, _ = _publish(
+        db, project, title="Walked back", body="word " * 3000, views=90, reads=40
+    )
+    content.status = ContentStatus.DRAFT
+    db.commit()
+
+    result = analytics_service.read_time(db, user.id)
+    bands = {row["band"]: row for row in result["by_length"]}
+
+    assert result["published_pieces"] == 0
+    assert result["total_words"] == 0
+    assert result["avg_read_minutes"] is None
+    # Still banded, and still weighted by its own length.
+    assert bands["long"]["publications"] == 1
+    assert result["reader_minutes"] == 40 * 14
