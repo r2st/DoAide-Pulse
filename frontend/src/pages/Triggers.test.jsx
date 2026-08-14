@@ -131,6 +131,29 @@ describe("the list", () => {
     expect(await screen.findByText("Never fired")).toBeInTheDocument();
   });
 
+  it("names an unnamed trigger after the kind it is", async () => {
+    // `name` is optional on the API, and a list of blank headings with chips
+    // under them is unreadable.
+    api.listTriggers.mockResolvedValue([trigger({ name: "" })]);
+    draw();
+    expect(
+      await screen.findByRole("heading", { name: "RSS trigger" }),
+    ).toBeInTheDocument();
+  });
+
+  it("labels a kind it has no label for rather than showing the raw value", async () => {
+    // A kind added to the API before the frontend learns its label. "Gitlab"
+    // beats "gitlab", and both beat a blank chip.
+    api.listTriggers.mockResolvedValue([
+      trigger({ kind: "gitlab", name: "", config: {} }),
+    ]);
+    draw();
+    expect(await screen.findByText("Gitlab")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Trigger trigger" }),
+    ).toBeInTheDocument();
+  });
+
   it("says '1 time' rather than '1 times'", async () => {
     api.listTriggers.mockResolvedValue([trigger({ fire_count: 1 })]);
     draw();
@@ -562,6 +585,29 @@ describe("activity", () => {
       "href",
       "/content/42",
     );
+  });
+
+  it("marks a firing whose source gave it no headline", async () => {
+    // A webhook POST with no title field, or a feed entry missing one. The row
+    // is still the record that something fired, and a blank line in a list of
+    // timestamps reads as a rendering fault rather than as thin source data.
+    api.triggerEvents.mockResolvedValue([
+      {
+        id: 7,
+        trigger_id: 1,
+        headline: "",
+        status: "generated",
+        detail: "",
+        content_id: null,
+        dedupe_key: null,
+        payload: {},
+        created_at: "2026-07-30T10:00:00Z",
+      },
+    ]);
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Activity" }));
+
+    expect(await screen.findByText("(no headline)")).toBeInTheDocument();
   });
 
   it("explains why a firing wrote nothing", async () => {

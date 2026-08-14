@@ -157,6 +157,24 @@ describe("the editor", () => {
     await user.type(names[names.length - 1], "spare");
 
     expect(await screen.findByText(/declared but never used: spare/i)).toBeInTheDocument();
+    expect(screen.getByText(/still ask for it\./i)).toBeInTheDocument();
+  });
+
+  it("says 'them' once more than one variable is going unused", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    for (const name of ["spare", "extra"]) {
+      await user.click(screen.getByRole("button", { name: /add a blank/i }));
+      const names = screen.getAllByLabelText("Name");
+      await user.type(names[names.length - 1], name);
+    }
+
+    expect(
+      await screen.findByText(/declared but never used: spare, extra/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/still ask for them\./i)).toBeInTheDocument();
   });
 
   it("blocks a variable name that shadows a built-in", async () => {
