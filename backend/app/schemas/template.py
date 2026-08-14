@@ -157,7 +157,15 @@ class TemplateOut(BaseModel):
     mode_label: str
     content_type: ContentType
     title_template: str
-    body_template: str
+    #: The template's text. ``None`` in a listing unless it was asked for —
+    #: ``GET /templates`` leaves it out by default, because a body is up to
+    #: ``50_000`` characters and a hundred of them is a five-megabyte response
+    #: to draw a list of names. ``GET /templates/{id}`` always carries it, and
+    #: so does every write, so the editor has one round trip to reach it.
+    #:
+    #: ``None`` rather than ``""``: an empty string is a template whose body is
+    #: genuinely blank, which is a real state a picker should be able to show.
+    body_template: str | None = None
     variables: list[TemplateVariable]
     default_project_id: int | None
     use_count: int

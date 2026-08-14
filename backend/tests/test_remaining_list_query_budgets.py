@@ -33,6 +33,7 @@ from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.template import ContentTemplate, TemplateMode
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.webhook import Webhook
+from app.schemas.template import MAX_TEMPLATES_PER_USER
 
 
 def _selects(sql_log: list[str]) -> int:
@@ -125,7 +126,10 @@ def test_the_templates_list_query_count_is_flat(flat, db, user):
                 )
             )
 
-    flat("/api/v1/templates?limit=500", seed)
+    # The whole listing in one page. The ceiling here is MAX_TEMPLATES_PER_USER
+    # rather than the 500 the other listings take, because that cap is what
+    # bounds the collection — see `list_templates`.
+    flat(f"/api/v1/templates?limit={MAX_TEMPLATES_PER_USER}", seed)
 
 
 def test_the_webhooks_list_query_count_is_flat(flat, db, user):

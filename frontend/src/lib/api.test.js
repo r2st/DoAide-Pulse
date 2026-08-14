@@ -471,6 +471,7 @@ describe("every endpoint's path and verb", () => {
 
     ["templateBuiltins", [], "/templates/builtins", "GET"],
     ["listTemplates", [], "/templates", "GET"],
+    ["getTemplate", [4], "/templates/4", "GET"],
     ["createTemplate", [{ name: "t" }], "/templates", "POST"],
     ["updateTemplate", [4, { name: "t" }], "/templates/4", "PATCH"],
     ["deleteTemplate", [4], "/templates/4", "DELETE"],

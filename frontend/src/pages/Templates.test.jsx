@@ -11,6 +11,7 @@ vi.mock("../lib/api", () => ({
     listProjects: vi.fn(),
     templateBuiltins: vi.fn(),
     listTemplates: vi.fn(),
+    getTemplate: vi.fn(),
     createTemplate: vi.fn(),
     updateTemplate: vi.fn(),
     deleteTemplate: vi.fn(),
@@ -56,6 +57,23 @@ function template(overrides = {}) {
   };
 }
 
+/**
+ * Put *rows* behind the two endpoints the page reads, as the API answers them.
+ *
+ * `GET /templates` carries no `body_template` — a body is up to 50,000
+ * characters and an account may keep a hundred templates — and the editor
+ * fetches the one it is opening from `GET /templates/{id}`. Staging both from
+ * one list keeps that split in front of every test here: a test that stubs a
+ * body into the listing and passes would be passing against a shape the server
+ * does not send.
+ */
+function stage(rows = []) {
+  api.listTemplates.mockResolvedValue(
+    rows.map((row) => ({ ...row, body_template: null })),
+  );
+  api.getTemplate.mockImplementation(async (id) => rows.find((row) => row.id === id));
+}
+
 function renderPage() {
   return render(
     <MemoryRouter future={ROUTER_FUTURE}>
@@ -68,7 +86,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   api.listProjects.mockResolvedValue([{ id: 1, name: "Herald" }]);
   api.templateBuiltins.mockResolvedValue(BUILTINS);
-  api.listTemplates.mockResolvedValue([template()]);
+  stage([template()]);
   api.previewTemplate.mockResolvedValue({
     title: "Herald — week of 30 July 2026",
     body: "## What shipped\n\nTemplates landed.",
@@ -90,7 +108,7 @@ describe("the list", () => {
   });
 
   it("says what a template is for when there are none", async () => {
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
 
     renderPage();
 
@@ -109,10 +127,68 @@ describe("the list", () => {
   });
 });
 
+describe("opening the editor", () => {
+  it("fetches the body it is about to edit, because the listing has none", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+
+    expect(api.getTemplate).toHaveBeenCalledWith(1);
+    // The list row this card was drawn from carried `body_template: null`, so
+    // a field with the text in it can only have come from the fetch.
+    expect(await screen.findByLabelText("The piece")).toHaveValue(
+      "## What shipped\n\n{{summary}}",
+    );
+  });
+
+  it("says so on the button while the fetch is in flight, and does not fire twice", async () => {
+    const user = userEvent.setup();
+    let release;
+    api.getTemplate.mockImplementation(
+      () => new Promise((resolve) => (release = () => resolve(template()))),
+    );
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+
+    const opening = screen.getByRole("button", { name: "Opening…" });
+    expect(opening).toBeDisabled();
+    await user.click(opening);
+    expect(api.getTemplate).toHaveBeenCalledTimes(1);
+
+    release();
+    expect(await screen.findByLabelText("The piece")).toBeInTheDocument();
+  });
+
+  it("reports a failed fetch and leaves the editor shut rather than half-filled", async () => {
+    const user = userEvent.setup();
+    api.getTemplate.mockRejectedValueOnce(new Error("gone"));
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("gone"));
+    expect(screen.queryByLabelText("The piece")).not.toBeInTheDocument();
+    // And the card is usable again: a failure is not a stuck button.
+    expect(await screen.findByRole("button", { name: "Edit" })).toBeEnabled();
+  });
+
+  it("still opens a blank editor for a new template without fetching anything", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /new template/i }));
+
+    expect(api.getTemplate).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("The piece")).toHaveValue("");
+  });
+});
+
 describe("the editor", () => {
   it("refuses to save while a placeholder is undeclared, and offers to declare it", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -134,7 +210,7 @@ describe("the editor", () => {
 
   it("accepts a built-in without a declaration", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -192,7 +268,7 @@ describe("the editor", () => {
 
   it("inserts a built-in at the caret from the menu", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -258,7 +334,7 @@ describe("the editor", () => {
 
   it("relabels the body when the template briefs the model instead", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -417,7 +493,7 @@ describe("what a card says about a template", () => {
   });
 
   it("does not say 'zero blanks' about a template with none", async () => {
-    api.listTemplates.mockResolvedValue([
+    stage([
       template({ variables: [], placeholders_used: [] }),
     ]);
     renderPage();
@@ -426,7 +502,7 @@ describe("what a card says about a template", () => {
   });
 
   it("counts several blanks in the plural", async () => {
-    api.listTemplates.mockResolvedValue([
+    stage([
       template({
         variables: [
           { name: "a", label: "", description: "", default: "", required: false },
@@ -440,14 +516,14 @@ describe("what a card says about a template", () => {
   });
 
   it("says a template has never been used rather than 'used 0 times'", async () => {
-    api.listTemplates.mockResolvedValue([template({ use_count: 0 })]);
+    stage([template({ use_count: 0 })]);
     renderPage();
 
     expect(await screen.findByText(/never used/)).toBeInTheDocument();
   });
 
   it("counts a single use in the singular", async () => {
-    api.listTemplates.mockResolvedValue([template({ use_count: 1 })]);
+    stage([template({ use_count: 1 })]);
     renderPage();
 
     expect(await screen.findByText(/used 1 time(?!s)/)).toBeInTheDocument();
@@ -460,7 +536,7 @@ describe("what a card says about a template", () => {
   });
 
   it("says nothing about a project when the template has no default", async () => {
-    api.listTemplates.mockResolvedValue([template({ default_project_id: null })]);
+    stage([template({ default_project_id: null })]);
     renderPage();
 
     await screen.findByText("Weekly changelog");
@@ -468,7 +544,7 @@ describe("what a card says about a template", () => {
   });
 
   it("omits the description line when there is no description", async () => {
-    api.listTemplates.mockResolvedValue([template({ description: "" })]);
+    stage([template({ description: "" })]);
     renderPage();
 
     await screen.findByText("Weekly changelog");
@@ -485,7 +561,7 @@ describe("what a card says about a template", () => {
   });
 
   it("titles the kind of piece rather than printing the enum value", async () => {
-    api.listTemplates.mockResolvedValue([template({ content_type: "blog_post" })]);
+    stage([template({ content_type: "blog_post" })]);
     renderPage();
 
     expect(await screen.findByText("Blog Post")).toBeInTheDocument();
@@ -609,7 +685,7 @@ describe("the editor, on the parts the live check does not cover", () => {
 
   it("explains on the button itself why saving is blocked", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -625,7 +701,7 @@ describe("the editor, on the parts the live check does not cover", () => {
 
   it("names every undeclared blank, in the plural", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -643,7 +719,7 @@ describe("the editor, on the parts the live check does not cover", () => {
 
   it("counts a placeholder in the headline too, not only in the body", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -754,7 +830,7 @@ describe("the editor, on the parts the live check does not cover", () => {
 describe("the built-in insert menu", () => {
   it("stays shut until asked, and says which way it will go", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -771,7 +847,7 @@ describe("the built-in insert menu", () => {
 
   it("groups the built-ins by namespace", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -786,7 +862,7 @@ describe("the built-in insert menu", () => {
   it("is absent entirely when the server offers no built-ins", async () => {
     const user = userEvent.setup();
     api.templateBuiltins.mockResolvedValue([]);
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -798,7 +874,7 @@ describe("the built-in insert menu", () => {
 
   it("inserts at the caret rather than appending to the end", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([]);
+    stage([]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
@@ -831,7 +907,7 @@ describe("the use dialog, beyond the happy path", () => {
 
   it("falls back to the first project when the template has no usual one", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([template({ default_project_id: null })]);
+    stage([template({ default_project_id: null })]);
     api.listProjects.mockResolvedValue([
       { id: 2, name: "Beacon" },
       { id: 1, name: "Herald" },
@@ -845,7 +921,7 @@ describe("the use dialog, beyond the happy path", () => {
 
   it("will not write a draft with no project at all", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([
+    stage([
       template({ default_project_id: null, variables: [] }),
     ]);
     api.listProjects.mockResolvedValue([]);
@@ -859,7 +935,7 @@ describe("the use dialog, beyond the happy path", () => {
 
   it("calls the filled-in text a brief when the template briefs the model", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([template({ mode: "prompt" })]);
+    stage([template({ mode: "prompt" })]);
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: "Use" }));
@@ -881,7 +957,7 @@ describe("the use dialog, beyond the happy path", () => {
 
   it("marks a required blank as required", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([
+    stage([
       template({
         variables: [
           { name: "summary", label: "Summary", description: "", default: "", required: true },
@@ -900,7 +976,7 @@ describe("the use dialog, beyond the happy path", () => {
   it("seeds a blank with its default, so a template of defaults is one click", async () => {
     const user = userEvent.setup();
     api.useTemplate.mockResolvedValue({ id: 5 });
-    api.listTemplates.mockResolvedValue([
+    stage([
       template({
         variables: [
           {
@@ -923,7 +999,7 @@ describe("the use dialog, beyond the happy path", () => {
 
   it("labels a blank from its name when the template gave it no label", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([
+    stage([
       template({
         variables: [
           { name: "release_notes", label: "", description: "", default: "", required: false },
@@ -939,7 +1015,7 @@ describe("the use dialog, beyond the happy path", () => {
 
   it("names every blank it is still waiting on", async () => {
     const user = userEvent.setup();
-    api.listTemplates.mockResolvedValue([
+    stage([
       template({
         variables: [
           { name: "summary", label: "", description: "", default: "", required: true },

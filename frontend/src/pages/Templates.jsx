@@ -41,6 +41,32 @@ export default function Templates() {
 
   const [editing, setEditing] = useState(null); // template | "new" | null
   const [using, setUsing] = useState(null); // template | null
+  const [opening, setOpening] = useState(null); // id being fetched, or null
+
+  /**
+   * Fetch the full template, then open the editor on it.
+   *
+   * The listing carries no `body_template` — a body is up to 50,000 characters
+   * and an account may keep a hundred of them, which made the page a
+   * five-megabyte download to render a column of names. Nothing on a card reads
+   * one; the editor does, and only for the one template being opened.
+   *
+   * Fetched here rather than inside the dialog so the dialog stays synchronous:
+   * it builds its form from a template in `useState`, and a dialog that could
+   * mount without one would need a loading arm, an error arm and a guard on
+   * every field that reads `template.` today. The cost is that Edit is briefly
+   * a no-op, which is what `opening` disables the button for.
+   */
+  async function openEditor(template) {
+    setOpening(template.id);
+    try {
+      setEditing(await api.getTemplate(template.id));
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setOpening(null);
+    }
+  }
 
   return (
     <div className="stagger space-y-6">
@@ -79,7 +105,8 @@ export default function Templates() {
               key={template.id}
               template={template}
               project={projects?.find((p) => p.id === template.default_project_id)}
-              onEdit={() => setEditing(template)}
+              opening={opening === template.id}
+              onEdit={() => openEditor(template)}
               onUse={() => setUsing(template)}
               onChanged={reload}
             />
@@ -114,7 +141,7 @@ export default function Templates() {
   );
 }
 
-function TemplateCard({ template, project, onEdit, onUse, onChanged }) {
+function TemplateCard({ template, project, opening, onEdit, onUse, onChanged }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const mode = MODES.find((m) => m.value === template.mode);
@@ -168,8 +195,8 @@ function TemplateCard({ template, project, onEdit, onUse, onChanged }) {
           <button className="btn-primary" onClick={onUse}>
             Use
           </button>
-          <button className="btn-ghost" onClick={onEdit}>
-            Edit
+          <button className="btn-ghost" disabled={opening} onClick={onEdit}>
+            {opening ? "Opening…" : "Edit"}
           </button>
           <button className="btn-ghost text-rose-600" disabled={busy} onClick={remove}>
             Delete

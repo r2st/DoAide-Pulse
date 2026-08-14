@@ -185,7 +185,11 @@ export const api = {
 
   // ---- templates ----
   templateBuiltins: () => request("/templates/builtins"),
+  // The listing leaves `body_template` out — a body is up to 50,000 characters
+  // and an account may keep a hundred templates, and the cards render a name,
+  // not a body. `getTemplate` is what the editor opens with.
   listTemplates: (params = {}) => request(`/templates${qs(params)}`),
+  getTemplate: (id) => request(`/templates/${id}`),
   createTemplate: (payload) => request("/templates", { method: "POST", body: payload }),
   updateTemplate: (id, payload) =>
     request(`/templates/${id}`, { method: "PATCH", body: payload }),

@@ -68,7 +68,14 @@ def _owned(template_id: int, db: Session, user: User) -> ContentTemplate:
     return template
 
 
-def _to_out(template: ContentTemplate) -> TemplateOut:
+def _to_out(template: ContentTemplate, *, body: bool = True) -> TemplateOut:
+    """One template on the wire. *body* carries :attr:`body_template`.
+
+    Every single-template response passes ``True``; the listing passes whatever
+    the caller asked for. ``placeholders_used`` is computed either way — it is
+    the one thing the cards render that is derived from the body, and it is a
+    handful of names rather than the text they were found in.
+    """
     mode = (
         template.mode
         if isinstance(template.mode, TemplateMode)
@@ -82,7 +89,7 @@ def _to_out(template: ContentTemplate) -> TemplateOut:
         mode_label=mode.label,
         content_type=template.content_type,
         title_template=template.title_template,
-        body_template=template.body_template,
+        body_template=template.body_template if body else None,
         variables=[TemplateVariable(**v) for v in (template.variables or [])],
         default_project_id=template.default_project_id,
         use_count=template.use_count,
@@ -140,11 +147,32 @@ def list_builtins(
     responses=errors(*OWNED),
 )
 def list_templates(
+    response: Response,
     project_id: int | None = Query(default=None),
+    include_bodies: bool = Query(
+        default=False,
+        description="Carry each template's body_template, as this used to.",
+    ),
+    limit: int = Query(default=MAX_TEMPLATES_PER_USER, ge=1, le=MAX_TEMPLATES_PER_USER),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TemplateOut]:
-    """This user's templates, most recently edited first."""
+    """This user's templates, most recently edited first.
+
+    Bodies are left out unless ``include_bodies=true`` asks for them, and the
+    picker this feeds has never read one: it draws a name, a mode, a blank
+    count and the placeholder chips. A body is up to 50,000 characters and an
+    account may keep ``MAX_TEMPLATES_PER_USER`` of them, so the listing was a
+    five-megabyte response — measured, not estimated — to render a hundred
+    rows of one line each. The editor fetches the one template it is opening
+    from ``GET /templates/{id}``, which is bounded by a single body rather than
+    by how many the account has.
+
+    Paged like every other listing, with the total in ``X-Total-Count``. The
+    ceiling is the per-account cap rather than the 500 used elsewhere, since
+    that cap is what bounds the collection.
+    """
     query = (
         select(ContentTemplate)
         .where(ContentTemplate.user_id == user.id)
@@ -153,7 +181,16 @@ def list_templates(
     if project_id is not None:
         owned_project(project_id, db, user)
         query = query.where(ContentTemplate.default_project_id == project_id)
-    return [_to_out(row) for row in db.scalars(query)]
+
+    total = db.scalar(
+        select(func.count()).select_from(
+            query.with_only_columns(ContentTemplate.id).subquery()
+        )
+    )
+    response.headers["X-Total-Count"] = str(total or 0)
+
+    rows = db.scalars(query.limit(limit).offset(offset))
+    return [_to_out(row, body=include_bodies) for row in rows]
 
 
 @router.post(
