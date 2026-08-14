@@ -26,6 +26,7 @@ from app.deps import get_current_user, owned_project
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.ratelimit import account_key, limiter
+from app.schemas.errors import OWNED, ErrorOut, errors
 from app.schemas.trigger import (
     ALLOWED_CONFIG,
     REQUIRED_CONFIG,
@@ -113,7 +114,12 @@ def _to_out(trigger: Trigger) -> TriggerOut:
     )
 
 
-@router.get("/kinds", response_model=list[TriggerKindOut])
+@router.get(
+    "/kinds",
+    response_model=list[TriggerKindOut],
+    summary="Trigger kinds and their config keys",
+    responses=errors(status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_public_read)
 def list_kinds(request: Request, response: Response) -> list[TriggerKindOut]:
     """Every kind of trigger and what it needs configuring.
@@ -136,7 +142,14 @@ def list_kinds(request: Request, response: Response) -> list[TriggerKindOut]:
     ]
 
 
-@router.get("", response_model=list[TriggerOut])
+@router.get(
+    "",
+    response_model=list[TriggerOut],
+    summary="Your triggers",
+    # 404 only on the narrowed form: an unknown `project_id` resolves through
+    # the ownership guard rather than quietly returning an empty page.
+    responses=errors(*OWNED),
+)
 def list_triggers(
     response: Response,
     project_id: int | None = Query(default=None),
@@ -172,7 +185,17 @@ def list_triggers(
     return [_to_out(row) for row in rows]
 
 
-@router.post("", response_model=TriggerCreated, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=TriggerCreated,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a trigger",
+    responses=errors(
+        *OWNED,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+    ),
+)
 def create_trigger(
     payload: TriggerCreate,
     db: Session = Depends(get_db),
@@ -219,13 +242,25 @@ def create_trigger(
     return TriggerCreated(**_to_out(trigger).model_dump(), secret=secret)
 
 
-@router.patch("/{trigger_id}", response_model=TriggerOut)
+@router.patch(
+    "/{trigger_id}",
+    response_model=TriggerOut,
+    summary="Change a trigger",
+    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+)
 def update_trigger(
     trigger_id: int,
     payload: TriggerUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TriggerOut:
+    """Patch one trigger. Omitted fields are left alone.
+
+    A new ``config`` is validated against the trigger's *existing* kind, which
+    is not patchable: the config keys a kind requires are the kind, so changing
+    one under a config that was written for the other is a new trigger wearing
+    an old id.
+    """
     trigger = _owned(trigger_id, db, user)
     kind = (
         trigger.kind if isinstance(trigger.kind, TriggerKind) else TriggerKind(trigger.kind)
@@ -253,18 +288,37 @@ def update_trigger(
     return _to_out(trigger)
 
 
-@router.delete("/{trigger_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{trigger_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a trigger",
+    responses=errors(*OWNED),
+)
 def delete_trigger(
     trigger_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """Remove a trigger and its firing history.
+
+    The content it caused to be written stays: a piece that shipped is not a
+    fact about the trigger any more.
+    """
     trigger = _owned(trigger_id, db, user)
     db.delete(trigger)
     db.commit()
 
 
-@router.post("/{trigger_id}/rotate-secret", response_model=TriggerCreated)
+@router.post(
+    "/{trigger_id}/rotate-secret",
+    response_model=TriggerCreated,
+    summary="Issue a new secret and inbound URL",
+    responses=errors(
+        *OWNED,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+    ),
+)
 def rotate_secret(
     trigger_id: int,
     db: Session = Depends(get_db),
@@ -293,7 +347,15 @@ def rotate_secret(
     return TriggerCreated(**_to_out(trigger).model_dump(), secret=secret)
 
 
-@router.post("/{trigger_id}/check")
+@router.post(
+    "/{trigger_id}/check",
+    summary="Poll this trigger now",
+    responses=errors(
+        *OWNED,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
+)
 @limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def check_now(
     trigger_id: int,
@@ -320,7 +382,12 @@ def check_now(
     return trigger_service.check(db, trigger)
 
 
-@router.get("/{trigger_id}/events", response_model=list[TriggerEventOut])
+@router.get(
+    "/{trigger_id}/events",
+    response_model=list[TriggerEventOut],
+    summary="Firing history for one trigger",
+    responses=errors(*OWNED),
+)
 def list_trigger_events(
     trigger_id: int,
     response: Response,
@@ -348,7 +415,37 @@ def list_trigger_events(
     return [TriggerEventOut.model_validate(row) for row in rows]
 
 
-@router.post("/inbound/{token}", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/inbound/{token}",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Fire an inbound webhook trigger",
+    responses={
+        **errors(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_429_TOO_MANY_REQUESTS,
+        ),
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorOut,
+            "description": (
+                "No trigger has this token — or it has one and is deactivated. "
+                "Deliberately the same answer: a caller holding a URL should "
+                "not be able to learn that it once worked."
+            ),
+        },
+        # The catalogue's 401 is about bearer tokens, and this is the one
+        # endpoint that has never seen one. Here it means the HMAC signature was
+        # missing or did not match — and only for a trigger configured to
+        # require one.
+        status.HTTP_401_UNAUTHORIZED: {
+            "model": ErrorOut,
+            "description": (
+                "This trigger requires a signature and the request did not "
+                "carry a valid one. Never returned by a trigger that does not "
+                "require signatures."
+            ),
+        },
+    },
+)
 @limiter.limit(settings.rate_limit_trigger_inbound)
 async def inbound(
     request: Request,
