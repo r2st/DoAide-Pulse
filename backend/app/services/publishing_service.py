@@ -828,6 +828,7 @@ def collect_metrics(
     db: Session,
     publication: Publication,
     *,
+    user_id: int | None = None,
     rate_limited: set[RateLimitKey] | None = None,
 ) -> ContentMetric | None:
     """Poll one published post for engagement. Returns the new row, or ``None``.
@@ -835,6 +836,13 @@ def collect_metrics(
     Quiet about failure on purpose: metrics are a nice-to-have, and a platform
     having a bad day should not fill the log with errors or mark anything
     invalid.
+
+    *user_id* is whose credentials to poll with. It is optional because the
+    single-post refresh button has one publication and no reason to know, and
+    walking ``publication.content.project`` answers it in two queries. The sweep
+    passes it because it does have a reason: it commits after every row it
+    records, which expires the session, so that walk would re-read a whole
+    ``Content`` — article body included — once per publication on the install.
 
     *rate_limited* is the sweep's memory, and it is what stops the poller
     answering a 429 by making the next request. The numbers are cumulative
@@ -854,8 +862,8 @@ def collect_metrics(
     if not adapter.supports_metrics:
         return None
 
-    user_id = publication.content.project.user_id
-    key: RateLimitKey = (user_id, publication.platform)
+    owner_id = user_id if user_id is not None else publication.content.project.user_id
+    key: RateLimitKey = (owner_id, publication.platform)
     if rate_limited is not None and key in rate_limited:
         logger.debug(
             "metrics poll for publication %s skipped: %s is rate-limiting this "
@@ -866,7 +874,7 @@ def collect_metrics(
         return None
 
     try:
-        credentials = _credentials_for(db, user_id, publication.platform)
+        credentials = _credentials_for(db, owner_id, publication.platform)
         snapshot = adapter.fetch_metrics(publication.external_id, credentials)
     except RateLimited as exc:
         if rate_limited is not None:

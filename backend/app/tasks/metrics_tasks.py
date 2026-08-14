@@ -6,10 +6,10 @@ import logging
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import joinedload
 
 from app.database import SessionLocal
 from app.models.content import Content
+from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.services import publishers, publishing_service
 from app.tasks.celery_app import task
@@ -44,33 +44,43 @@ def collect_all_metrics() -> dict:
 
     db = SessionLocal()
     try:
-        publications = list(
-            db.scalars(
-                select(Publication)
-                .where(
-                    Publication.status == PublicationStatus.PUBLISHED,
-                    Publication.platform.in_(metric_platforms),
-                    Publication.external_id.is_not(None),
-                )
-                # ``collect_metrics`` reads ``publication.content.project.user_id``
-                # to find whose credentials to use, and both hops were lazy: two
-                # SELECTs per publication, on a sweep that walks every published
-                # post on the install. Loaded up front they cost nothing extra —
-                # the rows are all needed, and the join reads them in the query
-                # that finds the publications.
-                .options(joinedload(Publication.content).joinedload(Content.project))
+        # The owner comes back as a column off the join, and is handed to
+        # ``collect_metrics`` rather than walked to.
+        #
+        # Eager-loading the two hops instead — which is what this did — was only
+        # half a fix, and the half that showed up in a test where
+        # ``collect_metrics`` is stubbed and never commits. In production it
+        # records a metric per publication, and each commit expires the session:
+        # the next iteration re-read the publication, then re-read its whole
+        # ``Content`` (article body and all) and its project, one publication at
+        # a time, exactly as if nothing had been eagerly loaded. Three SELECTs
+        # per row on the sweep whose row count grows with everything the install
+        # has ever published, one of them carrying an article.
+        #
+        # Not traversing the relationship at all is what survives the commits.
+        # The publication itself is still re-read after each one — it is the row
+        # being written about, and ``collect_metrics`` re-checks its status
+        # before polling — but that is one narrow SELECT, not three wide ones.
+        rows = db.execute(
+            select(Publication, Project.user_id)
+            .join(Content, Content.id == Publication.content_id)
+            .join(Project, Project.id == Content.project_id)
+            .where(
+                Publication.status == PublicationStatus.PUBLISHED,
+                Publication.platform.in_(metric_platforms),
+                Publication.external_id.is_not(None),
             )
-        )
+        ).all()
         recorded = 0
         # Shared across the whole sweep: once a platform rate-limits one
         # account, the rest of that account's posts there are skipped without a
         # request. See ``publishing_service.collect_metrics``.
         rate_limited: set[publishing_service.RateLimitKey] = set()
-        for publication in publications:
+        for publication, user_id in rows:
             try:
                 if (
                     publishing_service.collect_metrics(
-                        db, publication, rate_limited=rate_limited
+                        db, publication, user_id=user_id, rate_limited=rate_limited
                     )
                     is not None
                 ):
@@ -78,7 +88,7 @@ def collect_all_metrics() -> dict:
             except SoftTimeLimitExceeded:
                 logger.warning(
                     "metrics collection timed out after %d of %d publications",
-                    recorded, len(publications),
+                    recorded, len(rows),
                 )
                 break
             except Exception:
@@ -90,8 +100,8 @@ def collect_all_metrics() -> dict:
     finally:
         db.close()
 
-    logger.info("metrics: polled %d, recorded %d", len(publications), recorded)
-    return {"polled": len(publications), "recorded": recorded}
+    logger.info("metrics: polled %d, recorded %d", len(rows), recorded)
+    return {"polled": len(rows), "recorded": recorded}
 
 
 @task(

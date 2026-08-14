@@ -216,7 +216,7 @@ def test_metrics_task_isolates_failures():
 
     call_count = {"n": 0}
 
-    def mock_collect(db, pub, *, rate_limited=None):
+    def mock_collect(db, pub, *, user_id=None, rate_limited=None):
         call_count["n"] += 1
         if pub.id == 2:
             raise RuntimeError("platform API exploded")
@@ -229,7 +229,15 @@ def test_metrics_task_isolates_failures():
     ):
         mock_session = MagicMock()
         mock_session_cls.return_value = mock_session
-        mock_session.scalars.return_value = [mock_pub_ok, mock_pub_bad, mock_pub_ok2]
+        # The sweep reads ``(publication, owner_id)`` pairs: the owner comes back
+        # as a column off the join rather than by walking
+        # ``publication.content.project``, which does not survive the commit
+        # ``collect_metrics`` makes after every row it records.
+        mock_session.execute.return_value.all.return_value = [
+            (mock_pub_ok, 7),
+            (mock_pub_bad, 7),
+            (mock_pub_ok2, 7),
+        ]
 
         mock_adapter = MagicMock()
         mock_adapter.implemented = True
