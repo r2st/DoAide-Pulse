@@ -75,6 +75,43 @@ def test_a_rate_limit_does_not_even_record_the_attempt(
     assert project.last_scanned_at is None
 
 
+def test_a_secondary_rate_limit_is_a_rate_limit_and_not_an_unreachable_repo(
+    db, project, task_session, monkeypatch
+):
+    """End to end from the HTTP response, because the mis-read was in the parse.
+
+    GitHub reports its secondary limit as a 403 with ``Retry-After`` and the
+    request quota barely touched — which this module's error classifier read as
+    "private repo, no token", i.e. a plain ``GitHubError``. The autopilot
+    answers that by stamping ``last_scanned_at`` and calling the project
+    unreachable. The secondary limit is per *account*, so a single burst did
+    that to every project in the sweep, and every one of them then reported a
+    last-looked time at which nothing had been looked at.
+    """
+    import httpx
+
+    project.last_seen_commit_sha = "abc123"
+    db.commit()
+
+    def throttled(url, **kwargs):
+        return httpx.Response(
+            status_code=403,
+            headers={"Retry-After": "60", "X-RateLimit-Remaining": "4873"},
+            json={"message": "You have exceeded a secondary rate limit."},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr(github_client.httpx, "get", throttled)
+    monkeypatch.setattr(autopilot_tasks, "SessionLocal", task_session)
+
+    result = autopilot_tasks.scan_project(project.id)
+
+    assert result["status"] == "rate_limited"
+    db.refresh(project)
+    assert project.last_scanned_at is None
+    assert project.last_seen_commit_sha == "abc123"
+
+
 def test_a_scan_that_runs_out_of_time_reports_the_timeout(
     db, project, stub_github, monkeypatch, caplog
 ):

@@ -228,10 +228,99 @@ def test_an_exhausted_quota_under_a_403_reads_as_rate_limited(monkeypatch):
     )
     with pytest.raises(github_client.GitHubRateLimited) as exc:
         github_client.fetch_commits("owner/repo")
-    assert "999" in str(exc.value)
+    # The epoch as a time somebody can wait for, rather than as an epoch.
+    assert "00:16 UTC" in str(exc.value)
 
 
-def test_a_403_with_quota_left_reads_as_a_private_repo(monkeypatch):
+def test_an_unparseable_reset_is_reported_as_it_arrived(monkeypatch):
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response(
+            {},
+            status_code=429,
+            headers={"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": "soon"},
+        ),
+    )
+    with pytest.raises(github_client.GitHubRateLimited) as exc:
+        github_client.fetch_commits("owner/repo")
+    assert "soon" in str(exc.value)
+
+
+# -- The secondary limit --------------------------------------------------- #
+#
+# GitHub has two rate limits and reports them differently. The primary one is
+# the request quota: `X-RateLimit-Remaining: 0`, tested above. The secondary
+# one fires on burst rate and concurrency, *while the quota is nearly
+# untouched* — a 403 with `Retry-After` and hundreds of requests left. That is
+# the shape this module used to call "private repo, no token", and the mis-read
+# reached much further than the message: `GitHubRateLimited` is the one error
+# the autopilot answers by holding the watermark and not stamping
+# `last_scanned_at`, because it means we never looked. As a plain `GitHubError`
+# a throttled scan marked the project unreachable and stamped it scanned, and
+# because the secondary limit is per-account it did that to every project in
+# the sweep at once.
+
+
+def test_a_retry_after_on_a_403_reads_as_rate_limited_with_quota_to_spare(monkeypatch):
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response(
+            {},
+            status_code=403,
+            headers={"Retry-After": "47", "X-RateLimit-Remaining": "4831"},
+        ),
+    )
+    with pytest.raises(github_client.GitHubRateLimited) as exc:
+        github_client.fetch_commits("owner/repo")
+    assert exc.value.retry_after == 47
+    assert "47s" in str(exc.value)
+
+
+def test_the_secondary_limit_is_recognised_from_the_body_without_a_header(monkeypatch):
+    """GitHub often omits ``Retry-After``; the body still says what happened."""
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response(
+            status_code=403,
+            text='{"message": "You have exceeded a secondary rate limit."}',
+            headers={"X-RateLimit-Remaining": "4831"},
+        ),
+    )
+    with pytest.raises(github_client.GitHubRateLimited) as exc:
+        github_client.fetch_commits("owner/repo")
+    assert exc.value.retry_after is None
+
+
+def test_the_older_abuse_detection_wording_counts_too(monkeypatch):
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response(
+            status_code=403,
+            text='{"message": "You have triggered an abuse detection mechanism."}',
+            headers={"X-RateLimit-Remaining": "4831"},
+        ),
+    )
+    with pytest.raises(github_client.GitHubRateLimited):
+        github_client.fetch_commits("owner/repo")
+
+
+def test_a_nonsense_retry_after_does_not_become_a_negative_wait(monkeypatch):
+    """The value's whole job is to be waited for. Better absent than wrong."""
+    _stub(
+        monkeypatch,
+        lambda url, **_: _response(
+            {},
+            status_code=403,
+            headers={"Retry-After": "not a number", "X-RateLimit-Remaining": "4831"},
+        ),
+    )
+    with pytest.raises(github_client.GitHubError) as exc:
+        github_client.fetch_commits("owner/repo")
+    assert not isinstance(exc.value, github_client.GitHubRateLimited)
+
+
+def test_a_plain_403_is_still_an_access_failure_not_a_rate_limit(monkeypatch):
+    """A blocked token, a missing scope. Not a private repo — those 404."""
     _stub(
         monkeypatch,
         lambda url, **_: _response({}, status_code=403, headers={"X-RateLimit-Remaining": "57"}),
@@ -239,7 +328,6 @@ def test_a_403_with_quota_left_reads_as_a_private_repo(monkeypatch):
     with pytest.raises(github_client.GitHubError) as exc:
         github_client.fetch_commits("owner/repo")
     assert not isinstance(exc.value, github_client.GitHubRateLimited)
-    assert "private" in str(exc.value)
 
 
 def test_a_transport_failure_is_a_github_error(monkeypatch):

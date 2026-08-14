@@ -345,7 +345,19 @@ def scan_repo(
             since_tag=project.last_seen_release_tag,
         )
     except github_client.GitHubRateLimited as exc:
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+        # GitHub's own backoff, passed straight through. A 429 whose body says
+        # "wait 47 seconds" in prose and whose headers say nothing is a 429 a
+        # client has to guess at, and the guess is what got us throttled.
+        headers = (
+            {"Retry-After": str(exc.retry_after)}
+            if exc.retry_after is not None
+            else None
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(exc),
+            headers=headers,
+        ) from exc
     except github_client.GitHubError as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 

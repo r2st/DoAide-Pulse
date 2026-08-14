@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 import httpx
 
@@ -40,7 +40,14 @@ class GitHubRateLimited(GitHubError):
     404 means "stop scanning this project", a rate limit means "come back
     later", and conflating them would make an unauthenticated Herald quietly
     disable every project it watches.
+
+    *retry_after* is the seconds GitHub asked us to wait, when it said. Only the
+    secondary limit sends it; the primary one sends a reset timestamp instead.
     """
+
+    def __init__(self, message: str, *, retry_after: int | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class GitHubNotFound(GitHubError):
@@ -114,6 +121,94 @@ def _headers() -> dict[str, str]:
     return headers
 
 
+#: What GitHub calls the secondary limit when it does not send ``Retry-After``.
+#: Both spellings are live — the API still returns the older "abuse detection"
+#: wording — and neither is a status code, so the body is the only signal left.
+_SECONDARY_LIMIT_HINTS = ("secondary rate limit", "abuse detection")
+
+
+def _retry_after(resp: httpx.Response) -> int | None:
+    """The ``Retry-After`` delay in seconds, if GitHub sent a usable one.
+
+    Only the numeric form is read. The HTTP-date form is legal and GitHub does
+    not use it here; parsing it wrong would be worse than not having it, since
+    the value's whole job is to be waited for.
+    """
+    raw = resp.headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        seconds = int(float(raw.strip()))
+    except (AttributeError, ValueError):
+        return None
+    return seconds if seconds >= 0 else None
+
+
+def _reset_at(resp: httpx.Response) -> str:
+    """``X-RateLimit-Reset`` as a time a human can act on, else as it came."""
+    raw = resp.headers.get("X-RateLimit-Reset")
+    if raw is None:
+        return "an unknown time"
+    try:
+        moment = datetime.fromtimestamp(int(float(raw)), tz=UTC)
+    except (OSError, OverflowError, TypeError, ValueError):
+        return str(raw)
+    return moment.strftime("%H:%M UTC")
+
+
+def _rate_limit(resp: httpx.Response) -> GitHubRateLimited | None:
+    """The rate-limit error this 403/429 is, or ``None`` if it is not one.
+
+    GitHub has two limits and reports them differently, and only one of them was
+    recognised here.
+
+    The *primary* limit is the request quota: ``X-RateLimit-Remaining: 0`` and a
+    reset timestamp. That was handled.
+
+    The *secondary* limit is the one that catches a busy sweep — it fires on
+    request concurrency and burst rate, and it fires while the quota is
+    nearly untouched. GitHub reports it as a 403 with ``Retry-After`` and
+    ``X-RateLimit-Remaining`` still in the hundreds, which is exactly the shape
+    this function's caller used to read as "private repo, no token". That
+    mis-read is not cosmetic: :class:`GitHubRateLimited` is the one error the
+    autopilot answers by holding the watermark and *not* stamping
+    ``last_scanned_at``, because it means we never looked. As a plain
+    ``GitHubError`` a throttled scan instead marked the project unreachable and
+    stamped it as scanned — and since the secondary limit is per-account, one
+    burst did that to every project in the sweep at once, each of them logging
+    a repo that was never private.
+
+    "Private repo" was the wrong guess in any case: GitHub answers 404, not 403,
+    for a private repo the caller cannot see, precisely so that a 403 does not
+    confirm it exists.
+    """
+    retry_after = _retry_after(resp)
+    if retry_after is not None:
+        return GitHubRateLimited(
+            f"GitHub is throttling this account (secondary rate limit); it "
+            f"asked us to wait {retry_after}s.",
+            retry_after=retry_after,
+        )
+
+    # No header. The body carries the same news, and a secondary limit without
+    # ``Retry-After`` is common enough that treating it as an access failure
+    # would leave the same hole half-open. Clipped: this is an error body being
+    # scanned for a phrase, not a payload being read.
+    body = (resp.text or "")[:1000].lower()
+    if any(hint in body for hint in _SECONDARY_LIMIT_HINTS):
+        return GitHubRateLimited(
+            "GitHub is throttling this account (secondary rate limit). "
+            "Slow down and try again shortly."
+        )
+
+    if resp.status_code == 429 or resp.headers.get("X-RateLimit-Remaining") == "0":
+        return GitHubRateLimited(
+            f"GitHub rate limit exhausted (resets at {_reset_at(resp)}). "
+            "Set GITHUB_TOKEN to raise the ceiling from 60 to 5000 req/hour."
+        )
+    return None
+
+
 def _get(path: str, *, params: dict | None = None) -> httpx.Response:
     url = f"{settings.github_api_url.rstrip('/')}{path}"
     try:
@@ -127,17 +222,17 @@ def _get(path: str, *, params: dict | None = None) -> httpx.Response:
     except httpx.HTTPError as exc:
         raise GitHubError(f"GitHub request to {path} failed: {exc}") from exc
 
-    # 403 and 429 both mean rate-limited; 403 also covers "private repo, no
-    # token", which the remaining-quota header distinguishes.
+    # 403 and 429 are how GitHub says no, and it says no for two unrelated
+    # reasons that have to be told apart — see :func:`_rate_limit`.
     if resp.status_code in (403, 429):
-        remaining = resp.headers.get("X-RateLimit-Remaining")
-        if remaining == "0" or resp.status_code == 429:
-            reset = resp.headers.get("X-RateLimit-Reset", "?")
-            raise GitHubRateLimited(
-                f"GitHub rate limit exhausted (resets at {reset}). "
-                "Set GITHUB_TOKEN to raise the ceiling from 60 to 5000 req/hour."
-            )
-        raise GitHubError(f"GitHub denied access to {path} (403) — private repo?")
+        limited = _rate_limit(resp)
+        if limited is not None:
+            raise limited
+        raise GitHubError(
+            f"GitHub denied access to {path} ({resp.status_code}). The token "
+            "may be missing a scope, or this account may be blocked from the "
+            "repo."
+        )
     if resp.status_code == 404:
         raise GitHubNotFound(f"GitHub has no {path} — check the repo URL")
     if resp.status_code >= 400:
