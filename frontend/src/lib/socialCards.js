@@ -31,6 +31,15 @@ const LABELS = {
 export const NETWORKS = ["x", "linkedin", "facebook", "slack"];
 
 /**
+ * The network that clips a title first — the only one `audit` warns against.
+ *
+ * Derived rather than written down so it cannot go stale when a limit above is
+ * retuned, but derived once: it is a fact about two constants in this file, and
+ * `audit` runs on every keystroke in the editor.
+ */
+const TIGHTEST_TITLE = NETWORKS.reduce((a, b) => (TITLE_CLIP[a] <= TITLE_CLIP[b] ? a : b));
+
+/**
  * The one size that satisfies every network at once (Facebook's 1.91:1).
  *
  * Not exported: the only thing that ever wanted these numbers is the advice
@@ -207,16 +216,13 @@ export function audit(draft = {}) {
     });
   }
 
-  // Against the tightest network only: four near-identical warnings for one
-  // long title is the kind of panel people stop reading.
-  const tightest = NETWORKS.reduce((a, b) => (TITLE_CLIP[a] <= TITLE_CLIP[b] ? a : b));
-  if (title.length > TITLE_CLIP[tightest]) {
+  if (title.length > TITLE_CLIP[TIGHTEST_TITLE]) {
     issues.push({
       level: "warn",
       field: "title",
       message:
         `The title is ${title.length} characters and clips at about ` +
-        `${TITLE_CLIP[tightest]} on ${LABELS[tightest]}.`,
+        `${TITLE_CLIP[TIGHTEST_TITLE]} on ${LABELS[TIGHTEST_TITLE]}.`,
     });
   }
 
