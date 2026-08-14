@@ -7,7 +7,7 @@
  */
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Shell from "./Shell";
 import { api } from "../lib/api";
@@ -22,6 +22,18 @@ vi.mock("../hooks/useAuth", () => ({
   useAuth: () => ({ user: { email: "writer@example.com" }, logout }),
 }));
 
+/**
+ * Where the router currently is.
+ *
+ * The chrome's only two navigations away from the current page are the pair of
+ * Sign out buttons, and both do it imperatively rather than with a `<Link>` —
+ * so there is no `href` to read, and the URL is the only evidence the redirect
+ * happened at all.
+ */
+function Where() {
+  return <span data-testid="where">{useLocation().pathname}</span>;
+}
+
 /** Mount the chrome at `path` and let the two queue counts land. */
 async function draw(path = "/") {
   const shell = (
@@ -31,6 +43,7 @@ async function draw(path = "/") {
   );
   const result = render(
     <MemoryRouter future={ROUTER_FUTURE} initialEntries={[path]}>
+      <Where />
       <Routes>
         <Route path="*" element={shell} />
       </Routes>
@@ -229,11 +242,30 @@ describe("the account", () => {
     expect(screen.getByText("writer@example.com")).toBeInTheDocument();
   });
 
-  it("signs out", async () => {
-    await draw();
+  it("signs out, and leaves the page it signed out of", async () => {
+    await draw("/calendar");
 
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await act(async () => {});
 
     expect(logout).toHaveBeenCalled();
+    expect(screen.getByTestId("where")).toHaveTextContent("/login");
+  });
+
+  it("signs out from the mobile menu too, and not by a different route", async () => {
+    // Two Sign out buttons in the markup — one in the header for wide screens,
+    // one at the foot of the mobile menu — each with its own copy of the same
+    // two-line handler. The second was never clicked by anything, and a
+    // sign-out that clears the session without leaving the page is a signed-out
+    // user looking at their own data until they navigate.
+    await draw("/calendar");
+    fireEvent.click(screen.getByRole("button", { name: "Toggle navigation menu" }));
+    const nav = within(document.getElementById("mobile-nav"));
+
+    await userEvent.click(nav.getByRole("button", { name: "Sign out" }));
+    await act(async () => {});
+
+    expect(logout).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("where")).toHaveTextContent("/login");
   });
 });

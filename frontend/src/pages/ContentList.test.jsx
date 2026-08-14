@@ -4,9 +4,9 @@
  * than component state, and the Generate button is the one place a project
  * with nothing registered yet is steered toward /projects instead.
  */
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ContentList from "./ContentList";
 import { api } from "../lib/api";
@@ -19,10 +19,22 @@ vi.mock("../lib/api", () => ({
 const toast = { success: vi.fn(), error: vi.fn() };
 vi.mock("../components/ui/Toast", () => ({ useToast: () => toast }));
 
+/**
+ * The query string the page has put the filters into.
+ *
+ * `MemoryRouter` keeps its location off `window`, so `window.location.search`
+ * is empty here no matter what the page does — an assertion against it would
+ * pass without the page ever being right.
+ */
+function Search() {
+  return <span data-testid="search">{useLocation().search}</span>;
+}
+
 function draw() {
   return render(
     <MemoryRouter future={ROUTER_FUTURE}>
       <ContentList />
+      <Search />
     </MemoryRouter>,
   );
 }
@@ -132,6 +144,47 @@ describe("filters", () => {
 
     expect(api.listContent).toHaveBeenCalledWith(
       expect.objectContaining({ content_type: "tutorial" }),
+    );
+  });
+
+  it("drops a filter from the query rather than sending it empty", async () => {
+    // Choosing the "All projects" option is a removal, not a value. Setting it
+    // instead of deleting leaves `?project=` on the URL — which survives being
+    // bookmarked and shared, and reaches the API as a blank filter rather than
+    // as no filter.
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Nothing written yet");
+    await user.selectOptions(screen.getByLabelText("Filter by project"), "1");
+    await waitFor(() =>
+      expect(api.listContent).toHaveBeenCalledWith(
+        expect.objectContaining({ project_id: "1" }),
+      ),
+    );
+    api.listContent.mockClear();
+
+    await user.selectOptions(screen.getByLabelText("Filter by project"), "");
+
+    await waitFor(() => expect(api.listContent).toHaveBeenCalled());
+    const [sent] = api.listContent.mock.calls.at(-1);
+    expect(sent.project_id).toBeUndefined();
+    expect(screen.getByTestId("search")).not.toHaveTextContent("project=");
+  });
+
+  it("keeps the filters that were not touched", async () => {
+    // The two selects share one query string, and rebuilding it from the
+    // current params is what stops the second choice erasing the first.
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Nothing written yet");
+
+    await user.selectOptions(screen.getByLabelText("Filter by status"), "draft");
+    await user.selectOptions(screen.getByLabelText("Filter by content type"), "tutorial");
+
+    await waitFor(() =>
+      expect(api.listContent).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: "draft", content_type: "tutorial" }),
+      ),
     );
   });
 });

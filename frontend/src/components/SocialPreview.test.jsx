@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import SocialPreview from "./SocialPreview";
@@ -71,6 +71,40 @@ it("says nothing about clipping when everything fits", () => {
   render(<SocialPreview draft={draft()} url="https://e.com/p" />);
 
   expect(screen.queryByText(/cut here/i)).not.toBeInTheDocument();
+});
+
+// The notice has three wordings and only one was ever rendered. They exist
+// because the ellipsis in the card reads as a rendering artefact rather than as
+// lost words — and a notice that names the title while the description is also
+// going is worse than the ellipsis, because now it is specific and wrong.
+
+it("names the description when that is the part being cut", async () => {
+  // X clips the description at 125 characters and the title at 70. A short
+  // title with a long description isolates the second branch.
+  render(
+    <SocialPreview
+      draft={draft({ title: "Short", meta_description: "d".repeat(200) })}
+      url="https://e.com/p"
+    />,
+  );
+
+  expect(screen.getByText(/^The description is cut here\.$/)).toBeInTheDocument();
+});
+
+it("names both when both are going", async () => {
+  render(
+    <SocialPreview
+      draft={draft({ title: LONG_TITLE, meta_description: "d".repeat(200) })}
+      url="https://e.com/p"
+    />,
+  );
+
+  expect(
+    screen.getByText(/^Title and description are both cut here\.$/),
+  ).toBeInTheDocument();
+  // Not the single-field wording as well, which is what a chain of independent
+  // `&&`s rather than an if/else would produce.
+  expect(screen.queryByText(/^The title is cut here\.$/)).not.toBeInTheDocument();
 });
 
 it("renders the cover image at the ratio the networks crop to", () => {
@@ -159,4 +193,58 @@ it("updates when the draft changes", () => {
   // The whole point of computing locally: it tracks the unsaved draft.
   expect(screen.getByText("Renamed")).toBeInTheDocument();
   expect(screen.queryByText("Shipping Herald v2")).not.toBeInTheDocument();
+});
+
+// ---- Copying the tags -----------------------------------------------------
+//
+// One button doing two jobs — Show, then Copy — so the copy half only exists
+// once the first has landed, and nothing had ever pressed it a second time.
+// The whole section is here for pasting somewhere else; a Copy that quietly
+// does nothing makes the panel decorative.
+
+/** Load the tags, then hand back the button that is now a Copy button. */
+async function showTags() {
+  api.socialCards.mockResolvedValue({ meta_html: '<meta property="og:title">' });
+  render(<SocialPreview draft={draft()} url="https://e.com/p" contentId={7} />);
+  await userEvent.click(screen.getByRole("button", { name: "Show" }));
+  return await screen.findByRole("button", { name: "Copy" });
+}
+
+it("copies the loaded tags and says so, then goes back to offering it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.assign(navigator, { clipboard: { writeText } });
+
+  const copy = await showTags();
+  await userEvent.click(copy);
+
+  expect(writeText).toHaveBeenCalledWith('<meta property="og:title">');
+  expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+
+  // The confirmation is temporary: a button reading "Copied" forever is a
+  // button that no longer says what pressing it would do.
+  await act(async () => {
+    vi.advanceTimersByTime(2000);
+  });
+  expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+  vi.useRealTimers();
+});
+
+it("says the copy was refused rather than claiming it worked", async () => {
+  // `writeText` rejects — it does not throw — on an insecure origin or under a
+  // permissions policy. Uncaught, the button would flip to "Copied" with an
+  // empty clipboard behind it.
+  Object.assign(navigator, {
+    clipboard: { writeText: vi.fn().mockRejectedValue(new Error("Denied")) },
+  });
+
+  const copy = await showTags();
+  await userEvent.click(copy);
+
+  expect(
+    await screen.findByText(/select the tags and copy them manually/),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Copied" })).not.toBeInTheDocument();
+  // The advice is only honest because the textarea is still there.
+  expect(screen.getByLabelText(/meta tags/i)).toHaveValue('<meta property="og:title">');
 });
