@@ -22,6 +22,7 @@ from app.models.webhook import (
     WebhookEvent,
 )
 from app.ratelimit import account_key, limiter
+from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.schemas.webhook import (
     WebhookCreate,
     WebhookCreated,
@@ -65,7 +66,12 @@ def _owned(webhook_id: int, db: Session, user: User) -> Webhook:
     return webhook
 
 
-@router.get("/events", response_model=list[WebhookEventOut])
+@router.get(
+    "/events",
+    response_model=list[WebhookEventOut],
+    summary="Events you can subscribe to",
+    responses=errors(status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_public_read)
 def list_events(request: Request, response: Response) -> list[WebhookEventOut]:
     """Every event a webhook can subscribe to, and what it means.
@@ -85,17 +91,38 @@ def list_events(request: Request, response: Response) -> list[WebhookEventOut]:
     ]
 
 
-@router.get("", response_model=list[WebhookOut])
+@router.get(
+    "",
+    response_model=list[WebhookOut],
+    summary="Your registered endpoints",
+    responses=errors(*AUTHENTICATED),
+)
 def list_webhooks(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ) -> list[WebhookOut]:
+    """Every webhook on this account, oldest first.
+
+    Never carries a signing secret: the plaintext exists only in the response
+    that minted it, and the stored copy is encrypted.
+    """
     rows = db.scalars(
         select(Webhook).where(Webhook.user_id == user.id).order_by(Webhook.id)
     )
     return [WebhookOut.model_validate(row) for row in rows]
 
 
-@router.post("", response_model=WebhookCreated, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=WebhookCreated,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register an endpoint",
+    responses=errors(
+        *AUTHENTICATED,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+    ),
+)
 def create_webhook(
     payload: WebhookCreate,
     db: Session = Depends(get_db),
@@ -126,13 +153,23 @@ def create_webhook(
     return WebhookCreated(**WebhookOut.model_validate(webhook).model_dump(), secret=secret)
 
 
-@router.patch("/{webhook_id}", response_model=WebhookOut)
+@router.patch(
+    "/{webhook_id}",
+    response_model=WebhookOut,
+    summary="Change a webhook",
+    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+)
 def update_webhook(
     webhook_id: int,
     payload: WebhookUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> WebhookOut:
+    """Patch one webhook. Omitted fields are left alone.
+
+    Setting ``is_active`` back to true also clears the consecutive-failure
+    counter — see below for why that is not merely tidy.
+    """
     webhook = _owned(webhook_id, db, user)
 
     if payload.url is not None:
@@ -153,18 +190,34 @@ def update_webhook(
     return WebhookOut.model_validate(webhook)
 
 
-@router.delete("/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{webhook_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a webhook",
+    responses=errors(*OWNED),
+)
 def delete_webhook(
     webhook_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """Remove an endpoint and its delivery history.
+
+    A genuine row delete, unlike most of Herald: a delivery log is diagnostic
+    data about an endpoint that no longer exists, and keeping it costs storage
+    for something nobody can act on.
+    """
     webhook = _owned(webhook_id, db, user)
     db.delete(webhook)
     db.commit()
 
 
-@router.post("/{webhook_id}/rotate-secret", response_model=WebhookCreated)
+@router.post(
+    "/{webhook_id}/rotate-secret",
+    response_model=WebhookCreated,
+    summary="Issue a new signing secret",
+    responses=errors(*OWNED, status.HTTP_500_INTERNAL_SERVER_ERROR),
+)
 def rotate_secret(
     webhook_id: int,
     db: Session = Depends(get_db),
@@ -179,7 +232,12 @@ def rotate_secret(
     return WebhookCreated(**WebhookOut.model_validate(webhook).model_dump(), secret=secret)
 
 
-@router.post("/{webhook_id}/ping", response_model=WebhookDeliveryOut)
+@router.post(
+    "/{webhook_id}/ping",
+    response_model=WebhookDeliveryOut,
+    summary="Send a test delivery now",
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def ping(
     webhook_id: int,
@@ -214,7 +272,12 @@ def ping(
     return WebhookDeliveryOut.model_validate(delivery)
 
 
-@router.get("/{webhook_id}/deliveries", response_model=list[WebhookDeliveryOut])
+@router.get(
+    "/{webhook_id}/deliveries",
+    response_model=list[WebhookDeliveryOut],
+    summary="Delivery log for one webhook",
+    responses=errors(*OWNED),
+)
 def list_deliveries(
     webhook_id: int,
     response: Response,
@@ -247,6 +310,8 @@ def list_deliveries(
 @router.post(
     "/{webhook_id}/deliveries/{delivery_id}/redeliver",
     response_model=WebhookDeliveryOut,
+    summary="Send a past delivery again",
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
 @limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def redeliver(
