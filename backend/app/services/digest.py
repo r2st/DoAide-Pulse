@@ -461,7 +461,7 @@ def render_html(digest: Digest) -> str:
     Apple Mail, neither of which can be relied on for a stylesheet, and a
     digest that arrives unreadable is worse than one that arrives plain.
     """
-    def esc(value) -> str:
+    def esc(value: object) -> str:
         return escape(str(value), quote=True)
 
     parts = [

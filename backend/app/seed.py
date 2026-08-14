@@ -25,6 +25,7 @@ import secrets
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models.content import ContentIdea, ContentType
@@ -246,7 +247,7 @@ CAFLOW = ProjectSpec(
 SEED_PROJECTS: list[ProjectSpec] = [HERALD, GSTBOT, CAFLOW]
 
 
-def _create_project(db, user_id: int, spec: ProjectSpec) -> Project:
+def _create_project(db: Session, user_id: int, spec: ProjectSpec) -> Project:
     """Insert *spec* and its ideas for *user_id*."""
     project = Project(
         user_id=user_id,

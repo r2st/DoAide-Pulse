@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import Subquery
 
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.metrics import ContentMetric
@@ -149,7 +150,7 @@ def _rates(bucket: dict[str, int]) -> dict[str, float | None]:
     }
 
 
-def _latest_metric_subquery():
+def _latest_metric_subquery() -> Subquery:
     """The id of the most recent metric row per publication.
 
     ``MAX(id)`` rather than ``MAX(captured_at)``: ids are monotonic and unique,

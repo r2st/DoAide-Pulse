@@ -203,7 +203,7 @@ def _follow_safely(
 class _SSRFRedirect(Exception):
     """A redirect tried to reach a private address."""
 
-    def __init__(self, target: str, reason: str):
+    def __init__(self, target: str, reason: str) -> None:
         self.target = target
         self.reason = reason
         super().__init__(f"Redirect to {target}: {reason}")

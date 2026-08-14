@@ -63,6 +63,7 @@ import logging
 import random
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
@@ -314,7 +315,7 @@ _RATE_LIMIT_PHRASES = (
 )
 
 
-def _retry_after(headers) -> float | None:
+def _retry_after(headers: Mapping[str, str]) -> float | None:
     """Seconds to wait, from a ``Retry-After`` header. ``None`` if unusable.
 
     Two shapes are legal (RFC 9110 §10.2.3) and both are in the wild: a delay in

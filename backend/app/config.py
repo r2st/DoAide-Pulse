@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import field_validator
+from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: Shortest ``JWT_SECRET`` production will start with, in bytes. 256 bits, the
@@ -556,7 +556,7 @@ class Settings(BaseSettings):
 
     @field_validator("jwt_secret")
     @classmethod
-    def _jwt_secret_not_default_in_production(cls, v: str, info) -> str:
+    def _jwt_secret_not_default_in_production(cls, v: str, info: ValidationInfo) -> str:
         """Refuse to start in production with a placeholder or weak JWT secret.
 
         Not being the default was never the same thing as being strong. This
@@ -585,7 +585,7 @@ class Settings(BaseSettings):
 
     @field_validator("bcrypt_rounds")
     @classmethod
-    def _bcrypt_rounds_in_range_and_strong_in_production(cls, v: int, info) -> int:
+    def _bcrypt_rounds_in_range_and_strong_in_production(cls, v: int, info: ValidationInfo) -> int:
         """Keep the work factor inside bcrypt's range, and at 12+ in production.
 
         The setting exists to let the tests drop to 4 (see the field comment).

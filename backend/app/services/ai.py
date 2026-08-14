@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from typing import Any
 
 from app.services import llm_router
@@ -35,7 +36,7 @@ class AIError(RuntimeError):
     """Raised when no provider in the chain could produce a completion."""
 
 
-def _balanced_objects(text: str):
+def _balanced_objects(text: str) -> Iterator[str]:
     """Yield every balanced ``{...}`` span in *text*, largest-first per start.
 
     A brace-counting scan rather than ``find("{")`` to ``rfind("}")``. That

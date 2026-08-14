@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
@@ -135,7 +135,9 @@ def create_app() -> FastAPI:
     # debugging. Returned in X-Request-ID so the frontend can quote it in
     # bug reports.
     class RequestIDMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next) -> Response:
+        async def dispatch(
+            self, request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
             request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
             request.state.request_id = request_id
             response = await call_next(request)
@@ -146,7 +148,9 @@ def create_app() -> FastAPI:
 
     # Body size guard: reject oversized payloads before they reach a route.
     class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next) -> Response:
+        async def dispatch(
+            self, request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
             cl = request.headers.get("content-length")
             if cl:
                 try:
@@ -173,7 +177,9 @@ def create_app() -> FastAPI:
     # Security headers. Caddy already sets HSTS and some of these, but
     # defence-in-depth means the app should not rely on that.
     class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next) -> Response:
+        async def dispatch(
+            self, request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
             response = await call_next(request)
             response.headers["X-Content-Type-Options"] = "nosniff"
             response.headers["X-Frame-Options"] = "DENY"

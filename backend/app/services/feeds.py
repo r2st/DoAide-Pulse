@@ -183,13 +183,13 @@ def _reject_dtd_entities(xml: str | bytes) -> None:
     """
     parser = expat.ParserCreate()
 
-    def _on_entity_decl(name, *_args) -> None:
+    def _on_entity_decl(name: str, *_args: object) -> None:
         raise FeedError(
             f"That feed declares an XML entity ({name!r}). Herald does not parse "
             "feeds with a document type definition."
         )
 
-    def _on_root(*_args) -> None:
+    def _on_root(*_args: object) -> None:
         raise _RootReached
 
     parser.EntityDeclHandler = _on_entity_decl

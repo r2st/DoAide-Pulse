@@ -14,6 +14,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
+from app.models.preview_link import PreviewLink
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
@@ -887,7 +888,7 @@ def _to_link_check(statuses: list[link_check.LinkStatus]) -> LinkCheckOut:
     )
 
 
-def _to_preview_link(link, *, url: str | None = None) -> PreviewLinkOut:
+def _to_preview_link(link: PreviewLink, *, url: str | None = None) -> PreviewLinkOut:
     return PreviewLinkOut(
         id=link.id,
         url=url,
@@ -1224,7 +1225,9 @@ class _PublishError(Exception):
     endpoint reads ``.detail`` and records it against that one item instead.
     """
 
-    def __init__(self, detail: str, status_code: int = status.HTTP_400_BAD_REQUEST):
+    def __init__(
+        self, detail: str, status_code: int = status.HTTP_400_BAD_REQUEST
+    ) -> None:
         super().__init__(detail)
         self.detail = detail
         self.status_code = status_code

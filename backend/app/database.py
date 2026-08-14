@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
@@ -17,7 +17,7 @@ class Base(DeclarativeBase):
     """Declarative base for all ORM models."""
 
 
-def _make_engine(url: str):
+def _make_engine(url: str) -> Engine:
     # SQLite (tests) needs a special connect arg for multithreaded access.
     is_sqlite = url.startswith("sqlite")
     connect_args = {"check_same_thread": False} if is_sqlite else {}

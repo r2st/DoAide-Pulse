@@ -19,9 +19,17 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from app.models.content import ContentType
 from app.models.trigger import TriggerKind
+
+if TYPE_CHECKING:
+    # Type-only, so the runtime decoupling this module exists for survives:
+    # nothing downstream of a trigger should import GitHub's client to use a
+    # signal. ``from_repo_activity`` is the one adapter that names the type,
+    # and naming it in an annotation costs no import.
+    from app.services.github_client import RepoActivity
 
 #: How many bullet lines reach the prompt. See the module docstring.
 DEFAULT_MAX_ITEMS = 25
@@ -119,7 +127,9 @@ def digest_key(*parts: str) -> str:
     return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:40]
 
 
-def from_repo_activity(activity, *, source: str | None = None) -> TriggerSignal:
+def from_repo_activity(
+    activity: RepoActivity, *, source: str | None = None
+) -> TriggerSignal:
     """Adapt a :class:`~app.services.github_client.RepoActivity` to a signal.
 
     Keeps the editorial judgement that was previously in the autopilot: a
