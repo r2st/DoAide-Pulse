@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
 from app.models.content import CANONICAL_URL_MAX_LENGTH, Content, ContentStatus
@@ -755,9 +755,21 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
     cutoff = (now or utcnow()) - timedelta(seconds=settings.publish_stuck_after_seconds)
     stuck = list(
         db.scalars(
-            select(Publication).where(
+            select(Publication)
+            .where(
                 Publication.status == PublicationStatus.PUBLISHING,
                 Publication.updated_at <= cutoff,
+            )
+            # The row that spends its retries here calls ``_sync_content_status``,
+            # which walks ``publication.content`` and then that content's own
+            # publications. Both hops were lazy, so a sweep after a worker died
+            # mid-batch paid two SELECTs per burned row — and the moment this
+            # sweep has work to do is exactly the moment something is already
+            # wrong. ``Content.publications`` is ``lazy="selectin"``, so loading
+            # the content eagerly brings the sibling publications with it in one
+            # more query for the whole batch rather than one per row.
+            .options(
+                joinedload(Publication.content).selectinload(Content.publications)
             )
         )
     )
