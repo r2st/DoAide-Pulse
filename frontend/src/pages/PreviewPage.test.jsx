@@ -49,6 +49,62 @@ it("asks the public endpoint for the token in the url, not an authenticated one"
   expect(api.publicPreview).toHaveBeenCalledWith("abc123");
 });
 
+describe("while the link is loading", () => {
+  it("stands in for the article rather than printing the word Loading", async () => {
+    // A reviewer opening a shared link sees this before anything else, and a
+    // bare line of text in the corner of an empty page reads as a broken
+    // link. The skeleton is the same one every other page in the app shows.
+    let release;
+    api.publicPreview.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const { container } = draw();
+
+    expect(container.querySelector(".animate-shimmer")).toBeInTheDocument();
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
+
+    release(preview());
+    await screen.findByText("Shipping Herald 1.0");
+  });
+
+  it("still announces the wait to a screen reader", async () => {
+    // `Skeleton` is `aria-hidden`, so replacing visible text with it would
+    // otherwise leave a non-sighted reviewer on a silent, apparently empty
+    // page for the length of the request.
+    let release;
+    api.publicPreview.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    draw();
+
+    expect(screen.getByRole("status")).toHaveTextContent("Loading preview…");
+
+    release(preview());
+    await screen.findByText("Shipping Herald 1.0");
+  });
+
+  it("clears the skeleton once the draft arrives", async () => {
+    api.publicPreview.mockResolvedValue(preview());
+    const { container } = draw();
+    await screen.findByText("Shipping Herald 1.0");
+
+    expect(container.querySelector(".animate-shimmer")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("clears the skeleton when the link turns out to be dead", async () => {
+    api.publicPreview.mockRejectedValue(new Error("Link not found"));
+    const { container } = draw();
+    await screen.findByText(/isn't available anymore/);
+
+    expect(container.querySelector(".animate-shimmer")).not.toBeInTheDocument();
+  });
+});
+
 describe("a live link", () => {
   it("renders the title and body", async () => {
     api.publicPreview.mockResolvedValue(preview());

@@ -1,4 +1,5 @@
 import { useParams } from "react-router-dom";
+import { Skeleton } from "../components/ui/Bits";
 import Logo from "../components/ui/Logo";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
@@ -23,7 +24,23 @@ export default function PreviewPage() {
           <span className="eyebrow">Herald preview</span>
         </div>
 
-        {loading && <p className="text-sm text-ink-400">Loading…</p>}
+        {/* The shape the article arrives in: a line of meta, then the body in
+            its panel. `Skeleton` is `aria-hidden`, so the announcement that
+            used to come free with the word "Loading…" is made explicit. */}
+        {loading && (
+          <div>
+            <p role="status" className="sr-only">
+              Loading preview…
+            </p>
+            <div
+              aria-hidden="true"
+              className="relative mb-3 h-3 w-48 overflow-hidden rounded border border-line bg-paper"
+            >
+              <div className="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-canvas to-transparent" />
+            </div>
+            <Skeleton rows={5} />
+          </div>
+        )}
 
         {error && (
           <div className="panel p-6 text-center">
