@@ -12,6 +12,7 @@ the response that creates it and the one that rotates it, and in no other.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -46,6 +47,56 @@ ALLOWED_CONFIG: dict[TriggerKind, tuple[str, ...]] = {
 #: How long a schedule may sleep. A year is a mistyped number, not a plan.
 MAX_INTERVAL_HOURS = 24 * 365
 
+#: How long each free-text setting may be.
+#:
+#: ``config`` is a JSON column, so nothing downstream of it truncates on the way
+#: in — the caps have to be here or they do not exist. Two of these values leave
+#: the process:
+#:
+#: ``instructions``
+#:     Concatenated verbatim into the model prompt by
+#:     :func:`app.services.content_generator.build_brief`. Unbounded, it is a
+#:     way to spend a whole context window (and the budget behind it) on one
+#:     trigger firing. 2000 is what ``GenerateRequest.instructions`` already
+#:     allows for the same text typed into the generate form, and the two should
+#:     not disagree about the same field.
+#: ``topic``
+#:     Becomes the signal headline for a schedule tick, and ``record()``
+#:     truncates that to the ``trigger_events.headline`` column at 300. Anything
+#:     longer was never stored, so accepting it only promises something the
+#:     activity list will not show.
+#:
+#: The ``*_path`` settings are dotted paths into an inbound body. They are not
+#: prompt input, but they are unbounded strings on an authenticated write, and a
+#: path deeper than any real JSON document is a typo rather than a mapping.
+MAX_CONFIG_LENGTHS: dict[str, int] = {
+    "instructions": 2000,
+    "topic": 300,
+    "headline_path": 200,
+    "summary_path": 200,
+    "url_path": 200,
+    "dedupe_path": 200,
+}
+
+#: ``owner/name`` as GitHub itself defines it: owners are alphanumeric with
+#: single internal hyphens (39 max), repository names allow dot and underscore
+#: too (100 max).
+#:
+#: Anchored, and deliberately not a "does it look roughly right" check, because
+#: this value is interpolated straight into an API path —
+#: ``f"/repos/{full_name}/commits"`` in :mod:`app.services.github_client`. A
+#: value with a ``?`` in it appends a query string to a URL that already has
+#: one; a value with a further ``/`` reaches a different endpoint entirely.
+#:
+#: The ``(?!\.{1,2}$)`` is the one rule GitHub's own charset does not imply:
+#: ``.`` and ``..`` are legal spellings under the name charset (``.github`` is a
+#: real repository) and are exactly the two that traverse out of ``/repos/``
+#: once a client normalizes the path.
+_REPO_RE = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}"
+    r"/(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$"
+)
+
 
 def validate_config(kind: TriggerKind, config: dict[str, Any] | None) -> dict[str, Any]:
     """Return *config* checked against *kind*, or raise ``ValueError``."""
@@ -62,6 +113,13 @@ def validate_config(kind: TriggerKind, config: dict[str, Any] | None) -> dict[st
     missing = [key for key in REQUIRED_CONFIG[kind] if not str(body.get(key) or "").strip()]
     if missing:
         raise ValueError(f"A {kind.value} trigger needs {', '.join(missing)}.")
+
+    for key, cap in MAX_CONFIG_LENGTHS.items():
+        value = body.get(key)
+        if value is None:
+            continue
+        if len(str(value)) > cap:
+            raise ValueError(f"{key} must be {cap} characters or fewer.")
 
     if "content_type" in body and body["content_type"]:
         try:
@@ -101,6 +159,17 @@ def validate_config(kind: TriggerKind, config: dict[str, Any] | None) -> dict[st
         if threshold < 1:
             raise ValueError("commit_threshold must be at least 1.")
         body["commit_threshold"] = threshold
+
+    if body.get("repo") is not None:
+        # Blank is allowed and means something: the github poller falls back to
+        # the project's own repo_url when the trigger names no repo of its own.
+        repo = str(body["repo"]).strip()
+        if repo and not _REPO_RE.match(repo):
+            raise ValueError(
+                f"{repo!r} is not a GitHub repository. Give it as owner/name, "
+                "e.g. r2st/Herald."
+            )
+        body["repo"] = repo
 
     if kind == TriggerKind.RSS:
         # Validated here as well as at poll time. The point is the error
@@ -203,6 +272,7 @@ class TriggerKindOut(BaseModel):
 __all__ = [
     "ALLOWED_CONFIG",
     "COMMON_CONFIG",
+    "MAX_CONFIG_LENGTHS",
     "MAX_INTERVAL_HOURS",
     "REQUIRED_CONFIG",
     "TriggerCreate",

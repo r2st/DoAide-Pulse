@@ -12,7 +12,13 @@ from __future__ import annotations
 import pytest
 
 from app.models.trigger import TriggerKind
-from app.schemas.trigger import MAX_INTERVAL_HOURS, TriggerCreate, validate_config
+from app.schemas.trigger import (
+    ALLOWED_CONFIG,
+    MAX_CONFIG_LENGTHS,
+    MAX_INTERVAL_HOURS,
+    TriggerCreate,
+    validate_config,
+)
 
 # --------------------------------------------------------------------------- #
 # Shape: unknown and missing keys                                              #
@@ -260,6 +266,174 @@ def test_a_feed_url_is_stripped_on_the_way_through():
 def test_a_feed_url_herald_would_refuse_to_fetch_is_refused_at_the_form(url):
     with pytest.raises(ValueError):
         validate_config(TriggerKind.RSS, {"feed_url": url})
+
+
+# --------------------------------------------------------------------------- #
+# Free-text bounds                                                             #
+# --------------------------------------------------------------------------- #
+
+#: A kind that accepts each capped key, so the length check is what refuses the
+#: value rather than the unknown-key check that runs before it.
+_KIND_FOR_KEY = {
+    "instructions": TriggerKind.WEBHOOK,
+    "topic": TriggerKind.SCHEDULE,
+    "headline_path": TriggerKind.WEBHOOK,
+    "summary_path": TriggerKind.WEBHOOK,
+    "url_path": TriggerKind.WEBHOOK,
+    "dedupe_path": TriggerKind.WEBHOOK,
+}
+
+
+@pytest.mark.parametrize("key,cap", sorted(MAX_CONFIG_LENGTHS.items()))
+def test_a_free_text_setting_one_character_over_its_cap_is_refused(key, cap):
+    with pytest.raises(ValueError, match=f"{key} must be {cap} characters"):
+        validate_config(_KIND_FOR_KEY[key], {key: "x" * (cap + 1)})
+
+
+@pytest.mark.parametrize("key,cap", sorted(MAX_CONFIG_LENGTHS.items()))
+def test_a_free_text_setting_exactly_at_its_cap_is_allowed(key, cap):
+    """An off-by-one here refuses a value the UI's own counter called legal."""
+    config = validate_config(_KIND_FOR_KEY[key], {key: "x" * cap})
+
+    assert config[key] == "x" * cap
+
+
+def test_every_capped_key_is_one_some_kind_actually_accepts():
+    """A cap on a key no kind allows is dead code that reads as protection."""
+    accepted = {key for keys in ALLOWED_CONFIG.values() for key in keys}
+
+    assert set(MAX_CONFIG_LENGTHS) <= accepted
+
+
+def test_no_kind_accepts_an_unbounded_free_text_setting():
+    """The gap this closes, kept closed.
+
+    ``config`` is a JSON column, so a new string setting added to
+    ``ALLOWED_CONFIG`` is accepted at any length unless something here says
+    otherwise — and ``instructions`` reached the model prompt that way. Each key
+    below is either capped or checked by name; a fifth kind of setting arriving
+    with neither should fail this, not ship.
+    """
+    checked_another_way = {
+        "content_type",  # matched against the ContentType enum
+        "every_hours",  # coerced to a bounded float
+        "hour_utc",  # coerced to an hour of the day
+        "commit_threshold",  # coerced to a positive int
+        "require_signature",  # a flag, read as a bool
+        "feed_url",  # validate_feed_url, which bounds and parses it
+        "repo",  # matched against the owner/name shape
+    }
+    accepted = {key for keys in ALLOWED_CONFIG.values() for key in keys}
+
+    assert accepted - set(MAX_CONFIG_LENGTHS) - checked_another_way == set()
+
+
+def test_a_length_is_measured_on_a_non_string_the_same_way():
+    """A list is not a way to smuggle a long value past a string-only check."""
+    with pytest.raises(ValueError, match="instructions must be"):
+        validate_config(TriggerKind.WEBHOOK, {"instructions": ["x"] * 2000})
+
+
+def test_a_capped_key_set_to_none_is_left_alone():
+    assert validate_config(TriggerKind.SCHEDULE, {"topic": None}) == {"topic": None}
+
+
+def test_the_instructions_cap_matches_the_one_on_the_generate_form():
+    """The same text, typed in two places, may not have two different limits."""
+    from app.schemas.content import GenerateRequest
+
+    field = GenerateRequest.model_fields["instructions"]
+    form_cap = max(
+        meta.max_length for meta in field.metadata if getattr(meta, "max_length", None)
+    )
+
+    assert MAX_CONFIG_LENGTHS["instructions"] == form_cap
+
+
+def test_the_topic_cap_matches_the_column_the_headline_lands_in():
+    """A topic longer than this was silently truncated by ``record()``."""
+    from app.models.trigger import TriggerEvent
+
+    assert (
+        MAX_CONFIG_LENGTHS["topic"]
+        == TriggerEvent.__table__.c.headline.type.length
+    )
+
+
+# --------------------------------------------------------------------------- #
+# repo                                                                         #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "r2st/Herald",
+        "a/b",
+        "some-org/my_repo.js",
+        "torvalds/linux",
+        "octo-org/.github",  # a leading dot is a real repository name
+        "x" * 39 + "/" + "y" * 100,  # both parts at GitHub's own maximum
+    ],
+)
+def test_a_real_repository_name_is_accepted(repo):
+    assert validate_config(TriggerKind.GITHUB, {"repo": repo})["repo"] == repo
+
+
+@pytest.mark.parametrize(
+    "repo",
+    [
+        "just-a-name",  # no owner
+        "owner/name/extra",  # reaches a different endpoint
+        "owner/..",  # climbs out of /repos/
+        "owner/.",
+        "../../users/someone",
+        "owner/name?per_page=1",  # appends to a query string that exists
+        "owner/name#frag",
+        "owner/na me",
+        "owner/name/",
+        "/name",
+        "owner/",
+        "https://github.com/r2st/Herald",  # the URL, not the full name
+        "-owner/name",  # GitHub logins may not start with a hyphen
+        "own--er/name",  # nor contain a double one
+        "owner-/name",
+        "x" * 40 + "/name",  # one over the login maximum
+        "owner/" + "y" * 101,  # one over the repository-name maximum
+    ],
+)
+def test_a_repo_that_is_not_owner_slash_name_is_refused(repo):
+    with pytest.raises(ValueError, match="not a GitHub repository"):
+        validate_config(TriggerKind.GITHUB, {"repo": repo})
+
+
+def test_the_refusal_quotes_the_value_and_shows_the_shape_wanted():
+    with pytest.raises(ValueError) as exc:
+        validate_config(TriggerKind.GITHUB, {"repo": "owner/name/extra"})
+
+    message = str(exc.value)
+    assert "owner/name/extra" in message
+    assert "owner/name" in message
+
+
+def test_a_blank_repo_is_allowed_because_the_project_supplies_one():
+    """``poll_github`` falls back to ``project.repo_full_name`` when unset."""
+    assert validate_config(TriggerKind.GITHUB, {"repo": "   "})["repo"] == ""
+
+
+def test_a_repo_is_stripped_on_the_way_through():
+    config = validate_config(TriggerKind.GITHUB, {"repo": "  r2st/Herald\n"})
+
+    assert config["repo"] == "r2st/Herald"
+
+
+def test_repo_set_to_none_is_left_alone():
+    assert validate_config(TriggerKind.GITHUB, {"repo": None}) == {"repo": None}
+
+
+def test_a_non_string_repo_is_refused_rather_than_stringified_into_a_path():
+    with pytest.raises(ValueError, match="not a GitHub repository"):
+        validate_config(TriggerKind.GITHUB, {"repo": {"full_name": "r2st/Herald"}})
 
 
 # --------------------------------------------------------------------------- #
