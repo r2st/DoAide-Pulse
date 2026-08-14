@@ -25,7 +25,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import Subquery
 
-from app.models.content import Content, ContentStatus, ContentType
+from app.models.content import (
+    Content,
+    ContentStatus,
+    ContentType,
+    read_minutes_of,
+    word_count_of,
+)
 from app.models.metrics import ContentMetric
 from app.models.mixins import utcnow
 from app.models.project import Project
@@ -150,14 +156,28 @@ def _rates(bucket: dict[str, int]) -> dict[str, float | None]:
     }
 
 
-def _latest_metric_subquery() -> Subquery:
-    """The id of the most recent metric row per publication.
+def _latest_metric_subquery(user_id: int) -> Subquery:
+    """The id of the most recent metric row per publication, for one user.
 
     ``MAX(id)`` rather than ``MAX(captured_at)``: ids are monotonic and unique,
     so this can't tie, whereas two polls in the same second can.
+
+    The ownership join belongs *inside* the subquery even though every caller
+    joins it against rows already filtered to the same user. Without it the
+    grouping runs over the whole of ``content_metrics`` — every account's
+    snapshots, in a table nothing prunes — and only then gets thrown away by
+    the outer join. That is the same answer at a cost set by the size of the
+    deployment rather than the size of the dashboard being drawn, and
+    :func:`overview` builds this subquery six times per page load. Restricting
+    the input cannot change the result: the maximum id within a publication's
+    group does not depend on which other publications are in the table.
     """
     return (
         select(func.max(ContentMetric.id).label("metric_id"))
+        .join(Publication, Publication.id == ContentMetric.publication_id)
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id)
         .group_by(ContentMetric.publication_id)
         .subquery()
     )
@@ -165,16 +185,17 @@ def _latest_metric_subquery() -> Subquery:
 
 def _latest_metrics(db: Session, user_id: int) -> list[tuple[Publication, ContentMetric]]:
     """(publication, latest metric) for everything this user has published."""
-    latest = _latest_metric_subquery()
-    rows = db.execute(
-        select(Publication, ContentMetric)
-        .join(ContentMetric, ContentMetric.publication_id == Publication.id)
-        .join(latest, latest.c.metric_id == ContentMetric.id)
-        .join(Content, Content.id == Publication.content_id)
-        .join(Project, Project.id == Content.project_id)
-        .where(Project.user_id == user_id)
-    ).all()
-    return [(pub, metric) for pub, metric in rows]
+    latest = _latest_metric_subquery(user_id)
+    return list(
+        db.execute(
+            select(Publication, ContentMetric)
+            .join(ContentMetric, ContentMetric.publication_id == Publication.id)
+            .join(latest, latest.c.metric_id == ContentMetric.id)
+            .join(Content, Content.id == Publication.content_id)
+            .join(Project, Project.id == Content.project_id)
+            .where(Project.user_id == user_id)
+        ).all()
+    )
 
 
 def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Totals:
@@ -222,7 +243,7 @@ def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Total
         + func.coalesce(ContentMetric.clicks, 0)
         + func.coalesce(ContentMetric.shares, 0)
     )
-    latest = _latest_metric_subquery()
+    latest = _latest_metric_subquery(user_id)
     agg = db.execute(
         select(
             func.coalesce(func.sum(ContentMetric.views), 0),
@@ -263,7 +284,7 @@ def by_content_type(db: Session, user_id: int) -> list[dict]:
         lambda: {"published": 0, "with_views": 0, **_blank_metrics()}
     )
 
-    latest = _latest_metric_subquery()
+    latest = _latest_metric_subquery(user_id)
     rows = db.execute(
         select(Content.content_type, ContentMetric)
         .join(Publication, Publication.content_id == Content.id)
@@ -361,15 +382,25 @@ def by_project(db: Session, user_id: int) -> list[dict]:
         for p in projects
     }
 
-    for content in db.scalars(
-        select(Content).where(Content.project_id.in_(list(index) or [0]))
-    ):
-        bucket = stats[content.project_id]
-        bucket["content"] += 1
-        if content.status == ContentStatus.PUBLISHED:
-            bucket["published"] += 1
+    # Counted in SQL rather than by loading every piece the account has ever
+    # written and incrementing in Python. Nothing bounds that read — content is
+    # the table this product exists to grow — and the two numbers it was
+    # extracting are a GROUP BY, which is what ``projects._batch_counts`` does
+    # for the same pair on the projects page.
+    counted = db.execute(
+        select(
+            Content.project_id,
+            func.count(Content.id),
+            func.count(Content.id).filter(Content.status == ContentStatus.PUBLISHED),
+        )
+        .where(Content.project_id.in_(list(index) or [0]))
+        .group_by(Content.project_id)
+    ).all()
+    for project_id, total, published in counted:
+        stats[project_id]["content"] = total
+        stats[project_id]["published"] = published
 
-    latest = _latest_metric_subquery()
+    latest = _latest_metric_subquery(user_id)
     rows = db.execute(
         select(Content.project_id, ContentMetric)
         .join(Publication, Publication.content_id == Content.id)
@@ -579,8 +610,11 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
     since = utcnow() - timedelta(days=days)
     rows = db.execute(
         # The Content join is needed for its own sake here, not just to reach
-        # Project: ``read_minutes`` is derived from the body.
-        select(ContentMetric, Content)
+        # Project: ``read_minutes`` is derived from the body. That one column,
+        # rather than the entity — see :func:`read_time` on what selecting a
+        # ``Content`` drags along with it, and note that this query returns a
+        # row per *snapshot*, so the same piece arrives once per poll.
+        select(ContentMetric, Content.body_markdown)
         .join(Publication, Publication.id == ContentMetric.publication_id)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
@@ -591,9 +625,10 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
     # post's own previous reading.
     series: dict[int, list[ContentMetric]] = defaultdict(list)
     read_minutes: dict[int, int] = {}
-    for metric, content in rows:
+    for metric, body_markdown in rows:
         series[metric.publication_id].append(metric)
-        read_minutes[metric.publication_id] = content.read_minutes
+        if metric.publication_id not in read_minutes:
+            read_minutes[metric.publication_id] = read_minutes_of(body_markdown)
 
     baselines = _pre_window_readings(db, since, list(series))
 
@@ -674,9 +709,15 @@ def read_time(db: Session, user_id: int) -> dict:
     alongside — a zero here often means "nowhere you publish counts reads",
     not "nobody read it".
     """
+    # ``body_markdown`` rather than the whole entity, in both queries below.
+    # Reading time and word count are derived from the body and nothing else,
+    # but ``Content`` carries ``lazy="selectin"`` publications, so selecting the
+    # entity pulled every publication of every published piece into memory as
+    # well — for two sums and an average. Neither read is bounded by anything
+    # except how much the account has written.
     published = list(
         db.scalars(
-            select(Content)
+            select(Content.body_markdown)
             .join(Project, Project.id == Content.project_id)
             .where(
                 Project.user_id == user_id,
@@ -685,9 +726,9 @@ def read_time(db: Session, user_id: int) -> dict:
         )
     )
 
-    latest = _latest_metric_subquery()
+    latest = _latest_metric_subquery(user_id)
     rows = db.execute(
-        select(Content, ContentMetric)
+        select(Content.body_markdown, ContentMetric)
         .join(Publication, Publication.content_id == Content.id)
         .join(ContentMetric, ContentMetric.publication_id == Publication.id)
         .join(latest, latest.c.metric_id == ContentMetric.id)
@@ -708,30 +749,31 @@ def read_time(db: Session, user_id: int) -> dict:
     total_views = total_reads = 0
     reads_reported = 0
 
-    for content, metric in rows:
-        bucket = bands[_band_for(content.read_minutes)]
+    for body_markdown, metric in rows:
+        minutes = read_minutes_of(body_markdown)
+        bucket = bands[_band_for(minutes)]
         bucket["publications"] += 1
-        bucket["read_minutes"] += content.read_minutes
+        bucket["read_minutes"] += minutes
         _accumulate(bucket, metric)
 
         total_views += metric.views or 0
         if metric.reads is not None:
             total_reads += metric.reads
             reads_reported += 1
-            reader_minutes += metric.reads * content.read_minutes
+            reader_minutes += metric.reads * minutes
             # Per band as well as overall: where the output goes and where the
             # attention goes are different distributions, and the gap between
             # them is the interesting part.
-            bucket["reader_minutes"] += metric.reads * content.read_minutes
+            bucket["reader_minutes"] += metric.reads * minutes
 
     return {
         "published_pieces": len(published),
         "avg_read_minutes": round(
-            sum(c.read_minutes for c in published) / len(published), 1
+            sum(read_minutes_of(body) for body in published) / len(published), 1
         )
         if published
         else None,
-        "total_words": sum(c.word_count for c in published),
+        "total_words": sum(word_count_of(body) for body in published),
         #: Reading time actually spent, as far as the platforms will say.
         "reader_minutes": reader_minutes,
         #: How many publications contributed to it. Zero means no platform you

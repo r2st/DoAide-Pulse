@@ -68,6 +68,26 @@ BODY_MARKDOWN_MAX_LENGTH = 200_000
 #: of the things written into it — see
 #: ``app.services.publishing_service._adopt_canonical``.
 CANONICAL_URL_MAX_LENGTH = 500
+
+
+def word_count_of(body_markdown: str) -> int:
+    """Words in a body. The definition :attr:`Content.word_count` uses."""
+    return len(body_markdown.split())
+
+
+def read_minutes_of(body_markdown: str) -> int:
+    """Reading time at ~220wpm, floored at one minute.
+
+    Free functions as well as properties because both quantities are derived
+    from the body and nothing else, and the aggregations in
+    :mod:`app.services.analytics_service` want them over thousands of rows.
+    Reading a ``Content`` entity per row to reach the property loads every
+    column plus, through ``lazy="selectin"``, every publication attached to it —
+    to arrive at a number that only ever needed ``body_markdown``. The callers
+    select that one column and apply this; the property below is the same
+    function, so the two cannot drift.
+    """
+    return max(1, round(word_count_of(body_markdown) / 220))
 #: The longest one entry in ``tags`` may be.
 #:
 #: ``tags`` and ``keywords`` are JSON columns, so the count cap on the schema
@@ -231,12 +251,12 @@ class Content(Base, TimestampMixin):
 
     @property
     def word_count(self) -> int:
-        return len(self.body_markdown.split())
+        return word_count_of(self.body_markdown)
 
     @property
     def read_minutes(self) -> int:
         """Reading time at ~220wpm, floored at one minute."""
-        return max(1, round(self.word_count / 220))
+        return read_minutes_of(self.body_markdown)
 
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<Content id={self.id} title={self.title!r} status={self.status}>"
