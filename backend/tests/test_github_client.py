@@ -11,6 +11,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
+from app.models.project import RELEASE_TAG_MAX_LENGTH
 from app.services import github_client
 
 
@@ -293,3 +294,51 @@ def test_a_release_already_seen_is_not_reported_as_new(monkeypatch):
 
     assert activity.new_release is None
     assert activity.latest_tag == "v1"
+
+
+# -- A tag longer than the watermark column ---------------------------------- #
+#
+# `Project.last_seen_release_tag` is `String(120)` and nothing between GitHub
+# and that column is a request schema, so the tag is bounded here or nowhere.
+# Git allows a ref name of up to 255 bytes.
+
+
+def test_a_tag_longer_than_the_watermark_column_is_cut_on_the_way_in(monkeypatch):
+    long_tag = "v" + "9" * 254
+
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response([{"tag_name": long_tag}])
+        if url.endswith("/commits"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo")
+
+    assert len(activity.latest_tag) == RELEASE_TAG_MAX_LENGTH
+    assert len(activity.new_release.tag) == RELEASE_TAG_MAX_LENGTH
+
+
+def test_the_cut_tag_still_matches_the_watermark_it_was_stored_as(monkeypatch):
+    """The reason the cut is here and not at the two sites that store it.
+
+    The stored watermark is compared against the next scan's tag to decide
+    whether a release is new. Truncating on the way out would compare a full
+    tag against a truncated watermark, never match, and announce the same
+    release every hour for as long as the tag existed.
+    """
+    long_tag = "v" + "9" * 254
+    stored = long_tag[:RELEASE_TAG_MAX_LENGTH]
+
+    def handler(url, **_):
+        if url.endswith("/releases"):
+            return _response([{"tag_name": long_tag}])
+        if url.endswith("/commits"):
+            return _response([])
+        return _response(REPO)
+
+    _stub(monkeypatch, handler)
+    activity = github_client.fetch_activity("owner/repo", since_tag=stored)
+
+    assert activity.new_release is None

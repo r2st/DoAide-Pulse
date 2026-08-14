@@ -194,3 +194,26 @@ def test_content_idea_headlines_are_not_reachable_from_a_request():
     absence is recorded.
     """
     assert _column_widths(ContentIdea)["headline"] == 300
+
+
+# --------------------------------------------------------------------------- #
+# The other half of the blind spot                                             #
+# --------------------------------------------------------------------------- #
+#
+# A request schema is not the only thing that writes a column. The two columns
+# below are filled from a model's JSON and from GitHub's API respectively, and
+# neither source is under any obligation to be short. "No schema to pair it
+# with" is what makes them *unchecked*, not what makes them safe: the cap has to
+# live wherever the value is built, and these pin that it does.
+
+
+def test_the_generator_caps_an_idea_headline_at_its_column():
+    from app.services.content_generator import HEADLINE_LIMIT
+
+    assert _column_widths(ContentIdea)["headline"] == HEADLINE_LIMIT
+
+
+def test_the_github_reader_caps_a_release_tag_at_its_watermark_column():
+    from app.models.project import RELEASE_TAG_MAX_LENGTH
+
+    assert _column_widths(Project)["last_seen_release_tag"] == RELEASE_TAG_MAX_LENGTH

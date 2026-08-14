@@ -33,6 +33,15 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
+#: How much of a release tag the watermark column holds. Git allows a ref name
+#: of up to 255 bytes and GitHub hands the whole thing back, so the value that
+#: lands here is bounded by us or by nothing. Named rather than repeated
+#: because :mod:`app.services.github_client` has to apply the same number at
+#: the point it parses a release — see the comment there for why truncating on
+#: the way *in* is the only version of this that works.
+RELEASE_TAG_MAX_LENGTH = 120
+
+
 class Tone(str, Enum):
     """How a project's content should read.
 
@@ -144,7 +153,9 @@ class Project(Base, TimestampMixin):
     #: change against these is the trigger, so a first scan of an old repo
     #: records where it is rather than writing about two years of history.
     last_seen_commit_sha: Mapped[str | None] = mapped_column(String(40))
-    last_seen_release_tag: Mapped[str | None] = mapped_column(String(120))
+    last_seen_release_tag: Mapped[str | None] = mapped_column(
+        String(RELEASE_TAG_MAX_LENGTH)
+    )
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="projects")

@@ -21,6 +21,7 @@ from datetime import datetime
 import httpx
 
 from app.config import settings
+from app.models.project import RELEASE_TAG_MAX_LENGTH
 
 logger = logging.getLogger(__name__)
 
@@ -216,8 +217,16 @@ def _commit_from_payload(payload: dict) -> Commit:
 
 
 def _release_from_payload(payload: dict) -> Release:
+    # Truncated here rather than at the two sites that store it as a watermark,
+    # because the tag is not only stored — it is *compared* against the stored
+    # one to decide whether a release is new. Cutting on the way out would
+    # compare a full tag against a truncated watermark, never match, and
+    # announce the same release on every scan for as long as the tag existed.
+    # Cutting on the way in means both sides of that comparison are the same
+    # string. A 120-character prefix collision between two real tags is not a
+    # thing that happens.
     return Release(
-        tag=payload.get("tag_name") or "",
+        tag=(payload.get("tag_name") or "")[:RELEASE_TAG_MAX_LENGTH],
         name=payload.get("name") or payload.get("tag_name") or "",
         body=payload.get("body") or "",
         published_at=_parse_ts(payload.get("published_at")),
