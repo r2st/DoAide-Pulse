@@ -6,7 +6,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -27,6 +27,8 @@ from app.routers import (
     webhooks,
 )
 from app.routers import settings as settings_router
+from app.schemas.errors import errors
+from app.schemas.settings import RootOut
 
 logger = logging.getLogger(__name__)
 
@@ -221,13 +223,35 @@ def create_app() -> FastAPI:
     app.include_router(triggers.router, prefix=prefix)
     app.include_router(templates.router, prefix=prefix)
 
-    @app.get("/")
-    def root() -> dict[str, str]:
-        body = {"app": settings.app_name, "health": f"{prefix}/health"}
+    @app.get(
+        "/",
+        response_model=RootOut,
+        # ``docs`` is absent rather than null where the schema is not served —
+        # the field is optional in the model, and this is what keeps the
+        # response from advertising it as an explicit nothing.
+        response_model_exclude_none=True,
+        summary="Where the API is",
+        tags=["misc"],
+        responses=errors(
+            status.HTTP_400_BAD_REQUEST,
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        ),
+    )
+    def root() -> RootOut:
+        """Service name and the health path. Unauthenticated, and says nothing
+        about who asked.
+
+        The two failures are the body-size middleware's, which runs ahead of
+        every route in the app including this one: a malformed
+        ``Content-Length`` is a 400 and an oversized one a 413, neither of
+        which this handler ever sees.
+        """
         # Don't advertise a route that isn't there.
-        if docs:
-            body["docs"] = "/docs"
-        return body
+        return RootOut(
+            app=settings.app_name,
+            health=f"{prefix}/health",
+            docs="/docs" if docs else None,
+        )
 
     return app
 

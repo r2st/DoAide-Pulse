@@ -63,6 +63,19 @@ class DependencyOut(BaseModel):
     detail: str = ""
 
 
+class RootOut(BaseModel):
+    """What ``GET /`` answers: where the API is, and nothing about who asked.
+
+    ``docs`` is present only where the schema is actually served — see
+    :func:`app.main.docs_enabled`. Advertising a route that 404s is worse than
+    saying nothing.
+    """
+
+    app: str
+    health: str
+    docs: str | None = None
+
+
 class HealthOut(BaseModel):
     """Public liveness probe — no operational details leak."""
 
