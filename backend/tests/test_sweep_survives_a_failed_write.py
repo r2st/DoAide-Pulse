@@ -35,10 +35,25 @@ from app.models.metrics import ContentMetric
 from app.models.mixins import utcnow
 from app.models.project import AutopilotMode
 from app.models.publication import Platform, Publication, PublicationStatus
+from app.models.user import User
 from app.models.webhook import DeliveryStatus, Webhook, WebhookDelivery, WebhookEvent
-from app.services import content_pipeline, headlines, link_check, publishing_service
+from app.security import hash_password
+from app.services import (
+    content_pipeline,
+    headlines,
+    link_check,
+    mailer,
+    publishing_service,
+)
+from app.services import digest as digest_service
 from app.services import webhooks as webhooks_service
-from app.tasks import headline_tasks, metrics_tasks, publish_tasks, webhook_tasks
+from app.tasks import (
+    digest_tasks,
+    headline_tasks,
+    metrics_tasks,
+    publish_tasks,
+    webhook_tasks,
+)
 
 
 def _poison(session) -> None:
@@ -280,3 +295,50 @@ def test_release_sweep_reaches_the_rest_after_one_row_fails_to_commit(
         "the sweep stopped at the failing row"
     )
     assert result == {"found": 2, "released": 1}
+
+
+# --------------------------------------------------------------------------- #
+# send_weekly_digests                                                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_digest_sweep_mails_the_rest_after_one_user_fails(
+    db, user, monkeypatch, task_session
+):
+    """One subscriber's bad week must not cancel everyone else's mail.
+
+    The last sweep in the tree without a rollback in its handler. Building a
+    digest only reads, so the failure this stands in for is a read that raises —
+    a dropped connection, a statement timeout on the metrics history — and the
+    session is left just as unusable either way. Without the rollback the second
+    subscriber's build raised ``PendingRollbackError`` on the first user's error,
+    and the sweep logged a line blaming them for it.
+    """
+    second = User(
+        email="other@example.com",
+        full_name="Other",
+        hashed_password=hash_password("hunter2hunter2"),
+    )
+    db.add(second)
+    db.commit()
+    db.refresh(second)
+
+    monkeypatch.setattr(digest_tasks, "SessionLocal", task_session)
+    monkeypatch.setattr(mailer, "configured", lambda: True)
+
+    seen: list[int] = []
+
+    def fake_send(session, recipient, **_kwargs):
+        seen.append(recipient.id)
+        if recipient.id == user.id:
+            _poison(session)
+        return True
+
+    monkeypatch.setattr(digest_service, "send", fake_send)
+
+    result = digest_tasks.send_weekly_digests()
+
+    assert sorted(seen) == sorted([user.id, second.id]), (
+        "the sweep stopped at the failing user"
+    )
+    assert result == {"considered": 2, "sent": 1}

@@ -55,6 +55,14 @@ def send_weekly_digests() -> dict:
         )
         for user in users:
             considered += 1
+            # Read before the call, not inside the handler — the same line every
+            # other sweep in this tree carries. Nothing on the digest path
+            # commits today, so ``user`` is not expired here; naming the id up
+            # front is what keeps that true if one ever does, because a session
+            # with a failed write behind it refuses the SELECT an expired
+            # attribute needs and the ``PendingRollbackError`` would raise from
+            # inside the arm written to absorb the failure.
+            user_id = user.id
             try:
                 if digest.send(db, user):
                     sent += 1
@@ -64,8 +72,15 @@ def send_weekly_digests() -> dict:
                 )
                 break
             except Exception:
-                # One user's bad week must not stop everyone else's mail.
-                logger.exception("weekly digest failed for user %s", user.id)
+                # One user's bad week must not stop everyone else's mail — and a
+                # failure from the *database* is the case where saying so is not
+                # enough. A statement that raises leaves the session unable to
+                # emit any more SQL until it is rolled back, so without this the
+                # first bad user poisons the session and every subscriber behind
+                # them fails too: a sweep that mails nobody and logs one line per
+                # user blaming each of them for the first one's error.
+                db.rollback()
+                logger.exception("weekly digest failed for user %s", user_id)
     finally:
         db.close()
 
