@@ -8,6 +8,7 @@ URLs the server refuses to open at all.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 
 import httpx
 import pytest
@@ -698,3 +699,175 @@ def test_the_event_catalogue_lists_what_can_be_subscribed_to(client, auth):
 def test_webhooks_require_authentication(client):
     assert client.get("/api/v1/webhooks").status_code == 401
     assert client.post("/api/v1/webhooks", json={}).status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Claiming: one attempt has one sender                                         #
+# --------------------------------------------------------------------------- #
+#
+# The retry story above is all single-threaded. In production two things race
+# for the same pending row by default: the ``deliver_one`` queued at emit time
+# and the beat sweep, which every delivery passes through, and two overlapping
+# sweeps, which the shipped configuration makes ordinary rather than rare (the
+# beat runs every 60s; one sweep is up to 200 deliveries at a 10s timeout).
+# Neither duplicate is distinguishable at the receiver from the retry the
+# delivery id exists to let it collapse.
+
+
+def test_a_delivery_already_claimed_is_not_sent_again(db, webhook, endpoint):
+    """The race, reduced to its two steps: somebody else has it."""
+    delivery = _delivery(db, webhook)
+    assert webhooks.claim(db, delivery) is True
+
+    webhooks.deliver(db, delivery)
+
+    assert endpoint.requests == []
+    assert delivery.attempts == 1
+
+
+def test_two_sweeps_over_the_same_due_row_send_it_once(db, webhook, endpoint):
+    """The production race, at the level it actually happens.
+
+    Both sweeps select the row while it is pending and due — that part is
+    unchanged and unavoidable, since selecting is not claiming. What must not
+    happen is two POSTs.
+    """
+    delivery = _delivery(db, webhook)
+
+    first = webhooks.due_deliveries(db)
+    second = webhooks.due_deliveries(db)
+    assert [d.id for d in first] == [d.id for d in second] == [delivery.id]
+
+    for row in first + second:
+        webhooks.deliver(db, row)
+
+    assert len(endpoint.requests) == 1
+    db.refresh(delivery)
+    assert delivery.status == DeliveryStatus.DELIVERED
+    # The loser did not spend one either.
+    assert delivery.attempts == 1
+
+
+def test_a_losing_claim_does_not_spend_the_retry_budget(db, webhook, endpoint):
+    """Otherwise concurrency alone would exhaust a delivery.
+
+    Five racing workers against a five-attempt budget would fail the delivery
+    outright without a single endpoint refusal, which is the failure mode that
+    makes an unclaimed retry loop worse than no retry loop.
+    """
+    delivery = _delivery(db, webhook)
+    assert webhooks.claim(db, delivery) is True
+
+    for _ in range(settings.webhook_max_attempts + 3):
+        assert webhooks.claim(db, delivery) is False
+
+    assert delivery.attempts == 1
+    assert delivery.status == DeliveryStatus.PENDING
+
+
+@pytest.mark.parametrize(
+    "settled", [DeliveryStatus.DELIVERED, DeliveryStatus.FAILED]
+)
+def test_a_settled_delivery_is_never_sent_again(db, webhook, endpoint, settled):
+    """``deliver`` is now safe to call on a row that is finished with.
+
+    A redelivery has to go through ``requeue``, which is a person saying the
+    endpoint is fixed. Reaching the POST from a terminal row would mean a
+    duplicate nobody asked for and no retry accounted for.
+    """
+    delivery = _delivery(db, webhook)
+    delivery.status = settled
+    delivery.next_attempt_at = None
+    db.commit()
+
+    webhooks.deliver(db, delivery)
+
+    assert endpoint.requests == []
+    assert delivery.attempts == 0
+    assert delivery.status == settled
+
+
+def test_a_backoff_that_has_not_elapsed_is_not_claimable(db, webhook, endpoint):
+    """The claim re-checks due-ness, not just pending-ness.
+
+    Without the second half of the condition the claim would degrade into "is
+    it pending", and a sweep would ignore every backoff it just set.
+    """
+    delivery = _delivery(db, webhook)
+    delivery.next_attempt_at = utcnow() + timedelta(minutes=5)
+    db.commit()
+
+    assert webhooks.claim(db, delivery) is False
+    assert delivery.attempts == 0
+
+
+def test_requeue_makes_a_failed_delivery_claimable_again(db, webhook, endpoint):
+    """The redeliver button, end to end, against the guard above."""
+    endpoint.status = 400
+    delivery = _delivery(db, webhook)
+    webhooks.deliver(db, delivery)
+    assert delivery.status == DeliveryStatus.FAILED
+    assert len(endpoint.requests) == 1
+
+    endpoint.status = 200
+    webhooks.requeue(db, delivery)
+    webhooks.deliver(db, delivery)
+
+    assert len(endpoint.requests) == 2
+    assert delivery.status == DeliveryStatus.DELIVERED
+
+
+def test_a_claim_holds_for_a_lease_and_then_lets_go(db, webhook, endpoint):
+    """A worker killed mid-attempt must not park the delivery forever.
+
+    Nothing releases a claim on a process that died, so the lease expiring is
+    the only thing that can — which makes it the crash-recovery window, and the
+    reason it is a timestamp rather than a flag.
+    """
+    delivery = _delivery(db, webhook)
+    assert webhooks.claim(db, delivery) is True
+
+    # Still owned: the sweep does not see it.
+    assert webhooks.due_deliveries(db) == []
+    assert as_aware(delivery.next_attempt_at) > utcnow()
+
+    # The worker never came back. The lease runs out.
+    delivery.next_attempt_at = utcnow() - timedelta(seconds=1)
+    db.commit()
+
+    assert [d.id for d in webhooks.due_deliveries(db)] == [delivery.id]
+    assert webhooks.claim(db, delivery) is True
+    assert delivery.attempts == 2
+
+
+def test_the_lease_outlasts_the_request_it_covers(db, webhook, endpoint):
+    """A lease shorter than the timeout expires mid-request.
+
+    That would hand the row to a second worker while the first is still waiting
+    on the socket — reintroducing the duplicate through the mechanism meant to
+    prevent it.
+    """
+    assert settings.webhook_claim_lease_seconds > settings.webhook_timeout_seconds
+
+
+def test_the_receiver_sees_one_delivery_id_across_every_attempt(
+    db, webhook, endpoint
+):
+    """The header a receiver dedupes on has to be stable to be worth anything.
+
+    A retry that arrived under a fresh id would be a new event as far as the
+    far end could tell, and the claim above would be the only thing standing
+    between a flaky endpoint and a duplicate announcement.
+    """
+    endpoint.status = 503
+    delivery = _delivery(db, webhook)
+
+    for _ in range(3):
+        delivery.next_attempt_at = utcnow()
+        db.commit()
+        webhooks.deliver(db, delivery)
+
+    assert len(endpoint.requests) == 3
+    seen = {r.headers[webhooks.DELIVERY_HEADER] for r in endpoint.requests}
+    assert seen == {str(delivery.id)}
+    assert {json.loads(r.content)["id"] for r in endpoint.requests} == {delivery.id}

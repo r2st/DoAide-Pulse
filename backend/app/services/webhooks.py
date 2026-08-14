@@ -35,7 +35,7 @@ from datetime import timedelta
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -273,14 +273,88 @@ def due_deliveries(db: Session, *, limit: int = 200) -> list[WebhookDelivery]:
     )
 
 
+def claim(db: Session, delivery: WebhookDelivery) -> bool:
+    """Take this delivery for one attempt. ``False`` means somebody else has it.
+
+    The row is the lock. A single conditional UPDATE re-checks the same
+    condition :func:`due_deliveries` selected on — pending, and due — and moves
+    ``next_attempt_at`` a lease into the future, so the loser of a race sees a
+    row that is no longer due and returns without sending anything. ``rowcount``
+    is the verdict: exactly one caller can observe 1 for a given attempt.
+
+    Nothing before this held that lock. ``due_deliveries`` reads without
+    claiming, which is fine for one sweep and wrong for two — and two is the
+    default configuration, not an edge case: the beat runs every
+    ``webhook_scan_interval_seconds`` (60), one sweep may take up to 200
+    deliveries times ``webhook_timeout_seconds`` (10), so a slow round is still
+    working when the next one selects the very same pending rows. The same race
+    exists between the sweep and the ``deliver_one`` queued at emit time, which
+    is a window every single delivery passes through.
+
+    Both duplicates POST the same body under the same delivery id and the same
+    signature — indistinguishable, at the receiver, from the retry that id is
+    meant to let it collapse. A receiver that dedupes on ``X-Herald-Delivery``
+    is unharmed. One that acts on arrival, which is the reason the header is
+    documented rather than assumed, announces twice.
+
+    The attempt counter moves inside the same statement. Whoever wins the claim
+    owns the attempt, so the budget cannot be spent twice for one send, and a
+    delivery that lost the race does not consume one at all.
+
+    A worker that dies mid-attempt leaves the row pending with the lease still
+    on it; it becomes due again when the lease expires, which is what makes
+    that the crash-recovery window and not merely a lock timeout.
+    """
+    # Sessions here are ``autoflush=False``, so an unflushed change to this row
+    # would otherwise be invisible to the UPDATE's own WHERE clause and would
+    # then be written by the commit below — overwriting the lease the UPDATE
+    # just took, which is a claim that silently did not hold. Settle first, so
+    # the claim is both informed by and the last word on this row.
+    db.flush()
+
+    now = utcnow()
+    result = db.execute(
+        update(WebhookDelivery)
+        .where(
+            WebhookDelivery.id == delivery.id,
+            WebhookDelivery.status == DeliveryStatus.PENDING,
+            (WebhookDelivery.next_attempt_at.is_(None))
+            | (WebhookDelivery.next_attempt_at <= now),
+        )
+        .values(
+            attempts=WebhookDelivery.attempts + 1,
+            next_attempt_at=now + timedelta(seconds=settings.webhook_claim_lease_seconds),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    # The UPDATE went round the ORM, so the in-memory row still holds the old
+    # ``attempts`` and the old ``next_attempt_at``. Everything downstream reads
+    # both.
+    db.refresh(delivery)
+    return result.rowcount == 1
+
+
 def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
-    """Attempt one delivery, recording the outcome. Never raises."""
+    """Attempt one delivery, recording the outcome. Never raises.
+
+    Safe to call for a delivery that is already settled or already in flight:
+    the claim below refuses it and nothing is sent.
+    """
     webhook = delivery.webhook
     if webhook is None:  # pragma: no cover - FK cascade makes this unreachable
         _record_failure(db, delivery, "The endpoint no longer exists.", terminal=True)
         return delivery
 
-    delivery.attempts += 1
+    if not claim(db, delivery):
+        logger.info(
+            "webhook delivery %s not claimed (status=%s) — another worker has it "
+            "or it is already settled",
+            delivery.id,
+            delivery.status.value,
+        )
+        return delivery
+
     body = _serialize(delivery)
 
     try:
@@ -487,6 +561,7 @@ __all__ = [
     "EVENT_HEADER",
     "SIGNATURE_HEADER",
     "WebhookUrlError",
+    "claim",
     "deliver",
     "dispatch",
     "due_deliveries",

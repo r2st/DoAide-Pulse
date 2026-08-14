@@ -172,7 +172,11 @@ class WebhookDelivery(Base, TimestampMixin):
         nullable=False,
     )
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    #: ``None`` while an attempt is in flight or once the row is terminal.
+    #: When this delivery may next be attempted, and — while pending — the lock
+    #: on it. ``None`` means "now" for a fresh row and "never again" for a
+    #: terminal one; the ``status`` beside it says which. During an attempt it
+    #: holds a lease a claim put there, so a concurrent sweep does not see the
+    #: row as due. See :func:`app.services.webhooks.claim`.
     next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

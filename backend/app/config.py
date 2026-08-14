@@ -366,6 +366,17 @@ class Settings(BaseSettings):
     webhook_disable_after_failures: int = 20
     # How often the beat task sweeps for deliveries whose backoff has elapsed.
     webhook_scan_interval_seconds: int = 60
+    # How long one worker owns a delivery it has claimed. A claim pushes
+    # ``next_attempt_at`` out by this much, so a second worker sweeping in the
+    # meantime does not see the row as due and cannot POST it again.
+    #
+    # Bounded on both sides. Below the per-request timeout above and the lease
+    # expires while the request it covers is still open, which is the duplicate
+    # it exists to prevent. Far above it and a delivery whose worker was killed
+    # mid-attempt waits that long to be retried by anyone else — the lease is
+    # also the crash-recovery window, since a claim is the only thing that can
+    # leave a row owned by nobody. Two sweep intervals, twelve timeouts.
+    webhook_claim_lease_seconds: float = 120.0
     # How long delivered/failed rows are kept before the maintenance sweep
     # prunes them. Long enough to debug last week's missing notification.
     webhook_delivery_retention_days: int = 30
