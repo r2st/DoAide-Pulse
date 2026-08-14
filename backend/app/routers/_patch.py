@@ -59,7 +59,7 @@ def reject_nulls(model: type, data: dict[str, Any]) -> None:
     if not offenders:
         return
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail=(
             "These fields cannot be null: "
             + ", ".join(offenders)

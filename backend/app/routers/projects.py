@@ -239,7 +239,7 @@ def get_project(
     "/{project_id}",
     response_model=ProjectOut,
     summary="Change a project's settings",
-    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 def update_project(
     project_id: int,

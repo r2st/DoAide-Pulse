@@ -172,7 +172,7 @@ def get_calendar(
     responses=errors(
         *OWNED,
         status.HTTP_409_CONFLICT,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
     ),
 )
 def reschedule(
@@ -204,7 +204,7 @@ def reschedule(
         when = scheduling.normalize(payload.scheduled_for)
     except scheduling.ScheduleError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
     targets = [

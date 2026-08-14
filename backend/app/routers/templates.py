@@ -237,7 +237,7 @@ def get_template(
     responses=errors(
         *OWNED,
         status.HTTP_409_CONFLICT,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
     ),
 )
 def update_template(
@@ -273,7 +273,7 @@ def update_template(
         checked = TemplateCreate(**merged)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
     template.name = checked.name
@@ -350,7 +350,7 @@ def preview_template(
     summary="Turn a filled-in template into a draft",
     responses=errors(
         *OWNED,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
         status.HTTP_429_TOO_MANY_REQUESTS,
     ),
 )
@@ -383,7 +383,7 @@ def use_template(
     project = _resolve_project(template, payload.project_id, db, user)
     if project is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Say which project this piece is for — the template has no "
             "default, or its default project is gone.",
         )
@@ -391,7 +391,7 @@ def use_template(
     rendered = template_service.render(template, payload.values, project=project)
     if rendered.missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Still needs a value for {', '.join(rendered.missing)}.",
         )
     if rendered.over_limit:
@@ -408,7 +408,7 @@ def use_template(
             "body": template_service.BODY_LIMIT,
         }
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "This template renders more than a piece can hold: "
                 + "; ".join(

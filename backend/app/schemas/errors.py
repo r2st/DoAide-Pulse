@@ -62,11 +62,11 @@ _CATALOGUE: dict[int, dict[str, Any]] = {
         "The resource is in a state that makes this request meaningless, and "
         "retrying will not change that."
     ),
-    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: _response(
+    status.HTTP_413_CONTENT_TOO_LARGE: _response(
         "The request body is over the limit. Refused by middleware before any "
         "route sees it."
     ),
-    status.HTTP_422_UNPROCESSABLE_ENTITY: _response(
+    status.HTTP_422_UNPROCESSABLE_CONTENT: _response(
         "The body did not validate. FastAPI's own 422 carries a list of "
         "per-field problems; the ones raised by a route carry a single string."
     ),
@@ -104,7 +104,7 @@ def errors(*codes: int) -> dict[int | str, dict[str, Any]]:
 #: does: no token, and a body too big for the middleware to pass on.
 AUTHENTICATED = (
     status.HTTP_401_UNAUTHORIZED,
-    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    status.HTTP_413_CONTENT_TOO_LARGE,
 )
 
 #: An authenticated endpoint addressing one row by id.

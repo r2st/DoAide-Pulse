@@ -618,7 +618,7 @@ def repurpose_content(
     summary="Rewrite one passage of a draft",
     responses=errors(
         *OWNED,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
         status.HTTP_429_TOO_MANY_REQUESTS,
         status.HTTP_503_SERVICE_UNAVAILABLE,
     ),
@@ -651,7 +651,7 @@ def edit_passage(
 
     if selection not in (content.body_markdown or ""):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "That passage is not in the saved draft. Save your changes "
                 "first, then select it again."
@@ -1093,7 +1093,7 @@ def create_content(
     responses=errors(
         *OWNED,
         status.HTTP_409_CONFLICT,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
     ),
 )
 def update_content(
@@ -1253,7 +1253,7 @@ def _queue_publish(
     except scheduling.ScheduleError as exc:
         # A time in the past would otherwise be picked up by the very next
         # sweep — "publish now" wearing the costume of a schedule.
-        raise _PublishError(str(exc), status.HTTP_422_UNPROCESSABLE_ENTITY) from exc
+        raise _PublishError(str(exc), status.HTTP_422_UNPROCESSABLE_CONTENT) from exc
 
     unimplemented = [
         p.value for p in payload.platforms if not publishers.get_adapter(p).implemented
@@ -1323,7 +1323,7 @@ def _queue_publish(
         # `allow_broken_links` overrides. 422 for a scheduled time in the past.
         status.HTTP_400_BAD_REQUEST,
         status.HTTP_409_CONFLICT,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
     ),
 )
 def publish_content(
@@ -1411,7 +1411,7 @@ def schedule_suggestions(
         *OWNED,
         status.HTTP_400_BAD_REQUEST,
         status.HTTP_409_CONFLICT,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
     ),
 )
 def schedule_content(

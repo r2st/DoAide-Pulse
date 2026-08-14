@@ -246,7 +246,7 @@ def create_trigger(
     "/{trigger_id}",
     response_model=TriggerOut,
     summary="Change a trigger",
-    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 def update_trigger(
     trigger_id: int,
@@ -273,7 +273,7 @@ def update_trigger(
             trigger.config = validate_config(kind, payload.config)
         except ValueError as exc:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
             ) from exc
     if payload.is_active is not None:
         trigger.is_active = payload.is_active
@@ -421,7 +421,7 @@ def list_trigger_events(
     summary="Fire an inbound webhook trigger",
     responses={
         **errors(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
             status.HTTP_429_TOO_MANY_REQUESTS,
         ),
         status.HTTP_404_NOT_FOUND: {
@@ -470,7 +470,7 @@ async def inbound(
     raw = await request.body()
     if len(raw) > MAX_INBOUND_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"Payload larger than {MAX_INBOUND_BYTES // 1024} KB.",
         )
 

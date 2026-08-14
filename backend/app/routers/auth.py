@@ -86,7 +86,7 @@ def _assert_registration_allowed(invite_token: str | None) -> None:
     responses=errors(
         status.HTTP_403_FORBIDDEN,
         status.HTTP_409_CONFLICT,
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_413_CONTENT_TOO_LARGE,
         status.HTTP_429_TOO_MANY_REQUESTS,
     ),
 )
@@ -144,7 +144,7 @@ def register(
     responses=errors(
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN,
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_413_CONTENT_TOO_LARGE,
         status.HTTP_429_TOO_MANY_REQUESTS,
     ),
 )
@@ -211,7 +211,7 @@ _RESET_REQUESTED = (
     status_code=status.HTTP_202_ACCEPTED,
     summary="Request a password-reset link",
     responses=errors(
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_413_CONTENT_TOO_LARGE,
         status.HTTP_429_TOO_MANY_REQUESTS,
     ),
 )
@@ -249,7 +249,7 @@ def request_password_reset(
     summary="Set a new password with a reset token",
     responses=errors(
         status.HTTP_400_BAD_REQUEST,
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_413_CONTENT_TOO_LARGE,
         status.HTTP_429_TOO_MANY_REQUESTS,
     ),
 )
@@ -282,7 +282,7 @@ def confirm_password_reset(
     "/me",
     response_model=UserOut,
     summary="Update account preferences",
-    responses=errors(*AUTHENTICATED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+    responses=errors(*AUTHENTICATED, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 def update_me(
     payload: PreferencesUpdate,
@@ -301,7 +301,7 @@ def update_me(
     fields = payload.model_dump(exclude_unset=True)
     if fields.get("weekly_digest_enabled", True) is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="weekly_digest_enabled must be true or false, not null.",
         )
     for field_, value in fields.items():

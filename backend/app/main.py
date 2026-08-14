@@ -256,7 +256,7 @@ def create_app() -> FastAPI:
         tags=["misc"],
         responses=errors(
             status.HTTP_400_BAD_REQUEST,
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
         ),
     )
     def root() -> RootOut:

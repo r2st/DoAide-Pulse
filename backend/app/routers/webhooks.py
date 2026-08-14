@@ -119,7 +119,7 @@ def list_webhooks(
     responses=errors(
         *AUTHENTICATED,
         status.HTTP_409_CONFLICT,
-        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_422_UNPROCESSABLE_CONTENT,
         status.HTTP_500_INTERNAL_SERVER_ERROR,
     ),
 )
@@ -157,7 +157,7 @@ def create_webhook(
     "/{webhook_id}",
     response_model=WebhookOut,
     summary="Change a webhook",
-    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_ENTITY),
+    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 def update_webhook(
     webhook_id: int,
@@ -345,7 +345,7 @@ def _validated(url: str) -> str:
         return webhooks.validate_url(url)
     except webhooks.WebhookUrlError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
 
