@@ -16,6 +16,11 @@ The gates only apply to an *unreviewed* publish, which is deliberate:
 * **SEO score.** A post that would rank poorly should not go out unreviewed even
   when the model is confident it is accurate. Confidence is about truth; the
   score is about whether anyone will find it.
+
+Both demote to review rather than throwing the piece away, and so does the third
+thing that can stop an unreviewed publish: having nowhere to send it. See
+:func:`_publishable_destinations`, which drops a destination the owner never
+connected instead of queueing a publication that can only fail.
 """
 from __future__ import annotations
 
@@ -166,7 +171,7 @@ def generate_and_route(
     )
     confident = generated.confidence >= settings.autopilot_auto_publish_confidence
     destinations = _publishable_destinations(project)
-    auto = bool(mode == AutopilotMode.AUTO and confident and destinations)
+    auto = bool(mode == AutopilotMode.AUTO and confident and destinations.usable)
 
     dead_links: list[str] = []
     if auto and settings.link_check_enabled:
@@ -213,6 +218,10 @@ def generate_and_route(
             "fallback": generated.is_fallback,
             "dead_links": dead_links,
             "seo_score": score,
+            # Alongside the gate results and for the same reason: a reviewer
+            # looking at a piece that was meant to publish itself should be able
+            # to see why it did not without reading the logs.
+            "unconnected_platforms": destinations.unconnected,
         },
     )
     db.add(content)
@@ -244,7 +253,7 @@ def generate_and_route(
             is_fallback=generated.is_fallback,
         )
 
-    publications = publishing_service.queue(db, content, destinations)
+    publications = publishing_service.queue(db, content, destinations.usable)
     db.commit()
     # Only the rows whose time has come. A project with a canonical platform and
     # more than one autopilot destination has its syndicated copies parked behind
@@ -312,7 +321,7 @@ def release_approved(db: Session, content: Content) -> list[Publication]:
     if mode != AutopilotMode.AUTO:
         return []
 
-    platforms = _publishable_destinations(project)
+    platforms = _publishable_destinations(project).usable
     if not platforms:
         return []
 
@@ -336,7 +345,18 @@ def release_approved(db: Session, content: Content) -> list[Publication]:
     return publications
 
 
-def _publishable_destinations(project: Project) -> list[Platform]:
+@dataclass(frozen=True)
+class _Destinations:
+    """Where the autopilot may publish, and what it had to drop to get there."""
+
+    usable: list[Platform]
+    #: Named destinations the owner has no live connection for, as platform
+    #: values. Recorded on the piece so a reviewer is told why it is in front of
+    #: them; see :func:`generate_and_route`.
+    unconnected: list[str]
+
+
+def _publishable_destinations(project: Project) -> _Destinations:
     """The autopilot destinations Herald can actually post to.
 
     ``autopilot_platforms`` is a plain JSON column. Values written before the
@@ -346,8 +366,28 @@ def _publishable_destinations(project: Project) -> list[Platform]:
     than trusted: an unknown string would raise out of a beat sweep, and an
     unfinished adapter fails the publication terminally, which drives the piece
     to ``failed`` instead of leaving it approved.
+
+    A platform the owner has never connected is dropped for that second reason,
+    which is the same reason and the same outcome. ``_credentials_for`` raises
+    ``NotConnected``, ``execute`` treats it as terminal — correctly, since no
+    amount of retrying connects an account — and ``_sync_content_status`` then
+    walks a piece whose every publication is terminal to ``failed``. So a
+    project set to ``auto`` with one destination it had never connected wrote a
+    piece, approved it, queued it, burned it on the first attempt, and left the
+    work in ``failed`` with nothing to be done but connect the account and retry
+    by hand. The piece is worth more than that: dropped here, an unconnected
+    destination costs the *publish* rather than the post, and if it was the only
+    one then nothing is publishable, ``generate_and_route`` declines to
+    auto-publish, and the piece goes to a human instead of to the bin.
+
+    The manual publish path already refuses an unconnected platform outright
+    (``routers.content._queue_publish``), with a 400 that names it. This is the
+    autopilot's version of the same check — there is nobody to show a 400 to, so
+    it drops the destination and says so on the piece.
     """
+    connected = set(project.user.connected_platforms) if project.user else set()
     out: list[Platform] = []
+    unconnected: list[str] = []
     for raw in project.autopilot_platforms or []:
         try:
             platform = raw if isinstance(raw, Platform) else Platform(raw)
@@ -363,9 +403,19 @@ def _publishable_destinations(project: Project) -> list[Platform]:
                 platform.value,
             )
             continue
+        if platform.value not in connected:
+            if platform.value not in unconnected:
+                unconnected.append(platform.value)
+            logger.warning(
+                "project %s publishes to %s, which its owner has not connected — "
+                "skipping the destination rather than failing the piece",
+                project.id,
+                platform.value,
+            )
+            continue
         if platform not in out:
             out.append(platform)
-    return out
+    return _Destinations(usable=out, unconnected=unconnected)
 
 
 def publish_now(publication_id: int) -> None:

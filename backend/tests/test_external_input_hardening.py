@@ -275,16 +275,17 @@ def test_with_celery_switched_off_the_publish_happens_inline(monkeypatch):
     assert ran == [7]
 
 
-def test_a_platform_named_twice_is_only_published_to_once(db, project, monkeypatch):
+def test_a_platform_named_twice_is_only_published_to_once(db, project, connect):
     """``autopilot_platforms`` is a plain JSON list — nothing dedupes it on read.
 
     Two entries would mean two publications, and the second one is a duplicate
     post on somebody's blog.
     """
+    connect("devto", "mastodon")
     project.autopilot_platforms = ["devto", "devto", "mastodon"]
     db.commit()
 
-    assert content_pipeline._publishable_destinations(project) == [
+    assert content_pipeline._publishable_destinations(project).usable == [
         Platform.DEVTO,
         Platform.MASTODON,
     ]

@@ -88,12 +88,13 @@ def test_a_published_piece_can_still_be_archived(client, auth, db, content):
 
 
 def test_approving_through_the_patch_releases_it_too(
-    client, auth, db, project, monkeypatch
+    client, auth, db, project, monkeypatch, connect
 ):
     """A scripted caller should not need to know about a second endpoint."""
     from app.services import content_pipeline
 
     monkeypatch.setattr(content_pipeline, "publish_now", lambda pid: None)
+    connect("devto")
     project.autopilot_mode = AutopilotMode.AUTO
     project.autopilot_platforms = ["devto"]
     db.commit()

@@ -25,6 +25,18 @@ from app.services import content_pipeline
 from app.tasks import publish_tasks
 
 
+@pytest.fixture(autouse=True)
+def _connected(connect):
+    """Every destination these tests route to, connected.
+
+    ``release_approved`` only queues platforms the owner has a live connection
+    for. Without this the fixtures below would be projects pointed at accounts
+    that do not exist, which is a different test — it is the one in
+    ``test_unconnected_autopilot_destinations.py``.
+    """
+    connect("devto", "bluesky", "mastodon")
+
+
 @pytest.fixture
 def auto_project(db, project):
     """A project configured exactly as the ones on the box are."""

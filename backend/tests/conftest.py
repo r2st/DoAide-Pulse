@@ -167,6 +167,40 @@ def user(db) -> User:
 
 
 @pytest.fixture
+def connect(db, user):
+    """Give the account a live connection to one or more platforms.
+
+    The autopilot only queues destinations the owner has actually connected —
+    see ``content_pipeline._publishable_destinations``, which drops the rest
+    rather than queueing a publication that can only fail terminally and take
+    the piece to ``failed`` with it. So a test about *routing* has to say which
+    platforms are connected, or the routing it means to exercise does not
+    happen and the piece quietly goes to review instead.
+
+    Takes platform values or members, and may be called more than once.
+    """
+    from app.models.platform_connection import ConnectionStatus, PlatformConnection
+    from app.models.publication import Platform
+    from app.services.crypto import encrypt_credentials
+
+    def _connect(*platforms) -> None:
+        for raw in platforms:
+            platform = raw if isinstance(raw, Platform) else Platform(raw)
+            db.add(
+                PlatformConnection(
+                    user_id=user.id,
+                    platform=platform,
+                    status=ConnectionStatus.CONNECTED,
+                    encrypted_credentials=encrypt_credentials({"api_key": "k"}),
+                    display_name=f"@herald-{platform.value}",
+                )
+            )
+        db.commit()
+
+    return _connect
+
+
+@pytest.fixture
 def auth(client, user) -> dict[str, str]:
     """Authorization header for ``user``."""
     resp = client.post(

@@ -7,6 +7,8 @@ fixture in ``conftest.py``, shared with the other modules that scan a repo.
 """
 from __future__ import annotations
 
+import pytest
+
 from app.config import settings
 from app.models.content import Content, ContentStatus
 from app.models.project import AutopilotMode, Project
@@ -14,6 +16,18 @@ from app.services import content_pipeline, github_client
 from app.tasks import autopilot_tasks
 
 from .conftest import repo_activity as make_activity
+
+
+@pytest.fixture(autouse=True)
+def _connected(connect):
+    """Devto connected for every test in this file.
+
+    The autopilot drops destinations the owner has no live connection for, so
+    without this an `auto` project has nowhere to publish and *every* piece
+    routes to review — which is what several tests below assert, for entirely
+    different reasons. They would keep passing and stop testing their gate.
+    """
+    connect("devto")
 
 
 def test_first_scan_only_baselines(db, project, stub_github):

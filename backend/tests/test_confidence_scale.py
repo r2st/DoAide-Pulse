@@ -111,6 +111,14 @@ def test_an_off_scale_confidence_generates_a_piece_but_not_a_confident_one(
 # --------------------------------------------------------------------------- #
 
 
+@pytest.fixture(autouse=True)
+def _connected(connect):
+    """Devto connected, so the confidence gate is the only thing that can stop a
+    publish here. Without it the piece routes to review for want of a
+    destination and the test passes without testing anything."""
+    connect("devto")
+
+
 @pytest.fixture
 def auto_project(db, project):
     project.autopilot_mode = AutopilotMode.AUTO
