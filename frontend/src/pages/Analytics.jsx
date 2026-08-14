@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { SectionBoundary } from "../components/ErrorBoundary";
 import {
   Empty,
   ErrorBanner,
@@ -93,30 +94,62 @@ export default function Analytics() {
 
       <Counters totals={totals} />
 
-      <ReachOverTime
-        trend={trend}
-        days={days}
-        onWindow={setDays}
-        clicksReported={totals.clicks_reported > 0}
-      />
+      <Section name="reach">
+        <ReachOverTime
+          trend={trend}
+          days={days}
+          onWindow={setDays}
+          clicksReported={totals.clicks_reported > 0}
+        />
+      </Section>
 
-      <NeedsAttention alerts={alerts} />
+      <Section name="alerts">
+        <NeedsAttention alerts={alerts} />
+      </Section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <PlatformPanel rows={by_platform} />
-        <ContentTypePanel rows={by_content_type} />
+        <Section name="platforms">
+          <PlatformPanel rows={by_platform} />
+        </Section>
+        <Section name="content-types">
+          <ContentTypePanel rows={by_content_type} />
+        </Section>
       </div>
 
-      <PlatformShare rows={by_platform} />
+      <Section name="platform-share">
+        <PlatformShare rows={by_platform} />
+      </Section>
 
-      <VelocityPanel velocity={velocity} />
+      <Section name="velocity">
+        <VelocityPanel velocity={velocity} />
+      </Section>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <TopContent rows={top_content} />
-        <PublishingRhythm timeline={timeline} />
+        <Section name="top-content">
+          <TopContent rows={top_content} />
+        </Section>
+        <Section name="rhythm">
+          <PublishingRhythm timeline={timeline} />
+        </Section>
       </div>
     </div>
   );
+}
+
+/**
+ * One section of this page, boundaried.
+ *
+ * Every section below the counters draws a chart from a shape it derives
+ * itself — a median over a snapshot series, a share of a share, a scale taken
+ * from the maximum of a list. That is where a field the API stopped sending
+ * turns into a throw during render, and there is no reason a stalled-posts
+ * table should be able to take the view count at the top of the page with it.
+ *
+ * The counters are outside on purpose: they read four numbers straight off the
+ * response, and if those are missing the page has nothing to say anyway.
+ */
+function Section({ name, children }) {
+  return <SectionBoundary name={`analytics:${name}`}>{children}</SectionBoundary>;
 }
 
 /**

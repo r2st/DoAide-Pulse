@@ -110,6 +110,36 @@ export function ErrorFallback({ error, reset, title = "Something went wrong" }) 
 }
 
 /**
+ * A boundary around one panel inside a page.
+ *
+ * The mechanism is identical to a route-level boundary; only the wording
+ * differs, and it differs for a reason. At this scale the user has lost a panel
+ * and still has the page, so a fallback saying the page stopped working would
+ * overstate what happened and send them reloading for no reason. Kept here
+ * rather than written out at each call site so every panel says the same thing.
+ *
+ * Worth reaching for wherever a panel loads its own data or derives its own
+ * numbers — those are the two places a shape the API never promised turns into
+ * a throw, and a sidebar panel is not worth an unsaved draft.
+ *
+ * @param {object} props
+ * @param {string} props.name Identifies the panel in an `onError` report.
+ * @param {string} [props.title]
+ * @param {import("react").ReactNode} props.children
+ */
+export function SectionBoundary({
+  name,
+  title = "This panel could not be drawn",
+  children,
+}) {
+  return (
+    <ErrorBoundary section={name} title={title}>
+      {children}
+    </ErrorBoundary>
+  );
+}
+
+/**
  * An `ErrorBoundary` that forgets its error when the route changes.
  *
  * A boundary with no reset is a trap: it holds the fallback for as long as it

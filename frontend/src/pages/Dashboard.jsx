@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { SectionBoundary } from "../components/ErrorBoundary";
 import ReadTimePanel from "../components/ReadTimePanel";
 import {
   Empty,
@@ -291,8 +292,15 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* Last on the page, and loaded on its own: analysis, not a to-do. */}
-      {!nothingYet && <ReadTimePanel />}
+      {/* Last on the page, and loaded on its own: analysis, not a to-do. Which
+          is also why it gets a boundary — the failed publication above it is
+          the thing somebody has to act on, and a read-time chart that cannot be
+          drawn must not be what stops them seeing it. */}
+      {!nothingYet && (
+        <SectionBoundary name="dashboard:read-time">
+          <ReadTimePanel />
+        </SectionBoundary>
+      )}
     </div>
   );
 }

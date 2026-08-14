@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { SectionBoundary } from "../components/ErrorBoundary";
 import SocialPreview from "../components/SocialPreview";
 import { Confidence, ErrorBanner, Skeleton, StatusBadge } from "../components/ui/Bits";
 import { useToast } from "../components/ui/Toast";
@@ -552,23 +553,37 @@ export default function ContentEditor() {
           )}
         </div>
 
+        {/* Every panel in here loads or derives something of its own, and the
+            column sits beside a textarea that may hold minutes of unsaved
+            writing. A boundary per panel is the difference between losing a
+            link check and losing the draft. */}
         <aside className="space-y-4">
-          <SeoPanel
-            issues={data.seo_issues}
-            draft={draft}
-            onChange={set}
-            locked={locked}
-          />
+          <SectionBoundary name="editor:seo">
+            <SeoPanel
+              issues={data.seo_issues}
+              draft={draft}
+              onChange={set}
+              locked={locked}
+            />
+          </SectionBoundary>
           {/* Fed the live draft, not `data`: the point is to see the clip
               while you are still editing the title that causes it. */}
-          <SocialPreview
-            draft={draft}
-            url={data.canonical_url || publishedUrl(data)}
-            contentId={data.id}
-          />
-          <LinksPanel contentId={data.id} />
-          <PreviewLinksPanel contentId={data.id} />
-          <PublicationsPanel content={data} onChanged={reload} />
+          <SectionBoundary name="editor:social">
+            <SocialPreview
+              draft={draft}
+              url={data.canonical_url || publishedUrl(data)}
+              contentId={data.id}
+            />
+          </SectionBoundary>
+          <SectionBoundary name="editor:links">
+            <LinksPanel contentId={data.id} />
+          </SectionBoundary>
+          <SectionBoundary name="editor:preview-links">
+            <PreviewLinksPanel contentId={data.id} />
+          </SectionBoundary>
+          <SectionBoundary name="editor:publications">
+            <PublicationsPanel content={data} onChanged={reload} />
+          </SectionBoundary>
           {!locked && (
             <button className="btn-quiet w-full text-bad" onClick={remove}>
               Delete this piece
