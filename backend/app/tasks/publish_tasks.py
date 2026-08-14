@@ -285,8 +285,14 @@ def release_approved_content() -> dict:
             except Exception:
                 # One unpublishable piece must not stop the sweep reaching the
                 # rest — the row keeps its status and comes back next pass.
-                logger.exception("could not release approved content %s", content.id)
+                #
+                # Rollback first: ``release_approved`` commits, and a commit that
+                # fails leaves the session unable to emit SQL, so reading
+                # ``content.id`` for the log line raised ``PendingRollbackError``
+                # from inside this handler — which escaped it and ended the sweep on
+                # the failure it was written to absorb.
                 db.rollback()
+                logger.exception("could not release approved content %s", content.id)
     finally:
         db.close()
 

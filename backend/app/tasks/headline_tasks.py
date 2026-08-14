@@ -111,8 +111,15 @@ def auto_select_headlines() -> dict:
                 db.rollback()
                 break
             except Exception:
-                logger.exception("headline auto-select failed for content %s", content.id)
+                # Rollback first: the ``db.commit()`` above is inside the ``try``, and
+                # a commit that fails leaves the session unable to emit SQL — so
+                # reading ``content.id`` to name the row in the log needed a SELECT
+                # the session would refuse, and the ``PendingRollbackError`` that
+                # raised escaped this handler and ended the sweep. Rolling back first
+                # both unpoisons the session for the next candidate and makes the log
+                # line reachable.
                 db.rollback()
+                logger.exception("headline auto-select failed for content %s", content.id)
     finally:
         db.close()
 

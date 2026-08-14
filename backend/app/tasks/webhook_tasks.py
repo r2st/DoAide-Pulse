@@ -69,6 +69,12 @@ def deliver_due() -> dict:
         due = webhooks.due_deliveries(db)
         for delivery in due:
             attempted += 1
+            # Read before the call — see the same line in
+            # ``metrics_tasks.collect_all_metrics``. ``deliver`` records the outcome
+            # with a commit, and a commit that fails leaves the session unable to
+            # emit the SELECT that reading an expired ``delivery.id`` needs, so
+            # asking for it inside the handler raised out of the handler itself.
+            delivery_id = delivery.id
             try:
                 webhooks.deliver(db, delivery)
                 if delivery.status.value == "delivered":
@@ -79,8 +85,13 @@ def deliver_due() -> dict:
                 )
                 break
             except Exception:
-                # One endpoint's bad day must not stop the rest of the queue.
-                logger.exception("webhook delivery %s failed", delivery.id)
+                # One endpoint's bad day must not stop the rest of the queue — and
+                # a failed *write* is the case where saying so is not enough. Without
+                # the rollback the session stays poisoned for every delivery after
+                # this one, which turns one bad row into a sweep that delivers
+                # nothing and reports each remaining endpoint as broken.
+                db.rollback()
+                logger.exception("webhook delivery %s failed", delivery_id)
     finally:
         db.close()
 

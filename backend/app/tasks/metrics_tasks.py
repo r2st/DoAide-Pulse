@@ -77,6 +77,15 @@ def collect_all_metrics() -> dict:
         # request. See ``publishing_service.collect_metrics``.
         rate_limited: set[publishing_service.RateLimitKey] = set()
         for publication, user_id in rows:
+            # Read before the call, not inside the handler below. ``collect_metrics``
+            # ends in a commit, and a commit that fails leaves the session unable to
+            # emit SQL until it is rolled back — including the SELECT that reading an
+            # expired ``publication.id`` would need. Asking for the id *while* handling
+            # the failure raised ``PendingRollbackError`` from inside the ``except``
+            # arm, which escaped the loop, the ``try``, and the task: one row whose
+            # write would not land ended the whole sweep, and the rows after it were
+            # never polled.
+            publication_id = publication.id
             try:
                 if (
                     publishing_service.collect_metrics(
@@ -94,8 +103,15 @@ def collect_all_metrics() -> dict:
             except Exception:
                 # Isolate failures: a broken response from one platform must not
                 # prevent polling the rest.
+                #
+                # The rollback is what makes that true when the failure came from
+                # the database rather than the platform. Every other sweep in this
+                # tree rolls back here; this one did not, so a failed write left the
+                # session poisoned and every remaining publication failed too — on an
+                # error that says nothing about them.
+                db.rollback()
                 logger.exception(
-                    "metrics collection failed for publication %s", publication.id
+                    "metrics collection failed for publication %s", publication_id
                 )
     finally:
         db.close()
