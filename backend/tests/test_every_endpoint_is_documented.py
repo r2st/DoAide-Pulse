@@ -93,6 +93,29 @@ def _declared_failures(route: APIRoute) -> dict[int, dict]:
     }
 
 
+def _declared_successes(route: APIRoute) -> dict[int, dict]:
+    """Every 2xx/3xx this route can answer with, its own status code included.
+
+    ``route.status_code`` is the one FastAPI generates a response entry for on
+    its own; anything under 400 in ``responses`` is a *second* success the
+    handler selects at runtime by setting ``response.status_code``. The two
+    together are what a client has to branch on.
+
+    A route that passed no ``status_code=`` has the attribute set to ``None``
+    rather than to the 200 it will actually answer with — most GETs here are in
+    that state. Defaulting it in matters: without it a route that declares only
+    an extra 201 would read as having one success rather than two, which is the
+    direction that lets an ambiguous pair through.
+    """
+    declared = {
+        code: spec
+        for code, spec in route.responses.items()
+        if isinstance(code, int) and 200 <= code < 400
+    }
+    declared.setdefault(route.status_code or 200, {})
+    return declared
+
+
 def _dependency_calls(route: APIRoute) -> set:
     """Every dependency callable on *route*, including nested ones."""
     seen = set()
@@ -218,6 +241,39 @@ def test_rate_limited_endpoints_declare_429(route: APIRoute):
     )
 
 
+@pytest.mark.parametrize("route", ROUTE_CASES)
+def test_an_endpoint_with_two_successes_describes_both(route: APIRoute):
+    """One success needs no description; two need telling apart.
+
+    Where an endpoint has a single 2xx, FastAPI's generated "Successful
+    Response" costs nothing — the summary says what the endpoint does and the
+    response model says what comes back, and there is no choice for a reader to
+    resolve. A second success code is a decision the handler makes at runtime,
+    and the client has to know which is which to act on it.
+
+    ``POST /content/ideas/{id}/write`` is the one endpoint here that has two:
+    201 wrote a draft, 200 replayed one written earlier. It shipped with the
+    replay described and the create left as "Successful Response", which tells a
+    reader exactly half of the distinction. The rule generalises that fix rather
+    than leaving it as a fact about one route.
+    """
+    successes = _declared_successes(route)
+    if len(successes) < 2:
+        return
+    undescribed = sorted(
+        code
+        for code, spec in successes.items()
+        if not (spec.get("description") or "").strip()
+        or spec["description"] == "Successful Response"
+    )
+    assert not undescribed, (
+        f"{_label(route)} answers {sorted(successes)} and leaves "
+        f"{undescribed} undescribed. An endpoint with more than one success "
+        f'needs a "description" on each explaining which case it is — see '
+        f"`write_from_idea` for the shape."
+    )
+
+
 # --------------------------------------------------------------------------- #
 # The rules, applied to an endpoint that breaks them.                          #
 # --------------------------------------------------------------------------- #
@@ -267,6 +323,60 @@ def test_a_bare_authenticated_endpoint_fails_the_401_rule(undocumented_route):
     """And the dependency walk finds the guard through ``Depends``."""
     assert get_current_user in _dependency_calls(undocumented_route)
     assert not {401, 413} <= set(_declared_failures(undocumented_route))
+
+
+def test_a_second_success_left_bare_fails_the_two_success_rule():
+    """The rule, applied to the shape it exists to catch.
+
+    A route with a 201 of its own and an undescribed 200 beside it — which is
+    how ``write_from_idea`` shipped, with the descriptions the other way round.
+    """
+    from fastapi import APIRouter, FastAPI
+
+    router = APIRouter()
+
+    @router.post(
+        "/two-successes",
+        status_code=201,
+        summary="Do a thing, or find it already done",
+        responses={200: {"description": "Successful Response"}},
+    )
+    def two_successes() -> dict:
+        """Two answers, neither of them explained."""
+        return {}
+
+    app = FastAPI()
+    app.include_router(router)
+    route = next(r for r in _walk(app.routes) if r.path == "/two-successes")
+
+    successes = _declared_successes(route)
+    assert sorted(successes) == [200, 201]
+    assert successes[200]["description"] == "Successful Response"
+    # 201 is the route's own status code, so it carries no description at all.
+    assert not successes[201]
+
+
+def test_one_success_needs_no_description():
+    """The rule has to stay off the other ninety endpoints.
+
+    Every one of them answers a single 2xx as FastAPI's generated "Successful
+    Response", and demanding prose there would be a rule about wording rather
+    than about ambiguity.
+    """
+    from fastapi import APIRouter, FastAPI
+
+    router = APIRouter()
+
+    @router.get("/one-success", summary="Read a thing")
+    def one_success() -> dict:
+        """Only ever answers 200."""
+        return {}
+
+    app = FastAPI()
+    app.include_router(router)
+    route = next(r for r in _walk(app.routes) if r.path == "/one-success")
+
+    assert len(_declared_successes(route)) == 1
 
 
 def test_a_limited_endpoint_is_recognised_as_limited():

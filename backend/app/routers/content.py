@@ -1582,6 +1582,19 @@ def retry_publication(
     status_code=201,
     summary="Turn an idea into a draft",
     responses={
+        # The only endpoint with two success codes, so both are spelled out.
+        # Elsewhere FastAPI's generated "Successful Response" says enough —
+        # there is one success and the summary names it — but a reader shown a
+        # described 200 beside a bare 201 has been told which one is the replay
+        # and left to guess the other.
+        status.HTTP_201_CREATED: {
+            "model": ContentDetail,
+            "description": (
+                "The idea was written. A draft was generated and created and "
+                "the idea is now retired; a later call answers 200 with this "
+                "same draft rather than writing a second one."
+            ),
+        },
         # The idempotent replay. Documented because a client that treats 201 as
         # "a row was created" would otherwise be wrong exactly when it matters.
         status.HTTP_200_OK: {
@@ -1610,8 +1623,26 @@ def write_from_idea(
     enough that the button looks unresponsive, and the second click used to
     spend another model call and leave the user two near-identical drafts to
     reconcile — the idea is a one-shot prompt, not a "generate again" button.
+
+    The idea row is locked for the duration, because a check-then-write over an
+    unlocked row is only idempotent against clicks far enough apart to have
+    committed. Two requests in flight at once both read ``used_content_id`` as
+    ``NULL``, both generate, and both write — which is exactly the outcome the
+    guard exists to prevent, on exactly the double-click that motivates it. The
+    lock costs nothing extra: this handler already holds its transaction open
+    across the model call, so the second request waits where it would otherwise
+    have spent that time generating a duplicate, and then takes the replay path.
     """
-    idea = db.get(ContentIdea, idea_id)
+    idea = db.scalar(
+        select(ContentIdea)
+        .where(ContentIdea.id == idea_id)
+        .with_for_update()
+        # A locked read that answers from the identity map has locked the row
+        # and then ignored what it says. Sessions are request-scoped here so the
+        # map is empty in practice, but the whole value of the lock is reading
+        # the value the other request just committed.
+        .execution_options(populate_existing=True)
+    )
     if idea is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Idea not found")
     project = owned_project(idea.project_id, db, user)
