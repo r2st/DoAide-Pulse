@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from app.models.content import Content, ContentStatus, ContentType
@@ -98,10 +100,43 @@ def connected(db, user):
     db.commit()
 
 
+@pytest.fixture
+def nominated(monkeypatch):
+    """Capture the ``canonical`` the router hands to ``optimal_slots``.
+
+    The two tests below are about one decision — which platform, if any, the
+    router nominates as the original — and that decision *is* this argument.
+    Reading it off the response instead means reading it out of the order the
+    slots came back in, and that order is whatever the cadence table produced
+    for the day the suite happens to run: devto's Tuesday/Thursday 13:00 against
+    Mastodon's daily 14:00 put Mastodon first from Friday to Monday, and from
+    13:00 UTC on a Thursday. The assertion was true for about half the week.
+
+    The real function still runs, so the endpoint's response is a real one.
+    """
+    from app.services import scheduling
+
+    seen: list[Platform | None] = []
+    original = scheduling.optimal_slots
+
+    def _spy(*args, **kwargs):
+        seen.append(kwargs.get("canonical"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr("app.routers.content.scheduling.optimal_slots", _spy)
+    return seen
+
+
 def test_a_project_that_did_not_ask_for_a_canonical_gets_none(
-    client, auth, db, project, piece, connected
+    client, auth, db, project, piece, connected, nominated
 ):
-    """``auto_canonical`` off means no platform is nominated as the original."""
+    """``auto_canonical`` off means no platform is nominated as the original.
+
+    Even though the project names one. The flag is the switch; the named
+    platform is only which one it would be — inventing an original for a project
+    that asked for none puts a ``rel=canonical`` on somebody's blog pointing at
+    a copy.
+    """
     project.auto_canonical = False
     project.canonical_platform = Platform.DEVTO
     db.commit()
@@ -112,12 +147,18 @@ def test_a_project_that_did_not_ask_for_a_canonical_gets_none(
     )
 
     assert resp.status_code == 200
-    assert [slot["platform"] for slot in resp.json()] == ["devto", "mastodon"]
+    assert nominated == [None]
+    assert {slot["platform"] for slot in resp.json()} == {"devto", "mastodon"}
 
 
 def test_the_nominated_platform_is_honoured_when_the_project_asked(
-    client, auth, db, project, piece, connected
+    client, auth, db, project, piece, connected, nominated
 ):
+    """And with the flag on, the named platform is the one that goes through.
+
+    This previously asserted only that two slots came back, which is equally
+    true of the case above — the two tests could not tell each other apart.
+    """
     project.auto_canonical = True
     project.canonical_platform = Platform.DEVTO
     db.commit()
@@ -128,7 +169,17 @@ def test_the_nominated_platform_is_honoured_when_the_project_asked(
     )
 
     assert resp.status_code == 200
-    assert len(resp.json()) == 2
+    assert nominated == [Platform.DEVTO]
+
+    # And the nomination has its documented effect: the copy is pushed behind
+    # the original by the syndication delay, so it cannot go out before there is
+    # a URL for it to be canonical to.
+    from app.config import settings
+
+    slots = {s["platform"]: datetime.fromisoformat(s["when"]) for s in resp.json()}
+    assert slots["mastodon"] - slots["devto"] >= timedelta(
+        seconds=settings.syndication_delay_seconds
+    )
 
 
 # --------------------------------------------------------------------------- #
