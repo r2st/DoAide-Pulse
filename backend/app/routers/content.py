@@ -510,26 +510,42 @@ def internal_link_suggestions(
 ) -> list[InternalLinkSuggestionOut]:
     """Other published posts in this project worth linking to, by keyword overlap."""
     content = _owned_content(content_id, db, user)
-    candidates = db.scalars(
-        select(Content).where(
+    # Six columns, not entities. The candidate set is every published piece in
+    # the project — unbounded by anything except how long the project has been
+    # running — and ``suggest_internal_links`` reads an id, a title, a slug, two
+    # keyword fields and a URL off each one. A ``Content`` row to reach them is
+    # the whole article body and four JSON columns, and, through
+    # ``lazy="selectin"``, a second SELECT over every publication of every one
+    # of those pieces. A project with a hundred published posts on three
+    # platforms answered "what could I link to?" with a hundred article bodies
+    # and three hundred publication rows.
+    candidates = db.execute(
+        select(
+            Content.id,
+            Content.title,
+            Content.slug,
+            Content.keywords,
+            Content.focus_keyword,
+            Content.canonical_url,
+        ).where(
             Content.project_id == content.project_id,
             Content.id != content.id,
             Content.status == ContentStatus.PUBLISHED,
         )
-    )
+    ).all()
     suggestions = seo.suggest_internal_links(
         keywords=content.keywords,
         focus_keyword=content.focus_keyword,
         candidates=[
             {
-                "content_id": c.id,
-                "title": c.title,
-                "slug": c.slug,
-                "keywords": c.keywords,
-                "focus_keyword": c.focus_keyword,
-                "canonical_url": c.canonical_url,
+                "content_id": row.id,
+                "title": row.title,
+                "slug": row.slug,
+                "keywords": row.keywords,
+                "focus_keyword": row.focus_keyword,
+                "canonical_url": row.canonical_url,
             }
-            for c in candidates
+            for row in candidates
         ],
         limit=limit,
     )

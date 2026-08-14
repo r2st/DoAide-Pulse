@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 
 from app.models.content import Content, ContentStatus, ContentType, unique_content_slug
+from app.models.publication import Platform, Publication, PublicationStatus
 
 
 def _soon() -> str:
@@ -596,6 +597,85 @@ def test_internal_links_empty_when_no_keyword_overlap(client, auth, project, db)
     resp = client.get(f"/api/v1/content/{target.id}/internal-links", headers=auth)
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def test_internal_links_does_not_read_the_candidates_bodies(
+    client, auth, project, db, sql_log
+):
+    """The candidate set is every published piece in the project.
+
+    It is bounded by nothing but how long the project has been running, and the
+    ranking reads six narrow fields off each row. Selecting the ``Content``
+    entity answered "what could I link to?" with every article's full text, four
+    JSON columns each, and — through ``lazy="selectin"`` — a second SELECT over
+    every publication of every one of them.
+
+    Two assertions. The bodies must not come back at all, and the query count
+    must not grow with the number of candidates: the ``selectin`` load is one
+    extra statement however many rows it covers, so a count taken at a single
+    size would have passed with it in place.
+    """
+    target = Content(
+        project_id=project.id,
+        content_type=ContentType.HOW_TO,
+        status=ContentStatus.DRAFT,
+        title="New piece",
+        slug="new-piece",
+        keywords=["celery"],
+    )
+    db.add(target)
+    db.flush()
+    for i in range(6):
+        candidate = Content(
+            project_id=project.id,
+            content_type=ContentType.TUTORIAL,
+            status=ContentStatus.PUBLISHED,
+            title=f"Celery {i}",
+            slug=f"celery-{i}",
+            body_markdown="word " * 2000,
+            keywords=["celery"],
+        )
+        db.add(candidate)
+        db.flush()
+        # Syndicated, so the ``selectin`` load has something to fetch.
+        db.add(
+            Publication(
+                content_id=candidate.id,
+                platform=Platform.DEVTO,
+                status=PublicationStatus.PUBLISHED,
+                external_url=f"https://dev.to/x/celery-{i}",
+            )
+        )
+    db.commit()
+
+    sql_log.clear()
+    resp = client.get(f"/api/v1/content/{target.id}/internal-links", headers=auth)
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()) == 5  # the default limit, out of six matches
+    with_six = [s for s in sql_log if s.startswith("SELECT")]
+    bodies = [s for s in with_six if "content.body_markdown" in s]
+    # The target's own row is fetched as an entity by ``_owned_content``; the
+    # candidates must not be.
+    assert len(bodies) == 1, "\n".join(s[:300] for s in bodies)
+
+    for i in range(6, 18):
+        db.add(
+            Content(
+                project_id=project.id,
+                content_type=ContentType.TUTORIAL,
+                status=ContentStatus.PUBLISHED,
+                title=f"Celery {i}",
+                slug=f"celery-{i}",
+                body_markdown="word " * 2000,
+                keywords=["celery"],
+            )
+        )
+    db.commit()
+
+    sql_log.clear()
+    resp = client.get(f"/api/v1/content/{target.id}/internal-links", headers=auth)
+    assert resp.status_code == 200, resp.text
+    assert len([s for s in sql_log if s.startswith("SELECT")]) == len(with_six)
 
 
 # --------------------------------------------------------------------------- #
