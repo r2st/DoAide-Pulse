@@ -533,5 +533,9 @@ def test_the_dashboard_does_not_carry_an_article_body(client, auth, db, user, sq
     assert [row["title"] for row in body["recent_content"]] == ["A long one"]
     assert body["recent_content"][0]["project_name"] == "Wide"
 
-    bodies = [s for s in sql_log if "content.body_markdown" in s]
+    # The bare column name, not ``content.body_markdown``: a ``joinedload``
+    # renders the eagerly-loaded entity under an alias, so the `upcoming` block's
+    # whole-``Content``-for-one-title read spelled it ``content_1.body_markdown``
+    # and a qualified match walked straight past the wider of the two bugs.
+    bodies = [s for s in sql_log if "body_markdown" in s]
     assert bodies == [], "\n".join(s[:300] for s in bodies)
