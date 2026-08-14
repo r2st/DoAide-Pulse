@@ -129,13 +129,20 @@ def _underperformance(group: list[Curve], curve: Curve) -> Alert | None:
     )
 
 
-def _stalled(curve: Curve) -> Alert | None:
+def _stalled(curve: Curve, facts: velocity.StallFacts | None) -> Alert | None:
+    """Judge one post against its own best week, from *facts* rather than its tail.
+
+    *facts* is ``None`` for a publication that has never been polled, which has
+    no growth to have stopped.
+    """
     window = float(settings.velocity_stall_window_hours)
-    if not curve.is_stalled(window_hours=window, ratio=settings.velocity_stall_ratio):
+    if facts is None or not facts.stalled(
+        curve.age_hours, window_hours=window, ratio=settings.velocity_stall_ratio
+    ):
         return None
 
-    peak = curve.peak_gain(window) or 0
-    recent = curve.recent_gain(window) or 0
+    peak = facts.peak_gain or 0
+    recent = facts.recent_gain or 0
     days = int(window / 24) or 1
     return Alert(
         kind="stalled",
@@ -171,33 +178,46 @@ def build(
     change its distribution, which is the point at which :func:`_stalled`'s
     remedy, a re-share, becomes the one on offer.
 
-    **This reads every series whole, and that is not an oversight.**
-    :func:`velocity.summary` had the same shape and was bounded by bracketing
-    the stall verdict (see :func:`velocity._stall_verdict`), so the obvious next
-    move is to do the same here. It does not work, and the reason is worth
-    writing down rather than rediscovering:
+    **Nothing here reads a whole series.** Both halves of the pass are bounded,
+    and they are bounded differently because they ask different questions:
 
-    ``summary`` only ever asks *whether* a post is stalled, and the bracket
-    answers that from two aggregates. :func:`_stalled` has to write a sentence
-    quoting the post's ``peak_gain`` — the best gain across any pair of readings
-    within one window of each other — and no aggregate produces that. Every post
-    that yields a stalled alert therefore needs its tail anyway, and those are
-    exactly the old posts with the long histories. The bracket only rules out
-    posts under two stall windows old, or ones whose last week is a large share
-    of their whole life; both are short series to begin with.
+    * :func:`_underperformance` only ever asks about the first
+      ``velocity_benchmark_window_hours`` of a post's life — its own, and every
+      platform-mate's, since the median is drawn from the same window. So the
+      curves are built with ``within_hours``, and a post polled every six hours
+      for a year contributes four readings instead of some 1,400.
+    * :func:`_stalled` asks about the end, which no prefix can see. It gets its
+      two numbers from :func:`velocity.stall_facts` instead: three queries for
+      the whole account, one row per publication each.
 
-    Measured on an account shipping weekly for a year — 52 posts, 38,600
-    snapshots — a prefix-plus-bracket pass read *more* rows than this does, by
-    about 1%: it pays for a prefix of every publication and still fetches every
-    tail. The prefix is pure overhead the moment the tails are needed.
+    This used to read every snapshot on the account, and the docstring here
+    argued that it had to. The argument was that ``summary``'s trick —
+    bracketing the stall verdict between two aggregates, see
+    :func:`velocity._stall_verdict` — cannot work for an alert, because an alert
+    quotes the post's ``peak_gain`` in its message and a bracket only settles
+    the yes/no. That part was true and still is. What was wrong was the sentence
+    after it: that computing ``peak_gain`` in SQL needs a ``RANGE`` frame over an
+    interval, "which Postgres has and SQLite does not". SQLite has taken a
+    numeric ``RANGE`` offset since 3.28, and ordering by seconds rather than by
+    a timestamp gives both dialects the same frame — which is all
+    :func:`velocity.peak_gains` needed to exist. The rows this reads no longer
+    grow with the age of the account.
 
-    A real bound would have to compute ``peak_gain`` in SQL. It is expressible
-    as a window function over the monotonic clamp, but the frame it needs is
-    ``RANGE`` over an interval, which Postgres has and SQLite does not — and the
-    suite runs on SQLite. That is the trade to weigh if this ever needs solving,
-    not another pass over the same aggregates.
+    The answers did not change, and :mod:`tests.test_alerts_bounded` asserts that
+    against the unbounded computation rather than against a fixture.
     """
-    all_curves = velocity.curves(db, user_id, now=now)
+    all_curves = velocity.curves(
+        db,
+        user_id,
+        now=now,
+        # Everything `_underperformance` and `benchmark_excluding` ask of a
+        # curve is a question about this window. `_stalled` asks about the tail
+        # and is answered from `stall_facts` below, not from these.
+        within_hours=float(settings.velocity_benchmark_window_hours),
+    )
+    facts = velocity.stall_facts(
+        db, all_curves, window_hours=float(settings.velocity_stall_window_hours)
+    )
     grouped: dict[Platform, list[Curve]] = {}
     for curve in all_curves:
         grouped.setdefault(curve.platform, []).append(curve)
@@ -205,7 +225,9 @@ def build(
     out: list[Alert] = []
     for group in grouped.values():
         for curve in group:
-            alert = _underperformance(group, curve) or _stalled(curve)
+            alert = _underperformance(group, curve) or _stalled(
+                curve, facts.get(curve.publication_id)
+            )
             if alert is not None:
                 out.append(alert)
 

@@ -30,9 +30,13 @@ import statistics
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import Float, Select, and_, case, func, or_, select
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.compiler import SQLCompiler
+from sqlalchemy.sql.functions import FunctionElement
 
 from app.config import settings
 from app.models.content import Content
@@ -713,6 +717,251 @@ def _series_facts(
     }
 
 
+class _EpochSeconds(FunctionElement):
+    """A timestamp as a float count of seconds, for a ``RANGE`` window frame.
+
+    :func:`peak_gains` needs a frame that means "every reading within N hours of
+    this one", and a ``RANGE`` frame takes its offset in the units of the
+    ``ORDER BY`` expression. PostgreSQL will accept an ``INTERVAL`` offset over a
+    timestamp column directly; SQLite will not — its ``RANGE`` offsets must be
+    numeric. Ordering both dialects by *seconds* rather than by the timestamp is
+    what lets one statement serve both, so the offset is a plain number
+    everywhere and nothing about the frame is dialect-specific.
+
+    The two spellings below are the whole of the difference. Anything else
+    raises rather than guessing: a dialect that silently compiled this wrong
+    would not fail, it would return a smaller peak and quietly call healthy posts
+    stalled.
+    """
+
+    type = Float()
+    name = "epoch_seconds"
+    inherit_cache = True
+
+
+@compiles(_EpochSeconds)
+def _epoch_seconds_unsupported(
+    element: _EpochSeconds, compiler: SQLCompiler, **kw: Any
+) -> str:
+    raise NotImplementedError(
+        f"velocity.peak_gains has no seconds-since-epoch spelling for the "
+        f"{compiler.dialect.name!r} dialect."
+    )
+
+
+@compiles(_EpochSeconds, "sqlite")
+def _epoch_seconds_sqlite(
+    element: _EpochSeconds, compiler: SQLCompiler, **kw: Any
+) -> str:
+    # `julianday` returns days as a float, including the fraction.
+    return f"(julianday({compiler.process(element.clauses, **kw)}) * 86400.0)"
+
+
+@compiles(_EpochSeconds, "postgresql")
+def _epoch_seconds_postgresql(
+    element: _EpochSeconds, compiler: SQLCompiler, **kw: Any
+) -> str:
+    return f"EXTRACT(EPOCH FROM {compiler.process(element.clauses, **kw)})"
+
+
+#: Slack on the ``RANGE`` offset in :func:`peak_gains`, in seconds.
+#:
+#: The frame boundary is a float comparison, and on SQLite the ordering value is
+#: a Julian day number scaled up by 86,400 — around 2.1e11, which leaves a
+#: double roughly a tenth of a millisecond of resolution. Two readings exactly
+#: one window apart can therefore land a hair *outside* a frame that Python's
+#: ``points[j].hours - points[i].hours <= window_hours`` puts inside, and
+#: readings a whole number of days apart are the normal case, not the edge one.
+#:
+#: A millisecond is comfortably more than that error and comfortably less than
+#: anything a six-hourly poller can distinguish. It errs towards including a
+#: boundary pair, which is the direction that agrees with the ``<=`` in
+#: :meth:`Curve.observed_peak_gain`.
+_RANGE_SLACK_SECONDS = 0.001
+
+
+def peak_gains(
+    db: Session, known: list[Curve], *, window_hours: float
+) -> dict[int, int]:
+    """:meth:`Curve.peak_gain` for each publication, computed by the database.
+
+    One query for the whole account, one row per publication, whatever the
+    length of the series behind it. This is the read that
+    :mod:`app.services.alerts` used to do by pulling every snapshot into memory,
+    and the one thing :func:`summary`'s bracket could not replace: a bracket
+    settles *whether* a post is stalled, and an alert has to quote how big its
+    best window actually was.
+
+    The translation rests on the monotonic clamp in :func:`_build_curve`. Because
+    the series is a running maximum, the clamped value at any reading is
+    ``MAX(views)`` over everything captured at or before it — an ordinary window
+    aggregate. And because that clamped series never decreases, the smallest
+    value inside a frame is the value at its earliest reading, so
+
+        ``peak_gain = MAX over readings j of (clamped[j] - MIN(clamped) over the
+        frame ending at j)``
+
+    which is the same maximum over pairs of readings no more than *window_hours*
+    apart that :meth:`Curve.observed_peak_gain` walks in Python.
+
+    Two details keep the two implementations answering identically:
+
+    * **Readings captured before publication sit at the moment of publication.**
+      :func:`_build_curve` clamps a negative offset to hour zero, which collapses
+      several such readings onto the same instant; the ``CASE`` below does the
+      same thing to the ordering value, so a backdated publish time cannot put a
+      pair inside one implementation's window and outside the other's.
+    * **The running clamp is ordered by more than the frame is.** ``RANGE``
+      allows a single ``ORDER BY`` term, but the running ``MAX`` may use as many
+      as it likes — so it breaks ties on ``captured_at`` and then on the row id,
+      the same order the rows reach :func:`_build_curve` in. The ``MIN`` over the
+      frame needs no tie-break: a ``RANGE`` frame takes all of a value's peers
+      together, so its answer does not depend on their order.
+
+    Publications with a single reading are absent from the result rather than
+    present as zero — one reading is not enough to observe a gain at all, which
+    is the ``None`` :meth:`Curve.peak_gain` returns. Callers read that from
+    :attr:`_SeriesFacts.snapshots`; this returns only the arithmetic.
+    """
+    ids = [curve.publication_id for curve in known]
+    if not ids:
+        return {}
+    return {
+        publication_id: int(gain or 0)
+        for publication_id, gain in db.execute(
+            _peak_gain_statement(ids, window_hours=window_hours)
+        ).all()
+    }
+
+
+def _peak_gain_statement(
+    publication_ids: list[int], *, window_hours: float
+) -> Select[tuple[int, int | None]]:
+    """The statement :func:`peak_gains` runs, built without running it.
+
+    Separated so the two dialect spellings can be *compiled* and asserted on —
+    the suite has a SQLite database and no PostgreSQL one, and compiling is
+    enough to pin the only thing that differs between them.
+    """
+    # `Publication.published_at` is never NULL for a curve — `curves` filters
+    # those out — but a NULL would compare false here and leave `captured_at`
+    # alone, which is the same thing `_build_curve` does with an unclamped
+    # offset.
+    positioned = case(
+        (
+            ContentMetric.captured_at < Publication.published_at,
+            Publication.published_at,
+        ),
+        else_=ContentMetric.captured_at,
+    )
+    base = (
+        select(
+            ContentMetric.publication_id.label("publication_id"),
+            ContentMetric.id.label("metric_id"),
+            ContentMetric.captured_at.label("captured_at"),
+            _EpochSeconds(positioned).label("at"),
+            # NULL means "the platform said nothing this time", and the clamp
+            # carries the previous total forward. A running MAX over zeroes does
+            # exactly that, and starts the series at zero the way the Python
+            # accumulator does.
+            func.coalesce(ContentMetric.views, 0).label("views"),
+        )
+        .join(Publication, Publication.id == ContentMetric.publication_id)
+        .where(ContentMetric.publication_id.in_(publication_ids))
+        .cte("velocity_readings")
+    )
+    clamped = select(
+        base.c.publication_id,
+        base.c.at,
+        func.max(base.c.views)
+        .over(
+            partition_by=base.c.publication_id,
+            order_by=(base.c.at, base.c.captured_at, base.c.metric_id),
+            rows=(None, 0),
+        )
+        .label("views"),
+    ).cte("velocity_clamped")
+    spans = select(
+        clamped.c.publication_id,
+        (
+            clamped.c.views
+            - func.min(clamped.c.views).over(
+                partition_by=clamped.c.publication_id,
+                order_by=clamped.c.at,
+                range_=(-(window_hours * 3600 + _RANGE_SLACK_SECONDS), 0),
+            )
+        ).label("gain"),
+    ).cte("velocity_spans")
+
+    return select(spans.c.publication_id, func.max(spans.c.gain)).group_by(
+        spans.c.publication_id
+    )
+
+
+@dataclass(frozen=True)
+class StallFacts:
+    """What :func:`app.services.alerts` needs to judge one post, from aggregates.
+
+    :class:`Lifetime` carries the stall *verdict* because that is all
+    :meth:`Curve.as_dict` renders. An alert has to justify itself — its message
+    quotes the recent window and the best one — so it needs the two numbers the
+    verdict was reached from, and this is them.
+
+    Both are ``None`` in exactly the cases :meth:`Curve.peak_gain` and
+    :meth:`Curve.recent_gain` answer ``None``: fewer than two readings, or no
+    reading old enough to be a baseline. ``None`` is unknown, not zero, here as
+    everywhere else in this module.
+    """
+
+    peak_gain: int | None
+    recent_gain: int | None
+
+    def stalled(self, age_hours: float, *, window_hours: float, ratio: float) -> bool:
+        """:meth:`Curve.is_stalled`, from these numbers instead of the series.
+
+        Branch for branch the same, and asserted against it in
+        :mod:`tests.test_alerts_bounded`.
+        """
+        if age_hours < window_hours * 2:
+            return False
+        if not self.peak_gain or self.recent_gain is None:
+            return False
+        return self.recent_gain <= self.peak_gain * ratio
+
+
+def stall_facts(
+    db: Session, known: list[Curve], *, window_hours: float
+) -> dict[int, StallFacts]:
+    """The stall numbers for every publication in *known*, without its series.
+
+    Three queries for the whole account regardless of how many snapshots sit
+    behind it: the two in :func:`_series_facts`, which supply the recent window,
+    and the one in :func:`peak_gains`, which supplies the best one.
+
+    A publication with no snapshots at all is absent from the result, the same
+    way it is absent from :func:`_series_facts` — the caller reads a missing key
+    as "nothing observed", which is what an empty ``points`` list means too.
+    """
+    facts = _series_facts(db, known, window_hours=window_hours)
+    if not facts:
+        return {}
+    peaks = peak_gains(db, known, window_hours=window_hours)
+    return {
+        publication_id: StallFacts(
+            # Under two readings there is no gain to observe, so both are
+            # unknown — `peak_gain` and `recent_gain` both say so by returning
+            # None on a series that short.
+            peak_gain=peaks.get(publication_id, 0) if found.snapshots >= 2 else None,
+            recent_gain=(
+                max(0, found.total_views - found.baseline_views)
+                if found.snapshots >= 2 and found.baseline_views is not None
+                else None
+            ),
+        )
+        for publication_id, found in facts.items()
+    }
+
+
 def _stall_verdict(
     prefix: Curve, facts: _SeriesFacts | None, *, window_hours: float, ratio: float
 ) -> bool | None:
@@ -903,9 +1152,12 @@ __all__ = [
     "Curve",
     "Lifetime",
     "Point",
+    "StallFacts",
     "benchmark_excluding",
     "benchmarks",
     "curves",
+    "peak_gains",
+    "stall_facts",
     "summary",
     "window_count_key",
 ]
