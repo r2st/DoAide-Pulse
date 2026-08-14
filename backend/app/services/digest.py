@@ -314,7 +314,12 @@ def build(
             Publication.published_at >= since,
             Publication.published_at < until,
         )
-        .order_by(Publication.published_at.desc())
+        # Tiebroken by id. Syndicating one piece to three platforms in a single
+        # call stamps all three with the same ``published_at``, and the loop
+        # below takes the *first* non-null ``external_url`` as the piece's link
+        # — so without a total order, which platform the email links to was
+        # whichever one the database happened to return first.
+        .order_by(Publication.published_at.desc(), Publication.id.desc())
     ).all()
 
     # One read of each published piece's title and body, keyed by id, for the
@@ -361,8 +366,14 @@ def build(
             for content_id, gained in per_content.items()
             if gained > 0 and content_id in titles
         ),
-        key=lambda row: row["views"],
-        reverse=True,
+        # Ties broken by content id rather than left to the iteration order of
+        # the ``set`` union ``_gains`` builds ``per_content`` from, for the same
+        # reason the SQL above is tiebroken: this is a ``[:5]`` over a list
+        # where equal view counts are common — two pieces on nine views each —
+        # and the digest is built twice, once for the preview and once for the
+        # mail. ``reverse=True`` would also flip the tiebreaker, so the sort is
+        # ascending on a negated key instead.
+        key=lambda row: (-row["views"], row["content_id"]),
     )[:5]
 
     review_count = db.scalar(
@@ -399,7 +410,7 @@ def build(
                 Publication.status == PublicationStatus.FAILED,
                 Publication.updated_at >= since,
             )
-            .order_by(Publication.updated_at.desc())
+            .order_by(Publication.updated_at.desc(), Publication.id.desc())
             .limit(5)
         )
     ]
@@ -425,7 +436,13 @@ def build(
                 Publication.status == PublicationStatus.SCHEDULED,
                 Publication.scheduled_for.is_not(None),
             )
-            .order_by(Publication.scheduled_for)
+            # Tiebroken by id. A Monday-morning batch arms every platform for
+            # the same instant, so "the next five" over ties was five arbitrary
+            # rows out of however many were queued — and ``digest_preview`` and
+            # the email that follows it are two separate builds of this query.
+            # The promise that the two cannot drift is only kept if the order
+            # is a function of the rows rather than of the query plan.
+            .order_by(Publication.scheduled_for, Publication.id)
             .limit(5)
         )
     ]

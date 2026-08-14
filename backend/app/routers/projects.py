@@ -159,7 +159,11 @@ def list_projects(
             # `autopilot_blocked_reason` reads `project.triggers`; without this
             # the list page emits one extra query per project to find out.
             .options(selectinload(Project.triggers))
-            .order_by(Project.name)
+            # Tiebroken by id: only ``(user_id, slug)`` is unique, and the slug
+            # is uniquified precisely *because* two projects on one account can
+            # share a name. Paging alphabetically over a name that repeats is
+            # paging over a sort the database may break either way.
+            .order_by(Project.name, Project.id)
             .offset(offset)
             .limit(limit)
         )

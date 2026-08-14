@@ -233,10 +233,14 @@ def list_content(
     # above only filters — it does not populate the relationship — so
     # without this the default lazy load fires one SELECT per row, and this
     # endpoint returns up to 500 of them.
+    # ``Content.id`` is the tiebreaker, and it is not decoration: ``created_at``
+    # is not unique, and an ``OFFSET`` walk over a sort the database is free to
+    # break either way is a walk that can hand back one row twice and never
+    # show another. See ``tests/test_paging_is_a_total_order.py``.
     query = (
         base
         .options(joinedload(Content.project), defer(Content.body_markdown))
-        .order_by(Content.created_at.desc())
+        .order_by(Content.created_at.desc(), Content.id.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -275,7 +279,10 @@ def review_queue(
     response.headers["X-Total-Count"] = str(total or 0)
     rows = db.scalars(
         base.options(joinedload(Content.project), defer(Content.body_markdown))
-        .order_by(Content.created_at.desc())
+        # Tiebroken by id, for the reason ``list_content`` gives: the review
+        # queue is the listing most likely to hold a batch the autopilot wrote
+        # in one transaction, and on Postgres those share a ``created_at``.
+        .order_by(Content.created_at.desc(), Content.id.desc())
         .offset(offset)
         .limit(limit)
     )
@@ -312,8 +319,16 @@ def publication_queue(
     )
     response.headers["X-Total-Count"] = str(total or 0)
     rows = db.scalars(
+        # The worst of the four for ties, which is why it is spelled out here:
+        # every ``pending``, ``publishing`` and ``failed`` row has a null
+        # ``scheduled_for`` and so sorts equal to every other one, and arming a
+        # piece for three platforms at one time gives three more rows with the
+        # same instant on them. Without ``Publication.id`` the queue's paging
+        # was over a sort where most of the rows were interchangeable.
         base.order_by(
-            Publication.scheduled_for.is_(None).desc(), Publication.scheduled_for
+            Publication.scheduled_for.is_(None).desc(),
+            Publication.scheduled_for,
+            Publication.id,
         )
         .offset(offset)
         .limit(limit)
