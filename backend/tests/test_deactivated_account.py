@@ -361,6 +361,98 @@ def test_a_live_accounts_preview_link_still_resolves(db, project):
 
 
 # --------------------------------------------------------------------------- #
+# The public RSS feed                                                          #
+# --------------------------------------------------------------------------- #
+
+
+def _published(db, project) -> Content:
+    row = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        title="Already out there",
+        slug=f"already-out-there-{project.id}",
+        body_markdown="word " * 60,
+        excerpt="It shipped.",
+        status=ContentStatus.PUBLISHED,
+        published_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def test_a_dormant_accounts_feed_stops_being_served(client, db, dormant_project):
+    """The last thing Herald kept doing for a switched-off account.
+
+    Unlike a preview link there is no expiry to run out: the feed would have
+    gone on rendering the account's project metadata to every subscriber on a
+    timer, indefinitely, from Herald's own domain.
+    """
+    _published(db, dormant_project)
+
+    resp = client.get(f"/api/v1/projects/{dormant_project.id}/feed.xml")
+
+    assert resp.status_code == 404
+
+
+def test_the_dead_feed_is_the_same_404_as_an_unknown_project(client, db, dormant_project):
+    """Indistinguishable from a project id that was never there — the endpoint
+    already refuses to let a walkable integer confirm what exists."""
+    _published(db, dormant_project)
+
+    dormant = client.get(f"/api/v1/projects/{dormant_project.id}/feed.xml")
+    missing = client.get("/api/v1/projects/987654321/feed.xml")
+
+    assert dormant.status_code == missing.status_code == 404
+    assert dormant.json() == missing.json()
+
+
+def test_no_published_title_survives_in_the_dead_feed(client, db, dormant_project):
+    content = _published(db, dormant_project)
+
+    resp = client.get(f"/api/v1/projects/{dormant_project.id}/feed.xml")
+
+    assert content.title not in resp.text
+    assert dormant_project.name not in resp.text
+
+
+def test_a_feed_stops_the_moment_the_account_is_switched_off(client, db, user, project):
+    """The realistic order: subscribers on the feed, then the account goes."""
+    _published(db, project)
+    assert client.get(f"/api/v1/projects/{project.id}/feed.xml").status_code == 200
+
+    user.is_active = False
+    db.commit()
+
+    assert client.get(f"/api/v1/projects/{project.id}/feed.xml").status_code == 404
+
+
+def test_pausing_a_project_leaves_its_feed_alone(client, db, project):
+    """``Project.is_active`` is a generation switch, not a retraction.
+
+    Pausing stops Herald writing *new* pieces. Dropping the feed of what was
+    already published would strand every subscriber over a setting that says
+    nothing about them — and the owner is still signed in and able to ask.
+    """
+    _published(db, project)
+    project.is_active = False
+    db.commit()
+
+    assert client.get(f"/api/v1/projects/{project.id}/feed.xml").status_code == 200
+
+
+def test_a_live_accounts_feed_is_unaffected(client, db, project):
+    """The guard must not catch the ordinary case."""
+    content = _published(db, project)
+
+    resp = client.get(f"/api/v1/projects/{project.id}/feed.xml")
+
+    assert resp.status_code == 200
+    assert content.title in resp.text
+
+
+# --------------------------------------------------------------------------- #
 # What deactivation does *not* do                                              #
 # --------------------------------------------------------------------------- #
 

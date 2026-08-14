@@ -408,7 +408,28 @@ def project_feed(
     published anywhere. "Only published content is included" has to cover the
     channel, not just the items.
     """
-    project = db.get(Project, project_id)
+    # Joined to the owner rather than fetched by id, because a deactivated
+    # account must not still be publishing. Deactivation is how an account is
+    # switched off in Herald: its tokens stop working, its sweeps skip it, its
+    # inbound webhooks write nothing, its approved content is not released, its
+    # preview links stop resolving. This feed was the last thing Herald kept
+    # doing on a switched-off account's behalf — on Herald's own domain, from
+    # Herald's own render of the project's metadata, to every subscriber on a
+    # timer, with no expiry to run out the way a preview link's does.
+    #
+    # A join and not a walk through ``project.user``: the owner decides whether
+    # there is a feed at all, and the walk would be a second query on the one
+    # endpoint whose query count is pinned (``test_n_plus_one``).
+    #
+    # ``Project.is_active`` is deliberately *not* checked. Pausing a project
+    # stops Herald writing new pieces for it; it is not a request to retract
+    # the feed of what it already published, and the owner is still signed in
+    # and able to say so directly.
+    project = db.scalar(
+        select(Project)
+        .join(User, User.id == Project.user_id)
+        .where(Project.id == project_id, User.is_active.is_(True))
+    )
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
