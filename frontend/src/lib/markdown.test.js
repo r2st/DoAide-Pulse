@@ -114,4 +114,31 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("onmouseover=\"alert");
     expect(html).toContain("&quot;");
   });
+
+  // -- The inline-code placeholder's alphabet ------------------------------ //
+  //
+  // Inline code is lifted out behind a NUL-delimited placeholder before the
+  // emphasis and link passes run. That only works while a NUL cannot appear in
+  // the document, and escaping `& < > "` does not remove one. A body reaches
+  // this renderer from the API as well as from the textarea, and `body_markdown`
+  // is a JSON string — JSON spells NUL `\u0000`. So the document could speak the
+  // placeholder's language, and the public preview page is where that showed.
+
+  it("does not fabricate a code span from a NUL the author supplied", () => {
+    const html = renderMarkdown(`a \u00000\u0000 b`);
+    expect(html).not.toContain("<code>");
+    expect(html).not.toContain("undefined");
+    expect(html).toBe("<p>a 0 b</p>");
+  });
+
+  it("cannot use a NUL to copy a real code span somewhere else", () => {
+    const html = renderMarkdown(`\u00000\u0000 and \`real\``);
+    expect(html.match(/<code>/g)).toHaveLength(1);
+    expect(html).toContain("<code>real</code>");
+  });
+
+  it("keeps the newlines and tabs it is built on", () => {
+    const html = renderMarkdown("```\n\tindented\n```");
+    expect(html).toContain("\tindented");
+  });
 });
