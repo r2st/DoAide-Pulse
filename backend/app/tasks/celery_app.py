@@ -3,8 +3,28 @@ from __future__ import annotations
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import setup_logging
 
 from app.config import settings
+from app.logging_config import configure_logging
+
+
+@setup_logging.connect
+def _configure_logging(**_kwargs: object) -> None:
+    """Give the worker and beat the same log output as the API.
+
+    Connecting to ``setup_logging`` at all is what stops Celery configuring
+    logging itself: the signal is documented as an override, and a receiver on
+    it disables the whole of Celery's setup, root-logger hijack included. So
+    the worker's own lines and the application's now go through one handler with
+    one format, and ``LOG_LEVEL`` means the same thing in all three units.
+
+    Without it, ``--loglevel=info`` in the systemd units set the *root* logger
+    to INFO as a side effect, which is why worker logs looked complete while the
+    API's were not — the same code, logging to the same names, kept or dropped
+    depending on which process it happened to run in.
+    """
+    configure_logging()
 
 celery_app = Celery(
     "herald",

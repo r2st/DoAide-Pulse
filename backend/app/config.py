@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # the frontend", which is true in production (Caddy proxies both) and false
     # in local dev, where the API is on :8000 and this wants setting.
     public_api_url: str = ""
+    # Root log level, as a name (``DEBUG``/``INFO``/``WARNING``/…). INFO is the
+    # level the codebase writes its operational lines at — what a sweep
+    # dispatched, what was published where, which fallback fired — so anything
+    # above it turns the box silent on everything except failures. See
+    # ``app.logging_config``.
+    log_level: str = "INFO"
 
     # ---- Security / JWT ----
     jwt_secret: str = "change-me-to-a-long-random-string"

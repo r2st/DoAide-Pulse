@@ -14,6 +14,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.config import settings
+from app.logging_config import configure_logging, request_id_var
 from app.ratelimit import limiter, rate_limit_exceeded_handler
 from app.routers import (
     analytics,
@@ -88,6 +89,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    # Before anything else builds a logger or logs a line. Uvicorn configures
+    # its own loggers and leaves the root alone, so without this every
+    # ``logger.info`` in the tree goes to Python's WARNING-floored last resort
+    # and is dropped — see ``app.logging_config``.
+    configure_logging()
     docs = docs_enabled()
     app = FastAPI(
         title=settings.app_name,
@@ -140,7 +146,17 @@ def create_app() -> FastAPI:
         ) -> Response:
             request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
             request.state.request_id = request_id
-            response = await call_next(request)
+            # Also on the logging context, so the id reaches log lines written
+            # by code that has no idea a request exists — which is most of the
+            # code that logs anything worth correlating. Reset on the way out:
+            # BaseHTTPMiddleware runs each request in its own task and the
+            # context is copied per task, but the token makes that a property of
+            # this middleware rather than of Starlette's internals.
+            token = request_id_var.set(request_id)
+            try:
+                response = await call_next(request)
+            finally:
+                request_id_var.reset(token)
             response.headers["X-Request-ID"] = request_id
             return response
 
