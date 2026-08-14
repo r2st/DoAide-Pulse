@@ -10,10 +10,12 @@
  * router or a library, and is worth reading.
  *
  * The wrapper records rather than throws. Throwing from inside `console.error`
- * would be louder, but React calls it *during a render*, where the throw can be
- * caught by an error boundary — Herald has one — and vanish exactly in the case
- * the guard was installed for. Recording always survives; `release()` hands the
- * messages back and the caller fails the test with them.
+ * would be louder, but React calls it *during a render*, where a throw can be
+ * swallowed by whatever is between it and the runner — an error boundary above
+ * the component under test, most of all — and vanish in exactly the case the
+ * guard was installed for. Herald has no boundary today and the guard should
+ * not be the reason it cannot get one. Recording always survives; `release()`
+ * hands the messages back and the caller fails the test with them.
  *
  * A test that means to provoke console output spies on it
  * (`vi.spyOn(console, "error")`); the spy replaces this wrapper for the
