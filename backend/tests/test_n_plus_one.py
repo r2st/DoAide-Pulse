@@ -381,3 +381,100 @@ def test_a_bulk_batch_keeps_the_order_it_was_given(client, auth, db, user):
     )
 
     assert resp.json()["succeeded"] == shuffled
+
+
+# --------------------------------------------------------------------------- #
+# The projects list                                                            #
+# --------------------------------------------------------------------------- #
+#
+# This endpoint carries two hand-written N+1 fixes — the `selectinload` of
+# `Project.triggers` that `autopilot_blocked_reason` reads, and `_batch_counts`
+# for the two content counts — each with a comment explaining the round trip it
+# removes. Nothing failed if either were dropped. A fix whose only record is a
+# comment is one refactor away from being reverted by accident, which is the
+# same argument the rest of this file makes for the content list.
+
+
+def _seed_projects(db, user_id: int, count: int, *, offset: int = 0) -> None:
+    """Projects with a trigger and a piece of content each.
+
+    Both are needed for the counts to be non-trivial, and a trigger per project
+    is what makes a missing eager load show up as one SELECT per row.
+    """
+    from app.models.trigger import Trigger, TriggerKind
+
+    for i in range(offset, offset + count):
+        project = Project(
+            user_id=user_id,
+            name=f"Project {i:03d}",
+            slug=f"project-{i}",
+            description="A thing that ships.",
+            tone=Tone.TECHNICAL,
+            repo_url=f"https://github.com/acme/project-{i}",
+            autopilot_mode=AutopilotMode.AUTO,
+        )
+        db.add(project)
+        db.flush()
+        db.add(
+            Trigger(
+                project_id=project.id,
+                kind=TriggerKind.SCHEDULE,
+                config={"cron": "0 9 * * 1"},
+            )
+        )
+        db.add(
+            Content(
+                project_id=project.id,
+                content_type=ContentType.ANNOUNCEMENT,
+                status=ContentStatus.PUBLISHED,
+                title=f"Post {i}",
+                slug=f"post-{i}",
+                body_markdown="Body.",
+            )
+        )
+    db.commit()
+
+
+def test_the_projects_list_loads_triggers_in_one_query(client, auth, db, user, sql_log):
+    """``autopilot_blocked_reason`` reads ``project.triggers`` for every row."""
+    _seed_projects(db, user.id, 12)
+    sql_log.clear()
+
+    resp = client.get("/api/v1/projects", headers=auth)
+    assert resp.status_code == 200, resp.text
+    assert len(resp.json()) == 12
+
+    # One `IN` load for the whole page, not one SELECT per project.
+    assert len(_selects(sql_log, "triggers")) == 1
+
+
+def test_the_projects_list_counts_content_in_one_query(client, auth, db, user, sql_log):
+    """The two counts per row come from ``_batch_counts``, not per project."""
+    _seed_projects(db, user.id, 12)
+    sql_log.clear()
+
+    resp = client.get("/api/v1/projects", headers=auth)
+    assert resp.status_code == 200
+    assert [p["content_count"] for p in resp.json()] == [1] * 12
+    assert [p["published_count"] for p in resp.json()] == [1] * 12
+
+    assert len(_selects(sql_log, "content")) == 1
+
+
+def test_the_projects_list_query_count_is_flat(client, auth, db, user, sql_log):
+    """The property that survives unrelated queries being added.
+
+    Four times the rows must not mean four times the round trips.
+    """
+    _seed_projects(db, user.id, 3)
+    sql_log.clear()
+    client.get("/api/v1/projects", headers=auth)
+    small = len(sql_log)
+
+    _seed_projects(db, user.id, 9, offset=3)
+    sql_log.clear()
+    resp = client.get("/api/v1/projects", headers=auth)
+    assert len(resp.json()) == 12
+    large = len(sql_log)
+
+    assert small == large, f"{small} queries for 3 projects, {large} for 12"
