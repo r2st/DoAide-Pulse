@@ -49,6 +49,7 @@ from app.schemas.content import (
     SlotOut,
     SocialCardsOut,
 )
+from app.schemas.errors import AUTHENTICATED, OWNED, ErrorOut, errors
 from app.services import (
     content_generator,
     content_pipeline,
@@ -172,7 +173,12 @@ def _commit_content(db: Session, content: Content) -> None:
 # --------------------------------------------------------------------------- #
 
 
-@router.get("", response_model=list[ContentOut])
+@router.get(
+    "",
+    response_model=list[ContentOut],
+    summary="Your content, filtered and paged",
+    responses=errors(*AUTHENTICATED),
+)
 def list_content(
     response: Response,
     project_id: int | None = None,
@@ -189,6 +195,12 @@ def list_content(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[ContentOut]:
+    """Every piece this account owns, newest first.
+
+    The total before paging is in ``X-Total-Count``. Unlike the narrowed
+    listings elsewhere, an unknown ``project_id`` filters to nothing rather
+    than 404ing — this is a filter over your own rows, not a lookup.
+    """
     # Base filter used by both the count and the data query.
     base = (
         select(Content)
@@ -229,7 +241,12 @@ def list_content(
 # "queue" not being an int.
 
 
-@router.get("/queue/review", response_model=list[ContentOut])
+@router.get(
+    "/queue/review",
+    response_model=list[ContentOut],
+    summary="Drafts waiting on a human",
+    responses=errors(*AUTHENTICATED),
+)
 def review_queue(
     response: Response,
     limit: int = Query(default=50, ge=1, le=200),
@@ -256,7 +273,12 @@ def review_queue(
     return [_to_out(c) for c in rows]
 
 
-@router.get("/queue/publications", response_model=list[PublicationOut])
+@router.get(
+    "/queue/publications",
+    response_model=list[PublicationOut],
+    summary="Publications in flight",
+    responses=errors(*AUTHENTICATED),
+)
 def publication_queue(
     response: Response,
     limit: int = Query(default=50, ge=1, le=200),
@@ -290,7 +312,15 @@ def publication_queue(
     return [PublicationOut.model_validate(p) for p in rows]
 
 
-@router.post("/bulk/approve", response_model=BulkResultOut)
+@router.post(
+    "/bulk/approve",
+    response_model=BulkResultOut,
+    summary="Approve many pieces at once",
+    # No 404 and no 409: a piece that is missing, someone else's, or already
+    # published comes back in `failed` with a reason. The batch answers 200
+    # whatever the mix, because a partial success is the normal outcome.
+    responses=errors(*AUTHENTICATED),
+)
 def bulk_approve_content(
     payload: BulkContentIn,
     db: Session = Depends(get_db),
@@ -340,7 +370,12 @@ def bulk_approve_content(
     return BulkResultOut(succeeded=succeeded, failed=failed)
 
 
-@router.post("/bulk/reject", response_model=BulkResultOut)
+@router.post(
+    "/bulk/reject",
+    response_model=BulkResultOut,
+    summary="Archive many pieces at once",
+    responses=errors(*AUTHENTICATED),
+)
 def bulk_reject_content(
     payload: BulkContentIn,
     db: Session = Depends(get_db),
@@ -370,7 +405,14 @@ def bulk_reject_content(
     return BulkResultOut(succeeded=succeeded, failed=failed)
 
 
-@router.post("/bulk/publish", response_model=BulkResultOut)
+@router.post(
+    "/bulk/publish",
+    response_model=BulkResultOut,
+    summary="Queue many pieces for the same platforms",
+    # As on `/bulk/approve`: everything the single-item publish would raise as
+    # a 400, 409 or 422 is recorded against the one piece it applies to.
+    responses=errors(*AUTHENTICATED),
+)
 def bulk_publish_content(
     payload: BulkPublishIn,
     db: Session = Depends(get_db),
@@ -406,7 +448,24 @@ def bulk_publish_content(
     return BulkResultOut(succeeded=succeeded, failed=failed)
 
 
-@router.get("/preview/{token}", response_model=PublicPreviewOut)
+@router.get(
+    "/preview/{token}",
+    response_model=PublicPreviewOut,
+    summary="A shared draft, no token required",
+    responses={
+        **errors(status.HTTP_429_TOO_MANY_REQUESTS),
+        # Not the catalogue's 404: there is no owner in this exchange to
+        # distinguish from, and the interesting cases are the ones the shared
+        # wording does not cover.
+        status.HTTP_404_NOT_FOUND: {
+            "model": ErrorOut,
+            "description": (
+                "No such link — or one that has been revoked or has expired. "
+                "The three are one answer on purpose."
+            ),
+        },
+    },
+)
 @limiter.limit(settings.rate_limit_public_read)
 def get_public_preview(
     token: str,
@@ -436,7 +495,12 @@ def get_public_preview(
     )
 
 
-@router.get("/{content_id}/internal-links", response_model=list[InternalLinkSuggestionOut])
+@router.get(
+    "/{content_id}/internal-links",
+    response_model=list[InternalLinkSuggestionOut],
+    summary="Other posts worth linking to",
+    responses=errors(*OWNED),
+)
 def internal_link_suggestions(
     content_id: int,
     limit: int = Query(default=5, ge=1, le=20),
@@ -471,7 +535,12 @@ def internal_link_suggestions(
     return [InternalLinkSuggestionOut(**s) for s in suggestions]
 
 
-@router.get("/{content_id}/social", response_model=SocialCardsOut)
+@router.get(
+    "/{content_id}/social",
+    response_model=SocialCardsOut,
+    summary="How this piece unfurls in a feed",
+    responses=errors(*OWNED),
+)
 def social_cards_preview(
     content_id: int,
     db: Session = Depends(get_db),
@@ -509,7 +578,12 @@ def social_cards_preview(
     return SocialCardsOut(**result)
 
 
-@router.post("/{content_id}/repurpose", response_model=RepurposeOut)
+@router.post(
+    "/{content_id}/repurpose",
+    response_model=RepurposeOut,
+    summary="Draft social copy from a piece",
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def repurpose_content(
     content_id: int,
@@ -537,7 +611,17 @@ def repurpose_content(
     )
 
 
-@router.post("/{content_id}/edit", response_model=InlineEditOut)
+@router.post(
+    "/{content_id}/edit",
+    response_model=InlineEditOut,
+    summary="Rewrite one passage of a draft",
+    responses=errors(
+        *OWNED,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+    ),
+)
 @limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def edit_passage(
     content_id: int,
@@ -597,7 +681,12 @@ def edit_passage(
     )
 
 
-@router.post("/{content_id}/headlines", response_model=HeadlineVariantsOut)
+@router.post(
+    "/{content_id}/headlines",
+    response_model=HeadlineVariantsOut,
+    summary="Draft alternative headlines",
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def generate_headline_variants(
     content_id: int,
@@ -622,7 +711,12 @@ def generate_headline_variants(
     )
 
 
-@router.post("/{content_id}/headlines/apply", response_model=ContentOut)
+@router.post(
+    "/{content_id}/headlines/apply",
+    response_model=ContentOut,
+    summary="Swap in a headline",
+    responses=errors(*OWNED),
+)
 def apply_content_headline(
     content_id: int,
     payload: HeadlineApplyIn,
@@ -642,7 +736,12 @@ def apply_content_headline(
     return _to_out(content)
 
 
-@router.get("/{content_id}/headlines/performance", response_model=list[HeadlineWindowOut])
+@router.get(
+    "/{content_id}/headlines/performance",
+    response_model=list[HeadlineWindowOut],
+    summary="What each headline earned while live",
+    responses=errors(*OWNED),
+)
 def content_headline_performance(
     content_id: int,
     db: Session = Depends(get_db),
@@ -667,7 +766,12 @@ def _winner_out(verdict: headlines.Winner, *, applied: bool = False) -> Headline
     )
 
 
-@router.get("/{content_id}/headlines/winner", response_model=HeadlineWinnerOut)
+@router.get(
+    "/{content_id}/headlines/winner",
+    response_model=HeadlineWinnerOut,
+    summary="Which headline is winning",
+    responses=errors(*OWNED),
+)
 def content_headline_winner(
     content_id: int,
     db: Session = Depends(get_db),
@@ -682,7 +786,12 @@ def content_headline_winner(
     return _winner_out(headlines.pick_winner(headlines.performance(content, db)))
 
 
-@router.post("/{content_id}/headlines/auto-select", response_model=HeadlineWinnerOut)
+@router.post(
+    "/{content_id}/headlines/auto-select",
+    response_model=HeadlineWinnerOut,
+    summary="Adopt the winning headline",
+    responses=errors(*OWNED),
+)
 def apply_headline_winner(
     content_id: int,
     db: Session = Depends(get_db),
@@ -703,16 +812,31 @@ def apply_headline_winner(
     return _winner_out(verdict, applied=applied)
 
 
-@router.get("/{content_id}", response_model=ContentDetail)
+@router.get(
+    "/{content_id}",
+    response_model=ContentDetail,
+    summary="One piece in full",
+    responses=errors(*OWNED),
+)
 def get_content(
     content_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
+    """One piece with its body, its SEO issues and its format problems.
+
+    The listing endpoints return the summary shape; this is the detail shape,
+    and the difference is that it carries ``body_markdown``.
+    """
     return _to_detail(_owned_content(content_id, db, user))
 
 
-@router.get("/{content_id}/links", response_model=LinkCheckOut)
+@router.get(
+    "/{content_id}/links",
+    response_model=LinkCheckOut,
+    summary="Check every link in the body",
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_link_check, key_func=account_key)
 def check_links(
     content_id: int,
@@ -775,7 +899,12 @@ def _to_preview_link(link, *, url: str | None = None) -> PreviewLinkOut:
     )
 
 
-@router.get("/{content_id}/preview-links", response_model=list[PreviewLinkOut])
+@router.get(
+    "/{content_id}/preview-links",
+    response_model=list[PreviewLinkOut],
+    summary="Share links issued for this draft",
+    responses=errors(*OWNED),
+)
 def list_preview_links(
     content_id: int,
     db: Session = Depends(get_db),
@@ -792,6 +921,8 @@ def list_preview_links(
     "/{content_id}/preview-links",
     response_model=PreviewLinkOut,
     status_code=status.HTTP_201_CREATED,
+    summary="Issue a share link",
+    responses=errors(*OWNED),
 )
 def create_preview_link(
     content_id: int,
@@ -799,18 +930,34 @@ def create_preview_link(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> PreviewLinkOut:
+    """Mint a link that shows this draft to somebody without an account.
+
+    The only response that ever carries ``url``: what is stored is a hash, so
+    a link that is not written down here cannot be recovered — only revoked
+    and reissued.
+    """
     content = _owned_content(content_id, db, user)
     link, raw_token = preview_links.issue(db, content, ttl_hours=payload.ttl_hours)
     return _to_preview_link(link, url=preview_links.preview_url(raw_token))
 
 
-@router.delete("/{content_id}/preview-links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{content_id}/preview-links/{link_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke a share link",
+    responses=errors(*OWNED),
+)
 def revoke_preview_link(
     content_id: int,
     link_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
+    """Stop a link working. The row stays, so the view count survives it.
+
+    404 covers both halves of the path: no such piece, and no such link on
+    this piece.
+    """
     content = _owned_content(content_id, db, user)
     link = next(
         (row for row in preview_links.list_for_content(db, content.id) if row.id == link_id),
@@ -827,7 +974,13 @@ def revoke_preview_link(
 # --------------------------------------------------------------------------- #
 
 
-@router.post("/generate", response_model=ContentDetail, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/generate",
+    response_model=ContentDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Draft a piece with the AI engine",
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
+)
 @limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def generate_content(
     payload: GenerateRequest,
@@ -896,7 +1049,13 @@ def _manual_source(user: User, campaign_key: str | None) -> dict:
     return source
 
 
-@router.post("", response_model=ContentDetail, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ContentDetail,
+    status_code=status.HTTP_201_CREATED,
+    summary="Write a piece by hand",
+    responses=errors(*OWNED),
+)
 def create_content(
     payload: ContentCreate,
     db: Session = Depends(get_db),
@@ -926,13 +1085,32 @@ def create_content(
     return _to_detail(content)
 
 
-@router.patch("/{content_id}", response_model=ContentDetail)
+@router.patch(
+    "/{content_id}",
+    response_model=ContentDetail,
+    summary="Edit a piece",
+    responses=errors(
+        *OWNED,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ),
+)
 def update_content(
     content_id: int,
     payload: ContentUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
+    """Patch a piece. Omitted fields are left alone.
+
+    A published piece is nearly frozen: the only edit it accepts is archiving,
+    because everything else here would disagree with what is live on the
+    platforms. Both refusals are 409s that say which one you hit.
+
+    Setting ``status`` to ``approved`` releases the piece exactly as the
+    Approve button does, so a scripted caller does not need to know about a
+    second endpoint.
+    """
     content = _owned_content(content_id, db, user)
     data = payload.model_dump(exclude_unset=True)
     reject_nulls(Content, data)
@@ -979,12 +1157,23 @@ def update_content(
     return _to_detail(content)
 
 
-@router.delete("/{content_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{content_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a piece",
+    responses=errors(*OWNED),
+)
 def delete_content(
     content_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
+    """Remove a piece and its publication rows from Herald.
+
+    Not a retraction: anything already live on a platform stays live, because
+    Herald has no way to unpublish it there. Archive instead if the point is
+    to stop seeing it.
+    """
     content = _owned_content(content_id, db, user)
     db.delete(content)
     db.commit()
@@ -995,7 +1184,12 @@ def delete_content(
 # --------------------------------------------------------------------------- #
 
 
-@router.post("/{content_id}/approve", response_model=ContentOut)
+@router.post(
+    "/{content_id}/approve",
+    response_model=ContentOut,
+    summary="Approve a piece",
+    responses=errors(*OWNED, status.HTTP_409_CONFLICT),
+)
 def approve_content(
     content_id: int,
     db: Session = Depends(get_db),
@@ -1115,7 +1309,20 @@ def _queue_publish(
     return publications
 
 
-@router.post("/{content_id}/publish", response_model=list[PublicationOut])
+@router.post(
+    "/{content_id}/publish",
+    response_model=list[PublicationOut],
+    summary="Queue a piece for publishing",
+    responses=errors(
+        *OWNED,
+        # 400 for a platform Herald cannot publish to — no finished adapter, or
+        # no credentials on this account. 409 for dead links in the body, which
+        # `allow_broken_links` overrides. 422 for a scheduled time in the past.
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ),
+)
 def publish_content(
     content_id: int,
     payload: PublishRequestIn,
@@ -1155,7 +1362,14 @@ def _canonical_platform(content: Content) -> Platform | None:
     return project.canonical_platform
 
 
-@router.get("/{content_id}/schedule/suggestions", response_model=list[SlotOut])
+@router.get(
+    "/{content_id}/schedule/suggestions",
+    response_model=list[SlotOut],
+    summary="When Herald would publish this",
+    # 400 when there is nothing to suggest slots *for*: no `platforms`, nothing
+    # queued, and no connected platform to fall back on.
+    responses=errors(*OWNED, status.HTTP_400_BAD_REQUEST),
+)
 def schedule_suggestions(
     content_id: int,
     platforms: list[Platform] | None = Query(default=None),
@@ -1186,7 +1400,17 @@ def schedule_suggestions(
     return [SlotOut(**slot.as_dict()) for slot in slots]
 
 
-@router.post("/{content_id}/schedule", response_model=list[PublicationOut])
+@router.post(
+    "/{content_id}/schedule",
+    response_model=list[PublicationOut],
+    summary="Put a piece on the calendar",
+    responses=errors(
+        *OWNED,
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_409_CONFLICT,
+        status.HTTP_422_UNPROCESSABLE_ENTITY,
+    ),
+)
 def schedule_content(
     content_id: int,
     payload: ScheduleContentIn,
@@ -1261,7 +1485,12 @@ def schedule_content(
     return [PublicationOut.model_validate(p) for p in publications]
 
 
-@router.delete("/{content_id}/schedule", response_model=list[PublicationOut])
+@router.delete(
+    "/{content_id}/schedule",
+    response_model=list[PublicationOut],
+    summary="Take a piece off the calendar",
+    responses=errors(*OWNED),
+)
 def unschedule_content(
     content_id: int,
     db: Session = Depends(get_db),
@@ -1309,7 +1538,14 @@ def _dispatch(publication_ids: list[int]) -> None:
         publish_tasks.publish_one(publication_id)
 
 
-@router.post("/{content_id}/retry/{publication_id}", response_model=PublicationOut)
+@router.post(
+    "/{content_id}/retry/{publication_id}",
+    response_model=PublicationOut,
+    summary="Retry a failed publication",
+    # 404 covers both halves of the path; 409 is a publication that is not in a
+    # state a retry means anything for.
+    responses=errors(*OWNED, status.HTTP_409_CONFLICT),
+)
 def retry_publication(
     content_id: int,
     publication_id: int,
@@ -1340,7 +1576,25 @@ def retry_publication(
     return PublicationOut.model_validate(publication)
 
 
-@router.post("/ideas/{idea_id}/write", response_model=ContentDetail, status_code=201)
+@router.post(
+    "/ideas/{idea_id}/write",
+    response_model=ContentDetail,
+    status_code=201,
+    summary="Turn an idea into a draft",
+    responses={
+        # The idempotent replay. Documented because a client that treats 201 as
+        # "a row was created" would otherwise be wrong exactly when it matters.
+        status.HTTP_200_OK: {
+            "model": ContentDetail,
+            "description": (
+                "This idea had already been written. The draft it produced is "
+                "returned as it stands; nothing was generated and nothing was "
+                "created."
+            ),
+        },
+        **errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
+    },
+)
 @limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def write_from_idea(
     idea_id: int,
