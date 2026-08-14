@@ -134,6 +134,13 @@ _DEFAULT_CADENCE_TEMPLATE = Cadence(
 
 
 def cadence_for(platform: Platform | str) -> Cadence:
+    """The posting rhythm guidance for *platform*.
+
+    Never raises for a platform the table has not been updated for: a new
+    entry in the enum returns a conservative default instead, because the
+    alternative is that adding a platform breaks the calendar for every
+    existing one.
+    """
     key = platform if isinstance(platform, Platform) else Platform(platform)
     cadence = CADENCES.get(key)
     if cadence is not None:

@@ -31,6 +31,8 @@ _TOKEN_BYTES = 32
 
 
 def hash_token(raw_token: str) -> str:
+    """The stored form of a preview token. SHA-256, hex — see
+    :func:`app.services.password_reset.hash_token` on why it is unsalted."""
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 
@@ -57,6 +59,7 @@ def issue(
 
 
 def preview_url(raw_token: str) -> str:
+    """The shareable address for a token. The only place the plaintext appears."""
     return f"{settings.frontend_url.rstrip('/')}/preview/{raw_token}"
 
 
@@ -97,6 +100,12 @@ def list_for_content(
 
 
 def revoke(db: Session, link: PreviewLink) -> None:
+    """Stop a link working, keeping the row.
+
+    Idempotent, and the first revocation's timestamp is the one that stands —
+    re-revoking must not rewrite when it happened. The row survives because
+    the view count is the only record the author has that the link was used.
+    """
     if link.revoked_at is None:
         link.revoked_at = utcnow()
         db.commit()

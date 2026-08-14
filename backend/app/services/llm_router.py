@@ -128,9 +128,15 @@ class Provider:
 
     @property
     def url(self) -> str:
+        """The chat-completions endpoint. Every provider here speaks that shape."""
         return f"{self.base_url.rstrip('/')}/chat/completions"
 
     def headers(self) -> dict[str, str]:
+        """Auth and content-type, plus whatever this provider needs on top.
+
+        A method rather than a property because it builds a fresh dict: a shared
+        one handed to a caller that mutated it would change every later request.
+        """
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -251,6 +257,12 @@ class CircuitBreaker:
             state.failures = 0
 
     def record_success(self, name: str) -> None:
+        """Clear *name*'s failure count and any open circuit.
+
+        Discards the state rather than decrementing it. A provider that answered
+        is working now, and a half-remembered run of failures from an outage an
+        hour ago would trip the breaker early on the next unrelated blip.
+        """
         with self._lock:
             self._state.pop(name, None)
 

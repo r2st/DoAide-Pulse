@@ -197,6 +197,13 @@ class HeadlineWindow:
         return round(self.views / (hours / 24), 2)
 
     def as_dict(self, *, now: datetime | None = None) -> dict:
+        """The wire shape of one headline's window.
+
+        *now* is threaded through rather than read here so every window in a
+        response is measured against the same instant — a list where each row
+        used its own "now" is not internally comparable, which is the one thing
+        these rows exist to be.
+        """
         return {
             "title": self.title,
             "started_at": self.started_at,

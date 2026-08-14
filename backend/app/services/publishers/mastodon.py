@@ -108,6 +108,12 @@ class MastodonAdapter(Adapter):
         return headers
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Return the account, always fully qualified with its instance.
+
+        ``acct`` comes back bare for a local account, and on a platform whose
+        whole point is that there are several instances, ``@alice`` is not an
+        answer to "which account is this".
+        """
         instance_url, token = self._require(credentials, "instance_url", "access_token")
         resp = self._request(
             "GET",
@@ -148,6 +154,7 @@ class MastodonAdapter(Adapter):
         return choice or "public"
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Post a status. Refuses ``as_draft`` — Mastodon has no draft state."""
         instance_url, token = self._require(credentials, "instance_url", "access_token")
         if request.as_draft:
             raise UnsupportedOption(
@@ -183,6 +190,7 @@ class MastodonAdapter(Adapter):
     def fetch_metrics(
         self, external_id: str, credentials: dict[str, Any]
     ) -> MetricsSnapshot:
+        """Reblog, favourite and reply counts. Mastodon publishes no view count."""
         instance_url, token = self._require(credentials, "instance_url", "access_token")
         resp = self._request(
             "GET",

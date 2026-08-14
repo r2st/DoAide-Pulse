@@ -64,6 +64,7 @@ class Alert:
     expected: float | None = None
 
     def as_dict(self) -> dict:
+        """The wire shape of one alert. ``platform`` goes out as its value."""
         return {
             "kind": self.kind,
             "severity": self.severity,

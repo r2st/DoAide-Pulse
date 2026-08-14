@@ -136,6 +136,12 @@ class Webhook(Base, TimestampMixin):
     )
 
     def subscribed_to(self, event: WebhookEvent | str) -> bool:
+        """Whether this endpoint asked for *event*.
+
+        Takes either spelling because the dispatcher holds an enum and the stored
+        column holds strings. An endpoint with no events subscribed to matches
+        nothing — the empty list is "send me nothing", not "send me everything".
+        """
         value = event.value if isinstance(event, WebhookEvent) else event
         return value in (self.events or [])
 

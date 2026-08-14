@@ -69,6 +69,7 @@ class TemplateMode(str, Enum):
 
     @property
     def label(self) -> str:
+        """What the mode does, in the words the editor shows next to the toggle."""
         return {
             "literal": "Use it as written",
             "prompt": "Brief the model with it",
@@ -140,6 +141,13 @@ class ContentTemplate(Base, TimestampMixin):
 
     @property
     def variable_names(self) -> list[str]:
+        """Declared variable names, in declaration order.
+
+        Skips malformed entries rather than raising: ``variables`` is a JSON
+        column, so a row written by an older version — or by hand — can hold
+        anything, and the rendering path already reports an unresolved
+        placeholder as a missing variable.
+        """
         return [
             str(entry["name"])
             for entry in (self.variables or [])

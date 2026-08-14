@@ -52,6 +52,7 @@ class DevToAdapter(Adapter):
         }
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Return the ``@username`` the API key belongs to."""
         (api_key,) = self._require(credentials, "api_key")
         resp = self._request("GET", f"{_API}/users/me", headers=self._headers(api_key))
         data = self._json(resp)
@@ -61,6 +62,11 @@ class DevToAdapter(Adapter):
         return f"@{username}"
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Create an article, published or as a draft.
+
+        The canonical URL goes up with it: Dev.to is a syndication destination
+        here, never the original — see ``owns_domain`` on the base class.
+        """
         (api_key,) = self._require(credentials, "api_key")
 
         article: dict[str, Any] = {
@@ -102,6 +108,11 @@ class DevToAdapter(Adapter):
     def fetch_metrics(
         self, external_id: str, credentials: dict[str, Any]
     ) -> MetricsSnapshot:
+        """Views, reactions and comments for one article.
+
+        ``page_views_count`` is lifetime and cumulative, which is the property
+        :mod:`app.services.velocity` depends on to read the series as a curve.
+        """
         (api_key,) = self._require(credentials, "api_key")
         resp = self._request(
             "GET", f"{_API}/articles/{external_id}", headers=self._headers(api_key)

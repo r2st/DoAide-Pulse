@@ -98,6 +98,7 @@ class RepoActivity:
 
     @property
     def has_news(self) -> bool:
+        """Whether anything happened worth writing about since the watermark."""
         return bool(self.new_commits or self.new_release)
 
 

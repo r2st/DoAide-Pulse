@@ -89,6 +89,13 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    """Build the FastAPI application: logging, middleware, routers, lifespan.
+
+    A factory rather than a module-level singleton so tests can build an app
+    against settings they have just changed. Everything with an ordering
+    constraint is done here in the order it has to happen — see the comments
+    below, starting with logging, which must come before the first logger.
+    """
     # Before anything else builds a logger or logs a line. Uvicorn configures
     # its own loggers and leaves the root alone, so without this every
     # ``logger.info`` in the tree goes to Python's WARNING-floored last resort

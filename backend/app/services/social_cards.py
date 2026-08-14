@@ -303,6 +303,11 @@ class Preview:
     card_type: str
 
     def as_dict(self) -> dict:
+        """The wire shape of one network's preview, clip flags included.
+
+        The flags matter as much as the text: a title that fits and a title that
+        was cut to fit look identical once rendered.
+        """
         return {
             "network": self.network,
             "label": self.label,
@@ -365,6 +370,7 @@ class CardIssue:
     message: str
 
     def as_dict(self) -> dict:
+        """The wire shape of one card issue — the same three keys as an SEO issue."""
         return {"level": self.level, "field": self.field, "message": self.message}
 
 

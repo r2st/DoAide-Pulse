@@ -174,6 +174,12 @@ class HashnodeAdapter(Adapter):
         return data
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Return the account, and list its publications with their ids.
+
+        Listing them is the point: ``publication_id`` is a required credential
+        field, and the only other way to find it is reading it out of a dashboard
+        URL.
+        """
         (token,) = self._require(credentials, "api_key")
         me = (self._gql(token, _ME, {}) or {}).get("me") or {}
         if not me.get("username"):
@@ -192,6 +198,11 @@ class HashnodeAdapter(Adapter):
         return f"@{me['username']} — publications: {listed}"
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Publish a post, or create a draft — two different GraphQL mutations.
+
+        A draft has no public address, so the link returned for one is the
+        editor: the alternative is handing back a URL that 404s.
+        """
         token, publication_id = self._require(credentials, "api_key", "publication_id")
         payload = self.build_payload(request, publication_id)
 

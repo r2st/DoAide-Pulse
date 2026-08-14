@@ -112,6 +112,7 @@ class Slot:
     rationale: str
 
     def as_dict(self) -> dict:
+        """The wire shape of one suggested slot, reason included."""
         return {
             "platform": self.platform.value,
             "when": self.when,

@@ -117,6 +117,7 @@ class Rendered:
 
     @property
     def is_complete(self) -> bool:
+        """Every placeholder resolved. Says nothing about :attr:`over_limit`."""
         return not self.missing
 
 

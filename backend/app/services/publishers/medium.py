@@ -85,11 +85,19 @@ class MediumAdapter(Adapter):
         return data
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Return the ``@username`` behind the integration token, or its full name."""
         (token,) = self._require(credentials, "integration_token")
         data = self._me(token)
         return f"@{data.get('username')}" if data.get("username") else data["name"]
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Create a story, under a publication when one is configured.
+
+        The title has to be written into the body as an H1 as well: Medium does
+        not render the payload's title, so a post without it opens with no
+        headline. The cover goes above that H1 because Medium has no cover
+        parameter and takes the first image in the body as the preview.
+        """
         (token,) = self._require(credentials, "integration_token")
         publication_id = str(credentials.get("publication_id") or "").strip()
 

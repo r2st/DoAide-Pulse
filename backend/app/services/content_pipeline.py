@@ -82,6 +82,7 @@ class RoutedContent:
 
     @property
     def auto_published(self) -> bool:
+        """Whether the pipeline published this itself, with nobody in the loop."""
         return self.status == AUTO_PUBLISHED
 
     def summary(self) -> dict[str, Any]:

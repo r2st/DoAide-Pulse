@@ -74,6 +74,11 @@ class TriggerKind(str, Enum):
 
     @property
     def label(self) -> str:
+        """Display name with the capitalisation each vendor actually uses.
+
+        Spelled out rather than title-cased: ``GitHub`` and ``RSS`` both come out
+        wrong from ``.title()``.
+        """
         return {"github": "GitHub", "rss": "RSS", "webhook": "Webhook", "schedule": "Schedule"}[
             self.value
         ]

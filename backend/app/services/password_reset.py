@@ -36,6 +36,12 @@ _TOKEN_BYTES = 32
 
 
 def hash_token(raw_token: str) -> str:
+    """The stored form of a reset token. SHA-256, hex.
+
+    No salt and no work factor, deliberately: the token is 32 random bytes, so
+    there is no low-entropy guess for either to defend against, and the lookup
+    has to be a single indexed comparison rather than a scan.
+    """
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 

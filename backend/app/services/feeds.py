@@ -73,6 +73,12 @@ class FeedEntry:
 
     @property
     def is_empty(self) -> bool:
+        """Nothing to write about: no title and no summary.
+
+        A link alone does not count. An entry like this is skipped rather than
+        handed to the generator, which would otherwise be briefed with a URL and
+        invent the rest.
+        """
         return not (self.title.strip() or self.summary.strip())
 
 

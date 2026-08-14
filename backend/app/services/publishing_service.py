@@ -368,6 +368,12 @@ class _Campaign:
         )
 
     def url(self, url: str | None) -> str | None:
+        """Tag one URL, or hand it back untouched when tagging is off.
+
+        Passes ``None`` through, because the fields this tags — the canonical
+        and the project link — are optional, and a caller should not have to
+        guard every one of them.
+        """
         return utm.tag(url, **self.params) if self.active else url
 
     def markdown(self, body: str) -> str:

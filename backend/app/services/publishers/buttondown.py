@@ -134,6 +134,12 @@ class ButtondownAdapter(Adapter):
         return self.build_body(request).lstrip().startswith(_FRONT_MATTER_START)
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Return the newsletter this key is attached to.
+
+        A key with no newsletter behind it is refused here rather than at the
+        first send. The response is read as both a paginated envelope and a bare
+        list, because older keys return the latter.
+        """
         (api_key,) = self._require(credentials, "api_key")
         resp = self._request(
             "GET", f"{_API}/newsletters", headers=self._headers(api_key)
@@ -152,6 +158,11 @@ class ButtondownAdapter(Adapter):
         return first.get("name") or first.get("username") or "Buttondown"
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Create the email, sending it or leaving it as a draft.
+
+        Sending to the list is the irreversible half, so it happens only behind
+        an explicit confirmation header — see :meth:`needs_confirmation`.
+        """
         (api_key,) = self._require(credentials, "api_key")
 
         resp = self._request(

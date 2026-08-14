@@ -325,6 +325,13 @@ def _backfill(project: Project, spec: ProjectSpec) -> list[str]:
 
 
 def seed(email: str | None = None, password: str | None = None) -> None:
+    """Create or top up the seed account, and print the password once.
+
+    Idempotent: an existing account keeps its password and its projects, and
+    only fields still empty are filled in. Arguments beat ``SEED_EMAIL`` /
+    ``SEED_PASSWORD``, which beat a generated password — which is the default
+    precisely so a hardcoded one cannot reach production through this path.
+    """
     email = email or os.environ.get("SEED_EMAIL", DEFAULT_EMAIL)
     # A generated password beats a hardcoded one that ends up in a public repo
     # and then in production. It is printed once, here.

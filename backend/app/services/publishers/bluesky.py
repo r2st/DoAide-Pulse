@@ -127,6 +127,11 @@ class BlueskyAdapter(Adapter):
         return data
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Open a session and return the handle it resolved to.
+
+        Falls back to the handle the user typed when the session omits one, so a
+        working credential never verifies to an empty display name.
+        """
         session = self._session(credentials)
         return f"@{session.get('handle') or credentials.get('handle')}"
 
@@ -141,6 +146,7 @@ class BlueskyAdapter(Adapter):
         )
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Create a post record. Refuses ``as_draft`` — Bluesky has no draft state."""
         if request.as_draft:
             raise UnsupportedOption(
                 "Bluesky has no draft state — a post is either live or it does "
@@ -200,6 +206,12 @@ class BlueskyAdapter(Adapter):
     def fetch_metrics(
         self, external_id: str, credentials: dict[str, Any]
     ) -> MetricsSnapshot:
+        """Reply, repost and like counts. Bluesky publishes no view count.
+
+        A post that has been deleted, or that this account can no longer see,
+        comes back as an empty snapshot rather than an error: there is nothing to
+        retry, and the poller should move on quietly.
+        """
         session = self._session(credentials)
         resp = self._request(
             "GET",

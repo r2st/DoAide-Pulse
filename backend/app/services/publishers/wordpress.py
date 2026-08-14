@@ -68,6 +68,7 @@ class WordPressAdapter(Adapter):
     )
 
     def api_root(self, site_url: str) -> str:
+        """The REST base for a site. Trailing slashes on *site_url* are tolerated."""
         return f"{site_url.rstrip('/')}/wp-json/wp/v2"
 
     def auth_header(self, username: str, application_password: str) -> str:
@@ -124,6 +125,12 @@ class WordPressAdapter(Adapter):
         }
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Return the display name behind the application password.
+
+        A 200 with no user in it means the REST API is not reachable at
+        ``/wp-json`` — commonly a security plugin — which is worth saying plainly
+        rather than reporting as a bad password.
+        """
         site_url, username, password = self._require(
             credentials, "site_url", "username", "application_password"
         )
@@ -141,6 +148,7 @@ class WordPressAdapter(Adapter):
         return data.get("name") or data.get("slug") or username
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Create a post. Tags are sent as names; see :meth:`build_payload`."""
         site_url, username, password = self._require(
             credentials, "site_url", "username", "application_password"
         )

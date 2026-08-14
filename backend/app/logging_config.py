@@ -76,6 +76,12 @@ class RequestIDFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
+        """Stamp *record* with the current request id, and keep it.
+
+        Never drops a record — the return is always ``True``. A record that
+        already carries a ``request_id`` keeps it, which is what lets a task
+        set its own without this overwriting it.
+        """
         if not hasattr(record, "request_id"):
             record.request_id = request_id_var.get()
         return True

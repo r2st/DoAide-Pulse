@@ -102,6 +102,13 @@ class Digest:
 
     @property
     def subject(self) -> str:
+        """The email subject line, picked from what the week actually contains.
+
+        Three shapes, most-newsworthy first, so the subject is never a number the
+        body then contradicts — and the last one asks for attention rather than
+        reporting a zero, because a digest that opens with "0 views" gets
+        filtered.
+        """
         if self.published:
             return (
                 f"Herald: {len(self.published)} published, "
@@ -112,6 +119,11 @@ class Digest:
         return "Herald: this week needs you"
 
     def as_dict(self) -> dict:
+        """The wire shape of a digest, for the preview endpoint and the renderer.
+
+        ``subject`` and ``is_empty`` are properties, so they are spelled out here
+        :class:`app.services.analytics_service.Totals` gives the reason.
+        """
         return {
             "since": self.since,
             "until": self.until,

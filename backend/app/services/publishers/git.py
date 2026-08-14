@@ -326,6 +326,12 @@ class GitAdapter(Adapter):
     # -- the adapter -------------------------------------------------------- #
 
     def verify(self, credentials: dict[str, Any]) -> str:
+        """Return the repository, refusing a token that cannot write to it.
+
+        Push permission is checked here because a read-only token reads a public
+        repo perfectly well and then fails at the first commit — which is a bad
+        time to find out.
+        """
         repo = self._repo(credentials)
         resp = self._request(
             "GET", f"{_API}/repos/{repo}", headers=self._headers(self._token(credentials))
@@ -367,6 +373,12 @@ class GitAdapter(Adapter):
         return data.get("sha")
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Commit the rendered file, creating it or updating it in place.
+
+        An existing path is updated rather than refused: re-publishing a piece is
+        how a correction reaches a repo, and the blob sha is passed back so the
+        commit is rejected if the file changed underneath.
+        """
         repo = self._repo(credentials)
         token = self._token(credentials)
         branch = str(credentials.get("branch") or "").strip()

@@ -48,6 +48,13 @@ class PreviewLink(Base, TimestampMixin):
 
     @property
     def is_live(self) -> bool:
+        """Whether this link would still open the draft right now.
+
+        Revocation beats expiry: a link taken back is dead whatever its TTL said.
+        Both are checked here rather than in the query so a row already loaded
+        can be judged without a round trip — :func:`app.services.preview_links.resolve`
+        makes the same two checks against the database for the real decision.
+        """
         if self.revoked_at is not None:
             return False
         return as_aware(self.expires_at) > utcnow()

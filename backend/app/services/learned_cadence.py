@@ -73,6 +73,11 @@ class Learned:
     weekdays_learned: bool = False
 
     def as_dict(self) -> dict:
+        """The wire shape of one platform's cadence, carrying ``source``.
+
+        ``source`` and ``sample`` ride along on purpose: a suggested time the user
+        cannot interrogate is one they are right to ignore.
+        """
         described = cadence.describe(self.cadence.platform)
         described.update(
             {

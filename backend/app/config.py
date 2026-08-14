@@ -635,10 +635,23 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
+        """The CORS allow-list, split from the comma-separated setting.
+
+        A list rather than the raw string because Starlette's middleware wants
+        one, and blank entries are dropped so a trailing comma in an env file
+        does not become an origin that matches nothing.
+        """
         return [o.strip() for o in self.backend_cors_origins.split(",") if o.strip()]
 
     @property
     def is_production(self) -> bool:
+        """Whether the production rules apply — the switch, in one place.
+
+        Both spellings are accepted because both get typed into env files, and a
+        ``ENVIRONMENT=prod`` box silently running the development rules is the
+        failure this guards: docs open, debug tracebacks on, weak-secret checks
+        skipped.
+        """
         return self.environment.lower() in {"production", "prod"}
 
 

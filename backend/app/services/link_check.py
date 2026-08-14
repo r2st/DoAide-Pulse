@@ -72,6 +72,7 @@ class LinkStatus:
 
     @property
     def is_broken(self) -> bool:
+        """Definitively dead. :data:`UNKNOWN` is not broken — see the module docstring."""
         return self.status == BROKEN
 
 

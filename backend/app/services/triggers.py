@@ -64,6 +64,7 @@ def generate_secret() -> str:
 
 
 def store_secret(secret: str) -> str:
+    """Encrypt a signing secret for storage. The inverse of :func:`read_secret`."""
     return encrypt_credentials({"secret": secret})
 
 

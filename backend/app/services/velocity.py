@@ -424,6 +424,13 @@ class Benchmark:
     reliable: bool
 
     def as_dict(self) -> dict:
+        """The wire shape of one platform's benchmark.
+
+        The two window sizes ship alongside the medians so a client holding this
+        knows what "early" and "benchmark" meant on the install that produced
+        it — both are configurable, and a median with no window attached to it
+        cannot be read.
+        """
         return {
             "platform": self.platform.value,
             "early_window_hours": settings.velocity_early_window_hours,

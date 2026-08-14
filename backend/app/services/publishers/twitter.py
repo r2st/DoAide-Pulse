@@ -86,6 +86,7 @@ class TwitterAdapter(Adapter):
         return thread
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
+        """Always raises. The adapter needs OAuth 1.0a signing and a paid tier."""
         raise NotImplementedAdapter(
             "The Twitter/X adapter is not finished — it needs OAuth 1.0a signing "
             "and a paid API tier. Anything queued for Twitter fails immediately "
