@@ -23,6 +23,8 @@ from app.config import settings
 from app.models.content import Content
 from app.models.mixins import as_aware, utcnow
 from app.models.preview_link import PreviewLink
+from app.models.project import Project
+from app.models.user import User
 
 #: 32 bytes ≈ 43 URL-safe characters — the same budget as a password reset
 #: token, for the same reason: no low-entropy guess for a hash lookup to defend
@@ -114,12 +116,30 @@ def revoke(db: Session, link: PreviewLink) -> None:
 def resolve(db: Session, raw_token: str) -> Content | None:
     """The draft a token points at, or ``None`` if the link isn't usable.
 
-    Unusable covers unknown, revoked and expired alike — a reviewer with a
-    dead link does not need to know which. A successful resolve counts as a
-    view: it is the only signal the author gets that the link was opened.
+    Unusable covers unknown, revoked, expired and *belonging to a deactivated
+    account* alike — a reviewer with a dead link does not need to know which. A
+    successful resolve counts as a view: it is the only signal the author gets
+    that the link was opened.
+
+    The account check is a join rather than a walk through ``row.content``,
+    because it decides whether there is a row at all. Deactivation is how an
+    account is switched off in Herald: its tokens stop working
+    (:func:`app.deps.get_current_user`), its sweeps skip it, its inbound
+    webhooks write nothing, its approved content is not released. This endpoint
+    was the exception — an anonymous, unauthenticated read of an *unpublished*
+    draft, granted by the owner before the switch-off and outliving it by up to
+    ``preview_link_max_ttl_hours``. "The account is off" has to mean the whole
+    account, including the doors it opened for other people.
     """
     row = db.scalar(
-        select(PreviewLink).where(PreviewLink.token_hash == hash_token(raw_token))
+        select(PreviewLink)
+        .join(Content, Content.id == PreviewLink.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .join(User, User.id == Project.user_id)
+        .where(
+            PreviewLink.token_hash == hash_token(raw_token),
+            User.is_active.is_(True),
+        )
     )
     if row is None:
         return None

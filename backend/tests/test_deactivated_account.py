@@ -22,7 +22,7 @@ from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.trigger import Trigger, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.security import hash_password
-from app.services import content_pipeline, headlines
+from app.services import content_pipeline, headlines, preview_links
 from app.services import triggers as trigger_service
 from app.services.signals import TriggerSignal
 from app.tasks import autopilot_tasks, headline_tasks, publish_tasks
@@ -280,6 +280,84 @@ def test_the_headline_sweep_still_runs_for_a_live_account(db, project, monkeypat
     assert headline_tasks.auto_select_headlines() == {"considered": 1, "swapped": 1}
     db.refresh(content)
     assert content.title == "Original headline"
+
+
+# --------------------------------------------------------------------------- #
+# Preview links                                                                #
+# --------------------------------------------------------------------------- #
+
+
+def _draft(db, project) -> Content:
+    row = Content(
+        project_id=project.id,
+        content_type=ContentType.TUTORIAL,
+        title="Half-written",
+        slug=f"half-written-{project.id}",
+        body_markdown="## Draft\n\n" + ("word " * 50),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def test_a_dormant_accounts_preview_link_stops_resolving(db, dormant_project):
+    """The one door deactivation left open.
+
+    Every other switch-off in this file is checked at the moment Herald acts.
+    A preview link is checked when a *stranger* acts: no token, no account, an
+    anonymous read of an unpublished draft, granted before the deactivation and
+    outliving it by up to ``preview_link_max_ttl_hours``.
+    """
+    content = _draft(db, dormant_project)
+    _, raw_token = preview_links.issue(db, content)
+
+    assert preview_links.resolve(db, raw_token) is None
+
+
+def test_the_public_preview_read_is_a_404_and_says_no_more(client, db, dormant_project):
+    """Same 404 as an unknown or expired token — the holder learns nothing."""
+    content = _draft(db, dormant_project)
+    _, raw_token = preview_links.issue(db, content)
+
+    resp = client.get(f"/api/v1/content/preview/{raw_token}")
+
+    assert resp.status_code == 404
+    assert "deactiv" not in resp.text.lower()
+
+
+def test_a_link_issued_before_the_switch_off_dies_with_the_account(
+    client, db, user, project
+):
+    """The realistic order of events: link out, reviewer holding it, then off."""
+    content = _draft(db, project)
+    _, raw_token = preview_links.issue(db, content)
+    assert client.get(f"/api/v1/content/preview/{raw_token}").status_code == 200
+
+    user.is_active = False
+    db.commit()
+
+    assert client.get(f"/api/v1/content/preview/{raw_token}").status_code == 404
+
+
+def test_a_dead_preview_read_does_not_count_as_a_view(db, dormant_project):
+    """A refused read must not look to the author like the link was opened."""
+    content = _draft(db, dormant_project)
+    row, raw_token = preview_links.issue(db, content)
+
+    preview_links.resolve(db, raw_token)
+
+    db.refresh(row)
+    assert row.view_count == 0
+    assert row.last_viewed_at is None
+
+
+def test_a_live_accounts_preview_link_still_resolves(db, project):
+    """The guard must not catch the ordinary case."""
+    content = _draft(db, project)
+    _, raw_token = preview_links.issue(db, content)
+
+    assert preview_links.resolve(db, raw_token) is not None
 
 
 # --------------------------------------------------------------------------- #
