@@ -81,6 +81,20 @@ export function lengthPayoff(bands) {
     };
   }
 
+  // The mirror of the case above, and it has to be its own return rather than
+  // falling through: `long / short` is a fine 0, but the losing-side multiple
+  // below is `1 / ratio`, and 1/0 is Infinity — which reached the panel as
+  // "Short pieces earn Infinity× the engagement per view of long ones."
+  if (long === 0) {
+    return {
+      verdict: "shorter",
+      ratio: 0,
+      longer,
+      shorter,
+      sentence: `Nothing in the ${longer.band} band has earned an interaction; the ${shorter.band} pieces have.`,
+    };
+  }
+
   const ratio = long / short;
   // A tenth either way is noise at these sample sizes — calling it a win would
   // send someone off to rewrite their whole cadence over rounding.

@@ -37,6 +37,13 @@ describe("bandLabel", () => {
   it("collapses a one-minute band rather than printing '1–1 min'", () => {
     expect(bandLabel([band("short", 1)], 0).range).toBe("1 min");
   });
+
+  it("treats a neighbour with no upper bound as ending at zero", () => {
+    // Only the last band is meant to have a null bound, so this shape is
+    // malformed. It still has to produce a label rather than "NaN–8 min".
+    const range = bandLabel([band("short", null), band("medium", 8)], 1).range;
+    expect(range).toBe("1–8 min");
+  });
 });
 
 describe("lengthPayoff", () => {
@@ -112,6 +119,35 @@ describe("lengthPayoff", () => {
     expect(result.sentence).not.toContain("Infinity");
   });
 
+  it("handles a zero numerator too, which used to print Infinity", () => {
+    // The mirror of the case above, and the one that was missing. `long/short`
+    // is a well-behaved 0, so this fell through to the general arm, where the
+    // losing side's multiple is `1/ratio` — and the panel told people their
+    // short pieces earned "Infinity×" what their long ones did.
+    const result = lengthPayoff([
+      SHORT({ publications: 4, views: 800, engagement: 40, engagement_rate: 0.05 }),
+      LONG({ publications: 4, views: 900, engagement: 0, engagement_rate: 0 }),
+    ]);
+    expect(result.verdict).toBe("shorter");
+    expect(result.ratio).toBe(0);
+    expect(result.sentence).not.toContain("Infinity");
+    expect(result.sentence).toBe(
+      "Nothing in the long band has earned an interaction; the short pieces have.",
+    );
+  });
+
+  it("calls it even when neither length has earned anything at all", () => {
+    const result = lengthPayoff([
+      SHORT({ publications: 4, views: 500, engagement: 0, engagement_rate: 0 }),
+      LONG({ publications: 4, views: 500, engagement: 0, engagement_rate: 0 }),
+    ]);
+    expect(result.verdict).toBe("even");
+    expect(result.ratio).toBeNull();
+    expect(result.sentence).toBe(
+      "Neither length has earned an interaction per view yet.",
+    );
+  });
+
   it("survives an empty payload", () => {
     expect(lengthPayoff([]).verdict).toBe("unknown");
     expect(lengthPayoff(undefined).verdict).toBe("unknown");
@@ -139,5 +175,26 @@ describe("attentionShares", () => {
     const { rows, totalMinutes } = attentionShares([SHORT(), LONG()]);
     expect(totalMinutes).toBe(0);
     expect(rows.every((row) => row.minuteShare === 0)).toBe(true);
+  });
+
+  it("reads a band that omits reader_minutes entirely as zero", () => {
+    // The API sends the field; a band that has never been published into has
+    // been seen to omit it, and one `undefined` in the reduce would poison
+    // every share on the panel with NaN.
+    const { rows, totalMinutes } = attentionShares([
+      { band: "short", max_read_minutes: 3, publications: 2 },
+      { band: "long", max_read_minutes: null, publications: 2, reader_minutes: 60 },
+    ]);
+    expect(totalMinutes).toBe(60);
+    expect(rows[0].readerMinutes).toBe(0);
+    expect(rows[0].minuteShare).toBe(0);
+    expect(rows[1].minuteShare).toBe(1);
+  });
+
+  it("survives no payload at all", () => {
+    const { rows, totalPublications, totalMinutes } = attentionShares(undefined);
+    expect(rows).toEqual([]);
+    expect(totalPublications).toBe(0);
+    expect(totalMinutes).toBe(0);
   });
 });

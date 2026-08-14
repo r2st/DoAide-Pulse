@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   formatCount,
+  formatDateTime,
   formatDuration,
   formatRate,
   formatReadLength,
@@ -20,6 +21,43 @@ describe("formatWhen", () => {
   it("falls back to a calendar date past a week", () => {
     const old = new Date(Date.now() - 60 * 86_400_000);
     expect(formatWhen(old)).not.toContain("ago");
+  });
+
+  it("reports minutes as minutes rather than rounding them to 0h", () => {
+    expect(formatWhen(new Date(Date.now() - 25 * 60_000))).toBe("25m ago");
+    expect(formatWhen(new Date(Date.now() + 5 * 60_000))).toBe("in 5m");
+  });
+
+  it("carries the year on a date outside this one, and omits it inside", () => {
+    // A bare "Jun 20" on something two years old reads as recent, which is the
+    // one thing the fallback exists to prevent.
+    const twoYearsAgo = new Date();
+    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+    expect(formatWhen(twoYearsAgo)).toMatch(/\d{4}/);
+
+    // Same branch, other arm: a date this year, far enough out to reach the
+    // calendar fallback, carries no year. Anchored mid-year and nudged whichever
+    // way keeps it inside this year and more than a week from now, so the test
+    // does not depend on the month it runs in.
+    const now = new Date();
+    const midYear = new Date(now.getFullYear(), 6, 1);
+    const thisYear =
+      Math.abs(midYear.getTime() - now.getTime()) > 8 * 86_400_000
+        ? midYear
+        : new Date(now.getFullYear(), 0, 15);
+    expect(formatWhen(thisYear)).not.toMatch(/\d{4}/);
+  });
+});
+
+describe("formatDateTime", () => {
+  it("returns the dash for an empty value rather than 'Invalid Date'", () => {
+    expect(formatDateTime(null)).toBe("—");
+    expect(formatDateTime(undefined)).toBe("—");
+    expect(formatDateTime("")).toBe("—");
+  });
+
+  it("renders a real instant", () => {
+    expect(formatDateTime("2026-07-22T13:00:00Z")).toMatch(/\d/);
   });
 });
 
@@ -51,6 +89,11 @@ describe("formatRate", () => {
     expect(formatRate(0)).toBe("0.0%");
     expect(formatRate(null)).toBe("—");
     expect(formatRate(undefined)).toBe("—");
+  });
+
+  it("treats an unparseable value as unknown, not as NaN%", () => {
+    expect(formatRate("not a number")).toBe("—");
+    expect(formatRate({})).toBe("—");
   });
 });
 
