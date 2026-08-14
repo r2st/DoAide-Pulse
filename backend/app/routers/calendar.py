@@ -56,8 +56,25 @@ def get_calendar(
     # Push the date filter into SQL so we never load the full publication table
     # into memory. A publication's calendar position is ``published_at`` if set,
     # else ``scheduled_for``, so both columns are checked against the window.
+    # Columns, not entities. A calendar row needs ten fields; selecting the
+    # three entities to reach them brought every article body in the window
+    # along with them, and ``Content.publications`` is ``lazy="selectin"``, so
+    # it also fired a second query for every publication of every piece on the
+    # calendar — including the ones outside the window the WHERE above was
+    # written to bound. Labelled because three of the ten are called ``id``.
     query = (
-        select(Publication, Content, Project)
+        select(
+            Publication.id.label("publication_id"),
+            Publication.platform,
+            Publication.status.label("publication_status"),
+            Publication.published_at,
+            Publication.scheduled_for,
+            Content.id.label("content_id"),
+            Content.title,
+            Content.content_type,
+            Project.id.label("project_id"),
+            Project.name.label("project_name"),
+        )
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
         .where(
@@ -72,25 +89,25 @@ def get_calendar(
         query = query.where(Content.project_id == project_id)
 
     entries: list[CalendarEntry] = []
-    for publication, content, project in db.execute(query).all():
+    for row in db.execute(query).all():
         # Never None: the WHERE above admits a row only if one of these two
         # columns falls inside the window, and NULL never satisfies BETWEEN.
         # A publication queued with no time at all is therefore not on the
         # calendar at all — see
         # test_a_publication_with_no_time_at_all_is_not_on_the_calendar.
-        when = publication.published_at or publication.scheduled_for
+        when = row.published_at or row.scheduled_for
         entries.append(
             CalendarEntry(
-                content_id=content.id,
-                publication_id=publication.id,
-                title=content.title,
-                project_id=project.id,
-                project_name=project.name,
-                content_type=content.content_type,
-                platform=publication.platform,
-                status=publication.status.value,
+                content_id=row.content_id,
+                publication_id=row.publication_id,
+                title=row.title,
+                project_id=row.project_id,
+                project_name=row.project_name,
+                content_type=row.content_type,
+                platform=row.platform,
+                status=row.publication_status.value,
                 when=when,
-                movable=publication.status
+                movable=row.publication_status
                 not in (PublicationStatus.PUBLISHED, PublicationStatus.PUBLISHING),
             )
         )
@@ -99,7 +116,19 @@ def get_calendar(
     # the calendar — otherwise "schedule this for Tuesday" makes it disappear
     # until it is also routed somewhere.
     unrouted = db.execute(
-        select(Content, Project)
+        # Columns for the same reason as above. ``~Content.publications.any()``
+        # is an EXISTS subquery, which is not the same thing as the eager load
+        # the entity would still have fired to fetch the rows it just proved
+        # were absent.
+        select(
+            Content.id.label("content_id"),
+            Content.title,
+            Content.content_type,
+            Content.status,
+            Content.scheduled_for,
+            Project.id.label("project_id"),
+            Project.name.label("project_name"),
+        )
         .join(Project, Project.id == Content.project_id)
         .where(
             Project.user_id == user.id,
@@ -108,20 +137,20 @@ def get_calendar(
             ~Content.publications.any(),
         )
     ).all()
-    for content, project in unrouted:
-        if not (window_start <= as_aware(content.scheduled_for) <= window_end):
+    for row in unrouted:
+        if not (window_start <= as_aware(row.scheduled_for) <= window_end):
             continue
         entries.append(
             CalendarEntry(
-                content_id=content.id,
+                content_id=row.content_id,
                 publication_id=None,
-                title=content.title,
-                project_id=project.id,
-                project_name=project.name,
-                content_type=content.content_type,
+                title=row.title,
+                project_id=row.project_id,
+                project_name=row.project_name,
+                content_type=row.content_type,
                 platform=None,
-                status=content.status.value,
-                when=content.scheduled_for,
+                status=row.status.value,
+                when=row.scheduled_for,
                 movable=True,
             )
         )

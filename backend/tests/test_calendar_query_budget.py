@@ -155,3 +155,70 @@ def test_an_empty_curve_list_is_not_mistaken_for_no_curves_at_all(db, user):
     rows = learned_cadence.describe_all(db, user.id, [Platform.DEVTO], known=[])
     assert rows[0]["source"] == "table"
     assert rows[0]["sample"] == 0
+
+
+def _body_reads(statements: list[str]) -> list[str]:
+    return [s for s in statements if "content.body_markdown" in s]
+
+
+def _selectin_publications(statements: list[str]) -> list[str]:
+    return [
+        s for s in statements if "FROM publications WHERE publications.content_id IN" in s
+    ]
+
+
+def test_the_calendar_does_not_read_an_article_body_to_draw_a_row(
+    client, auth, published_with_metrics, sql_log
+):
+    """A calendar row is ten fields; none of them is the article.
+
+    The window is capped at 365 days, which bounds how many *rows* come back
+    and said nothing about how wide they are. Selecting the ``Publication``,
+    ``Content`` and ``Project`` entities to fill in ten fields brought every
+    article body in the window with them.
+    """
+    sql_log.clear()
+    resp = client.get("/api/v1/calendar", headers=auth)
+    assert resp.status_code == 200, resp.text
+
+    bodies = _body_reads(sql_log)
+    assert not bodies, "the calendar reads article bodies:\n" + "\n".join(
+        s[:200] for s in bodies
+    )
+
+
+def test_the_calendar_does_not_fire_the_selectin_publications_load(
+    client, auth, published_with_metrics, sql_log
+):
+    """``Content.publications`` is ``lazy="selectin"``.
+
+    Selecting a ``Content`` entity per calendar row therefore fetched every
+    publication of every piece on the calendar in a second query — including
+    the publications outside the window the WHERE clause exists to bound.
+    """
+    sql_log.clear()
+    resp = client.get("/api/v1/calendar", headers=auth)
+    assert resp.status_code == 200, resp.text
+
+    assert not _selectin_publications(sql_log), "\n".join(
+        s[:200] for s in _selectin_publications(sql_log)
+    )
+
+
+def test_the_calendar_entries_are_unchanged_by_selecting_columns(
+    client, auth, published_with_metrics
+):
+    """Every field a row carried before still arrives, and still means the same."""
+    resp = client.get("/api/v1/calendar", headers=auth)
+    assert resp.status_code == 200, resp.text
+    entries = {row["title"]: row for row in resp.json()["entries"]}
+
+    assert set(entries) == {"Piece 0", "Piece 1"}
+    first = entries["Piece 0"]
+    assert first["platform"] == "devto"
+    assert first["status"] == "published"
+    assert first["content_type"] == "announcement"
+    assert first["project_name"]
+    assert first["publication_id"] and first["content_id"]
+    # Published items are on the calendar but pinned there.
+    assert first["movable"] is False
