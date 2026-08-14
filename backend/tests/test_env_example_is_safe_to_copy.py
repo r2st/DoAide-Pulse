@@ -121,3 +121,65 @@ def test_the_directly_read_keys_are_still_read_directly():
         assert key.lower() not in Settings.model_fields, (
             f"{key} is now a real setting — drop it from the allowlist"
         )
+
+
+# --------------------------------------------------------------------------- #
+# Draft preview links                                                          #
+# --------------------------------------------------------------------------- #
+
+
+def test_the_preview_link_knobs_are_documented():
+    """All three, or the section is a trap.
+
+    The retention sweep is the only one of the three an operator has a reason to
+    change — it is the one that decides how long the account keeps rows for links
+    that stopped working — and it is meaningless without the ceiling it has to
+    clear. Documenting the TTLs and omitting the sweep would leave
+    ``GET /content/{id}/preview-links`` quietly growing for the life of the
+    account with nothing in the file to suggest a knob exists.
+    """
+    values = _example_values()
+    for key in (
+        "PREVIEW_LINK_DEFAULT_TTL_HOURS",
+        "PREVIEW_LINK_MAX_TTL_HOURS",
+        "PREVIEW_LINK_RETENTION_DAYS",
+    ):
+        assert key in values, f".env.example does not document {key}"
+
+
+def test_a_live_preview_link_can_never_be_swept():
+    """The invariant the retention comment claims, checked rather than asserted in prose.
+
+    ``maintenance_tasks`` prunes any link whose row is older than the retention
+    window, and it does not ask whether the link still opens. So retention has to
+    outlive the longest TTL an author may request, or a reviewer's link is
+    deleted while it is still inside its own ``expires_at`` — a 404 on a link the
+    UI is still listing as live.
+
+    Both halves are checked: the example (what a deploy copies) and the
+    ``Settings`` defaults (what an install that never edits the file runs with).
+    A change to either alone is the one that would break this.
+    """
+    values = _example_values()
+    example_retention_hours = int(values["PREVIEW_LINK_RETENTION_DAYS"]) * 24
+    assert example_retention_hours > int(values["PREVIEW_LINK_MAX_TTL_HOURS"])
+
+    defaults = Settings(_env_file=None, jwt_secret="x" * 40, database_url="sqlite://")
+    assert (
+        defaults.preview_link_retention_days * 24 > defaults.preview_link_max_ttl_hours
+    )
+
+
+def test_the_example_default_ttl_is_one_a_caller_could_have_asked_for():
+    """A default above the maximum would be silently clamped on every issue.
+
+    ``preview_links.issue`` applies ``min(hours, max_ttl_hours)`` to whatever it
+    is given, including the default. An example that shipped a default larger
+    than the max would therefore document a TTL no link ever gets, and the
+    mismatch would only ever show up as links expiring earlier than the file
+    says.
+    """
+    values = _example_values()
+    assert int(values["PREVIEW_LINK_DEFAULT_TTL_HOURS"]) <= int(
+        values["PREVIEW_LINK_MAX_TTL_HOURS"]
+    )
