@@ -104,6 +104,12 @@ export default function Calendar() {
    * that will not take it has already been refused visibly, by the browser's own
    * "no drop" cursor over a dimmed square, where a key press has no such
    * feedback and silence reads as a key that does not work.
+   *
+   * `canDropOn` refuses for two reasons — the entry cannot move at all, or the
+   * target is in the past — but only one of them can reach the message below.
+   * `explain` comes from `nudge` alone, `nudge` from `CalendarChip`'s
+   * `onKeyDown`, and that handler is not wired at all unless `entry.movable`.
+   * So an explained refusal is always a movable entry aimed at the past.
    */
   async function move(entry, day, { explain = false } = {}) {
     // Preserve the time of day, change only the date.
@@ -113,13 +119,7 @@ export default function Calendar() {
     // Belt and braces for a drag: the cell should not have accepted the drop,
     // but a long drag can outlive the moment that made it legal.
     if (!canDropOn(entry, day)) {
-      if (explain) {
-        toast.error(
-          entry.movable
-            ? `${formatDateTime(target)} is in the past.`
-            : "A published post is a record — it cannot be moved.",
-        );
-      }
+      if (explain) toast.error(`${formatDateTime(target)} is in the past.`);
       refocus.current = null;
       return;
     }

@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Triggers from "./Triggers";
 import { api } from "../lib/api";
 import { ROUTER_FUTURE } from "../lib/routerFuture";
@@ -168,6 +168,52 @@ describe("the list", () => {
     ]);
     draw();
     expect(await screen.findByText(/Anyone holding this URL can fire it/)).toBeInTheDocument();
+  });
+
+  it("drops the warning once the URL is signed, rather than hedging", async () => {
+    // The other half of the pair above, and the reason it matters: the warning
+    // is only useful if its absence means something. A line that shows either
+    // way tells the reader nothing about which state they are in.
+    api.listTriggers.mockResolvedValue([
+      trigger({
+        kind: "webhook",
+        config: { require_signature: true },
+        inbound_url: "https://herald.test/x",
+        has_secret: true,
+      }),
+    ]);
+    draw();
+    expect(
+      await screen.findByText(/Requests must carry a valid signature/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Anyone holding this URL/)).not.toBeInTheDocument();
+  });
+
+  it("shows when a polled trigger was last looked at, not only when it fired", async () => {
+    // Fired and checked are different questions, and a feed that is polled
+    // hourly and has fired twice all year looks broken unless the page can say
+    // it was checked ten minutes ago.
+    api.listTriggers.mockResolvedValue([
+      trigger({ last_checked_at: "2026-08-14T09:00:00Z", fire_count: 2 }),
+    ]);
+    draw();
+    expect(await screen.findByTitle("Last poll")).toHaveTextContent(/^checked /);
+  });
+
+  it("does not offer a last-poll time for a kind nothing polls", async () => {
+    // A webhook is never checked, so a stale `last_checked_at` on one is a
+    // field the card must ignore rather than render as fact.
+    api.listTriggers.mockResolvedValue([
+      trigger({
+        kind: "webhook",
+        config: {},
+        inbound_url: "https://herald.test/x",
+        last_checked_at: "2026-08-14T09:00:00Z",
+      }),
+    ]);
+    draw();
+    await screen.findByText("Changelog feed");
+    expect(screen.queryByTitle("Last poll")).not.toBeInTheDocument();
   });
 });
 
@@ -416,5 +462,305 @@ describe("filtering by project", () => {
     await screen.findByText("Changelog feed");
     await userEvent.selectOptions(screen.getByLabelText("Filter by project"), "7");
     await waitFor(() => expect(api.listTriggers).toHaveBeenCalledWith({ project_id: "7" }));
+  });
+});
+
+// ---- The two buttons that take something away ------------------------------
+//
+// Every test above drives a button whose worst outcome is a wasted request.
+// These two are the other kind: `Delete` removes the trigger, and
+// `Rotate secret` invalidates a URL that other people's systems are already
+// calling. Both sit behind a `window.confirm`, and a confirm nothing asserts is
+// a confirm that can quietly stop being there.
+
+/** Make `window.confirm` answer `verdict`, and hand back the spy. */
+function confirming(verdict) {
+  const spy = vi.fn(() => verdict);
+  vi.stubGlobal("confirm", spy);
+  return spy;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("deleting a trigger", () => {
+  it("asks first, and does nothing at all when the answer is no", async () => {
+    const confirm = confirming(false);
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    expect(confirm).toHaveBeenCalled();
+    expect(api.deleteTrigger).not.toHaveBeenCalled();
+  });
+
+  it("says what stops and what is kept, so the answer can be an informed one", async () => {
+    // A trigger is a watcher, not a container: deleting it does not delete the
+    // drafts it wrote. A prompt that leaves that ambiguous gets answered "no"
+    // by people who wanted "yes".
+    const confirm = confirming(false);
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    const [message] = confirm.mock.calls[0];
+    expect(message).toMatch(/Herald stops watching/);
+    expect(message).toMatch(/already wrote is kept/);
+  });
+
+  it("deletes and reloads once confirmed", async () => {
+    confirming(true);
+    api.deleteTrigger.mockResolvedValue(undefined);
+    draw();
+    await screen.findByText("Changelog feed");
+    const before = api.listTriggers.mock.calls.length;
+
+    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(api.deleteTrigger).toHaveBeenCalledWith(1));
+    expect(toast.success).toHaveBeenCalledWith("Trigger deleted");
+    await waitFor(() =>
+      expect(api.listTriggers.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  it("leaves the row in place when the delete is refused", async () => {
+    // The card must not disappear optimistically: a trigger that is still
+    // firing while its row is gone is the worst of both.
+    confirming(true);
+    api.deleteTrigger.mockRejectedValue(new Error("Trigger is still running"));
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Trigger is still running"),
+    );
+    expect(screen.getByText("Changelog feed")).toBeInTheDocument();
+  });
+});
+
+describe("rotating a webhook's secret", () => {
+  const webhook = () =>
+    trigger({
+      kind: "webhook",
+      name: "Deploy hook",
+      config: {},
+      inbound_url: "https://herald.test/api/v1/triggers/inbound/old",
+      has_secret: true,
+    });
+
+  it("is offered only for the kind that has an inbound URL to rotate", async () => {
+    draw();
+    await screen.findByText("Changelog feed");
+    expect(screen.queryByRole("button", { name: "Rotate secret" })).not.toBeInTheDocument();
+
+    api.listTriggers.mockResolvedValue([webhook()]);
+    draw();
+    expect(
+      await screen.findByRole("button", { name: "Rotate secret" }),
+    ).toBeInTheDocument();
+  });
+
+  it("warns that the old URL stops working immediately", async () => {
+    // The cost of this one is not on Herald's side: whatever is POSTing to the
+    // old URL starts failing the moment it is confirmed, and nobody is told.
+    const confirm = confirming(false);
+    api.listTriggers.mockResolvedValue([webhook()]);
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Rotate secret" }));
+
+    expect(confirm.mock.calls[0][0]).toMatch(/stops working immediately/);
+    expect(api.rotateTriggerSecret).not.toHaveBeenCalled();
+  });
+
+  it("shows the new credentials once, the same way a new trigger does", async () => {
+    // The rotated secret has exactly the same one-chance property as a freshly
+    // created one, and reaches the same dialog by a different route.
+    confirming(true);
+    api.listTriggers.mockResolvedValue([webhook()]);
+    api.rotateTriggerSecret.mockResolvedValue({
+      ...webhook(),
+      inbound_url: "https://herald.test/api/v1/triggers/inbound/new",
+      secret: "rotated-s3cr3t",
+    });
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Rotate secret" }));
+
+    expect(await screen.findByText("rotated-s3cr3t")).toBeInTheDocument();
+    expect(
+      screen.getByText("https://herald.test/api/v1/triggers/inbound/new"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/never again/)).toBeInTheDocument();
+  });
+
+  it("reports a failed rotation rather than showing a half-rotated dialog", async () => {
+    confirming(true);
+    api.listTriggers.mockResolvedValue([webhook()]);
+    api.rotateTriggerSecret.mockRejectedValue(new Error("Encryption key unavailable"));
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Rotate secret" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Encryption key unavailable"),
+    );
+    expect(screen.queryByText(/never again/)).not.toBeInTheDocument();
+  });
+});
+
+// ---- Copying the things that cannot be read back --------------------------
+//
+// An inbound URL and a signing secret are both "paste this somewhere else" by
+// nature, and the secret is shown exactly once. Clipboard access is denied in
+// plenty of ordinary configurations — an insecure origin, a permissions
+// policy — and a rejected `writeText` that nothing catches is a Copy button
+// that silently does nothing at the one moment the value is still on screen.
+
+describe("copying credentials", () => {
+  function clipboard(behaviour) {
+    const writeText = vi.fn(behaviour);
+    Object.assign(navigator, { clipboard: { writeText } });
+    return writeText;
+  }
+
+  async function openRotatedDialog() {
+    confirming(true);
+    api.listTriggers.mockResolvedValue([
+      trigger({ kind: "webhook", config: {}, inbound_url: "https://herald.test/old" }),
+    ]);
+    api.rotateTriggerSecret.mockResolvedValue({
+      ...trigger({ kind: "webhook", config: {} }),
+      inbound_url: "https://herald.test/new",
+      secret: "top-secret",
+    });
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Rotate secret" }));
+    await screen.findByText("top-secret");
+    return within(screen.getByRole("dialog"));
+  }
+
+  it("copies the URL and the secret separately, naming which one landed", async () => {
+    // Two Copy buttons a few lines apart, and the toast is the only thing that
+    // says which was pressed.
+    const writeText = clipboard(() => Promise.resolve());
+    const dialog = await openRotatedDialog();
+    const [copyUrl, copySecret] = dialog.getAllByRole("button", { name: "Copy" });
+
+    await userEvent.click(copyUrl);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("URL copied"));
+    expect(writeText).toHaveBeenLastCalledWith("https://herald.test/new");
+
+    await userEvent.click(copySecret);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Secret copied"));
+    expect(writeText).toHaveBeenLastCalledWith("top-secret");
+  });
+
+  it("says the copy failed rather than looking like it worked", async () => {
+    clipboard(() => Promise.reject(new Error("Denied")));
+    const dialog = await openRotatedDialog();
+
+    await userEvent.click(dialog.getAllByRole("button", { name: "Copy" })[0]);
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not copy — select it and copy manually.",
+      ),
+    );
+    // Still on screen, which is what makes "copy it manually" honest advice.
+    expect(dialog.getByText("top-secret")).toBeInTheDocument();
+  });
+
+  it("copies a listed trigger's inbound URL from the card itself", async () => {
+    const writeText = clipboard(() => Promise.resolve());
+    api.listTriggers.mockResolvedValue([
+      trigger({
+        kind: "webhook",
+        config: {},
+        inbound_url: "https://herald.test/api/v1/triggers/inbound/tok",
+      }),
+    ]);
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Copy" }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("URL copied"));
+    expect(writeText).toHaveBeenCalledWith(
+      "https://herald.test/api/v1/triggers/inbound/tok",
+    );
+  });
+
+  it("points at the URL on screen when the card's copy is refused", async () => {
+    clipboard(() => Promise.reject(new Error("Denied")));
+    api.listTriggers.mockResolvedValue([
+      trigger({ kind: "webhook", config: {}, inbound_url: "https://herald.test/tok" }),
+    ]);
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Copy" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Could not copy — select the URL and copy it manually.",
+      ),
+    );
+  });
+});
+
+describe("when an action fails outright", () => {
+  it("reports a failed pause instead of leaving the button looking stuck", async () => {
+    // `busy` gates the button, and the `finally` that clears it is the only
+    // thing between a failed request and a permanently disabled control.
+    api.updateTrigger.mockRejectedValue(new Error("Trigger not found"));
+    draw();
+    const pause = await screen.findByRole("button", { name: "Pause" });
+    await userEvent.click(pause);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Trigger not found"));
+    expect(await screen.findByRole("button", { name: "Pause" })).toBeEnabled();
+  });
+
+  it("reports a check that could not be run at all", async () => {
+    // Distinct from `{ status: "error" }`, which is a check that ran and found
+    // a broken feed. This is the request itself failing.
+    api.checkTrigger.mockRejectedValue(new Error("Network unreachable"));
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Check now" }));
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Network unreachable"),
+    );
+    expect(await screen.findByRole("button", { name: "Check now" })).toBeEnabled();
+  });
+});
+
+describe("editing an existing trigger", () => {
+  it("updates rather than creating a second one", async () => {
+    // The builder is one component in two modes, and the mode is "was it given
+    // a trigger". Getting it wrong leaves the original watching alongside a
+    // duplicate.
+    api.updateTrigger.mockResolvedValue(trigger({ name: "Renamed feed" }));
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await userEvent.clear(dialog.getByLabelText(/Name/));
+    await userEvent.type(dialog.getByLabelText(/Name/), "Renamed feed");
+    await userEvent.click(dialog.getByRole("button", { name: /Save/ }));
+
+    await waitFor(() =>
+      expect(api.updateTrigger).toHaveBeenCalledWith(1, {
+        name: "Renamed feed",
+        config: { feed_url: "https://example.com/changelog.rss" },
+      }),
+    );
+    expect(api.createTrigger).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen the secret dialog on a plain edit", async () => {
+    // An update returns the trigger without a secret — there is no second
+    // chance to see one, and a dialog claiming otherwise would be a lie.
+    api.updateTrigger.mockResolvedValue(trigger());
+    draw();
+    await userEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await userEvent.click(dialog.getByRole("button", { name: /Save/ }));
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Trigger saved"));
+    expect(screen.queryByText(/never again/)).not.toBeInTheDocument();
   });
 });
