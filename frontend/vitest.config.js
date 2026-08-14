@@ -23,16 +23,21 @@ export default defineConfig({
       // but it is close enough that a whole untested component cannot arrive
       // quietly, which is what having no gate at all allowed.
       //
-      // Branches sit lower on purpose, at a point just under the 96.6% the
+      // Branches sit lower on purpose, at a point just under the 98.3% the
       // suite reaches. What is left are defensive arms the render gating above
       // them makes unreachable — a guard inside a handler whose own button is
-      // already disabled, a `?? 2` for a severity nothing constructs. Demanding
-      // 100% there would mean deleting safety to satisfy a number.
+      // already disabled, a `?? 2` for a severity nothing constructs, a `??  []`
+      // on a prop the parent only passes once its own fetch has resolved.
+      // Demanding 100% there would mean deleting safety to satisfy a number.
+      //
+      // Ratcheted 96 -> 98 once the reachable ones were written. The slack is
+      // deliberately thin: a gate two points below where the suite sits is a
+      // gate that lets two points of real coverage rot away before it says so.
       thresholds: {
         statements: 99,
         lines: 99,
         functions: 99,
-        branches: 96,
+        branches: 98,
       },
     },
   },
