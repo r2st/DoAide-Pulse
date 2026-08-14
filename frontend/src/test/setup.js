@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { beforeEach } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
+import { installConsoleGuard } from "./consoleGuard";
 
 /**
  * A working `window.localStorage`, because this environment has none.
@@ -35,4 +36,28 @@ beforeEach(() => {
     configurable: true,
     writable: true,
   });
+});
+
+/**
+ * Wire the console guard into every test.
+ *
+ * The guard itself — and the reasoning for it — lives in `./consoleGuard`, so
+ * that it can be tested as an ordinary module rather than only through its own
+ * side effects on the runner.
+ */
+let guard = null;
+
+beforeEach((context) => {
+  guard = installConsoleGuard({
+    testName: context.task?.name ?? "test",
+    isMock: vi.isMockFunction,
+  });
+});
+
+afterEach(() => {
+  const messages = guard.release();
+  guard = null;
+  if (messages.length > 0) {
+    throw new Error(messages.join("\n"));
+  }
 });
