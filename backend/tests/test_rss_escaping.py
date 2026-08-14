@@ -12,9 +12,14 @@ Three inputs reach the renderer and none of them are trusted:
   angle brackets and ampersands as a matter of course.
 * **Links** are ``canonical_url`` as returned by whichever platform published
   the piece.
-* ``self_url`` **is the request URL** — ``str(request.url)`` in the endpoint,
-  which is whatever the client put on the wire. It is the only value that lands
-  in an attribute, and attributes are the only place a bare ``"`` is markup.
+* ``self_url`` is the only value that lands in an *attribute*, and attributes
+  are the only place a bare ``"`` is markup. It was ``str(request.url)`` when
+  this file was written — whatever the client put on the wire — and the endpoint
+  now builds it from configuration instead, for reasons that have nothing to do
+  with escaping (see ``test_the_feed_is_a_feed_a_reader_can_trust``). The tests
+  below still pass it hostile values, because they are tests of the renderer:
+  one that only produces valid XML for the arguments its current caller happens
+  to pass is not a renderer that produces valid XML.
 
 Every assertion here runs the output through a real XML parser rather than
 matching strings: "the quote was escaped" is a claim about the bytes, but "the

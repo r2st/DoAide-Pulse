@@ -13,6 +13,7 @@ from email.utils import format_datetime
 from xml.sax.saxutils import escape, quoteattr
 
 from app.models.content import Content
+from app.models.mixins import as_aware
 from app.models.project import Project
 
 #: Characters XML 1.0 has no representation for — not even as a numeric
@@ -52,8 +53,19 @@ def build_feed(project: Project, items: list[Content], *, self_url: str) -> str:
     for content in items:
         link = _item_link(content, site_url)
         description = content.excerpt or content.meta_description or ""
+        # ``as_aware`` before formatting, because the offset an RFC 822 date
+        # carries is not decoration. ``format_datetime`` writes ``-0000`` for a
+        # naive datetime and ``+0000`` for one that knows it is UTC, and RFC 5322
+        # §3.3 gives those two spellings different meanings: ``+0000`` is "this
+        # instant, in UTC", ``-0000`` is "we are not telling you the zone".
+        # Herald's timestamps are always UTC — ``utcnow`` writes every one of
+        # them — so which spelling came out depended only on whether the driver
+        # handed the column back with its offset attached. PostgreSQL does and
+        # SQLite does not, which means the feed said one thing in production and
+        # the other in every test that read it, and the tests were the ones
+        # asserting it was right.
         pub_date = (
-            f"<pubDate>{format_datetime(content.published_at)}</pubDate>"
+            f"<pubDate>{format_datetime(as_aware(content.published_at))}</pubDate>"
             if content.published_at
             else ""
         )
@@ -77,11 +89,15 @@ def build_feed(project: Project, items: list[Content], *, self_url: str) -> str:
         f"<link>{_clean(channel_link)}</link>"
         # ``quoteattr`` rather than ``escape``, and it supplies its own quotes.
         # ``escape`` does not touch ``"`` — it is harmless in character data and
-        # this is the one place in the feed that is not character data. A raw
-        # quote in ``self_url`` (this is ``str(request.url)``, and a client that
-        # does not percent-encode its query string can put one there) would
-        # otherwise close the attribute and let the rest of the query string
-        # become markup.
+        # this is the one place in the feed that is not character data, so a raw
+        # quote here would close the attribute and let whatever followed become
+        # markup.
+        #
+        # The caller no longer passes anything a client controls: ``self_url``
+        # is built from configuration (see ``app.routers.projects.project_feed``).
+        # The escaping stays anyway, because a renderer that only produces valid
+        # XML for the arguments its current caller happens to pass is not a
+        # renderer that produces valid XML.
         f"<atom:link href={quoteattr(_ILLEGAL.sub('', self_url))} "
         'rel="self" type="application/rss+xml" />'
         f"<description>{_clean(description)}</description>"

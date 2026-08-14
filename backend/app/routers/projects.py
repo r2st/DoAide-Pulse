@@ -444,7 +444,14 @@ def project_feed(
                 ),
             )
             .where(Content.project_id == project.id, Content.status == ContentStatus.PUBLISHED)
-            .order_by(Content.published_at.desc())
+            # ``id`` breaks the tie, because a sort with ties is not a sort and
+            # this one has a LIMIT under it. Two pieces published in the same
+            # instant leave the database free to order them either way, and at
+            # the ``FEED_ITEM_LIMIT`` boundary that decides which of them is in
+            # the feed at all — a reader watching an item appear on one poll,
+            # vanish on the next and come back as unread on the one after.
+            # Descending to match the dates: newest first, all the way down.
+            .order_by(Content.published_at.desc(), Content.id.desc())
             .limit(rss.FEED_ITEM_LIMIT)
         )
     )
@@ -453,7 +460,30 @@ def project_feed(
         # a caller must not be able to tell the two apart.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
 
-    xml = rss.build_feed(project, items, self_url=str(request.url))
+    # Built from configuration rather than from ``str(request.url)``.
+    #
+    # ``atom:link rel="self"`` is the feed telling a subscriber where the feed
+    # is, which makes it the same kind of value as the webhook URL in
+    # ``app.routers.triggers`` — a URL Herald hands to somebody else's system —
+    # and ``api_base_url`` is what this codebase already uses for those. The
+    # request URL is not that value for two separate reasons:
+    #
+    # * **The scheme is the proxy's, not the app's.** Herald runs behind Caddy,
+    #   which terminates TLS and forwards plain HTTP to a bridge address.
+    #   Uvicorn only honours ``X-Forwarded-Proto`` from ``forwarded_allow_ips``,
+    #   which does not include that address, so ``request.url.scheme`` is
+    #   ``http`` for every request that arrived over ``https``. The feed was
+    #   advertising itself at a scheme the site does not serve — on a host with
+    #   HSTS preloaded, no less.
+    # * **The query string is the caller's.** ``?utm_source=reader`` is not part
+    #   of where the feed lives, and echoing it back put a value nobody vouched
+    #   for into an XML attribute. The canonical URL has no query string, so now
+    #   neither does the self link.
+    self_url = (
+        f"{settings.api_base_url}{settings.api_v1_prefix}"
+        f"/projects/{project.id}/feed.xml"
+    )
+    xml = rss.build_feed(project, items, self_url=self_url)
     return Response(content=xml, media_type="application/rss+xml")
 
 
