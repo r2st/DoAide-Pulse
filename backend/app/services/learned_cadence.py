@@ -40,7 +40,7 @@ from __future__ import annotations
 import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import time
+from datetime import UTC, time
 
 from sqlalchemy.orm import Session
 
@@ -130,7 +130,24 @@ def observations(
         views = curve.views_within(window)
         if views is None:
             continue
-        published = as_aware(curve.published_at)
+        # ``.astimezone(UTC)`` and not just ``as_aware``, which only *labels* a
+        # naive value — an already-aware one passes through with whatever offset
+        # it carries, and ``.hour`` off that is the hour in that offset. Every
+        # hour this module learns is handed to a scheduler that means UTC (see
+        # ``cadence.best_hour_utc``), so a value arriving on any other clock
+        # shifts a whole publishing rhythm by its offset, silently and in the
+        # one number the feature exists to produce.
+        #
+        # ``timestamptz`` columns come back in the database session's zone, and
+        # Herald pins that to UTC at connect time
+        # (:func:`app.database._connect_options`) — which is the real fix, and
+        # is also a single connection parameter one deploy away from being the
+        # only thing standing between a correct schedule and a wrong one. This
+        # is the same statement made where the field is read, the way
+        # :func:`app.services.analytics_service.utc_day` makes it where the
+        # chart buckets are built. Neither is reproducible on SQLite, which has
+        # no time zones and returns the naive UTC that was written.
+        published = as_aware(curve.published_at).astimezone(UTC)
         out.append(
             _Observation(
                 hour=published.hour, weekday=published.weekday(), early_views=views
