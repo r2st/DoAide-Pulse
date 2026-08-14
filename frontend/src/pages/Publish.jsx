@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Empty, ErrorBanner, SectionHeader, Skeleton, StatusBadge } from "../components/ui/Bits";
 import { useToast } from "../components/ui/Toast";
@@ -230,14 +231,25 @@ function retryable(item) {
 
 function QueueRow({ item, onChanged }) {
   const toast = useToast();
+  const [busy, setBusy] = useState(false);
 
+  // Every other mutation in the app disables its own button while it is in
+  // flight; this one did not, and it is the row that dispatches to a broker.
+  // A second click re-armed the same publication and queued a second task for
+  // it — ``publish_one``'s claim is what stopped that becoming a second post,
+  // which is a guard worth having and the wrong one to be leaning on from
+  // here. What the user saw was two "Retrying" toasts and no sign the first
+  // click had registered, which is what invites the second click.
   async function retry() {
+    setBusy(true);
     try {
       await api.retryPublication(item.content_id, item.id);
       toast.success("Retrying");
       onChanged();
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -265,8 +277,8 @@ function QueueRow({ item, onChanged }) {
       <div className="flex shrink-0 items-center gap-2">
         <StatusBadge status={item.status} />
         {retryable(item) && (
-          <button className="btn-quiet" onClick={retry}>
-            Retry
+          <button className="btn-quiet" onClick={retry} disabled={busy}>
+            {busy ? "Retrying…" : "Retry"}
           </button>
         )}
       </div>

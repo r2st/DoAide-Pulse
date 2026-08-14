@@ -10,7 +10,8 @@
  * 0 views" against platforms that had plenty. An empty page says "I don't
  * know"; a zero says "I do", and it was wrong.
  */
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Publish from "./Publish";
@@ -200,5 +201,82 @@ describe("the queue", () => {
   it("says nothing is queued rather than showing an empty list", async () => {
     draw();
     expect(await screen.findByText("Nothing queued")).toBeInTheDocument();
+  });
+});
+
+describe("retrying", () => {
+  const FAILED = [
+    {
+      id: 2,
+      content_id: 8,
+      platform: "mastodon",
+      status: "failed",
+      attempts: 3,
+      error: "401 Unauthorized",
+    },
+  ];
+
+  it("dispatches once however many times the button is clicked", async () => {
+    // The one mutation on this page that had no in-flight guard, on the row
+    // that dispatches to a broker. A second click re-armed the same
+    // publication and queued a second task for it; only ``publish_one``'s
+    // claim stopped that becoming a second post, and that guard is the wrong
+    // one to be leaning on from here.
+    api.publicationQueue.mockResolvedValue(FAILED);
+    let release;
+    api.retryPublication.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    draw();
+
+    const button = await screen.findByRole("button", { name: "Retry" });
+    await user.click(button);
+    await user.click(button);
+    await user.click(button);
+
+    expect(api.retryPublication).toHaveBeenCalledTimes(1);
+    expect(api.retryPublication).toHaveBeenCalledWith(8, 2);
+
+    release({});
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Retrying"));
+  });
+
+  it("says it is retrying while the request is in flight", async () => {
+    // Silence is what invited the second click: the label was the only thing
+    // that could tell the user the first one landed.
+    api.publicationQueue.mockResolvedValue(FAILED);
+    let release;
+    api.retryPublication.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+
+    const pending = screen.getByRole("button", { name: "Retrying…" });
+    expect(pending).toBeDisabled();
+
+    release({});
+    await screen.findByRole("button", { name: "Retry" });
+  });
+
+  it("re-enables the button when the retry fails, so it can be tried again", async () => {
+    // A guard that latches on is worse than no guard: the row it locks is a
+    // failed publication, and the user has no other way to re-arm it.
+    api.publicationQueue.mockResolvedValue(FAILED);
+    api.retryPublication.mockRejectedValue(new Error("Bad Gateway"));
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Bad Gateway"));
+    expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
   });
 });
