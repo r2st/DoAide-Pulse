@@ -347,25 +347,35 @@ function PlatformPanel({ rows }) {
     <section>
       <SectionHeader title="Where it lands" />
       <div className="panel">
-        <div className="divide-y divide-line">
-          {rows.map((row) => (
-            <BarRow
-              key={row.platform}
-              label={titleize(row.platform)}
-              value={row.views}
-              max={max}
-              display={`${formatCount(row.views)} views`}
-              tone={best && row.platform === best.platform ? "brand" : "muted"}
-              hint={[
-                `${formatCount(row.published)} published`,
-                row.failed > 0 ? `${formatCount(row.failed)} failed` : null,
-                `${formatRate(row.engagement_rate)} engaged`,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            />
-          ))}
-        </div>
+        {/* The page as a whole is past its own "nothing published yet" gate by
+            the time this renders, so an empty breakdown means something
+            narrower: publications exist but the grouping came back with no
+            rows. Saying so beats a panel whose body is a single hairline. */}
+        {rows.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-ink-500">
+            No platform breakdown yet.
+          </p>
+        ) : (
+          <div className="divide-y divide-line">
+            {rows.map((row) => (
+              <BarRow
+                key={row.platform}
+                label={titleize(row.platform)}
+                value={row.views}
+                max={max}
+                display={`${formatCount(row.views)} views`}
+                tone={best && row.platform === best.platform ? "brand" : "muted"}
+                hint={[
+                  `${formatCount(row.published)} published`,
+                  row.failed > 0 ? `${formatCount(row.failed)} failed` : null,
+                  `${formatRate(row.engagement_rate)} engaged`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+            ))}
+          </div>
+        )}
         <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-ink-500">
           {best
             ? `${titleize(best.platform)} turns a view into an interaction most often, at ${formatRate(best.engagement_rate)}.`
@@ -384,21 +394,27 @@ function ContentTypePanel({ rows }) {
     <section>
       <SectionHeader title="What works" />
       <div className="panel">
-        <div className="divide-y divide-line">
-          {rows.map((row) => (
-            <BarRow
-              key={row.content_type}
-              label={row.label ?? titleize(row.content_type)}
-              value={row.engagement_rate ?? 0}
-              max={max}
-              display={formatRate(row.engagement_rate)}
-              tone="brand"
-              hint={`${formatCount(row.publications)} published · ${formatCount(row.views)} views · ${
-                row.avg_views === null ? "—" : formatCount(row.avg_views)
-              } avg`}
-            />
-          ))}
-        </div>
+        {rows.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-ink-500">
+            No content-type breakdown yet.
+          </p>
+        ) : (
+          <div className="divide-y divide-line">
+            {rows.map((row) => (
+              <BarRow
+                key={row.content_type}
+                label={row.label ?? titleize(row.content_type)}
+                value={row.engagement_rate ?? 0}
+                max={max}
+                display={formatRate(row.engagement_rate)}
+                tone="brand"
+                hint={`${formatCount(row.publications)} published · ${formatCount(row.views)} views · ${
+                  row.avg_views === null ? "—" : formatCount(row.avg_views)
+                } avg`}
+              />
+            ))}
+          </div>
+        )}
         <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-ink-500">
           Engagement per view, so a type does not score well merely for being the
           one you publish most.

@@ -385,6 +385,51 @@ describe("velocity", () => {
   });
 });
 
+describe("a breakdown that came back with no rows", () => {
+  // Distinct from "nothing has gone out yet", which the page catches earlier
+  // and answers once. Here something *was* published and the grouping is
+  // still empty, and the panel used to render as a bare header over a
+  // hairline with a footnote about a comparison it could not make.
+  it("says the platform panel has nothing to break down", async () => {
+    api.analytics.mockResolvedValue(overview({ by_platform: [] }));
+    draw();
+
+    expect(await screen.findByText("No platform breakdown yet.")).toBeInTheDocument();
+  });
+
+  it("says the content-type panel has nothing to break down", async () => {
+    api.analytics.mockResolvedValue(overview({ by_content_type: [] }));
+    draw();
+
+    expect(
+      await screen.findByText("No content-type breakdown yet."),
+    ).toBeInTheDocument();
+  });
+
+  it("still renders the rest of the page around an empty panel", async () => {
+    api.analytics.mockResolvedValue(
+      overview({ by_platform: [], by_content_type: [] }),
+    );
+    draw();
+
+    // The counters are read straight off `totals` and owe nothing to either
+    // breakdown, so an empty one must not take them down with it.
+    expect(await screen.findByText("4,200")).toBeInTheDocument();
+    expect(screen.getByText("Best performing")).toBeInTheDocument();
+  });
+
+  it("does not claim a best platform when there are no platforms", async () => {
+    api.analytics.mockResolvedValue(overview({ by_platform: [] }));
+    draw();
+
+    expect(
+      await screen.findByText(
+        "Not enough views on any one platform yet to say which converts best.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("before anything has gone out", () => {
   it("says so once instead of showing eight empty panels", async () => {
     api.analytics.mockResolvedValue(
