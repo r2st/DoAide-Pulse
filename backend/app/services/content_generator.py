@@ -30,11 +30,16 @@ The two causes need opposite handling upstream and had been indistinguishable:
 from __future__ import annotations
 
 import logging
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.config import settings
-from app.models.content import TARGET_WORDS, ContentType
+from app.models.content import TARGET_WORDS, ContentIdea, ContentType
 from app.models.project import Project, Tone
 from app.services import ai, formats, seo
 from app.services.github_client import RepoActivity
@@ -743,4 +748,144 @@ Reply with exactly this JSON object:
     return ideas[:limit] or _fallback_ideas(project, activity, signal)[:limit]
 
 
-__all__ = ["GeneratedContent", "Idea", "generate", "suggest_ideas"]
+# --------------------------------------------------------------------------- #
+# Banking ideas                                                                #
+# --------------------------------------------------------------------------- #
+
+#: Words carrying no subject, dropped before two headlines are compared. Short
+#: and deliberately so: this is not a stemmer, it is the handful of words that
+#: differ between two phrasings of the same idea ("How to deploy Herald *to*
+#: production" against the same headline with *into*) and never distinguish two
+#: real ones.
+_IDEA_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in",
+    "into", "is", "it", "its", "of", "on", "or", "that", "the", "this", "to",
+    "what", "when", "where", "which", "why", "with", "you", "your",
+})
+
+#: Possessives and the ``'s`` contraction, dropped before tokenizing so
+#: "Herald's caching layer" and "the caching layer in Herald" reduce to the same
+#: words. Curly apostrophes included: the model emits them and a user typing a
+#: headline on a Mac gets them by autocorrect.
+_IDEA_POSSESSIVE = re.compile(r"['’]s\b|['’]")
+
+#: Kept together across a dot or hyphen so "2.0" and "double-post" stay one word
+#: — a version number split into "2" and "0" would make every release headline
+#: look like every other one.
+_IDEA_TOKEN = re.compile(r"[0-9a-z]+(?:[.\-][0-9a-z]+)*")
+
+#: How much of two headlines' subject matter must coincide before the second is
+#: taken as a restatement of the first. Tuned against the pair this has to keep
+#: *apart*: "Getting started with Herald" and "Getting started with Herald Pro"
+#: share three of four significant words — 0.75 — and are two different pieces.
+IDEA_SIMILARITY_THRESHOLD = 0.8
+
+
+def _idea_tokens(headline: str) -> frozenset[str]:
+    """The significant words of a headline, for comparing it against another."""
+    plain = _IDEA_POSSESSIVE.sub("", (headline or "").casefold())
+    return frozenset(
+        w for w in _IDEA_TOKEN.findall(plain) if w not in _IDEA_STOPWORDS
+    )
+
+
+def _is_restatement(candidate: str, existing: frozenset[str]) -> bool:
+    """Whether *candidate* says what a headline with *existing* tokens already said."""
+    tokens = _idea_tokens(candidate)
+    if not tokens or not existing:
+        return False
+    # Under two significant words there is not enough of a subject to judge
+    # overlap on: "Caching" would swallow "Caching" and nothing else usefully,
+    # while any single shared word would score 1.0 against another one-word
+    # headline. Exact match only, down there.
+    if len(tokens) < 2 or len(existing) < 2:
+        return tokens == existing
+    overlap = len(tokens & existing) / len(tokens | existing)
+    return overlap >= IDEA_SIMILARITY_THRESHOLD
+
+
+def bank_ideas(
+    db: Session,
+    project_id: int,
+    ideas: Sequence[Idea],
+    *,
+    source: dict[str, Any],
+) -> list[ContentIdea]:
+    """Store *ideas*, dropping any that restate one already waiting unused.
+
+    Returns the rows actually inserted, which is fewer than *ideas* whenever the
+    producer repeated itself.
+
+    Nothing deduplicated these, and both producers repeat by construction. The
+    autopilot scans on a schedule and asks a model at ``temperature=0.9`` about
+    an overlapping window of commits, so consecutive scans of an active repo
+    describe the same work twice. And when no provider answers,
+    :func:`_fallback_ideas` returns a *fixed* string — every scan during an
+    outage banked another "What's new in ``<project>``", by the hour.
+
+    That is worse than clutter because of what bounds the table.
+    ``_prune_ideas`` deletes the *oldest* unused rows over the cap, so a
+    repeating producer does not fill the list up and stop: it evicts the varied
+    ideas banked before it, one per repeat, until the project's suggestions are
+    N copies of one headline. The failure runs in the direction of less choice
+    the longer it goes on.
+
+    The first row of a group wins and keeps its ``created_at``. That matters:
+    refreshing the oldest copy on each repeat would make a duplicated idea
+    permanently unprunable, which is the same bug with the sign flipped.
+
+    Comparison is against *unused* ideas only. An idea already written up is a
+    subject the project has covered, and proposing it again is a judgement about
+    editorial repetition rather than a duplicate row — a different question, and
+    not one a headline comparison should answer by itself.
+    """
+    # Sessions here are built with ``autoflush=False`` (``database.SessionLocal``),
+    # so a row another call added and did not commit is invisible to the SELECT
+    # below. Without this the function's guarantee would be "deduplicated against
+    # what is stored, and against what is staged only if you happened to commit
+    # first" — a contract that holds in the two callers today and breaks in the
+    # third.
+    db.flush()
+
+    seen = [
+        _idea_tokens(headline)
+        for headline in db.scalars(
+            select(ContentIdea.headline).where(
+                ContentIdea.project_id == project_id,
+                ContentIdea.used_content_id.is_(None),
+            )
+        )
+    ]
+
+    banked: list[ContentIdea] = []
+    for idea in ideas:
+        if any(_is_restatement(idea.headline, tokens) for tokens in seen):
+            logger.info(
+                "project %s: idea %r restates one already banked — skipped",
+                project_id,
+                idea.headline,
+            )
+            continue
+        row = ContentIdea(
+            project_id=project_id,
+            content_type=idea.content_type,
+            headline=idea.headline[:300],
+            rationale=idea.rationale,
+            source=source,
+        )
+        db.add(row)
+        banked.append(row)
+        # Within one batch too: a model asked for four ideas can return the same
+        # one twice, and it did.
+        seen.append(_idea_tokens(idea.headline))
+    return banked
+
+
+__all__ = [
+    "IDEA_SIMILARITY_THRESHOLD",
+    "GeneratedContent",
+    "Idea",
+    "bank_ideas",
+    "generate",
+    "suggest_ideas",
+]

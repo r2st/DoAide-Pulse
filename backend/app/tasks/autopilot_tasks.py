@@ -237,16 +237,18 @@ def _act_on(
 
     # Bank an idea regardless of whether we write now: the calendar's
     # "suggested" column is fed from these, and an idea costs nothing to keep.
-    for idea in content_generator.suggest_ideas(project, activity=activity, limit=2):
-        db.add(
-            ContentIdea(
-                project_id=project.id,
-                content_type=idea.content_type,
-                headline=idea.headline,
-                rationale=idea.rationale,
-                source={"kind": "autopilot", "commits": len(activity.new_commits)},
-            )
-        )
+    #
+    # Through `bank_ideas` rather than inserted here, because consecutive scans
+    # of an active repo describe overlapping commits and say the same thing
+    # twice — and during an LLM outage the fallback says *literally* the same
+    # thing every hour, which `_prune_ideas` below then answers by deleting the
+    # varied ideas instead. See the function's docstring.
+    content_generator.bank_ideas(
+        db,
+        project.id,
+        content_generator.suggest_ideas(project, activity=activity, limit=2),
+        source={"kind": "autopilot", "commits": len(activity.new_commits)},
+    )
 
     # Prune oldest unused ideas beyond the cap so the table stays bounded.
     _prune_ideas(db, project.id)

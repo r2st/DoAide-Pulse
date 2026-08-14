@@ -499,17 +499,18 @@ def list_ideas(
     project = owned_project(project_id, db, user)
 
     if refresh:
-        ideas = content_generator.suggest_ideas(project)
-        for idea in ideas:
-            db.add(
-                ContentIdea(
-                    project_id=project.id,
-                    content_type=idea.content_type,
-                    headline=idea.headline,
-                    rationale=idea.rationale,
-                    source={"kind": "manual_refresh"},
-                )
-            )
+        # Deduplicated against what is already waiting, because the button is
+        # pressed repeatedly by construction — a user who does not like the list
+        # presses it again — and the model is asked at ``temperature=0.9`` with
+        # the same project brief every time. Without this, three presses banked
+        # three copies of whatever the model likes about this project, and the
+        # twelve-row read below returned four ideas in twelve rows.
+        content_generator.bank_ideas(
+            db,
+            project.id,
+            content_generator.suggest_ideas(project),
+            source={"kind": "manual_refresh"},
+        )
         db.commit()
 
     rows = db.scalars(
