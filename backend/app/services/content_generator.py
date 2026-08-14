@@ -558,13 +558,39 @@ def _assemble(
 # --------------------------------------------------------------------------- #
 
 
+#: How long a headline may be, mirroring ``ContentIdea.headline``'s
+#: ``String(300)``. Every other producer of a 300-bounded column truncates at
+#: the point it builds the value (see ``app.services.triggers``,
+#: ``app.services.headlines``); ideas are built here, so they truncate here.
+HEADLINE_LIMIT = 300
+
+
 @dataclass(frozen=True)
 class Idea:
-    """A suggested subject, before anyone has written it."""
+    """A suggested subject, before anyone has written it.
+
+    *headline* is truncated to :data:`HEADLINE_LIMIT` on construction rather
+    than by each caller. Both producers feed a ``String(300)`` column and
+    neither controls the length of what it is given: the model decides how long
+    a "headline" is — a reasoning model will put a paragraph there — and the
+    release branch of :func:`_fallback_ideas` interpolates a git tag, which
+    GitHub allows up to 255 bytes of, into a string that already holds a
+    120-character project name.
+
+    Overflowing that column is not a cosmetic problem. SQLite ignores the width,
+    so it passes in tests; Postgres raises ``StringDataRightTruncation`` on the
+    INSERT, which fails ``GET /projects/{id}/ideas?refresh=true`` with a 500 and
+    aborts the autopilot scan mid-flight — after the ideas were added to the
+    session but before the piece they were banked alongside is routed.
+    """
 
     content_type: ContentType
     headline: str
     rationale: str
+
+    def __post_init__(self) -> None:
+        if len(self.headline) > HEADLINE_LIMIT:
+            object.__setattr__(self, "headline", self.headline[:HEADLINE_LIMIT])
 
 
 def _fallback_ideas(
@@ -598,7 +624,7 @@ def _fallback_ideas(
         ideas.append(
             Idea(
                 signal.suggested_type,
-                signal.headline[:300] or f"What's new in {project.name}",
+                signal.headline or f"What's new in {project.name}",
                 f"{signal.source} reported this and it has not been written about.",
             )
         )

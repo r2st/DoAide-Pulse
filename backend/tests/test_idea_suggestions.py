@@ -219,3 +219,63 @@ def test_a_project_with_nothing_happening_still_gets_one_idea(project):
     assert len(ideas) == 1
     assert ideas[0].content_type == ContentType.HOW_TO
     assert project.name in ideas[0].headline
+
+
+# --------------------------------------------------------------------------- #
+# Fitting the column                                                           #
+# --------------------------------------------------------------------------- #
+#
+# ``ContentIdea.headline`` is ``String(300)``. SQLite ignores that width, so an
+# overflow is invisible to every test in this file that does not measure the
+# string itself — and lands in production as a ``StringDataRightTruncation`` on
+# the INSERT, which 500s the ideas endpoint and aborts the autopilot scan.
+
+
+def test_a_headline_the_model_wrote_a_paragraph_of_is_cut_to_the_column(
+    project, model_says
+):
+    """A reasoning model puts its scratchpad in whichever field it reaches
+    first. That is a bad idea, not a failed request — the other fields are
+    still usable, so it is trimmed rather than dropped."""
+    model_says(
+        {
+            "ideas": [
+                {
+                    "content_type": "tutorial",
+                    "headline": "We need to pick an angle. " * 60,
+                    "rationale": "Because.",
+                }
+            ]
+        }
+    )
+
+    ideas = suggest_ideas(project)
+
+    assert len(ideas[0].headline) == content_generator.HEADLINE_LIMIT
+
+
+def test_a_release_tag_long_enough_to_overflow_is_cut_with_the_headline(project):
+    """Nothing bounds a git tag on our side — GitHub allows 255 bytes of one,
+    and the headline interpolates it after a project name that ``Project.name``
+    allows 120 characters of. 255 + 120 does not fit in 300."""
+    project.name = "H" * 120
+    activity = repo_activity(commits=1, release=True)
+    object.__setattr__(activity.new_release, "tag", "v" + "9" * 254)
+
+    ideas = _fallback_ideas(project, activity)
+
+    announcement = next(i for i in ideas if i.content_type == ContentType.ANNOUNCEMENT)
+    assert len(announcement.headline) == content_generator.HEADLINE_LIMIT
+
+
+def test_a_webhook_headline_at_the_limit_is_kept_whole(project):
+    """The cut is at the column width, not below it."""
+    signal = TriggerSignal(
+        kind=TriggerKind.WEBHOOK,
+        source="Linear",
+        headline="x" * content_generator.HEADLINE_LIMIT,
+    )
+
+    ideas = _fallback_ideas(project, None, signal)
+
+    assert ideas[0].headline == "x" * content_generator.HEADLINE_LIMIT
