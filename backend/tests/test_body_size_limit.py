@@ -19,6 +19,15 @@ The counting half is asserted three ways — that it stops an oversized stream,
 that it does not stop a legitimate one, and that it stops it having read a
 bounded amount rather than after swallowing the lot — because a cap that fires
 only once the whole body is in memory has already lost.
+
+Those three assume a well-behaved reader: one that stops at the first
+disconnect, and that has not answered yet. Neither is guaranteed by anything,
+so the last group of tests drives the middleware against readers that break
+each assumption in turn — one that keeps asking after the disconnect, one that
+is handed a real client disconnect rather than body, and one that has already
+put a status line on the wire when the cap fires. The bound has to hold against
+all three, and in the last case it holds by giving up on answering rather than
+by sending a second response.
 """
 from __future__ import annotations
 
@@ -27,7 +36,7 @@ from collections.abc import Iterator
 import anyio
 import httpx
 
-from app.main import MAX_BODY_BYTES, BodySizeLimitMiddleware
+from app.main import MAX_BODY_BYTES, BodySizeLimitMiddleware, _no_body
 
 #: Chunk size for the streamed bodies below. Big enough that a body is a
 #: handful of chunks rather than thousands, small enough that the cap lands
@@ -84,13 +93,31 @@ def test_an_undeclared_oversized_body_is_refused(client):
 # its own and count what it pulls from the receive channel.
 
 
+async def _reads_the_whole_body(scope, receive, send):
+    """The ordinary app: drain the body, then answer 200."""
+    while True:
+        message = await receive()
+        if message["type"] == "http.disconnect" or not message.get("more_body"):
+            break
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"{}"})
+
+
 def _drive(
-    chunk_sizes: list[int], *, headers: list[tuple[bytes, bytes]] | None = None
+    chunk_sizes: list[int],
+    *,
+    headers: list[tuple[bytes, bytes]] | None = None,
+    app=_reads_the_whole_body,
+    tail: list[dict] | None = None,
 ) -> tuple[list[int], list[dict]]:
     """Run the middleware over a body-reading stub app.
 
     Returns the chunk sizes it actually asked the channel for, and the ASGI
     messages it let out.
+
+    ``app`` swaps in a stub that reads or answers in some less well-behaved
+    order; ``tail`` appends messages the channel yields once the chunks run
+    out, for the cases where what arrives is not more body.
     """
     scope = {
         "type": "http",
@@ -109,30 +136,25 @@ def _drive(
     handed: list[int] = []
     sent: list[dict] = []
     remaining = list(chunk_sizes)
+    queued = list(tail or [])
 
     async def receive():
         if not remaining:
+            if queued:
+                return queued.pop(0)
             return {"type": "http.request", "body": b"", "more_body": False}
         size = remaining.pop(0)
         handed.append(size)
         return {
             "type": "http.request",
             "body": b"x" * size,
-            "more_body": bool(remaining),
+            "more_body": bool(remaining) or bool(queued),
         }
 
     async def send(message):
         sent.append(message)
 
-    async def _reads_the_whole_body(scope, receive, send):
-        while True:
-            message = await receive()
-            if message["type"] == "http.disconnect" or not message.get("more_body"):
-                break
-        await send({"type": "http.response.start", "status": 200, "headers": []})
-        await send({"type": "http.response.body", "body": b"{}"})
-
-    anyio.run(BodySizeLimitMiddleware(_reads_the_whole_body), scope, receive, send)
+    anyio.run(BodySizeLimitMiddleware(app), scope, receive, send)
     return handed, sent
 
 
@@ -184,6 +206,121 @@ def test_a_body_under_the_cap_reaches_the_app_untouched():
 
     assert sum(handed) == _CHUNK * 4
     assert _status(sent) == 200
+
+
+def test_an_app_that_ignores_the_disconnect_gets_no_more_body():
+    """A disconnect is advice, not enforcement, and some readers do not take it.
+
+    Starlette's request stream stops at the first disconnect, so the ordinary
+    path never asks twice. Nothing makes that mandatory: a route reading the
+    channel itself, or a parser that retries on a short read, keeps calling. The
+    cap has to be a property of the channel rather than of one message — every
+    later read gets the same disconnect, and none of them reaches the client's
+    stream.
+
+    Without that, the counter simply resumes: the app asks again, the next chunk
+    is handed over, and the bound is whatever the app's patience happens to be.
+    """
+    reads = 0
+
+    async def _never_stops_reading(scope, receive, send):
+        nonlocal reads
+        for _ in range(200):
+            await receive()
+            reads += 1
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    offered = MAX_BODY_BYTES * 8 // _CHUNK
+    handed, sent = _drive([_CHUNK] * offered, app=_never_stops_reading)
+
+    assert reads == 200, "the stub must actually keep asking"
+    assert sum(handed) <= MAX_BODY_BYTES + _CHUNK
+    assert _status(sent) == 413
+
+
+def test_a_client_disconnect_passes_through_without_being_counted():
+    """Not every message on the channel is body, and the counter must say so.
+
+    A client that hangs up mid-request produces an ``http.disconnect`` with no
+    ``body`` key at all. Counting it as a request message is how a body counter
+    picks up a ``KeyError`` on a path that only runs when the client has already
+    gone — the least observable place in the whole request cycle. It has to
+    reach the app unchanged, and it has to leave the running total alone.
+    """
+    seen: list[str] = []
+
+    async def _records_what_arrives(scope, receive, send):
+        while True:
+            message = await receive()
+            seen.append(message["type"])
+            if message["type"] == "http.disconnect" or not message.get("more_body"):
+                break
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    _, sent = _drive(
+        [_CHUNK] * 4,
+        app=_records_what_arrives,
+        tail=[{"type": "http.disconnect"}],
+    )
+
+    assert seen == ["http.request"] * 4 + ["http.disconnect"]
+    # The disconnect was passed on, not converted into a refusal: the body that
+    # did arrive was well under the cap, so the app's own answer stands.
+    assert _status(sent) == 200
+
+
+def test_a_cap_hit_after_the_response_started_is_logged_rather_than_answered(caplog):
+    """The one case with no honest answer left, and it must not invent one.
+
+    An app is allowed to start responding and then go back for more body —
+    streaming uploads do it, and so does anything that answers from a header
+    before parsing. If the cap fires after ``http.response.start`` is already on
+    the wire, the status line is spent: HTTP has no way to retract it, and
+    sending a second ``response.start`` is a protocol error that surfaces as a
+    server crash rather than as a 413.
+
+    So the read stops — which is the half the cap exists for — and the fact goes
+    to the log instead of to the client. The assertion that matters is the
+    absence: exactly one response start, and it is not the middleware's.
+    """
+
+    async def _answers_then_keeps_reading(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect" or not message.get("more_body"):
+                break
+        await send({"type": "http.response.body", "body": b"{}"})
+
+    with caplog.at_level("WARNING", logger="app.main"):
+        handed, sent = _drive(
+            [_CHUNK] * (MAX_BODY_BYTES * 4 // _CHUNK),
+            app=_answers_then_keeps_reading,
+        )
+
+    assert [m["type"] for m in sent] == ["http.response.start"]
+    assert _status(sent) == 200, "the app's status line, already unretractable"
+    assert sum(handed) <= MAX_BODY_BYTES + _CHUNK, "the read still stopped"
+    assert "body cap hit after the response had started" in caplog.text
+
+
+def test_the_filler_receive_channel_reports_a_disconnect():
+    """A one-line helper that nothing in the suite can reach through the app.
+
+    ``_respond`` renders a ``JSONResponse`` by calling it as an ASGI app, which
+    requires a receive channel it never uses — Starlette only reads one for a
+    streaming or a background-task response, and this is neither. So the
+    argument exists to satisfy a signature.
+
+    It is still worth pinning what it returns. If it ever grows a reader, the
+    request body at that point is either unread by choice or already past the
+    cap, and a disconnect is the only answer that is true in both cases. A
+    filler that returned an empty ``http.request`` instead would tell the reader
+    to expect a body that is not coming.
+    """
+    assert anyio.run(_no_body) == {"type": "http.disconnect"}
 
 
 def test_an_undeclared_body_under_the_cap_is_let_through(client):

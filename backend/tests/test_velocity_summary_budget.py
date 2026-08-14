@@ -601,3 +601,27 @@ def test_series_facts_match_the_series_they_summarise(db, project, user):
     assert facts.total_views == whole.points[-1].views == 5100
     # The recent gain the aggregates imply is the one the series computes.
     assert facts.total_views - facts.baseline_views == whole.recent_gain(_WINDOW)
+
+
+def test_summarising_no_curves_asks_the_database_nothing(db, project, user, sql_log):
+    """No curves is not a small query — it is no query.
+
+    The two aggregates are ``WHERE publication_id IN (...)``, and an empty
+    ``IN`` clause is the shape most likely to be mishandled: SQLAlchemy renders
+    it as a always-false predicate that still costs a round trip, and a hand-
+    rolled ``OR`` of per-publication cutoffs like the second query's would
+    render as an empty ``OR`` and match *everything*. Returning early is what
+    makes both moot, so the assertion is on the round trips rather than the
+    result.
+
+    ``summary`` guards this case before it gets here, which is why nothing else
+    reaches it — but that guard is one branch away from being removed, and the
+    two callers of this helper in the tests above pass whatever ``curves``
+    returned.
+    """
+    _make(db, project, slug="present", published_hours_ago=100, readings=[(24, 10)])
+    db.expire_all()
+    sql_log.clear()
+
+    assert velocity._series_facts(db, [], window_hours=_WINDOW) == {}
+    assert sql_log == []

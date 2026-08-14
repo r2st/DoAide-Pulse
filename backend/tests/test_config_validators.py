@@ -62,6 +62,29 @@ def test_a_negative_backoff_is_refused_but_zero_is_allowed(field):
     assert getattr(_settings(**{field: 0.0}), field) == 0.0
 
 
+@pytest.mark.parametrize("value", [0, -1, -0.5])
+def test_a_pool_timeout_of_zero_or_less_is_refused(value):
+    """The one float that must *not* accept zero, unlike the two above.
+
+    ``db_pool_timeout_seconds`` reads like the backoff settings — a number of
+    seconds to wait — but SQLAlchemy takes ``pool_timeout=0`` literally as "do
+    not wait", so a pool under momentary pressure raises instead of queueing and
+    every burst becomes an error page. The neighbouring validator allows zero
+    and means it; this one has to refuse it.
+    """
+    with pytest.raises(ValidationError, match="must be positive"):
+        _settings(db_pool_timeout_seconds=value)
+
+
+def test_a_pool_timeout_keeps_its_fractional_part():
+    """It is a float on purpose, and the validator must not quietly make it one.
+
+    A sub-second pool timeout is a legitimate thing to configure, and the
+    integer validator next door would have rounded it away.
+    """
+    assert _settings(db_pool_timeout_seconds=0.25).db_pool_timeout_seconds == 0.25
+
+
 def test_the_edges_of_each_range_are_accepted():
     ok = _settings(
         digest_send_weekday=6,
@@ -70,7 +93,9 @@ def test_the_edges_of_each_range_are_accepted():
         schedule_max_horizon_days=1,
         publish_request_retries=0,
         schedule_past_grace_seconds=0,
+        db_pool_timeout_seconds=0.001,
     )
     assert ok.digest_send_weekday == 6
     assert ok.digest_send_hour == 23
     assert ok.digest_window_days == 1
+    assert ok.db_pool_timeout_seconds == 0.001
