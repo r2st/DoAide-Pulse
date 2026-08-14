@@ -32,6 +32,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from app.models.content import BODY_MARKDOWN_MAX_LENGTH, TITLE_MAX_LENGTH
+
 if TYPE_CHECKING:
     from app.models.project import Project
     from app.models.template import ContentTemplate
@@ -71,6 +73,25 @@ VALUE_LIMIT = 5000
 #: How many bullet lines `signal.items` expands to.
 ITEMS_LIMIT = 40
 
+#: Ceilings on the *output*, which is a different question from the ceilings on
+#: the inputs — and the one that was missing.
+#:
+#: Bounding each value at ``VALUE_LIMIT`` bounds nothing about the result,
+#: because a placeholder may repeat. A 50,000-character ``body_template`` holds
+#: about ten thousand copies of ``{{v}}``, so one 48 KB request rendered a 40 MB
+#: body: past the 1 MB body-size middleware, into a ``Text`` column with no width
+#: to stop it, and from there into every adapter request, every SEO audit and
+#: every load of the editor for that piece. The title had the narrower version of
+#: the same problem and a worse landing: ``Content.title`` is ``String(300)`` and
+#: ``slug`` is ``String(320)``, so a rendered title over either is a PostgreSQL
+#: ``DataError`` — and the slug is a unique-index key, where an over-long value
+#: exceeds the btree entry limit as well.
+#:
+#: These are the same numbers the hand-written path has always enforced through
+#: ``ContentCreate``; a template is not a way around them.
+TITLE_LIMIT = TITLE_MAX_LENGTH
+BODY_LIMIT = BODY_MARKDOWN_MAX_LENGTH
+
 
 @dataclass
 class Rendered:
@@ -85,6 +106,14 @@ class Rendered:
     #: Which placeholders actually resolved to something non-empty. Lets the UI
     #: show "3 of 5 filled" without re-parsing.
     filled: list[str] = field(default_factory=list)
+    #: Which of ``title``/``body`` came out over its limit and was clipped.
+    #:
+    #: Same split as ``missing``, and for the same reason: a preview renders
+    #: anyway, because seeing the first 200 KB of what a template produces is
+    #: how an author finds out it produces too much. A caller writing a real
+    #: piece refuses — silently storing a truncated body would make the row
+    #: disagree with the template that is supposed to explain it.
+    over_limit: list[str] = field(default_factory=list)
 
     @property
     def is_complete(self) -> bool:
@@ -314,12 +343,25 @@ def render(
     body, body_filled = substitute(template.body_template or "", context)
 
     body = collapse_blank_runs(drop_empty_lines(template.body_template or "", body))
+    title = " ".join(title.split())
+
+    # Clipped after the whitespace and empty-line passes, not before: those
+    # passes shrink the text, so measuring first would refuse renders that
+    # actually fit.
+    over_limit = []
+    if len(title) > TITLE_LIMIT:
+        over_limit.append("title")
+        title = title[:TITLE_LIMIT]
+    if len(body) > BODY_LIMIT:
+        over_limit.append("body")
+        body = body[:BODY_LIMIT]
 
     return Rendered(
-        title=" ".join(title.split()),
+        title=title,
         body=body,
         missing=missing,
         filled=sorted(set(title_filled) | set(body_filled)),
+        over_limit=over_limit,
     )
 
 

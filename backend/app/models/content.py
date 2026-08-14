@@ -53,7 +53,17 @@ if TYPE_CHECKING:
 #: layers honest; ``tests/test_schema_caps_fit_their_columns.py`` pins the rest
 #: of the tree, where the numbers are still written twice.
 TITLE_MAX_LENGTH = 300
+#: Wider than the title it is derived from, so the collision suffix that
+#: ``unique_content_slug`` appends has somewhere to go.
+SLUG_MAX_LENGTH = 320
 META_DESCRIPTION_MAX_LENGTH = 320
+#: ``body_markdown`` is ``Text``, so this one is not a column width — it is the
+#: ceiling ``ContentCreate`` has always applied, named here so the paths that
+#: build a body *without* going through that schema apply the same one. A body
+#: is written once and then read by every adapter, every SEO audit and every
+#: render of the editor, so "unbounded because the column allows it" is a
+#: promise the rest of the system cannot keep.
+BODY_MARKDOWN_MAX_LENGTH = 200_000
 #: Deliberately narrower than ``Publication.external_url`` (700), which is one
 #: of the things written into it — see
 #: ``app.services.publishing_service._adopt_canonical``.
@@ -139,7 +149,9 @@ class Content(Base, TimestampMixin):
     )
 
     title: Mapped[str] = mapped_column(String(TITLE_MAX_LENGTH), nullable=False)
-    slug: Mapped[str] = mapped_column(String(320), index=True, nullable=False)
+    slug: Mapped[str] = mapped_column(
+        String(SLUG_MAX_LENGTH), index=True, nullable=False
+    )
     #: The canonical body. Markdown — every adapter converts *from* this.
     body_markdown: Mapped[str] = mapped_column(Text, default="", nullable=False)
     #: One- or two-sentence summary; doubles as the social blurb.
@@ -250,10 +262,22 @@ def unique_content_slug(db: Session, project_id: int, title: str) -> str:
     Used by both the content router and the autopilot task — kept here so the
     query and the model live in the same module. The database-level unique
     constraint is the real guard; this avoids the common case.
+
+    The base is clipped so that the disambiguating suffix still fits inside
+    ``slug``'s column. That is belt-and-braces where the title came through a
+    schema — ``TITLE_MAX_LENGTH`` already leaves twenty characters of room — but
+    every caller here passes a title from somewhere, and this is the one place
+    all of them meet. It matters more than the usual column overflow: ``slug``
+    carries the ``uq_content_project_slug`` unique index, and PostgreSQL refuses
+    an index entry over 2704 bytes with a different error than the one a plain
+    over-long value raises, so the failure would not even look like the same
+    bug.
     """
     from app.models.project import slugify
 
-    base = slugify(title)
+    #: Room for "-2" through the "-abc123" the collision retry appends.
+    room = SLUG_MAX_LENGTH - 8
+    base = slugify(title)[:room].strip("-") or "untitled"
     candidate, suffix = base, 2
     while db.scalar(
         select(Content.id).where(

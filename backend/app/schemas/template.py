@@ -192,6 +192,10 @@ class RenderOut(BaseModel):
     missing: list[str]
     filled: list[str]
     is_complete: bool
+    #: ``"title"``, ``"body"``, or both: what came out longer than a piece may
+    #: be and was clipped for this preview. Same contract as ``missing`` —
+    #: shown here, refused by ``POST /templates/{id}/use``.
+    over_limit: list[str] = []
 
 
 class TemplateUseRequest(RenderRequest):

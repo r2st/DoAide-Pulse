@@ -290,6 +290,7 @@ def preview_template(
         missing=rendered.missing,
         filled=rendered.filled,
         is_complete=rendered.is_complete,
+        over_limit=rendered.over_limit,
     )
 
 
@@ -337,6 +338,30 @@ def use_template(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Still needs a value for {', '.join(rendered.missing)}.",
+        )
+    if rendered.over_limit:
+        # Refused rather than stored clipped, for the reason the preview is not:
+        # this one writes a row, and a body that has been silently cut off no
+        # longer matches the template that is meant to explain it. The amount of
+        # slack is not obvious from the inputs either — each value is capped at
+        # 5,000 characters, but a placeholder repeated ten thousand times in one
+        # body template turns that into tens of megabytes — so the message says
+        # which part overflowed and by how much rather than leaving the author
+        # to work out which value to shorten.
+        limits = {
+            "title": template_service.TITLE_LIMIT,
+            "body": template_service.BODY_LIMIT,
+        }
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "This template renders more than a piece can hold: "
+                + "; ".join(
+                    f"the {field} is over {limits[field]:,} characters"
+                    for field in rendered.over_limit
+                )
+                + ". Shorten the values, or the template."
+            ),
         )
 
     content_type = payload.content_type or template.content_type

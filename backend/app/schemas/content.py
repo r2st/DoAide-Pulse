@@ -6,6 +6,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.content import (
+    BODY_MARKDOWN_MAX_LENGTH,
     CANONICAL_URL_MAX_LENGTH,
     META_DESCRIPTION_MAX_LENGTH,
     TITLE_MAX_LENGTH,
@@ -121,7 +122,7 @@ class ContentCreate(BaseModel):
     project_id: int
     content_type: ContentType = ContentType.FEATURE_SPOTLIGHT
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
-    body_markdown: str = Field(default="", max_length=200_000)
+    body_markdown: str = Field(default="", max_length=BODY_MARKDOWN_MAX_LENGTH)
     excerpt: str = Field(default="", max_length=1000)
     meta_description: str = Field(default="", max_length=META_DESCRIPTION_MAX_LENGTH)
     keywords: list[str] = Field(default=[], max_length=30)
@@ -146,7 +147,7 @@ class ContentCreate(BaseModel):
 
 class ContentUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=TITLE_MAX_LENGTH)
-    body_markdown: str | None = Field(default=None, max_length=200_000)
+    body_markdown: str | None = Field(default=None, max_length=BODY_MARKDOWN_MAX_LENGTH)
     excerpt: str | None = Field(default=None, max_length=1000)
     meta_description: str | None = Field(
         default=None, max_length=META_DESCRIPTION_MAX_LENGTH
