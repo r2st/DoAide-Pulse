@@ -6,7 +6,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, lazyload, selectinload
 
 from app.config import settings
 from app.database import get_db
@@ -399,6 +399,13 @@ def project_feed(
     items = list(
         db.scalars(
             select(Content)
+            # ``rss.build_feed`` reads a title, an excerpt, a slug, a canonical
+            # URL and a date. It never looks at a publication, but
+            # ``Content.publications`` is ``lazy="selectin"`` for the content
+            # list's sake, so serving this feed ran two queries where one is
+            # needed — and this is the unauthenticated endpoint, the one that
+            # gets polled by every reader on a timer.
+            .options(lazyload(Content.publications))
             .where(Content.project_id == project.id, Content.status == ContentStatus.PUBLISHED)
             .order_by(Content.published_at.desc())
             .limit(rss.FEED_ITEM_LIMIT)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, lazyload
 
 from app.config import settings
 from app.database import get_db
@@ -236,8 +236,11 @@ def dashboard(
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
             # The response reads ``p.content.title``; joining for the filter
-            # does not load the relationship.
-            .options(joinedload(Publication.content))
+            # does not load the relationship. The ``lazyload`` stops there: a
+            # ``Content`` loaded this way fires its own ``lazy="selectin"``
+            # publications load, so eagerly loading a publication's content
+            # fetched back every *sibling* publication of that content.
+            .options(joinedload(Publication.content).lazyload(Content.publications))
             .where(
                 Project.user_id == user.id,
                 Publication.status == PublicationStatus.SCHEDULED,
@@ -252,6 +255,14 @@ def dashboard(
             .join(Project, Project.id == Content.project_id)
             # Same as the content list: ``c.project.name`` per row.
             .options(joinedload(Content.project))
+            # ``Content.publications`` is ``lazy="selectin"`` for the content
+            # list, which renders it. This block does not: the eight rows here
+            # become an id, a title, a status, a type and a project name. Left
+            # alone the default fires a second SELECT over every publication
+            # attached to them, on the page every session opens first.
+            # ``lazyload`` rather than ``noload`` so a field added to this
+            # response later is slow rather than silently empty.
+            .options(lazyload(Content.publications))
             .where(Project.user_id == user.id)
             .order_by(Content.created_at.desc())
             .limit(8)

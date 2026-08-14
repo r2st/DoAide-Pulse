@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from html import escape
 
 from sqlalchemy import and_, func, select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, lazyload
 
 from app.config import settings
 from app.models.content import Content, ContentStatus
@@ -282,6 +282,11 @@ def build(
         select(Content, Publication)
         .join(Publication, Publication.content_id == Content.id)
         .join(Project, Project.id == Content.project_id)
+        # The publication this row is about is already the second element of
+        # the pair. Letting ``lazy="selectin"`` also fetch every *other*
+        # publication of every piece is a second query for rows the loop below
+        # does not read, on top of the join that produced them.
+        .options(lazyload(Content.publications))
         .where(
             Project.user_id == user.id,
             Publication.status == PublicationStatus.PUBLISHED,
@@ -309,17 +314,22 @@ def build(
         if entry["url"] is None and publication.external_url:
             entry["url"] = publication.external_url
 
-    titles = {
-        c.id: c
-        for c in db.scalars(
-            select(Content).where(Content.id.in_(list(per_content) or [0]))
-        )
-    }
+    # Two columns, not entities. The only thing read below is the title, and a
+    # ``Content`` row to reach it is the whole body, four JSON columns and —
+    # through ``lazy="selectin"`` — a second query for publications nothing
+    # here looks at.
+    titles = dict(
+        db.execute(
+            select(Content.id, Content.title).where(
+                Content.id.in_(list(per_content) or [0])
+            )
+        ).all()
+    )
     top = sorted(
         (
             {
                 "content_id": content_id,
-                "title": titles[content_id].title,
+                "title": titles[content_id],
                 "views": gained,
             }
             for content_id, gained in per_content.items()
@@ -348,7 +358,11 @@ def build(
         # instance, so it is five avoidable round trips times the user count.
         for p in db.scalars(
             select(Publication)
-            .options(joinedload(Publication.content))
+            # ``lazyload`` on the far side: the eagerly-loaded ``Content`` would
+            # otherwise fire its own ``lazy="selectin"`` publications load, so
+            # asking for a publication's content fetched every sibling
+            # publication back with it. Only the title is read.
+            .options(joinedload(Publication.content).lazyload(Content.publications))
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
             .where(
@@ -370,7 +384,11 @@ def build(
         }
         for p in db.scalars(
             select(Publication)
-            .options(joinedload(Publication.content))
+            # ``lazyload`` on the far side: the eagerly-loaded ``Content`` would
+            # otherwise fire its own ``lazy="selectin"`` publications load, so
+            # asking for a publication's content fetched every sibling
+            # publication back with it. Only the title is read.
+            .options(joinedload(Publication.content).lazyload(Content.publications))
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
             .where(

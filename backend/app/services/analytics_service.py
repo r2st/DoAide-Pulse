@@ -433,8 +433,24 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
     if not scores:
         return []
 
+    # Columns rather than entities, the way ``read_minutes_of``'s docstring
+    # asks callers to: five fields are wanted, and loading ``Content`` to reach
+    # them brings the JSON columns nothing here reads and fires the
+    # ``lazy="selectin"`` load of every publication on every piece — which is
+    # doubly wasted, since the publications are what `_latest_metrics` already
+    # walked to build ``scores``.
     content_rows = {
-        c.id: c for c in db.scalars(select(Content).where(Content.id.in_(scores)))
+        row.id: row
+        for row in db.execute(
+            select(
+                Content.id,
+                Content.title,
+                Content.content_type,
+                Content.project_id,
+                Content.published_at,
+                Content.body_markdown,
+            ).where(Content.id.in_(scores))
+        )
     }
     out = [
         {
@@ -443,7 +459,7 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
             "content_type": content_rows[cid].content_type.value,
             "project_id": content_rows[cid].project_id,
             "published_at": content_rows[cid].published_at,
-            "read_minutes": content_rows[cid].read_minutes,
+            "read_minutes": read_minutes_of(content_rows[cid].body_markdown),
             **data,
             **_rates(data),
         }

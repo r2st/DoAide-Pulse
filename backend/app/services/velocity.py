@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, lazyload
 
 from app.config import settings
 from app.models.content import Content
@@ -427,6 +427,14 @@ def curves(
         select(Publication, Content)
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
+        # ``_build_curve`` reads exactly one field off the content: its title.
+        # ``Content.publications`` is ``lazy="selectin"`` for the content list's
+        # sake, so without this every caller of this function also fetched every
+        # publication of every published piece the user has — and this function
+        # has nine callers, including the alert pass that both the dashboard and
+        # the weekly digest run. ``lazyload``, not ``noload``: a curve that
+        # someday needs a publication should be slow, not wrong.
+        .options(lazyload(Content.publications))
         .where(
             Project.user_id == user_id,
             Publication.status == PublicationStatus.PUBLISHED,
