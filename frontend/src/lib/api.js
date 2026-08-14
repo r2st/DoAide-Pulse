@@ -12,8 +12,11 @@ export function setToken(token) {
   else localStorage.removeItem(TOKEN_KEY);
 }
 
-async function request(path, { method = "GET", body, form, auth = true } = {}) {
-  const headers = {};
+async function request(
+  path,
+  { method = "GET", body, form, auth = true, headers: extra } = {},
+) {
+  const headers = { ...extra };
   const token = getToken();
   if (auth && token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -120,8 +123,17 @@ export const api = {
   // selection must match the *saved* body, so callers save first.
   editPassage: (id, payload) =>
     request(`/content/${id}/edit`, { method: "POST", body: payload }),
-  updateContent: (id, payload) =>
-    request(`/content/${id}`, { method: "PATCH", body: payload }),
+  // `version` is the piece's version as the caller last saw it. Sent as
+  // `If-Match`, it makes the save conditional: the API answers 412 rather than
+  // writing over an edit somebody else made in the meantime. Optional, because
+  // a caller with no version to offer (a script, a bulk tool) should still be
+  // able to save — see `Content.version` on the backend.
+  updateContent: (id, payload, version) =>
+    request(`/content/${id}`, {
+      method: "PATCH",
+      body: payload,
+      headers: version == null ? undefined : { "If-Match": `"${version}"` },
+    }),
   deleteContent: (id) => request(`/content/${id}`, { method: "DELETE" }),
   approveContent: (id) => request(`/content/${id}/approve`, { method: "POST" }),
   publishContent: (id, payload) =>

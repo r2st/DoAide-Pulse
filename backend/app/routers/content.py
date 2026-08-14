@@ -5,7 +5,16 @@ import logging
 import secrets
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, defer, joinedload, selectinload
@@ -82,6 +91,70 @@ def _owned_content(content_id: int, db: Session, user: User) -> Content:
     return content
 
 
+def _etag(content: Content) -> str:
+    """This piece's current version as an HTTP entity tag.
+
+    Quoted, because an entity tag is quoted — RFC 9110 §8.8.3 spells the grammar
+    as ``DQUOTE *etagc DQUOTE`` and a bare ``4`` is not an ``entity-tag`` at all.
+    A client that parses the header properly would refuse it; one that does not
+    would echo the wrong thing back.
+    """
+    return f'"{content.version}"'
+
+
+def _assert_if_match(content: Content, if_match: str | None) -> None:
+    """Refuse the write if *if_match* names a version this piece has moved past.
+
+    Absent header, no precondition. The alternative — requiring one — would
+    break every client written before the field existed, including the ``curl``
+    in the docs, and the failure would be a 428 on a request that is very often
+    the only editor of that piece. What the header buys is available to whoever
+    asks for it, which is the shape ``If-Match`` has in HTTP generally.
+
+    ``*`` matches any existing representation, per RFC 9110 §13.1.1. It is
+    always satisfied here: the piece was loaded before this ran, so a
+    representation exists by construction.
+
+    A list is accepted because the grammar is a list, and any member matching is
+    a match. Anything that is not an entity tag is a 400 rather than a silent
+    pass: the request asked for a guarantee in a spelling this server does not
+    understand, and answering 200 would be claiming the guarantee was checked.
+    """
+    if if_match is None:
+        return
+    candidates = [tag.strip() for tag in if_match.split(",")]
+    if not any(candidates):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="If-Match was sent empty. Send the piece's version as an "
+            'entity tag — If-Match: "4" — or leave the header off.',
+        )
+    if "*" in candidates:
+        return
+
+    versions = set()
+    for tag in candidates:
+        # Weak tags are meaningless for If-Match (RFC 9110 §13.1.1 requires a
+        # strong comparison), and Herald never mints one, so a `W/` prefix is
+        # something else's idea of this tag. Refused rather than unwrapped.
+        if len(tag) < 2 or not tag.startswith('"') or not tag.endswith('"'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"If-Match must be a quoted entity tag, not {tag!r}. Send "
+                "the version from the piece you loaded — If-Match: \"4\".",
+            )
+        versions.add(tag[1:-1])
+
+    if str(content.version) not in versions:
+        raise HTTPException(
+            status_code=status.HTTP_412_PRECONDITION_FAILED,
+            detail="Somebody else has edited this piece since you loaded it "
+            f"(you have version {'/'.join(sorted(versions))}, it is now "
+            f"{content.version}). Reload it and reapply your changes — saving "
+            "now would overwrite theirs.",
+        )
+
+
 def _is_live(content: Content) -> bool:
     """Whether any of this piece is readable on a platform right now.
 
@@ -155,7 +228,7 @@ def _to_out(content: Content) -> ContentOut:
             for key in (
                 "id", "project_id", "content_type", "status", "title", "slug",
                 "excerpt", "meta_description", "keywords", "tags", "canonical_url",
-                "cover_image_url", "focus_keyword",
+                "cover_image_url", "focus_keyword", "version",
                 "confidence", "generated_by_provider", "generated_by_model",
                 "source", "scheduled_for", "published_at", "created_at", "updated_at",
             )
@@ -896,6 +969,7 @@ def apply_headline_winner(
 )
 def get_content(
     content_id: int,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
@@ -903,8 +977,16 @@ def get_content(
 
     The listing endpoints return the summary shape; this is the detail shape,
     and the difference is that it carries ``body_markdown``.
+
+    The ``ETag`` header carries the piece's current version. Send it back as
+    ``If-Match`` on the PATCH and an edit that would overwrite somebody else's
+    is refused — see :func:`update_content`. It is *not* a cache validator:
+    ``Cache-Control: no-store`` is set on every response in this API, and this
+    endpoint has no ``If-None-Match`` branch to go with it.
     """
-    return _to_detail(_owned_content(content_id, db, user))
+    content = _owned_content(content_id, db, user)
+    response.headers["ETag"] = _etag(content)
+    return _to_detail(content)
 
 
 @router.get(
@@ -1186,13 +1268,25 @@ def create_content(
     summary="Edit a piece",
     responses=errors(
         *OWNED,
+        status.HTTP_400_BAD_REQUEST,
         status.HTTP_409_CONFLICT,
+        status.HTTP_412_PRECONDITION_FAILED,
         status.HTTP_422_UNPROCESSABLE_CONTENT,
     ),
 )
 def update_content(
     content_id: int,
     payload: ContentUpdate,
+    response: Response,
+    if_match: str | None = Header(
+        default=None,
+        alias="If-Match",
+        description=(
+            'The ``version`` of the piece you loaded, as an entity tag — '
+            '``If-Match: "4"``. The edit is refused with a 412 if anyone has '
+            "written the piece since. Omit it to save unconditionally."
+        ),
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentDetail:
@@ -1205,8 +1299,21 @@ def update_content(
     Setting ``status`` to ``approved`` releases the piece exactly as the
     Approve button does, so a scripted caller does not need to know about a
     second endpoint.
+
+    Send ``If-Match`` with the ``version`` from the copy you are editing and a
+    save that would land on top of somebody else's is refused with a 412. The
+    new version comes back in the ``ETag`` header and in the body, so the next
+    save can carry it. See :attr:`app.models.content.Content.version`.
     """
     content = _owned_content(content_id, db, user)
+    # Before anything else reads the payload: a caller holding a stale copy is
+    # told so whether or not the fields it is sending would also have been
+    # refused for some other reason. The freeze below is about this piece's
+    # state, the precondition is about *which* piece the caller thinks it has,
+    # and answering the second question first is what makes "reload and try
+    # again" the right advice for every 412 this endpoint sends.
+    _assert_if_match(content, if_match)
+
     data = payload.model_dump(exclude_unset=True)
     reject_nulls(Content, data)
 
@@ -1255,6 +1362,7 @@ def update_content(
     if data.get("status") == ContentStatus.APPROVED:
         content_pipeline.release_approved(db, content)
     db.refresh(content)
+    response.headers["ETag"] = _etag(content)
     return _to_detail(content)
 
 

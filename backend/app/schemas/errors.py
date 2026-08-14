@@ -62,6 +62,10 @@ _CATALOGUE: dict[int, dict[str, Any]] = {
         "The resource is in a state that makes this request meaningless, and "
         "retrying will not change that."
     ),
+    status.HTTP_412_PRECONDITION_FAILED: _response(
+        "The ``If-Match`` you sent names a version the resource has moved past "
+        "— somebody else wrote it after you loaded it. Reload, reapply, retry."
+    ),
     status.HTTP_413_CONTENT_TOO_LARGE: _response(
         "The request body is over the limit. Refused by middleware before any "
         "route sees it."

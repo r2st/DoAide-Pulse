@@ -223,6 +223,35 @@ describe("the outgoing request", () => {
     expect(init.headers).not.toHaveProperty("Content-Type");
   });
 
+  it("makes a save conditional on the version the caller was editing", async () => {
+    // Quoted, because the backend parses an entity tag and refuses a bare
+    // number with a 400 — a save sent unquoted would fail every time.
+    const fetchMock = stubOk();
+
+    await api.updateContent(3, { title: "t" }, 4);
+
+    expect(sentBy(fetchMock).init.headers["If-Match"]).toBe('"4"');
+  });
+
+  it("saves unconditionally when the caller has no version to offer", async () => {
+    const fetchMock = stubOk();
+
+    await api.updateContent(3, { title: "t" });
+
+    expect(sentBy(fetchMock).init.headers).not.toHaveProperty("If-Match");
+  });
+
+  it("treats version 0 as a version rather than as an absence", async () => {
+    // `== null` on purpose: `!version` would drop a legitimate 0. No row has
+    // one today — the column starts at 1 — but a falsy-check that happens to be
+    // right is a guard that silently stops guarding when the numbering changes.
+    const fetchMock = stubOk();
+
+    await api.updateContent(3, { title: "t" }, 0);
+
+    expect(sentBy(fetchMock).init.headers["If-Match"]).toBe('"0"');
+  });
+
   it("stores the token a successful login returns", async () => {
     stubOk(JSON.stringify({ access_token: "fresh", token_type: "bearer" }));
 

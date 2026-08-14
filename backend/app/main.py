@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
+from sqlalchemy.orm.exc import StaleDataError
 from starlette.datastructures import Headers
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -264,6 +265,37 @@ def create_app() -> FastAPI:
 
     app.add_exception_handler(Exception, _unhandled_exception)
 
+    # A row was written by somebody else between this request loading it and
+    # committing. SQLAlchemy raises this from ``session.commit()`` for any
+    # mapper with a ``version_id_col`` — ``Content`` is the one that has one, and
+    # its version column is there precisely so the second writer finds out.
+    #
+    # Handled here rather than at each write path because there is no write path
+    # this cannot happen on: the router's PATCH, the passage editor, the
+    # publisher settling a queue row and the autopilot all commit a ``Content``,
+    # and any of them can lose the race. Left to the catch-all above it would be
+    # a 500 — "something failed inside Herald", quote the request id — for a
+    # perfectly ordinary outcome the caller can act on by reloading.
+    #
+    # 409 rather than 412: no precondition was sent, so none failed. The
+    # resource simply moved underneath a request that was already in flight,
+    # which is what 409 is for.
+    async def _stale_data(request: Request, exc: Exception) -> JSONResponse:
+        logger.info(
+            "stale write refused [request_id=%s]: %s",
+            getattr(request.state, "request_id", "unknown"),
+            exc,
+        )
+        return JSONResponse(
+            {
+                "detail": "Somebody else changed this while you were editing it. "
+                "Reload and try again."
+            },
+            status_code=status.HTTP_409_CONFLICT,
+        )
+
+    app.add_exception_handler(StaleDataError, _stale_data)
+
     # --- Middleware stack (outermost first) ---
 
     # Request ID: every request gets a unique id for log correlation and
@@ -332,8 +364,13 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_methods=["*"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
-        expose_headers=["X-Total-Count", "X-Request-ID"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "If-Match"],
+        # ETag is here because the SPA is a cross-origin caller in development
+        # and a browser hides every response header not on this list. It carries
+        # the content version the editor echoes back as If-Match; without it the
+        # header would be present on the wire and invisible to the code that
+        # needs it. If-Match joins allow_headers for the same reason in reverse.
+        expose_headers=["X-Total-Count", "X-Request-ID", "ETag"],
     )
 
     prefix = settings.api_v1_prefix

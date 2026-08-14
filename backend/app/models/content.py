@@ -176,6 +176,32 @@ class Content(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    #: Bumped by SQLAlchemy on every UPDATE to this row. The editor's concurrency
+    #: control, in two layers.
+    #:
+    #: The lower layer is the one below: ``version_id_col`` puts ``AND version =
+    #: :loaded`` into every UPDATE and DELETE this mapper emits, and raises
+    #: ``StaleDataError`` when that matches no row. Two workers that loaded the
+    #: same piece and both wrote it used to produce one surviving row and no
+    #: complaint; now the second one is told. It costs nothing per write — the
+    #: predicate rides along on a statement that was already going out — and it
+    #: needs no cooperation from the write paths, which is the point: there are a
+    #: dozen of them (the router's PATCH, the passage editor, the headline
+    #: applier, the pipeline, the publisher, the autopilot) and a rule each of
+    #: them has to remember is one the thirteenth will not.
+    #:
+    #: The upper layer is ``If-Match`` on :func:`app.routers.content.update_content`.
+    #: The database check only catches writers whose transactions overlap, which
+    #: two humans in two browser tabs almost never do: A loads at version 4, B
+    #: loads at 4 and saves at 12:00:01, A saves at 12:00:09 against a row that is
+    #: now version 5 — no overlap, no conflict, and B's paragraph is gone with
+    #: nothing anywhere saying so. A version the client echoes back is what turns
+    #: that into a 412.
+    #:
+    #: Starts at 1 for a new row, and is never written by hand.
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    __mapper_args__ = {"version_id_col": version}
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False
     )

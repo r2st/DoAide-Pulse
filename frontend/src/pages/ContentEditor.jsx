@@ -286,13 +286,25 @@ export default function ContentEditor() {
    */
   async function persist() {
     const sent = draft;
-    const updated = await api.updateContent(data.id, {
-      ...sent,
-      keywords: splitList(sent.keywords),
-      tags: splitList(sent.tags),
-      // The API rejects a relative path and reads "" as "no image".
-      cover_image_url: sent.cover_image_url.trim() || null,
-    });
+    const updated = await api.updateContent(
+      data.id,
+      {
+        ...sent,
+        keywords: splitList(sent.keywords),
+        tags: splitList(sent.tags),
+        // The API rejects a relative path and reads "" as "no image".
+        cover_image_url: sent.cover_image_url.trim() || null,
+      },
+      // The version of the piece these fields were edited from. `data` is only
+      // replaced by a save of our own — the load effect above runs once per
+      // piece — so this is genuinely "what this editor last saw", and a save
+      // that would land on top of somebody else's is refused rather than
+      // performed. Everything a failed save protects is already in place: the
+      // text stays in the fields, the recovery buffer is untouched, and the
+      // status line says what happened, so the author's paragraph survives the
+      // 412 and can be reapplied after a reload.
+      data.version,
+    );
     // A 2xx is not proof there is a piece in the reply. `lib/api` reads a body
     // it cannot parse as "no structured body" and answers `null` — which is the
     // right call there, because a gateway timeout page and a proxy's error HTML

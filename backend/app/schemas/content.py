@@ -241,6 +241,11 @@ class ContentOut(BaseModel):
     updated_at: datetime
     word_count: int = 0
     read_minutes: int = 1
+    #: How many times this row has been written, starting at 1. Send it back as
+    #: ``If-Match`` on ``PATCH /content/{id}`` and the edit is refused with a 412
+    #: if anyone else wrote the piece in between. See
+    #: :attr:`app.models.content.Content.version`.
+    version: int = 1
     #: The shape this piece takes — article, thread or changelog. Derived from
     #: ``content_type`` rather than stored, so it can never disagree with it.
     content_format: str = "article"

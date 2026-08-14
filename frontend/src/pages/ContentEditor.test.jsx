@@ -51,6 +51,9 @@ function content(overrides = {}) {
     focus_keyword: "herald",
     slug: "saved-title",
     canonical_url: null,
+    // Every save carries this back as `If-Match`, so the fixture has to have
+    // one or the assertions below would pin `undefined` as the version.
+    version: 4,
     ...overrides,
   };
 }
@@ -242,6 +245,7 @@ describe("recovering unsaved work", () => {
         expect(api.updateContent).toHaveBeenCalledWith(
           3,
           expect.objectContaining({ title: "Saved title!" }),
+          4,
         );
       } finally {
         vi.useRealTimers();
@@ -397,6 +401,7 @@ describe("auto-save", () => {
     expect(api.updateContent).toHaveBeenCalledWith(
       3,
       expect.objectContaining({ title: "Saved title!" }),
+      4,
     );
   });
 
@@ -558,7 +563,82 @@ describe("auto-save", () => {
     expect(api.updateContent).toHaveBeenCalledWith(
       3,
       expect.objectContaining({ title: "Rescued title" }),
+      4,
     );
+  });
+});
+
+describe("two people editing the same piece", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function typeInto(field, value) {
+    fireEvent.change(field, { target: { value } });
+  }
+
+  async function settle(ms = 2000) {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  it("saves against the version the fields were edited from", async () => {
+    // Without this the API cannot tell an edit of the current text from an edit
+    // of text somebody has since replaced, and writes both.
+    api.getContent.mockResolvedValue(content({ version: 9 }));
+    api.updateContent.mockResolvedValue(content({ version: 10 }));
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    vi.useFakeTimers();
+
+    typeInto(title, "Mine");
+    await settle();
+
+    expect(api.updateContent).toHaveBeenCalledWith(3, expect.anything(), 9);
+  });
+
+  it("moves to the version its own save produced, rather than repeating one", async () => {
+    // A precondition that stayed at the loaded version would be stale the
+    // moment this editor saved once, and every save after the first would be
+    // refused — the guard turned on its own user.
+    api.getContent.mockResolvedValue(content({ version: 9 }));
+    api.updateContent.mockResolvedValue(content({ version: 10 }));
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    vi.useFakeTimers();
+
+    typeInto(title, "Mine");
+    await settle();
+    typeInto(title, "Mine, revised");
+    await settle();
+
+    expect(api.updateContent).toHaveBeenLastCalledWith(3, expect.anything(), 10);
+  });
+
+  it("keeps the text on screen when the server refuses a stale save", async () => {
+    // The 412 is the one failure where losing the buffer would be worst: the
+    // author's paragraph is the only copy of itself, and reapplying it after a
+    // reload is the whole remedy the API is recommending.
+    api.updateContent.mockRejectedValue(
+      new Error("Somebody else has edited this piece since you loaded it"),
+    );
+    draw();
+    const title = await screen.findByLabelText(/^Title/i);
+    vi.useFakeTimers();
+
+    typeInto(title, "My paragraph");
+    await settle();
+
+    expect(screen.getByLabelText(/^Title/i)).toHaveValue("My paragraph");
+    // The server's own words are on the status line's tooltip — "reload and
+    // reapply" is very different advice from "you are offline", and the
+    // difference is the only thing that tells the author what to do next.
+    expect(screen.getByText("Auto-save failed")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Somebody else has edited this piece"),
+    );
+    expect(draftStore.load(3)?.draft.title).toBe("My paragraph");
   });
 });
 
