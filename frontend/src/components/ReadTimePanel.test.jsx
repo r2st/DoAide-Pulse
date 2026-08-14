@@ -229,3 +229,254 @@ describe("ReadTimePanel", () => {
     expect(screen.getByText("trend unavailable")).toBeInTheDocument();
   });
 });
+
+/**
+ * The states between "loading" and "a healthy account".
+ *
+ * This panel's whole reason for existing is that it distinguishes an unknown
+ * from a zero: no platform counting reads is not the same fact as nobody
+ * reading, and the panel says so in four separate places. The existing tests
+ * cover the fully-blind account. What was not covered is the account that is in
+ * between — reads are counted, there just aren't any yet — where saying "we are
+ * blind" would be as wrong as saying "nobody read it" is for the blind one.
+ */
+describe("the states on the way to a healthy account", () => {
+  it("draws a placeholder rather than an empty panel while the figures load", () => {
+    // A promise that never settles: the loading state is not a transient here,
+    // it is what a slow analytics query looks like for several seconds.
+    api.readTime.mockReturnValue(new Promise(() => {}));
+    api.engagementTrend.mockReturnValue(new Promise(() => {}));
+    const { container } = render(<ReadTimePanel />);
+
+    expect(screen.getByText("Read time")).toBeInTheDocument();
+    expect(container.querySelector("[aria-hidden='true']")).toBeInTheDocument();
+    expect(screen.queryByText("Length distribution")).not.toBeInTheDocument();
+  });
+
+  it("keeps the figures up while only the trend is still loading", async () => {
+    api.engagementTrend.mockReturnValue(new Promise(() => {}));
+    render(<ReadTimePanel />);
+
+    expect(await screen.findByText("1d 6h")).toBeInTheDocument();
+    expect(screen.getByText("Length distribution")).toBeInTheDocument();
+  });
+
+  it("says reads are counted but absent, rather than that nothing counts them", async () => {
+    // The distinction the whole panel is built around, from the other side:
+    // nine publications *do* report reads, and every one of them reports zero.
+    api.readTime.mockResolvedValue(
+      payload({
+        reader_minutes: 0,
+        publications_reporting_reads: 9,
+        read_rate: 0,
+        by_length: payload().by_length.map((b) => ({
+          ...b,
+          reads: 0,
+          reader_minutes: 0,
+          read_rate: 0,
+        })),
+      }),
+    );
+    api.engagementTrend.mockResolvedValue(trend(30));
+    render(<ReadTimePanel />);
+
+    expect(await screen.findByText("No reads recorded yet.")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/Only Dev.to and Medium report reads/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("No reads recorded in the last 30 days."),
+    ).toBeInTheDocument();
+  });
+
+  it("names the window it found nothing in, and updates it when the window changes", async () => {
+    const user = userEvent.setup();
+    api.readTime.mockResolvedValue(payload({ publications_reporting_reads: 9 }));
+    api.engagementTrend.mockResolvedValue(trend(30));
+    render(<ReadTimePanel />);
+
+    expect(
+      await screen.findByText("No reads recorded in the last 30 days."),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "7d" }));
+
+    expect(
+      await screen.findByText("No reads recorded in the last 7 days."),
+    ).toBeInTheDocument();
+  });
+
+  it("dashes the average length rather than printing 'null min'", async () => {
+    api.readTime.mockResolvedValue(payload({ avg_read_minutes: null }));
+    render(<ReadTimePanel />);
+
+    await screen.findByText("Length distribution");
+    const stat = screen.getByText("Average length").closest("div");
+    expect(within(stat).getByText("—")).toBeInTheDocument();
+  });
+
+  it("admits to having no metrics rather than reporting zero measured", async () => {
+    api.readTime.mockResolvedValue(
+      payload({ by_length: [band("short", 3), band("medium", 8), band("long", null)] }),
+    );
+    render(<ReadTimePanel />);
+
+    expect(await screen.findByText("no metrics collected yet")).toBeInTheDocument();
+  });
+
+  it("counts the publications behind the bands when there are some", async () => {
+    render(<ReadTimePanel />);
+
+    // 8 + 2 + 2 across the three bands, which is not `published_pieces` — a
+    // piece syndicated to three platforms is three publications.
+    expect(await screen.findByText("12 publications measured")).toBeInTheDocument();
+  });
+});
+
+describe("the window picker", () => {
+  it("starts on 30 days with exactly one window selected", async () => {
+    render(<ReadTimePanel />);
+
+    await screen.findByText("Length distribution");
+    const group = screen.getByRole("group", { name: "Window" });
+    const buttons = within(group).getAllByRole("button");
+
+    expect(buttons.map((b) => b.textContent)).toEqual(["7d", "30d", "90d"]);
+    expect(
+      buttons.filter((b) => b.getAttribute("aria-pressed") === "true"),
+    ).toHaveLength(1);
+    expect(within(group).getByRole("button", { name: "30d" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("un-presses the window it left", async () => {
+    const user = userEvent.setup();
+    render(<ReadTimePanel />);
+
+    await user.click(await screen.findByRole("button", { name: "90d" }));
+
+    await waitFor(() => expect(api.engagementTrend).toHaveBeenCalledWith(90));
+    expect(screen.getByRole("button", { name: "30d" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("does not re-read the read-time payload just because the window moved", async () => {
+    const user = userEvent.setup();
+    render(<ReadTimePanel />);
+
+    await screen.findByText("Length distribution");
+    expect(api.readTime).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "7d" }));
+
+    await waitFor(() => expect(api.engagementTrend).toHaveBeenCalledWith(7));
+    // The expensive call is the other one; the window only re-reads the trend.
+    expect(api.readTime).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a retry on a failed trend that does not disturb the rest", async () => {
+    const user = userEvent.setup();
+    api.engagementTrend.mockRejectedValueOnce(new Error("trend unavailable"));
+    render(<ReadTimePanel />);
+
+    await screen.findByText("trend unavailable");
+    api.engagementTrend.mockResolvedValue(trend(30, [0, 120, 90]));
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("trend unavailable")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("1d 6h")).toBeInTheDocument();
+  });
+});
+
+describe("which band the payoff verdict points at", () => {
+  /** The fill element of the bar row whose label starts with `name`. */
+  function fill(name) {
+    const row = screen
+      .getAllByRole("img")
+      .find((el) => el.getAttribute("aria-label").startsWith(name));
+    return row.firstElementChild;
+  }
+
+  it("highlights the long band when long pieces win", async () => {
+    render(<ReadTimePanel />);
+
+    await screen.findByText(
+      "Long pieces earn 3.0× the engagement per view of short ones.",
+    );
+    // The first three bars are the payoff panel's; the length distribution
+    // below repeats the labels but is always brand-toned.
+    expect(fill("Long")).toHaveClass("bg-brand-500/80");
+    expect(fill("Short")).toHaveClass("bg-ink-400/40");
+    expect(fill("Medium")).toHaveClass("bg-ink-400/40");
+  });
+
+  it("highlights the short band when short pieces win", async () => {
+    const bands = payload().by_length;
+    api.readTime.mockResolvedValue(
+      payload({
+        by_length: [
+          { ...bands[0], engagement_rate: 0.12 },
+          bands[1],
+          { ...bands[2], engagement_rate: 0.04 },
+        ],
+      }),
+    );
+    render(<ReadTimePanel />);
+
+    await screen.findByText(
+      "Short pieces earn 3.0× the engagement per view of long ones.",
+    );
+    expect(fill("Short")).toHaveClass("bg-brand-500/80");
+    expect(fill("Long")).toHaveClass("bg-ink-400/40");
+  });
+
+  it("highlights nothing while the verdict is that there is not enough range", async () => {
+    api.readTime.mockResolvedValue(
+      payload({
+        by_length: [
+          band("short", 3, {
+            publications: 4,
+            avg_read_minutes: 2,
+            views: 500,
+            engagement: 20,
+            reader_minutes: 100,
+            engagement_rate: 0.04,
+          }),
+          band("medium", 8),
+          band("long", null),
+        ],
+      }),
+    );
+    render(<ReadTimePanel />);
+
+    await screen.findByText(/Not enough range yet/);
+    // Only the length-distribution panel below is brand-toned; the payoff
+    // panel points at nothing, because it has nothing to point at.
+    expect(fill("Short")).toHaveClass("bg-ink-400/40");
+  });
+
+  it("highlights nothing when the two ends come out even", async () => {
+    const bands = payload().by_length;
+    api.readTime.mockResolvedValue(
+      payload({
+        by_length: [
+          { ...bands[0], engagement_rate: 0.05 },
+          bands[1],
+          { ...bands[2], engagement_rate: 0.05 },
+        ],
+      }),
+    );
+    render(<ReadTimePanel />);
+
+    await screen.findByText(/Length is not deciding this/);
+    expect(fill("Short")).toHaveClass("bg-ink-400/40");
+    expect(fill("Long")).toHaveClass("bg-ink-400/40");
+  });
+});
