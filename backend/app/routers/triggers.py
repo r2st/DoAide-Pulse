@@ -18,7 +18,7 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.config import settings
 from app.database import get_db
@@ -382,6 +382,28 @@ def check_now(
     return trigger_service.check(db, trigger)
 
 
+def _event_out(event: TriggerEvent, *, payload: bool) -> TriggerEventOut:
+    """One event, with or without its frozen signal.
+
+    Built field by field rather than through ``model_validate``: pydantic's
+    ``from_attributes`` reads every field it declares, and reading a deferred
+    column is a SELECT. Validating a listing of 200 deferred events would
+    undefer all 200 of them one at a time — slower than never deferring at all,
+    and invisible in the response.
+    """
+    return TriggerEventOut(
+        id=event.id,
+        trigger_id=event.trigger_id,
+        headline=event.headline,
+        status=event.status,
+        detail=event.detail,
+        content_id=event.content_id,
+        dedupe_key=event.dedupe_key,
+        payload=dict(event.payload or {}) if payload else None,
+        created_at=event.created_at,
+    )
+
+
 @router.get(
     "/{trigger_id}/events",
     response_model=list[TriggerEventOut],
@@ -392,12 +414,28 @@ def list_trigger_events(
     trigger_id: int,
     response: Response,
     event_status: TriggerEventStatus | None = Query(default=None, alias="status"),
+    # Off by default, which is the change of contract worth naming. An event's
+    # payload is the whole inbound body — up to MAX_INBOUND_BYTES, 128 KB — and
+    # this endpoint pages 200 of them, so the activity list was a 25 MB response
+    # in the worst case to render 200 one-line rows that never touched it.
+    # Turning it on gets the old shape back; the per-event endpoint below is the
+    # better answer for "what did this one firing carry?", because it is bounded
+    # by one payload rather than by ``limit``.
+    include_payload: bool = Query(
+        default=False,
+        description=(
+            "Include each event's frozen signal payload. Off by default: a "
+            "payload can be 128 KB and this endpoint returns up to 200 events. "
+            "Omitted payloads come back as null, which is distinct from the "
+            "empty object a firing that carried nothing really has."
+        ),
+    ),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TriggerEventOut]:
-    """Recent firings, newest first."""
+    """Recent firings, newest first. Payloads only on request."""
     trigger = _owned(trigger_id, db, user)
 
     query = select(TriggerEvent).where(TriggerEvent.trigger_id == trigger.id)
@@ -411,8 +449,50 @@ def list_trigger_events(
     )
     response.headers["X-Total-Count"] = str(total or 0)
 
-    rows = db.scalars(query.order_by(TriggerEvent.id.desc()).limit(limit).offset(offset))
-    return [TriggerEventOut.model_validate(row) for row in rows]
+    query = query.order_by(TriggerEvent.id.desc()).limit(limit).offset(offset)
+    if not include_payload:
+        # The column has to leave the SELECT, not just the response: dropping it
+        # after the fact would still have carried every byte across the wire.
+        query = query.options(defer(TriggerEvent.payload))
+
+    return [
+        _event_out(row, payload=include_payload) for row in db.scalars(query)
+    ]
+
+
+@router.get(
+    "/{trigger_id}/events/{event_id}",
+    response_model=TriggerEventOut,
+    summary="One firing, including its payload",
+    responses=errors(*OWNED),
+)
+def get_trigger_event(
+    trigger_id: int,
+    event_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TriggerEventOut:
+    """One firing and the signal it carried.
+
+    What the list stopped including, asked for one event at a time. "Why did
+    this fire?" is a question about a single row that somebody clicked, so the
+    response is bounded by one payload rather than by the page size.
+
+    The event must belong to the trigger in the path as well as to the caller:
+    an id from another trigger 404s rather than resolving, so the URL cannot be
+    used to walk somebody else's history through a trigger you do own.
+    """
+    trigger = _owned(trigger_id, db, user)
+    event = db.scalar(
+        select(TriggerEvent).where(
+            TriggerEvent.id == event_id, TriggerEvent.trigger_id == trigger.id
+        )
+    )
+    if event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Trigger event not found"
+        )
+    return _event_out(event, payload=True)
 
 
 @router.post(

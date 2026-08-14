@@ -246,6 +246,21 @@ class TriggerCreated(TriggerOut):
 
 
 class TriggerEventOut(BaseModel):
+    """One firing. ``payload`` is present only when it was asked for.
+
+    The frozen signal on an event is the whole inbound body — ``MAX_INBOUND_BYTES``
+    allows 128 KB of it — and the firing history pages 200 events at a time. The
+    activity list renders a headline, a status and a detail; it has never read
+    the payload, so shipping every byte of every firing to draw a list of
+    one-liners was the endpoint's entire response size for none of its content.
+
+    ``None`` rather than ``{}`` when it is left out, because the two mean
+    different things: an empty dict is a firing that genuinely carried nothing,
+    which is a real state for a schedule tick. Ask for it with
+    ``?include_payload=true``, or fetch one event on its own — see
+    ``GET /triggers/{trigger_id}/events/{event_id}``, which always includes it.
+    """
+
     id: int
     trigger_id: int
     headline: str
@@ -253,7 +268,7 @@ class TriggerEventOut(BaseModel):
     detail: str
     content_id: int | None = None
     dedupe_key: str | None = None
-    payload: dict
+    payload: dict | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

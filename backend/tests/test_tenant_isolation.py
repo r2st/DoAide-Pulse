@@ -32,7 +32,7 @@ from app.models.mixins import utcnow
 from app.models.project import Project, Tone
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.template import ContentTemplate, TemplateMode
-from app.models.trigger import Trigger, TriggerKind
+from app.models.trigger import Trigger, TriggerEvent, TriggerKind
 from app.models.user import User
 from app.models.webhook import DeliveryStatus, Webhook, WebhookDelivery, WebhookEvent
 from app.security import hash_password
@@ -126,7 +126,16 @@ def theirs(db, user, project):
         rationale="Theirs.",
         source={},
     )
-    db.add_all([delivery, idea])
+    # The frozen inbound body of one firing. Reachable on its own now that the
+    # listing leaves payloads out by default, which makes it exactly the shape
+    # this file exists for: an inner id looked up under an outer one the caller
+    # may legitimately own.
+    event = TriggerEvent(
+        trigger_id=trigger.id,
+        headline="Their deploy went out",
+        payload={"raw": {"authorization": "a header they sent us"}},
+    )
+    db.add_all([delivery, idea, event])
     db.flush()
     link, _raw = preview_links.issue(db, content, ttl_hours=24)
     db.commit()
@@ -136,6 +145,7 @@ def theirs(db, user, project):
         "content_id": content.id,
         "publication_id": publication.id,
         "trigger_id": trigger.id,
+        "event_id": event.id,
         "template_id": template.id,
         "webhook_id": hook.id,
         "delivery_id": delivery.id,
@@ -354,6 +364,7 @@ def test_every_id_the_sweep_uses_names_a_row_that_exists(db, theirs):
         "content_id": Content,
         "publication_id": Publication,
         "trigger_id": Trigger,
+        "event_id": TriggerEvent,
         "template_id": ContentTemplate,
         "webhook_id": Webhook,
         "delivery_id": WebhookDelivery,
