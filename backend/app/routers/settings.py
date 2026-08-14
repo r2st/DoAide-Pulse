@@ -69,24 +69,48 @@ def upsert_connection(
 
     expected = {f.key for f in adapter.credential_fields}
     required = {f.key for f in adapter.credential_fields if f.required}
-    supplied = {k for k, v in payload.credentials.items() if str(v).strip()}
 
-    unknown = supplied - expected
+    # Every key the caller sent, whatever its value. Deriving this from the
+    # non-blank entries — which is what it used to do — meant a misspelled field
+    # whose value happened to be blank or whitespace was not "supplied", so it
+    # was not unknown either: the check that exists to catch a typo skipped
+    # exactly the payloads a typo produces. The key was then encrypted and
+    # stored with the rest, and the connection looked correctly configured
+    # while the real field sat empty.
+    unknown = set(payload.credentials) - expected
     if unknown:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown credential field(s) for {adapter.display_name}: "
             f"{', '.join(sorted(unknown))}",
         )
-    missing = required - supplied
+
+    # Blank means unset, and it means that all the way down rather than only
+    # here. A whitespace value stored for an optional field is worse than a
+    # missing one: `credentials.get("branch") or "main"` returns the whitespace,
+    # because " " is true.
+    credentials = {
+        key: str(value).strip()
+        for key, value in payload.credentials.items()
+        if str(value).strip()
+    }
+
+    missing = required - set(credentials)
     if missing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"{adapter.display_name} needs: {', '.join(sorted(missing))}",
         )
+    if not credentials:
+        # Only reachable for an adapter that requires nothing, where `missing`
+        # is empty by definition. Storing `{}` would present as connected.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{adapter.display_name} needs at least one credential.",
+        )
 
     try:
-        display_name = adapter.verify(payload.credentials)
+        display_name = adapter.verify(credentials)
     except NotImplementedAdapter as exc:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
     except CredentialError as exc:
@@ -96,7 +120,7 @@ def upsert_connection(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     try:
-        encrypted = encrypt_credentials(dict(payload.credentials))
+        encrypted = encrypt_credentials(credentials)
     except CredentialEncryptionError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
