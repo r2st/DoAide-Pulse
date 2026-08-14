@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload, lazyload
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
@@ -230,44 +230,48 @@ def dashboard(
             .limit(5)
         )
     )
-    scheduled = list(
-        db.scalars(
-            select(Publication)
-            .join(Content, Content.id == Publication.content_id)
-            .join(Project, Project.id == Content.project_id)
-            # The response reads ``p.content.title``; joining for the filter
-            # does not load the relationship. The ``lazyload`` stops there: a
-            # ``Content`` loaded this way fires its own ``lazy="selectin"``
-            # publications load, so eagerly loading a publication's content
-            # fetched back every *sibling* publication of that content.
-            .options(joinedload(Publication.content).lazyload(Content.publications))
-            .where(
-                Project.user_id == user.id,
-                Publication.status == PublicationStatus.SCHEDULED,
-            )
-            .order_by(Publication.scheduled_for)
-            .limit(5)
+    # One column off the piece — its title. ``joinedload(Publication.content)``
+    # brought back the whole entity to read it: five article bodies and four
+    # JSON columns each, next to the eight below, on the page every session
+    # opens first. The join is already visiting ``content`` for the filter, so
+    # naming the column costs nothing and loads no relationship to suppress.
+    scheduled = db.execute(
+        select(
+            Publication.id,
+            Publication.content_id,
+            Content.title,
+            Publication.platform,
+            Publication.scheduled_for,
         )
-    )
-    recent = list(
-        db.scalars(
-            select(Content)
-            .join(Project, Project.id == Content.project_id)
-            # Same as the content list: ``c.project.name`` per row.
-            .options(joinedload(Content.project))
-            # ``Content.publications`` is ``lazy="selectin"`` for the content
-            # list, which renders it. This block does not: the eight rows here
-            # become an id, a title, a status, a type and a project name. Left
-            # alone the default fires a second SELECT over every publication
-            # attached to them, on the page every session opens first.
-            # ``lazyload`` rather than ``noload`` so a field added to this
-            # response later is slow rather than silently empty.
-            .options(lazyload(Content.publications))
-            .where(Project.user_id == user.id)
-            .order_by(Content.created_at.desc())
-            .limit(8)
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(
+            Project.user_id == user.id,
+            Publication.status == PublicationStatus.SCHEDULED,
         )
-    )
+        .order_by(Publication.scheduled_for)
+        .limit(5)
+    ).all()
+    # Seven columns, not entities. These eight rows render as an id, a title, a
+    # status, a type, a project name and a date; a ``Content`` row to reach them
+    # is the whole body and four JSON columns, and ``Content.publications`` is
+    # ``lazy="selectin"`` for the content list's sake, so the default also fired
+    # a second SELECT over every publication attached to them.
+    recent = db.execute(
+        select(
+            Content.id,
+            Content.title,
+            Content.status,
+            Content.content_type,
+            Content.project_id,
+            Project.name.label("project_name"),
+            Content.created_at,
+        )
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user.id)
+        .order_by(Content.created_at.desc())
+        .limit(8)
+    ).all()
 
     return {
         "totals": summary.to_dict(),
@@ -285,7 +289,7 @@ def dashboard(
             {
                 "id": p.id,
                 "content_id": p.content_id,
-                "title": p.content.title,
+                "title": p.title,
                 "platform": p.platform.value,
                 "scheduled_for": p.scheduled_for,
             }
@@ -298,7 +302,7 @@ def dashboard(
                 "status": c.status.value,
                 "content_type": c.content_type.value,
                 "project_id": c.project_id,
-                "project_name": c.project.name,
+                "project_name": c.project_name,
                 "created_at": c.created_at,
             }
             for c in recent

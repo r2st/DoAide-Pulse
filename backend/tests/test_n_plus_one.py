@@ -15,8 +15,11 @@ first from memory, turning an N+1 into a single extra query.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.project import AutopilotMode, Project, Tone
+from app.models.publication import Platform, Publication, PublicationStatus
 from app.tasks import publish_tasks
 
 
@@ -478,3 +481,57 @@ def test_the_projects_list_query_count_is_flat(client, auth, db, user, sql_log):
     large = len(sql_log)
 
     assert small == large, f"{small} queries for 3 projects, {large} for 12"
+
+
+def test_the_dashboard_does_not_carry_an_article_body(client, auth, db, user, sql_log):
+    """Flatness is not narrowness — the counts above cannot see this.
+
+    Two blocks on this page rendered a title and four scalars per row, and both
+    reached them through a ``Content`` entity: the upcoming list via
+    ``joinedload(Publication.content)``, the recent list by selecting ``Content``
+    outright. That is up to thirteen whole article bodies, plus four JSON
+    columns each, on the page every session opens first — and the query count is
+    identical either way, so ``test_dashboard_query_count_is_flat`` passed
+    throughout.
+    """
+    project = Project(
+        user_id=user.id,
+        name="Wide",
+        slug="wide",
+        description="A thing that ships.",
+        tone=Tone.TECHNICAL,
+    )
+    db.add(project)
+    db.flush()
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.ANNOUNCEMENT,
+        status=ContentStatus.PUBLISHED,
+        title="A long one",
+        slug="a-long-one",
+        body_markdown="word " * 5000,
+    )
+    db.add(content)
+    db.flush()
+    db.add(
+        Publication(
+            content_id=content.id,
+            platform=Platform.DEVTO,
+            status=PublicationStatus.SCHEDULED,
+            scheduled_for=datetime.now(UTC) + timedelta(days=1),
+        )
+    )
+    db.commit()
+    db.expire_all()
+
+    sql_log.clear()
+    resp = client.get("/api/v1/analytics/dashboard", headers=auth)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Both blocks still render, and still carry the title they needed the row for.
+    assert [row["title"] for row in body["upcoming"]] == ["A long one"]
+    assert [row["title"] for row in body["recent_content"]] == ["A long one"]
+    assert body["recent_content"][0]["project_name"] == "Wide"
+
+    bodies = [s for s in sql_log if "content.body_markdown" in s]
+    assert bodies == [], "\n".join(s[:300] for s in bodies)
