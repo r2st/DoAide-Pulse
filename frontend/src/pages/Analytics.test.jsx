@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Analytics from "./Analytics";
 import { api } from "../lib/api";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
   api: {
@@ -184,7 +185,7 @@ function velocity(overrides = {}) {
 
 function draw() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={ROUTER_FUTURE}>
       <Analytics />
     </MemoryRouter>,
   );

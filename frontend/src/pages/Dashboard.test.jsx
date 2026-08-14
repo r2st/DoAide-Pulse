@@ -9,6 +9,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "./Dashboard";
 import { api } from "../lib/api";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
   api: { dashboard: vi.fn(), readTime: vi.fn(), engagementTrend: vi.fn() },
@@ -16,7 +17,7 @@ vi.mock("../lib/api", () => ({
 
 function draw() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={ROUTER_FUTURE}>
       <Dashboard />
     </MemoryRouter>,
   );

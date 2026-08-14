@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Calendar from "./Calendar";
 import { api } from "../lib/api";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
   api: { calendar: vi.fn(), reschedule: vi.fn() },
@@ -41,7 +42,7 @@ function respond(entries) {
 
 function draw() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={ROUTER_FUTURE}>
       <Calendar />
     </MemoryRouter>,
   );

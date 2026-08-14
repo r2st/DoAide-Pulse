@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ContentEditor from "./ContentEditor";
 import { api } from "../lib/api";
 import * as draftStore from "../lib/draftStore";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
   api: {
@@ -56,7 +57,7 @@ function content(overrides = {}) {
 
 function draw() {
   return render(
-    <MemoryRouter initialEntries={["/content/3"]}>
+    <MemoryRouter future={ROUTER_FUTURE} initialEntries={["/content/3"]}>
       <Routes>
         <Route path="/content/:contentId" element={<ContentEditor />} />
       </Routes>

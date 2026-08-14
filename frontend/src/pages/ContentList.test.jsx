@@ -10,6 +10,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ContentList from "./ContentList";
 import { api } from "../lib/api";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
   api: { listProjects: vi.fn(), listContent: vi.fn(), generateContent: vi.fn() },
@@ -20,7 +21,7 @@ vi.mock("../components/ui/Toast", () => ({ useToast: () => toast }));
 
 function draw() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={ROUTER_FUTURE}>
       <ContentList />
     </MemoryRouter>,
   );

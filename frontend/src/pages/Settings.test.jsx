@@ -13,6 +13,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Settings from "./Settings";
 import { api } from "../lib/api";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
   api: { platforms: vi.fn(), healthDetail: vi.fn(), health: vi.fn() },
@@ -27,7 +28,7 @@ vi.mock("../hooks/useAuth", () => ({
 
 function draw() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={ROUTER_FUTURE}>
       <Settings />
     </MemoryRouter>,
   );

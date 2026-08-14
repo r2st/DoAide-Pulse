@@ -8,12 +8,13 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Login from "./Login";
 import { useAuth } from "../hooks/useAuth";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 
 function draw() {
   return render(
-    <MemoryRouter>
+    <MemoryRouter future={ROUTER_FUTURE}>
       <Login />
     </MemoryRouter>,
   );

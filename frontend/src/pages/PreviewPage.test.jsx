@@ -8,6 +8,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import PreviewPage from "./PreviewPage";
 import { api } from "../lib/api";
+import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
   api: { publicPreview: vi.fn() },
@@ -15,7 +16,7 @@ vi.mock("../lib/api", () => ({
 
 function draw() {
   return render(
-    <MemoryRouter initialEntries={["/preview/abc123"]}>
+    <MemoryRouter future={ROUTER_FUTURE} initialEntries={["/preview/abc123"]}>
       <Routes>
         <Route path="/preview/:token" element={<PreviewPage />} />
       </Routes>
