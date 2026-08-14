@@ -187,6 +187,32 @@ class Settings(BaseSettings):
 
     # ---- Database ----
     database_url: str = "postgresql+psycopg://herald:herald@localhost:5432/herald"
+    # Connections are a per-process budget spent against one shared server, so
+    # the number that matters is not this one but this one times the processes
+    # running it. The deployed shape is two uvicorn workers, a Celery worker and
+    # beat (deploy/systemd), so the ceiling is 4 x (pool + overflow) = 60
+    # against PostgreSQL's default `max_connections` of 100 — leaving room for
+    # psql, a migration, and the next worker somebody adds. Raise both together
+    # with `max_connections` if that stops being true; the arithmetic is the
+    # setting, not the number.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    # How long a request waits for a connection before giving up. SQLAlchemy's
+    # default is 30 seconds, which is not a wait — it is a hang: the caller and
+    # every proxy between have long since timed out, and the request goes on
+    # holding a worker thread for a connection nobody is waiting for any more.
+    # Ten seconds is long enough to ride out a burst and short enough that a
+    # saturated pool shows up as errors, which page someone, rather than as
+    # latency, which does not.
+    db_pool_timeout_seconds: float = 10.0
+    # Rotate connections proactively so a PostgreSQL restart or a network blip
+    # does not accumulate dead ones in the pool.
+    db_pool_recycle_seconds: int = 1800
+    # Server-side ceiling on any single statement, PostgreSQL only. A query with
+    # no bound is a connection with no bound: it holds its slot until someone
+    # notices, and the pool's own timeout cannot reclaim what was legitimately
+    # checked out. Set to 0 to disable.
+    db_statement_timeout_seconds: float = 30.0
 
     # ---- Redis / Celery ----
     redis_url: str = "redis://localhost:6379/0"
@@ -482,6 +508,8 @@ class Settings(BaseSettings):
     @field_validator(
         "access_token_expire_minutes",
         "autopilot_daily_content_limit",
+        "db_pool_recycle_seconds",
+        "db_pool_size",
         "feed_max_new_entries",
         "learned_cadence_min_bucket",
         "learned_cadence_min_samples",
@@ -504,6 +532,18 @@ class Settings(BaseSettings):
     )
     @classmethod
     def _positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("must be positive")
+        return v
+
+    @field_validator("db_pool_timeout_seconds")
+    @classmethod
+    def _positive_seconds(cls, v: float) -> float:
+        """Separate from :meth:`_positive` only because this one is a float.
+
+        Zero would not mean "no wait" here — SQLAlchemy takes it as one, and a
+        pool that refuses to wait at all turns every burst into an error.
+        """
         if v <= 0:
             raise ValueError("must be positive")
         return v
@@ -535,6 +575,8 @@ class Settings(BaseSettings):
         # it would make `_prune_ideas` compute an excess larger than the number
         # of rows there are to prune.
         "autopilot_ideas_cap",
+        # Zero is a real choice: a hard cap at `db_pool_size` with no burst.
+        "db_max_overflow",
         "publish_request_retries",
         "publish_rate_limit_max_defer_seconds",
         "schedule_past_grace_seconds",
@@ -546,6 +588,8 @@ class Settings(BaseSettings):
         return v
 
     @field_validator(
+        # Zero disables the ceiling, which is PostgreSQL's own spelling for it.
+        "db_statement_timeout_seconds",
         "publish_retry_defer_seconds",
         "publish_retry_max_defer_seconds",
     )

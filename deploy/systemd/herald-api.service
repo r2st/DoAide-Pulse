@@ -12,9 +12,18 @@ User=herald
 Group=herald
 WorkingDirectory=/opt/Herald/backend
 EnvironmentFile=/opt/Herald/.env
-ExecStart=/opt/Herald/.venv/bin/uvicorn app.main:app --host 172.18.0.1 --port 3006 --workers 2
+# --timeout-graceful-shutdown: on SIGTERM uvicorn stops accepting connections
+# and lets in-flight requests finish. Without a bound it waits forever for one
+# that never does, and systemd SIGKILLs the lot at TimeoutStopSec — taking every
+# other in-flight request with it, which is the outage a graceful shutdown
+# exists to avoid. Twenty seconds is longer than any request here should take
+# and comfortably inside the stop timeout below, so the drain always completes
+# on uvicorn's terms rather than systemd's.
+ExecStart=/opt/Herald/.venv/bin/uvicorn app.main:app --host 172.18.0.1 --port 3006 --workers 2 --timeout-graceful-shutdown 20
 Restart=always
 RestartSec=5
+# Room for the drain above plus the lifespan hook that disposes the pool.
+TimeoutStopSec=30
 
 # Hardening
 NoNewPrivileges=true

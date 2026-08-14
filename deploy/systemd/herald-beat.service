@@ -15,6 +15,11 @@ EnvironmentFile=/opt/Herald/.env
 ExecStart=/opt/Herald/.venv/bin/celery -A app.tasks.celery_app:celery_app beat --loglevel=info --schedule /opt/Herald/backend/celerybeat-schedule
 Restart=always
 RestartSec=10
+# Beat only decides *when* something runs and publishes a message; there is no
+# in-flight work to drain, only the schedule file to flush. It should stop
+# quickly rather than hold up a deploy.
+KillMode=mixed
+TimeoutStopSec=15
 
 # Hardening
 NoNewPrivileges=true

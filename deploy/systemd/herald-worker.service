@@ -15,6 +15,17 @@ EnvironmentFile=/opt/Herald/.env
 ExecStart=/opt/Herald/.venv/bin/celery -A app.tasks.celery_app:celery_app worker --loglevel=info --concurrency=2
 Restart=always
 RestartSec=10
+# KillMode=mixed sends the stop signal to the main celery process only, and
+# leaves it to hand a warm shutdown down to its own children. The default sends
+# SIGTERM to every process in the cgroup at once, which kills the pool workers
+# out from under the parent that was trying to let them finish — a publish
+# interrupted between "the platform accepted this" and "the row says so" is the
+# expensive kind of interrupted.
+KillMode=mixed
+# Long enough for a publish already talking to a platform API to finish. A task
+# that outlasts this is killed, which is why it is generous: the publish path is
+# idempotent on retry but a redeploy should not be exercising that.
+TimeoutStopSec=120
 
 # Hardening
 NoNewPrivileges=true
