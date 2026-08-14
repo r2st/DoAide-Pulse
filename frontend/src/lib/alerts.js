@@ -43,21 +43,6 @@ export function formatAlertRatio(ratio) {
 }
 
 /**
- * One line summarising a set of alerts, for a section subtitle.
- *
- * Returns an empty string for an empty set: the caller hides the section
- * entirely rather than announcing that there is nothing to announce.
- */
-export function summarizeAlerts(alerts = []) {
-  const warnings = alerts.filter((a) => a.severity === "warning").length;
-  const notices = alerts.length - warnings;
-  const parts = [];
-  if (warnings) parts.push(`${warnings} under your usual`);
-  if (notices) parts.push(`${notices} that stopped growing`);
-  return parts.join(" · ");
-}
-
-/**
  * Whether a cadence entry's timing was learned from the user's own results.
  *
  * `source` is what the API sends; the fallback to "table" here matters because

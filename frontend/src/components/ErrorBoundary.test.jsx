@@ -7,7 +7,7 @@
  * reason for having more than one of them.
  */
 import { fireEvent, render, screen } from "@testing-library/react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { MemoryRouter, Route, Routes, Link } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import ErrorBoundary, { ErrorFallback, RouteErrorBoundary } from "./ErrorBoundary";

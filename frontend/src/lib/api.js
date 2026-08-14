@@ -97,13 +97,10 @@ export const api = {
   // ---- projects ----
   listProjects: () => request("/projects"),
   createProject: (payload) => request("/projects", { method: "POST", body: payload }),
-  getProject: (id) => request(`/projects/${id}`),
   updateProject: (id, payload) =>
     request(`/projects/${id}`, { method: "PATCH", body: payload }),
   deleteProject: (id) => request(`/projects/${id}`, { method: "DELETE" }),
   scanProject: (id) => request(`/projects/${id}/scan`, { method: "POST" }),
-  projectIdeas: (id, refresh = false) =>
-    request(`/projects/${id}/ideas${refresh ? "?refresh=true" : ""}`),
 
   // ---- content ----
   listContent: (params = {}) => request(`/content${qs(params)}`),
@@ -123,7 +120,6 @@ export const api = {
   // selection must match the *saved* body, so callers save first.
   editPassage: (id, payload) =>
     request(`/content/${id}/edit`, { method: "POST", body: payload }),
-  createContent: (payload) => request("/content", { method: "POST", body: payload }),
   updateContent: (id, payload) =>
     request(`/content/${id}`, { method: "PATCH", body: payload }),
   deleteContent: (id) => request(`/content/${id}`, { method: "DELETE" }),
@@ -132,8 +128,6 @@ export const api = {
     request(`/content/${id}/publish`, { method: "POST", body: payload }),
   retryPublication: (contentId, publicationId) =>
     request(`/content/${contentId}/retry/${publicationId}`, { method: "POST" }),
-  writeFromIdea: (ideaId) =>
-    request(`/content/ideas/${ideaId}/write`, { method: "POST" }),
   reviewQueue: () => request("/content/queue/review"),
   publicationQueue: () => request("/content/queue/publications"),
 
@@ -156,7 +150,6 @@ export const api = {
   calendar: (params = {}) => request(`/calendar${qs(params)}`),
   reschedule: (contentId, payload) =>
     request(`/calendar/content/${contentId}`, { method: "PATCH", body: payload }),
-  cadence: (platform) => request(`/calendar/cadence${qs({ platform })}`),
 
   // ---- analytics ----
   dashboard: () => request("/analytics/dashboard"),
@@ -169,8 +162,6 @@ export const api = {
   // How fast pieces found an audience, read from the stored snapshot series
   // rather than the latest number per publication.
   velocity: () => request("/analytics/velocity"),
-  velocityCurve: (publicationId) =>
-    request(`/analytics/velocity/${publicationId}`),
   // The dashboard payload already carries a capped list of these; this is the
   // full one, for the analytics page.
   alerts: (limit) => request(`/analytics/alerts${qs({ limit })}`),

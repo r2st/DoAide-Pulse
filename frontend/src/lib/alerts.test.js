@@ -6,7 +6,6 @@ import {
   cadenceProvenance,
   formatAlertRatio,
   isLearned,
-  summarizeAlerts,
   weekdaysLearned,
 } from "./alerts";
 
@@ -67,28 +66,6 @@ describe("formatAlertRatio", () => {
   it("returns null when there is no comparison to show", () => {
     expect(formatAlertRatio(null)).toBeNull();
     expect(formatAlertRatio(undefined)).toBeNull();
-  });
-});
-
-describe("summarizeAlerts", () => {
-  it("counts each severity separately", () => {
-    const summary = summarizeAlerts([
-      alert(),
-      alert({ severity: "warning" }),
-      alert({ kind: "stalled", severity: "info" }),
-    ]);
-    expect(summary).toBe("2 under your usual · 1 that stopped growing");
-  });
-
-  it("omits the half that is empty", () => {
-    expect(summarizeAlerts([alert({ kind: "stalled", severity: "info" })])).toBe(
-      "1 that stopped growing",
-    );
-  });
-
-  it("says nothing at all about an empty set", () => {
-    expect(summarizeAlerts([])).toBe("");
-    expect(summarizeAlerts()).toBe("");
   });
 });
 
