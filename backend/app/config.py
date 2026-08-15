@@ -243,7 +243,14 @@ class Settings(BaseSettings):
     # is simply skipped. Free tiers all round.
     gemini_api_key: str = ""
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
-    gemini_model: str = "gemini-2.0-flash"
+    # A rolling alias, not a pinned version. Google retires the pinned names —
+    # ``gemini-2.0-flash``, which this used to be, started answering "is no
+    # longer available" and the Gemini slot was dead for days before anyone
+    # read the log closely enough to tell it from a rate limit. The alias is the
+    # one value that cannot go stale that way; see
+    # :class:`app.services.llm_router.LLMModelUnavailable` for what now happens
+    # when a model does disappear.
+    gemini_model: str = "gemini-flash-latest"
 
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"

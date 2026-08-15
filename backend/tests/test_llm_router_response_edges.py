@@ -101,15 +101,32 @@ def test_a_zoneless_retry_after_in_the_past_reads_as_no_wait():
 def test_a_200_error_body_that_is_not_a_rate_limit_is_a_plain_failure():
     """Not every ``error`` body is a spent quota.
 
-    Reading "model not found" as a rate limit would open the breaker for twenty
-    seconds and cost the chain a provider that is up and would answer a
-    different model immediately.
+    Reading a generic upstream failure as a rate limit would open the breaker
+    for twenty seconds and cost the chain a provider that is up and would answer
+    immediately.
+    """
+    error = llm_router._body_error(
+        _provider(), {"error": {"message": "internal upstream failure", "code": 500}}
+    )
+
+    assert type(error) is llm_router.LLMError
+    assert not isinstance(error, llm_router.LLMRateLimited)
+    assert "internal upstream failure" in str(error)
+
+
+def test_a_200_error_body_naming_a_missing_model_is_its_own_kind_of_failure():
+    """Sharper than the case above, and for a reason the breaker cares about.
+
+    "model not found" is still not a rate limit — but it is also not a failure
+    that waiting fixes, so it gets its own class rather than being lumped in
+    with the transient ones. See
+    :class:`app.services.llm_router.LLMModelUnavailable`.
     """
     error = llm_router._body_error(
         _provider(), {"error": {"message": "model not found", "code": 404}}
     )
 
-    assert type(error) is llm_router.LLMError
+    assert isinstance(error, llm_router.LLMModelUnavailable)
     assert not isinstance(error, llm_router.LLMRateLimited)
     assert "model not found" in str(error)
 

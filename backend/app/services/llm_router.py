@@ -112,6 +112,52 @@ class LLMRateLimited(LLMError):
         self.retry_after = retry_after
 
 
+class LLMModelUnavailable(LLMError):
+    """The provider is up, the key is good, and the *model* does not exist.
+
+    A retired model name is the one provider failure that cannot come back on
+    its own. Everything else here is a wait: a rate limit ends, a 5xx passes, a
+    transport error was the network. This one is a value in ``.env`` that has to
+    change, and until somebody changes it the provider is dead.
+
+    It was worth separating because the two are indistinguishable in a log until
+    you read the body. Herald's Gemini slot answered
+    ``404 … models/gemini-2.0-flash is no longer available`` on every generation
+    from at least 2026-08-11, at ``WARNING``, in the middle of the ordinary
+    per-minute rate-limit chatter from the other free tiers — so a provider that
+    had been contributing nothing for days looked exactly like one having a bad
+    afternoon. Distinguishing it buys two things:
+
+    * the log line says what to *do*, and says it at ``ERROR``;
+    * the breaker holds the provider down for a long cooldown instead of
+      re-asking every sweep forever, which is the only honest response to a
+      failure that has no chance of resolving.
+    """
+
+
+#: Fragments that mark a 4xx as naming a model rather than the request. Matched
+#: case-insensitively against the response body. Deliberately narrow: a false
+#: positive parks a *working* provider for the long cooldown, which is a worse
+#: outcome than the noise this replaces.
+_MODEL_GONE_MARKERS = (
+    "is no longer available",
+    "model not found",
+    "model_not_found",
+    "does not exist",
+    "unknown model",
+    "invalid model",
+    "no longer supported",
+    "has been deprecated",
+    "is not a valid model",
+)
+
+
+def _looks_like_a_missing_model(body: str) -> bool:
+    """Whether a 4xx body is about the model name rather than the request."""
+    lowered = body.lower()
+    return any(marker in lowered for marker in _MODEL_GONE_MARKERS)
+
+
 @dataclass(frozen=True)
 class Provider:
     """One OpenAI-compatible chat endpoint."""
@@ -378,6 +424,14 @@ def _status_error(provider: Provider, resp: httpx.Response) -> LLMError:
             f"{provider.name} rate-limited the request ({status}): {body}",
             retry_after=_retry_after(resp.headers),
         )
+    # Checked only for a non-retryable 4xx, and only on the body: a 5xx that
+    # happens to contain the words is the provider being broken, not the model
+    # being gone, and standing it down for the long cooldown would be wrong.
+    if status not in _RETRYABLE_STATUSES and _looks_like_a_missing_model(body):
+        return LLMModelUnavailable(
+            f"{provider.name} does not have the model it is configured with "
+            f"({status}): {body}"
+        )
     return LLMError(
         f"{provider.name} returned {status}: {body}",
         retryable=status in _RETRYABLE_STATUSES,
@@ -406,6 +460,13 @@ def _body_error(provider: Provider, data: dict) -> LLMError:
         return LLMRateLimited(
             f"{provider.name} rate-limited the request: {detail}",
             retry_after=retry_after,
+        )
+    # The same configuration fault can arrive this way: these compat layers
+    # report a retired model name as a 200 with an error body as readily as they
+    # report a spent quota. See :class:`LLMModelUnavailable`.
+    if _looks_like_a_missing_model(detail):
+        return LLMModelUnavailable(
+            f"{provider.name} does not have the model it is configured with: {detail}"
         )
     return LLMError(f"{provider.name} request failed: {detail}")
 
@@ -538,6 +599,30 @@ def _note_failure(provider: Provider, model: str, exc: LLMError) -> None:
     the second sweep exists to ride out, and opening the breaker for it would
     make the next sweep skip the very provider that is about to come back.
     """
+    # Before the rate-limit branch, because this one cannot be waited out — and
+    # deliberately *without* touching the breaker. A missing model condemns the
+    # model, not the provider: the same key may serve a perfectly good
+    # ``*_FALLBACK_MODELS`` entry, and standing the provider down here would
+    # skip the fallback that was configured for exactly this. The chain in
+    # :func:`_one_pass` opens the breaker once every model on the provider has
+    # answered this way.
+    #
+    # ERROR rather than WARNING because the failure of the old behaviour was
+    # visibility: Herald's Gemini slot answered "no longer available" on every
+    # generation for days, at WARNING, among the free tiers' ordinary per-minute
+    # rate-limit chatter, and nothing about the line said it would never stop.
+    if isinstance(exc, LLMModelUnavailable):
+        logger.error(
+            "llm provider %s does not have model %s — set %s_MODEL (or "
+            "%s_FALLBACK_MODELS) in .env to a model it still serves: %s",
+            provider.name,
+            model,
+            provider.name.upper(),
+            provider.name.upper(),
+            exc,
+        )
+        return
+
     if isinstance(exc, LLMRateLimited) and exc.retry_after is not None:
         cooldown = min(
             exc.retry_after, float(settings.llm_breaker_max_cooldown_seconds)
@@ -596,7 +681,13 @@ def _sweep(
             outcome.errors.append(f"{provider.name}: skipped, circuit open")
             continue
 
+        # Counted so a provider whose *every* model is gone can be stood down
+        # below. Tracked here rather than in ``_note_failure`` because it is a
+        # fact about the chain, not about any one call.
+        tried = 0
+        missing_models = 0
         for candidate in _model_chain(provider, model, fallback_models):
+            tried += 1
             started = time.monotonic()
             try:
                 text = _call(
@@ -614,6 +705,8 @@ def _sweep(
                     outcome.rate_limit_waits.append(exc.retry_after)
                 else:
                     outcome.other_failure = True
+                if isinstance(exc, LLMModelUnavailable):
+                    missing_models += 1
                 # A provider that has just named a cool-down has nothing more to
                 # give this request, whichever model we ask for next.
                 if breaker.is_open(provider.name):
@@ -628,6 +721,21 @@ def _sweep(
                 time.monotonic() - started,
             )
             return Completion(text=text, provider=provider.name, model=candidate)
+
+        # Every model this provider was given is gone. Now — and only now — it is
+        # the provider that is misconfigured, and no amount of coming back
+        # changes that, so it is held for the cooldown ceiling instead of being
+        # re-asked on every sweep until somebody edits ``.env``.
+        if tried and missing_models == tried and not breaker.is_open(provider.name):
+            cooldown = float(settings.llm_breaker_max_cooldown_seconds)
+            breaker.open_for(provider.name, cooldown)
+            logger.error(
+                "llm provider %s has no usable model configured (%d tried); "
+                "skipping it for %.0fs",
+                provider.name,
+                tried,
+                cooldown,
+            )
 
     return outcome
 
@@ -745,6 +853,7 @@ __all__ = [
     "CircuitBreaker",
     "Completion",
     "LLMError",
+    "LLMModelUnavailable",
     "LLMRateLimited",
     "Provider",
     "breaker",
