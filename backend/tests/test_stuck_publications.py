@@ -148,9 +148,17 @@ def test_the_sweep_reclaims_before_it_dispatches(db, content, monkeypatch):
     monkeypatch.setattr(publish_tasks, "SessionLocal", lambda: db)
     monkeypatch.setattr(db, "close", lambda: None)
     dispatched: list[int] = []
-    monkeypatch.setattr(
-        publish_tasks, "publish_one", lambda pid: dispatched.append(pid)
-    )
+
+    def _publish_one(publication_id):
+        # Returns what the real task returns. The sweep reads ``status`` off it
+        # to notice its own soft time limit — ``publish_one`` absorbs that
+        # exception itself, so the outcome dict is the only trace left — and a
+        # double returning ``None`` stands in for a contract that has no such
+        # case.
+        dispatched.append(publication_id)
+        return {"publication_id": publication_id, "status": "published"}
+
+    monkeypatch.setattr(publish_tasks, "publish_one", _publish_one)
     publication = _claimed(
         db, content, age_seconds=settings.publish_stuck_after_seconds + 60
     )

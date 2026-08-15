@@ -161,8 +161,27 @@ def publish_due() -> dict:
     # ``trigger_tasks.check_due_triggers``.
     broker_warned = False
     for publication_id in ids:
+        # Set from the inline branch's *return value*, not from an exception —
+        # see the break at the bottom of the loop.
+        out_of_time = False
         try:
             publish_one.delay(publication_id)
+        except SoftTimeLimitExceeded:
+            # Must precede the blanket handler, for the reason
+            # ``release_approved_content`` gives — and with one extra edge here,
+            # because the blanket handler below does not merely absorb what it
+            # catches, it reads it as *the broker being down*. A soft limit
+            # arriving during ``.delay()`` was therefore diagnosed as an outage
+            # and answered by publishing that row inline, on a task already out
+            # of time, and then carrying on to the next one. The sweep ran until
+            # the hard limit killed the worker, and `acks_late` handed the whole
+            # batch to the next worker to do again.
+            logger.warning(
+                "publish_due timed out after dispatching %d of %d publication(s)",
+                dispatched,
+                len(ids),
+            )
+            break
         except Exception as exc:
             # Broker down — fall back to inline execution so the sweep does not
             # silently drop due publications.
@@ -176,7 +195,9 @@ def publish_due() -> dict:
                 broker_warned = True
             inline += 1
             try:
-                publish_one(publication_id)
+                out_of_time = (
+                    publish_one(publication_id).get("status") == "timeout"
+                )
             except Exception:
                 # Same rule every other sweep states outright: one row's bad day
                 # must not end the pass. This branch runs the publish *here*, so
@@ -196,6 +217,26 @@ def publish_due() -> dict:
                 failed += 1
                 continue
         dispatched += 1
+        if out_of_time:
+            # The inline branch is serial and spends *this* task's budget, so it
+            # is where the soft limit actually lands — but it never arrives here
+            # as an exception. ``publish_one`` catches its own
+            # ``SoftTimeLimitExceeded`` to record the timeout on the row, and
+            # Celery raises it once, so by the time control is back in this loop
+            # the only trace left is the outcome it returned.
+            #
+            # Read as an ordinary result, the sweep carried on to the next row —
+            # a real publish attempt, started after the deadline — and the one
+            # after that, until the hard limit killed the worker outright.
+            # `acks_late` then redelivered the whole batch. The row is already
+            # re-armed for the next pass; stop and let it take the remainder.
+            logger.warning(
+                "publish_due timed out publishing inline after %d of %d "
+                "publication(s)",
+                dispatched,
+                len(ids),
+            )
+            break
 
     if ids:
         logger.info(

@@ -368,3 +368,94 @@ def test_the_sweep_reports_one_broker_outage_not_one_per_publication(
     assert result["dispatched"] == 3, "all three still went out"
     outage = [r for r in caplog.records if "broker unavailable" in r.message]
     assert len(outage) == 1
+
+
+# --------------------------------------------------------------------------- #
+# publish_due: the soft time limit                                             #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_timeout_during_dispatch_is_not_reported_as_a_dead_broker(
+    db, content, monkeypatch, caplog
+):
+    """The branch below reads any exception from ``.delay`` as an outage.
+
+    ``SoftTimeLimitExceeded`` is an ordinary ``Exception``, so a sweep that ran
+    out of time mid-dispatch was diagnosed as a broker failure — and answered by
+    publishing that row *inline*, on a task with no time left, and then carrying
+    on to the next one. The sweep then ran to the hard limit, which kills the
+    worker outright, and ``acks_late`` handed the whole batch to the next worker
+    to do again.
+
+    The sibling sweeps all stop here. This one is the odd one out, and it is the
+    one that runs most often.
+    """
+    for platform in (Platform.DEVTO, Platform.HASHNODE, Platform.MASTODON):
+        _publication(db, content, platform=platform)
+
+    inline: list[int] = []
+    monkeypatch.setattr(
+        publish_tasks.publish_one,
+        "delay",
+        lambda _id: (_ for _ in ()).throw(SoftTimeLimitExceeded()),
+    )
+    monkeypatch.setattr(
+        publish_tasks.publishing_service,
+        "execute",
+        lambda session, row: inline.append(row.id),
+    )
+
+    with caplog.at_level("WARNING"):
+        result = publish_tasks.publish_due()
+
+    assert inline == [], "a task out of time must not start publishing inline"
+    assert result["dispatched"] == 0
+    assert "timed out" in caplog.text
+    assert "broker unavailable" not in caplog.text
+
+
+def test_a_timeout_while_publishing_inline_stops_the_sweep(
+    db, content, monkeypatch, caplog
+):
+    """The likelier half: the broker is down and the sweep's own clock runs out.
+
+    Inline publishing is serial and spends this task's budget, so it is where
+    the soft limit actually lands — and it never reaches the sweep as an
+    exception. ``publish_one`` catches its own ``SoftTimeLimitExceeded`` to
+    record the timeout on the row, and Celery raises it once, so the outcome it
+    returns is the only trace left.
+
+    Read as an ordinary result, the sweep went on to the next row — a real
+    publish attempt begun after the deadline — and the one after that, until the
+    hard limit killed the worker and ``acks_late`` redelivered the batch.
+    """
+    first = _publication(db, content, platform=Platform.DEVTO)
+    second = _publication(db, content, platform=Platform.HASHNODE)
+    third = _publication(db, content, platform=Platform.MASTODON)
+    assert first.id < second.id < third.id
+
+    published: list[int] = []
+
+    def _execute(session, row):
+        # Raised where a real one lands: inside the adapter call, under
+        # ``publish_one``'s own handler, which absorbs it and returns
+        # ``{"status": "timeout"}``.
+        if row.id == second.id:
+            raise SoftTimeLimitExceeded()
+        published.append(row.id)
+
+    monkeypatch.setattr(
+        publish_tasks.publish_one,
+        "delay",
+        lambda _id: (_ for _ in ()).throw(ConnectionError("no broker")),
+    )
+    monkeypatch.setattr(publish_tasks.publishing_service, "execute", _execute)
+
+    with caplog.at_level("WARNING"):
+        result = publish_tasks.publish_due()
+
+    assert published == [first.id], "the sweep stopped rather than working on"
+    assert third.id not in published
+    assert result["dispatched"] == 2, "the timed-out row was still handed on"
+    assert result["failed"] == 0, "a timeout is the sweep's fault, not the row's"
+    assert "timed out" in caplog.text
