@@ -231,6 +231,53 @@ def sql_log():
 
 
 @pytest.fixture
+def flat(client, auth, db, sql_log):
+    """Measure an endpoint's SELECT count at two result sizes and compare.
+
+    ``seed(offset, count)`` adds rows; it is called twice, so the second call
+    widens the same list rather than replacing it. Everything is expired
+    between the seed and the request, or the endpoint reads the objects the
+    seed just put in the identity map and issues no loads at all.
+
+    Lives here rather than beside its first caller because it is now shared by
+    ``test_remaining_list_query_budgets`` and
+    ``test_the_last_listings_without_a_query_budget`` — the assertion is the
+    same one in both, and a second copy of it is a second thing to keep true.
+
+    ``few``/``many`` are adjustable for the listings whose own cap sits below
+    the default thirty; what matters is that the two sizes differ, not what
+    they are.
+    """
+
+    def _run(url: str, seed, *, few: int = 3, many: int = 30) -> int:
+        seed(0, few)
+        db.commit()
+        db.expire_all()
+        sql_log.clear()
+        first = client.get(url, headers=auth)
+        assert first.status_code == 200, first.text
+        assert len(first.json()) == few
+        small = len([s for s in sql_log if s.startswith("SELECT")])
+
+        seed(few, many - few)
+        db.commit()
+        db.expire_all()
+        sql_log.clear()
+        second = client.get(url, headers=auth)
+        assert second.status_code == 200, second.text
+        assert len(second.json()) == many
+        large = len([s for s in sql_log if s.startswith("SELECT")])
+
+        assert small == large, (
+            f"{url} issued {small} SELECTs for {few} rows and {large} for "
+            f"{many}: the query count grows with the result set."
+        )
+        return small
+
+    return _run
+
+
+@pytest.fixture
 def task_session(db):
     """A ``SessionLocal`` stand-in that hands a background task the test session.
 

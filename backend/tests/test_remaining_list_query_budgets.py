@@ -18,14 +18,16 @@ older file gives: a count that changes with an unrelated query becomes a test
 everyone edits without reading. What must not change is that the count is the
 same for three rows and for thirty.
 
+The ``flat`` fixture that measures it started here and now lives in
+``conftest``, because ``test_the_last_listings_without_a_query_budget`` makes
+the same assertion about the listings this file did not reach.
+
 Each row gets its own parent wherever a parent exists — its own project, its own
 content — because SQLAlchemy's identity map serves the second reference to one
 shared parent from memory, which turns exactly the N+1 being guarded against
 into a single extra query that the assertion then passes.
 """
 from __future__ import annotations
-
-import pytest
 
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.project import Project, Tone
@@ -34,10 +36,6 @@ from app.models.template import ContentTemplate, TemplateMode
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.webhook import Webhook
 from app.schemas.template import MAX_TEMPLATES_PER_USER
-
-
-def _selects(sql_log: list[str]) -> int:
-    return len([s for s in sql_log if s.startswith("SELECT")])
 
 
 def _project(db, user_id: int, i: int) -> Project:
@@ -51,44 +49,6 @@ def _project(db, user_id: int, i: int) -> Project:
     db.add(row)
     db.flush()
     return row
-
-
-@pytest.fixture
-def flat(client, auth, db, sql_log):
-    """Measure an endpoint's SELECT count at two result sizes and compare.
-
-    ``seed(offset, count)`` adds rows; it is called twice, so the second call
-    widens the same list rather than replacing it. Everything is expired
-    between the seed and the request, or the endpoint reads the objects the
-    seed just put in the identity map and issues no loads at all.
-    """
-
-    def _run(url: str, seed, *, few: int = 3, many: int = 30) -> int:
-        seed(0, few)
-        db.commit()
-        db.expire_all()
-        sql_log.clear()
-        first = client.get(url, headers=auth)
-        assert first.status_code == 200, first.text
-        assert len(first.json()) == few
-        small = _selects(sql_log)
-
-        seed(few, many - few)
-        db.commit()
-        db.expire_all()
-        sql_log.clear()
-        second = client.get(url, headers=auth)
-        assert second.status_code == 200, second.text
-        assert len(second.json()) == many
-        large = _selects(sql_log)
-
-        assert small == large, (
-            f"{url} issued {small} SELECTs for {few} rows and {large} for "
-            f"{many}: the query count grows with the result set."
-        )
-        return small
-
-    return _run
 
 
 def test_the_triggers_list_query_count_is_flat(flat, db, user):
