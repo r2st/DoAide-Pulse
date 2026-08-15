@@ -668,6 +668,27 @@ def _notify_published(db: Session, content: Content, publication: Publication) -
     )
 
 
+def _failure_notice(publication: Publication) -> tuple[int, dict] | None:
+    """Who to tell that this publication is finished, and what to tell them.
+
+    Split from :func:`_notify_failed` so a caller with a *batch* of them can
+    build the bodies while its rows are still loaded and send them afterwards.
+    Reading a payload out of an expired row costs the queries the row's own
+    eager load was there to save — see :func:`reclaim_stuck`, the only caller
+    that fails more than one publication at a time.
+
+    ``None`` when there is no owner to tell.
+    """
+    content = publication.content
+    project = content.project if content else None
+    if project is None:  # pragma: no cover - a publication always has a project
+        return None
+    return project.user_id, {
+        "content": webhook_payloads.content_payload(content),
+        "publication": webhook_payloads.publication_payload(publication),
+    }
+
+
 def _notify_failed(db: Session, publication: Publication) -> None:
     """Tell this user's webhooks that a platform gave up on a piece.
 
@@ -675,18 +696,15 @@ def _notify_failed(db: Session, publication: Publication) -> None:
     anyone about, and an endpoint told about all three attempts learns nothing
     it did not know after the third.
     """
-    content = publication.content
-    project = content.project if content else None
-    if project is None:  # pragma: no cover - a publication always has a project
+    notice = _failure_notice(publication)
+    if notice is None:  # pragma: no cover - a publication always has a project
         return
+    user_id, data = notice
     webhooks.emit(
         db,
-        user_id=project.user_id,
+        user_id=user_id,
         event=WebhookEvent.PUBLICATION_FAILED,
-        data={
-            "content": webhook_payloads.content_payload(content),
-            "publication": webhook_payloads.publication_payload(publication),
-        },
+        data=data,
     )
 
 
@@ -1029,6 +1047,23 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
             )
         )
     )
+    # The notices for the rows this sweep finishes off — built here, sent after
+    # the commit below. Both halves of that are deliberate.
+    #
+    # Sent after, for the ordering ``_fail`` and ``_notify_published`` both keep:
+    # an endpoint that turns round and reads the API back must find what the
+    # payload describes.
+    #
+    # Built before, because the commit expires every row it touches. Holding the
+    # publications and reading them afterwards costs a re-fetch of each piece and
+    # its project — and, through ``Content.publications``, its sibling rows —
+    # one burned row at a time, which is the per-row cost this function's own
+    # eager load exists to avoid, arriving one statement later. Worse, a user
+    # with a webhook configured pays it *per notice*, since ``webhooks.emit``
+    # commits: the first notice would expire the rows the rest were waiting to
+    # be read from. A plain list of bodies is immune to both.
+    # See tests.test_reclaim_stuck_budget.
+    notices: list[tuple[int, dict]] = []
     for publication in stuck:
         publication.attempts += 1
         logger.warning(
@@ -1039,11 +1074,25 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
         )
         if publication.attempts >= settings.publish_max_retries:
             publication.status = PublicationStatus.FAILED
+            # Cleared for the reason ``_fail`` clears it: a terminal row is one
+            # nothing will ever come back for, and every reader of the column
+            # treats a non-null value as a plan. A row deferred by an earlier
+            # retry carries that ``scheduled_for`` through the claim — ``execute``
+            # moves the row to ``publishing`` without clearing it — so the row
+            # arriving here is holding the time of a retry that has already been
+            # spent. Left set, it put a publication that is finished and failed
+            # on the calendar as a planned post, and sorted it into the "still to
+            # come" half of ``GET /content/queue/publications``, whose ordering
+            # is written around every failed row having a null one.
+            publication.scheduled_for = None
             publication.error = (
                 "The worker publishing this stopped before it finished, and the "
                 "retries are spent. Retry it by hand once the cause is known."
             )
             sync_content_status(publication.content)
+            notice = _failure_notice(publication)
+            if notice is not None:
+                notices.append(notice)
         else:
             publication.status = PublicationStatus.PENDING
             publication.error = (
@@ -1051,6 +1100,19 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
             )
     if stuck:
         db.commit()
+    # The other terminal path — ``_fail`` — fires this, and a publication that
+    # burns its last attempt by killing its worker is no less finished than one
+    # that burns it on a refusal. It was the quieter of the two and the one more
+    # likely to need a human: nothing was returned to blame, so the only trace
+    # was a warning in the worker log, and the user's ``publication.failed``
+    # subscription never heard about it at all.
+    for user_id, data in notices:
+        webhooks.emit(
+            db,
+            user_id=user_id,
+            event=WebhookEvent.PUBLICATION_FAILED,
+            data=data,
+        )
     return len(stuck)
 
 
