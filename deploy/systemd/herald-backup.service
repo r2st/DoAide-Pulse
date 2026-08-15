@@ -1,0 +1,71 @@
+[Unit]
+Description=Nightly Herald database backup
+Documentation=https://github.com/r2st/Herald
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+
+User=herald
+Group=herald
+# DATABASE_URL, so the script dumps the database the application uses rather
+# than one named a second time here and free to drift from it. The same file
+# the api/worker/beat units read.
+EnvironmentFile=/opt/Herald/.env
+ExecStart=/opt/Herald/deploy/backup.sh
+
+# A failed dump must be visible, not retried into a loop at 03:30. The timer
+# comes back tomorrow; what matters is that the failure is in the journal with
+# a non-zero result on `systemctl status herald-backup`.
+Restart=no
+TimeoutStartSec=1800
+
+# Postgres, the API and five other products share this box. A dump is the one
+# job here with no deadline, so it yields to all of them.
+Nice=10
+IOSchedulingClass=idle
+
+# ---- Sandboxing ----
+# The same set as the three application units, plus the strict-filesystem
+# handling those units do not need. ProtectSystem=strict makes the whole
+# filesystem read-only, so the dump directory has to be named — and naming it
+# is also what stops a mistake in the script writing anywhere else.
+#
+# /opt/Herald is *not* in ReadWritePaths, unlike the application units: this
+# job only reads the code and the env file, and a backup that can write over
+# the application it is backing up has the failure modes of both.
+ReadWritePaths=/var/backups/herald
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+# AF_UNIX alongside the inet families: libpq reads the resolver even for the
+# loopback literal in DATABASE_URL, and without it the dump fails with what
+# reads as a DNS outage.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+StandardOutput=journal
+StandardError=journal
+# `journalctl -u herald-backup` is how anyone checks whether last night ran.
+# Without this the lines are tagged "backup.sh" on a box where that name is not
+# reserved to this product — GSTBot ships a script by the same name.
+SyslogIdentifier=herald-backup

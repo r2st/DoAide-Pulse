@@ -1,0 +1,22 @@
+[Unit]
+Description=Nightly Herald database backup
+Documentation=https://github.com/r2st/Herald
+
+[Timer]
+Unit=herald-backup.service
+# 03:30 UTC. GSTBot dumps at 02:30 and CAFlow around 20:50; this sits clear of
+# both so the dumps are not competing for the same disk. It is also after the
+# hourly autopilot scan at :34 has finished writing, so a dump taken here holds
+# a settled night's content rather than a half-written one.
+OnCalendar=*-*-* 03:30:00
+# The box is not always up at 03:30, and a backup skipped because of a reboot
+# window is the backup somebody wanted. Persistent= runs it once shortly after
+# boot instead, from the timestamp systemd keeps in /var/lib/systemd/timers.
+Persistent=true
+# Nothing here needs the minute it says, and a spread start keeps the dump off
+# the same second as whatever else the host wakes up to do.
+RandomizedDelaySec=15m
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

@@ -302,3 +302,54 @@ Take a code and database snapshot before anything risky:
 ssh … 'tar czf /opt/backups/herald-code-$(date +%s).tar.gz -C /opt Herald'
 ssh … 'sudo -u postgres pg_dump herald | gzip > /opt/backups/herald-db-$(date +%s).sql.gz'
 ```
+
+## Backups
+
+`herald-backup.timer` runs `deploy/backup.sh` at 03:30 UTC. It writes a
+verified `pg_dump --format=custom` into `/var/backups/herald` and prunes dumps
+older than 14 days. The snapshot above is still worth taking before a risky
+deploy — it is a point-in-time copy you chose; this is the one that exists when
+nobody chose anything.
+
+Deleting a piece is a real `DELETE` (`routers.content.delete_content` — archive
+is the reversible option), so these dumps are the only way back from a mistaken
+one.
+
+```bash
+# Did last night run?
+ssh … 'systemctl status herald-backup; ls -la /var/backups/herald'
+ssh … 'journalctl -u herald-backup --since "2 days ago"'
+
+# Take one now.
+ssh … 'systemctl start herald-backup'
+```
+
+Installing it on a fresh box — the units are rsynced to `/opt/Herald/deploy`
+by `deploy.sh`, but systemd needs them in `/etc` and the directory has to
+exist:
+
+```bash
+ssh … '
+  install -d -o herald -g herald -m 0700 /var/backups/herald
+  cp /opt/Herald/deploy/systemd/herald-backup.{service,timer} /etc/systemd/system/
+  systemctl daemon-reload
+  systemctl enable --now herald-backup.timer'
+```
+
+**Restoring.** `--format=custom` is what makes a single table recoverable
+without replaying the whole database, which is what an accidental delete
+actually needs:
+
+```bash
+# What is in the dump.
+pg_restore --list /var/backups/herald/herald-<stamp>.dump
+
+# One table, into a scratch database first — never straight over prod.
+sudo -u postgres createdb herald_restore
+sudo -u postgres pg_restore -d herald_restore -t content \
+  /var/backups/herald/herald-<stamp>.dump
+```
+
+Two limits, stated so they are not discovered during an incident: the dumps sit
+on the **same disk** as the database, so they cover operator error and
+corruption but not losing the box; and copying them off-host is not set up yet.
