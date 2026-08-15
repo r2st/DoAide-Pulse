@@ -20,7 +20,9 @@ The two causes need opposite handling upstream and had been indistinguishable:
 
 * :data:`FALLBACK_UNUSABLE` — a provider answered and what came back was junk.
   Asking again gets the same junk, so the template is the final answer and the
-  caller should keep it.
+  caller should keep it. Junk covers both shapes it arrives in: an envelope
+  that parsed and held no usable body, and one that did not parse at all
+  because the reply was cut off mid-article at ``max_tokens``.
 * :data:`FALLBACK_NO_PROVIDER` — nothing answered at all (every key rate-limited,
   every circuit open). Nothing was written because nothing was *asked*, and the
   condition clears on its own when the quota resets. A caller holding a
@@ -569,6 +571,27 @@ def generate(
             fallback_models=(sibling,),
             temperature=0.7,
             max_tokens=max_tokens,
+        )
+    except ai.UnusableResponse as exc:
+        # Before the ``AIError`` arm below, which is its parent class.
+        #
+        # A provider answered and the envelope was unreadable — most often cut
+        # off at ``max_tokens`` mid-string, which is what a generation dying
+        # part-way through an article looks like from out here. That is the
+        # same verdict ``_assemble`` reaches on a reply that parsed but held no
+        # usable body, and it has to be reached here too: this arm was labelling
+        # it ``FALLBACK_NO_PROVIDER``, and the caller that holds a watermark on
+        # that reason held it against a chain that was up. Nothing was stored,
+        # nothing was consumed, and the next scan asked the same question and
+        # got the same unreadable answer — see :class:`ai.UnusableResponse`.
+        logger.warning(
+            "content generation for project %s got an unreadable reply, "
+            "using template: %s",
+            project.id,
+            exc,
+        )
+        return _fallback(
+            project, content_type, activity, signal, reason=FALLBACK_UNUSABLE
         )
     except ai.AIError as exc:
         logger.warning(

@@ -37,6 +37,32 @@ class AIError(RuntimeError):
     """Raised when no provider in the chain could produce a completion."""
 
 
+class UnusableResponse(AIError):
+    """A provider answered, and what came back could not be used.
+
+    A subclass, so every ``except AIError`` in the tree keeps catching it and
+    keeps falling back to its own template — the *handling* is the same. What
+    differs is what the caller may conclude afterwards, and the two had been
+    indistinguishable because :func:`json_completion` raised the same class for
+    both halves of "no usable output":
+
+    * the chain failed — every key rate-limited, every circuit open, nothing
+      asked, nothing answered. Transient, and it clears when the quota resets;
+    * a provider answered and the reply held no JSON object. The commonest
+      cause is a reply cut off at ``max_tokens`` with the envelope truncated
+      mid-string, which is exactly what a generation failing *mid-article*
+      looks like from here.
+
+    Only the first is a reason to come back later. Treating the second as one
+    put :mod:`app.tasks.autopilot_tasks` in a loop it could not leave: it holds
+    the repo watermark on an outage, so the next scan read the same commits,
+    built the same prompt, was answered the same way, and held the watermark
+    again — every scan, forever, writing nothing and banking nothing while
+    spending a GitHub read and a model call each time. See
+    :data:`app.services.content_generator.FALLBACK_UNUSABLE`.
+    """
+
+
 def _balanced_objects(text: str) -> Iterator[str]:
     """Yield every balanced ``{...}`` span in *text*, largest-first per start.
 
@@ -396,8 +422,16 @@ def json_completion(
 ) -> tuple[dict[str, Any], llm_router.Completion]:
     """Ask for a JSON object and return it alongside the raw completion.
 
-    Raises :class:`AIError` when the chain fails *or* when what came back has no
-    JSON object in it. Both are the same thing to a caller: no usable output.
+    Raises when the chain fails *or* when what came back has no JSON object in
+    it. Both are the same thing to a caller that only wants text — no usable
+    output — and both are an :class:`AIError`, so a handler that does not care
+    which is unchanged.
+
+    They are *not* the same thing to a caller deciding whether to ask again,
+    and the second is spelled :class:`UnusableResponse` for that caller's
+    benefit. A provider that answered is a provider that is reachable; the
+    reply being unreadable is a fact about this generation, not about the
+    quota.
     """
     completion = chat_completion_detailed(
         messages,
@@ -409,7 +443,7 @@ def json_completion(
     )
     parsed = extract_json_object(completion.text)
     if parsed is None:
-        raise AIError(
+        raise UnusableResponse(
             f"{completion.provider} returned no parseable JSON object "
             f"({completion.text[:120]!r}…)"
         )
