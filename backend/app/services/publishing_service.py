@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
+from typing import Any
 
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
@@ -35,7 +36,7 @@ from app.models.publication import (
 from app.models.webhook import WebhookEvent
 from app.services import publishers, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
-from app.services.errors import clip_error
+from app.services.errors import clip_error, redact
 from app.services.publishers.base import (
     CredentialError,
     NotImplementedAdapter,
@@ -366,6 +367,30 @@ def _credentials_for(db: Session, user_id: int, platform: Platform) -> dict:
         raise CredentialError(str(exc)) from exc
 
 
+def _redact_credentials(
+    exc: PublishError, adapter: publishers.Adapter, credentials: dict[str, Any]
+) -> None:
+    """Strip this connection's secrets out of *exc*, in place.
+
+    Mutating ``args`` rather than raising a fresh exception because the type and
+    the attributes on it are load-bearing: ``RateLimited.retry_after`` decides
+    how long the row is parked, ``PublishError.status_code`` decides whether a
+    Git lookup reads as "new post", and the caller re-raises to arms that match
+    on type. Rebuilding the exception would have to know all of that.
+
+    Only the fields the adapter declared ``secret`` are removed. A WordPress
+    site URL and a Bluesky handle are in the message on purpose — they say
+    *which* connection failed — and a repo name is half the useful part of a
+    GitHub error.
+    """
+    secrets = publishers.secret_values(adapter, credentials)
+    if not secrets:
+        return
+    exc.args = tuple(
+        redact(arg, secrets) if isinstance(arg, str) else arg for arg in exc.args
+    )
+
+
 def _mark_connection_invalid(
     db: Session, user_id: int, platform: Platform, error: str
 ) -> None:
@@ -557,14 +582,25 @@ def execute(db: Session, publication: Publication) -> Publication:
 
     try:
         credentials = _credentials_for(db, user_id, publication.platform)
-        result = adapter.publish(
-            build_request(
-                content,
-                platform=publication.platform,
-                as_draft=publication.as_draft,
-            ),
-            credentials,
-        )
+        try:
+            result = adapter.publish(
+                build_request(
+                    content,
+                    platform=publication.platform,
+                    as_draft=publication.as_draft,
+                ),
+                credentials,
+            )
+        except PublishError as exc:
+            # The last point the credential values are known, and the last point
+            # before this message becomes a row. Everything below writes it to
+            # ``publication.error`` or ``connection.last_error`` — plaintext
+            # ``Text`` columns rendered in the UI — and adapter messages quote
+            # the platform's response body on purpose. A platform that validates
+            # by echoing ("invalid api_key: …") would put the token in the
+            # database beside the encrypted copy of itself.
+            _redact_credentials(exc, adapter, credentials)
+            raise
     except (NotConnected, NotImplementedAdapter, UnsupportedOption) as exc:
         # None of these is transient: no amount of retrying connects an account,
         # finishes an adapter, or gives a platform a feature it does not have.

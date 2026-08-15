@@ -7,12 +7,19 @@ endpoint's reply, an RSS parser's complaint about a feed. Any of them can be a
 megabyte of someone else's HTML, and all of them are written on *every* failed
 attempt and rendered straight into a list view.
 
-Bounding lives here, in a module with no imports of its own, because the four
-places that record a failure are spread across a router, two services and the
-publishing pipeline — and ``publishing_service`` already imports ``webhooks``,
-so the helper cannot live there without the reverse import becoming a cycle.
+Bounding lives here, in a module that imports nothing of Herald's own, because
+the four places that record a failure are spread across a router, two services
+and the publishing pipeline — and ``publishing_service`` already imports
+``webhooks``, so the helper cannot live there without the reverse import
+becoming a cycle.
+
+:func:`redact` is here for the same reason and answers the other half of the
+question: bounding decides how much of somebody else's message is kept, and
+redaction decides that the part of it which is *ours* is not.
 """
 from __future__ import annotations
+
+from collections.abc import Iterable
 
 #: How much of a failure message is worth keeping on the row.
 #:
@@ -26,6 +33,17 @@ from __future__ import annotations
 MAX_ERROR_CHARS = 2000
 
 
+#: What a redacted credential is replaced with. Deliberately visible: somebody
+#: reading a failure should be able to tell that a value was removed, or the
+#: message reads as though the platform said nothing there.
+REDACTED = "[redacted]"
+
+#: Below this length a "credential" is not one, and removing every occurrence of
+#: it would do more damage to the message than leaving it. A four-character
+#: value appears inside ordinary words; a real token does not.
+_MIN_REDACTABLE = 8
+
+
 def clip_error(error: str) -> str:
     """A failure message bounded to :data:`MAX_ERROR_CHARS`.
 
@@ -36,3 +54,37 @@ def clip_error(error: str) -> str:
     if len(error) <= MAX_ERROR_CHARS:
         return error
     return error[: MAX_ERROR_CHARS - 1].rstrip() + "…"
+
+
+def redact(error: str, secrets: Iterable[object]) -> str:
+    """*error* with any of *secrets* appearing in it replaced by :data:`REDACTED`.
+
+    Adapter failures quote what the platform said — ``_translate`` puts the
+    response body in the message on purpose, because "WordPress returned 400"
+    with nothing after it is not a message anyone can act on. That body is
+    written by somebody else, and some APIs validate by echoing: *"invalid
+    api_key: ghp_…"*.
+
+    Herald then stores the whole thing in ``Publication.error`` /
+    ``PlatformConnection.last_error`` — ``Text`` columns, in plaintext, right
+    next to ``encrypted_credentials`` — writes it again on every attempt, and
+    renders it in the publications list. The token is encrypted at rest and
+    would arrive in the database beside it in the clear, put there by the
+    failure path rather than by any write that thinks it is storing a
+    credential.
+
+    Applied where the failure leaves the adapter, which is the last point the
+    credential values are known, and for the same reason :func:`clip_error` is
+    applied where the row is written: a new adapter cannot forget it.
+
+    Values shorter than :data:`_MIN_REDACTABLE` are left alone — see the note
+    there. Ordered longest-first so a credential that contains another (a
+    Bluesky app password and the handle it was issued for) does not leave half
+    of itself behind.
+    """
+    for secret in sorted(
+        {str(s) for s in secrets if s}, key=len, reverse=True
+    ):
+        if len(secret) >= _MIN_REDACTABLE:
+            error = error.replace(secret, REDACTED)
+    return error

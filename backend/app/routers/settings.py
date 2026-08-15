@@ -22,7 +22,7 @@ from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.schemas.settings import ConnectionCreate, ConnectionOut, PlatformCapability
 from app.services import publishers
 from app.services.crypto import CredentialEncryptionError, encrypt_credentials
-from app.services.errors import clip_error
+from app.services.errors import clip_error, redact
 from app.services.publishers.base import (
     CredentialError,
     NotImplementedAdapter,
@@ -225,21 +225,32 @@ def verify_connection(
         )
 
     adapter = publishers.get_adapter(platform)
+    # Held so the failure arms can strip them back out of whatever the platform
+    # said. ``verify`` runs against a token the user has just pasted in, and its
+    # message lands in ``last_error`` — a plaintext column rendered on the
+    # settings page, next to the encrypted copy of the same value. Empty when
+    # decryption is what failed, which is the one case there is nothing to
+    # remove. See ``publishing_service._redact_credentials`` for the same guard
+    # on the publish path.
+    credentials: dict = {}
     try:
-        connection.display_name = adapter.verify(
-            decrypt_credentials(connection.encrypted_credentials)
-        )
+        credentials = decrypt_credentials(connection.encrypted_credentials)
+        connection.display_name = adapter.verify(credentials)
         connection.status = ConnectionStatus.CONNECTED
         connection.last_verified_at = utcnow()
         connection.last_error = None
     except (CredentialError, CredentialEncryptionError) as exc:
         connection.status = ConnectionStatus.INVALID
-        connection.last_error = clip_error(str(exc))
+        connection.last_error = clip_error(
+            redact(str(exc), publishers.secret_values(adapter, credentials))
+        )
     except (PublishError, NotImplementedAdapter) as exc:
         # Leave the status alone: an unreachable platform is not proof the
         # credentials are bad, and flipping to INVALID would make the user
         # re-enter a working token.
-        connection.last_error = clip_error(str(exc))
+        connection.last_error = clip_error(
+            redact(str(exc), publishers.secret_values(adapter, credentials))
+        )
 
     db.commit()
     db.refresh(connection)

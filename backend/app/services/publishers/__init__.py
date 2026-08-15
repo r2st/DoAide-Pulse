@@ -78,6 +78,26 @@ def implemented_platforms() -> list[Platform]:
     return [a.platform for a in all_adapters() if a.implemented]
 
 
+def secret_values(adapter: Adapter, credentials: dict) -> list[str]:
+    """The values *credentials* holds for the fields *adapter* calls secret.
+
+    The input to :func:`app.services.errors.redact`, which strips them out of a
+    failure message before it is written to a row. Lives here because
+    ``credential_fields`` is the only declaration of which values are secrets,
+    and both callers — the publish path and the settings page's re-verify —
+    would otherwise re-derive it and drift.
+
+    Non-secret fields are deliberately kept: a WordPress site URL, a Bluesky
+    handle and a GitHub repo name are what tell a reader *which* connection
+    failed, and removing them would leave a message about nothing.
+    """
+    return [
+        str(credentials[field.key])
+        for field in adapter.credential_fields
+        if field.secret and credentials.get(field.key)
+    ]
+
+
 def capabilities() -> list[dict]:
     """A JSON-serializable description of every platform, for the UI.
 
