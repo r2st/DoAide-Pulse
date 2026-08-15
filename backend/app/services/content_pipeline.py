@@ -41,6 +41,7 @@ from app.models.project import AutopilotMode, Project
 from app.models.publication import Platform, Publication
 from app.models.webhook import WebhookEvent
 from app.services import (
+    ai,
     content_generator,
     link_check,
     publishers,
@@ -89,6 +90,9 @@ class RoutedContent:
     #: ``error``-level SEO issues, which hold a piece back on their own however
     #: it scored — see :func:`app.services.seo.blocking_issues`.
     seo_errors: list[str] = field(default_factory=list)
+    #: Foreign-script runs the model spliced into the copy, which hold a piece
+    #: back the same way — see :func:`app.services.ai.stray_script_runs`.
+    garbled_runs: list[str] = field(default_factory=list)
     platforms: list[str] = field(default_factory=list)
     is_fallback: bool = False
 
@@ -109,6 +113,8 @@ class RoutedContent:
             body["dead_links"] = self.dead_links
         if self.seo_errors:
             body["seo_errors"] = self.seo_errors
+        if self.garbled_runs:
+            body["garbled_runs"] = self.garbled_runs
         if self.platforms:
             body["platforms"] = self.platforms
         return body
@@ -238,6 +244,36 @@ def generate_and_route(
             "; ".join(seo_errors),
         )
 
+    # A third gate, on the one thing neither of the others reads: the words. The
+    # SEO score measures structure and the blocking issues measure completeness,
+    # and a body with a Cyrillic noun wedged mid-sentence is structurally perfect
+    # and complete. Six pieces auto-published to Dev.to and Bluesky under the
+    # user's name carrying runs like `front<CJK> end` before anything looked.
+    #
+    # Banked on the row even when `auto` is already false, for the same reason
+    # the SEO errors are: the reviewer should see every reason, and these runs
+    # are the only one that tells them *where* to edit.
+    garbled = ai.stray_script_runs(
+        "\n".join(
+            part
+            for part in (
+                generated.title,
+                generated.body_markdown,
+                generated.excerpt,
+                generated.meta_description,
+            )
+            if part
+        )
+    )
+    if auto and garbled:
+        auto = False
+        logger.info(
+            "held %r back from auto-publish: %d garbled run(s): %s",
+            generated.title,
+            len(garbled),
+            ", ".join(garbled),
+        )
+
     content = content_generator.content_from_generated(
         db,
         project_id=project.id,
@@ -250,6 +286,7 @@ def generate_and_route(
             "dead_links": dead_links,
             "seo_score": score,
             "seo_errors": seo_errors,
+            "garbled_runs": garbled,
             # Alongside the gate results and for the same reason: a reviewer
             # looking at a piece that was meant to publish itself should be able
             # to see why it did not without reading the logs.
@@ -284,6 +321,7 @@ def generate_and_route(
             seo_score=score,
             dead_links=dead_links,
             seo_errors=seo_errors,
+            garbled_runs=garbled,
             is_fallback=generated.is_fallback,
         )
 

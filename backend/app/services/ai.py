@@ -146,6 +146,87 @@ def looks_like_reasoning(text: str) -> bool:
     return sum(1 for marker in _REASONING_MARKERS if marker in head) >= 2
 
 
+#: Scripts that have no business appearing in the English copy Herald writes.
+#:
+#: Greek and the Latin supplements are deliberately *absent*. "a lambda folded
+#: over sigma", "Bücher", and the typographic dashes, curly quotes and ellipses
+#: every one of these models emits are all legitimate, and a gate that fired on
+#: them would hold back good work for being correctly typeset.
+#:
+#: Written as escapes rather than glyphs on purpose: a range endpoint like
+#: U+07BF is unassigned and renders as a box or as nothing at all, so the glyph
+#: form of this table is unreadable in a diff and unreviewable in a review.
+_FOREIGN_SCRIPTS = (
+    "\u0400-\u07bf"  # Cyrillic, Armenian, Hebrew, Arabic, Syriac, Thaana
+    "\u0900-\u11ff"  # Devanagari through Sinhala, Thai, Lao, Tibetan,
+    #                    Myanmar, Georgian, Hangul Jamo
+    "\u1200-\u137f"  # Ethiopic
+    "\u1780-\u17ff"  # Khmer
+    "\u3040-\u30ff"  # Hiragana, Katakana
+    "\u3400-\u4dbf"  # CJK extension A
+    "\u4e00-\u9fff"  # CJK unified ideographs
+    "\uac00-\ud7af"  # Hangul syllables
+    "\uf900-\ufaff"  # CJK compatibility ideographs
+)
+
+_FOREIGN_RUN = re.compile(f"[{_FOREIGN_SCRIPTS}]+")
+_LATIN_LETTER = re.compile(r"[A-Za-z]")
+
+#: Above this share of the letters, the text is *written* in another script
+#: rather than contaminated by one, and none of this is the gate's business.
+#: Real contamination is a rounding error by comparison — the runs seen in
+#: production were five characters in an eight-hundred-word article.
+_MULTILINGUAL_SHARE = 0.10
+
+
+def stray_script_runs(text: str, *, limit: int = 10) -> list[str]:
+    """Runs of foreign-script characters spliced into otherwise-English *text*.
+
+    Free-tier models occasionally emit a token from another script in the middle
+    of an English sentence — ``a repeatable scenario<MALAYALAM> framework``,
+    ``caches agent availability and message<CJK>``, ``selects a publish time
+    <CYRILLIC>``. The word is not a translation of anything nearby and carries no
+    meaning; it is the sampler slipping. Nothing downstream noticed: the JSON
+    parsed, the body was long enough, the SEO score was unaffected because the
+    keyword density did not move, and the piece auto-published under the user's
+    name with a Cyrillic noun wedged into paragraph three.
+
+    Returned rather than repaired. Deleting the run is *usually* right and
+    sometimes silently wrong — the model may have dropped the English word it
+    meant to write, leaving "selects a publish time" as a sentence that now reads
+    fine and means something else. So the runs are handed to a reviewer, who can
+    see the sentence, and the piece is held back from auto-publishing rather than
+    thrown away: it is one bad word in an otherwise good article.
+
+    Text genuinely *written* in one of these scripts returns nothing — see
+    :data:`_MULTILINGUAL_SHARE`. Herald writes English today, but a body that is
+    thirty percent Devanagari is a translation, not a glitch, and this is the
+    wrong gate to fail it at.
+
+    *limit* caps the returned list; the count is what a reviewer acts on, not the
+    hundredth run.
+    """
+    if not text:
+        return []
+
+    runs = _FOREIGN_RUN.findall(text)
+    if not runs:
+        return []
+
+    foreign = sum(len(run) for run in runs)
+    latin = len(_LATIN_LETTER.findall(text))
+    if foreign >= (foreign + latin) * _MULTILINGUAL_SHARE:
+        return []
+
+    seen: list[str] = []
+    for run in runs:
+        if run not in seen:
+            seen.append(run)
+        if len(seen) >= limit:
+            break
+    return seen
+
+
 def chat_completion_detailed(
     messages: list[dict[str, str]],
     *,
