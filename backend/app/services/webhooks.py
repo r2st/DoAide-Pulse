@@ -47,7 +47,7 @@ from app.models.webhook import (
     WebhookDelivery,
     WebhookEvent,
 )
-from app.services import link_check
+from app.services import link_check, signals
 from app.services.crypto import (
     CredentialEncryptionError,
     decrypt_credentials,
@@ -172,6 +172,101 @@ def verify(secret: str, header: str, body: str, *, tolerance_seconds: int = 300)
         return False
     expected = sign(secret, timestamp, body).split(f"{SIGNATURE_VERSION}=", 1)[1]
     return hmac.compare_digest(expected, signature)
+
+
+#: What GitHub signs its deliveries with, and the two headers that come with it.
+#: A different scheme from Herald's own, and it has to be: GitHub decides the
+#: format of the requests GitHub sends, and a push event is the single most
+#: likely thing anybody points ``POST /triggers/inbound/{token}`` at.
+#:
+#: Without this, the only way to use a GitHub webhook was to leave
+#: ``require_signature`` off — an unauthenticated endpoint whose whole
+#: credential is a URL that has to be pasted into a third-party settings page,
+#: which is exactly where URLs leak from.
+GITHUB_SIGNATURE_HEADER = "X-Hub-Signature-256"
+#: GitHub's per-delivery UUID. Stable across its own redeliveries of the *same*
+#: event and different for a new one, which makes it the ideal replay nonce —
+#: see :func:`replay_nonce`.
+GITHUB_DELIVERY_HEADER = "X-GitHub-Delivery"
+_GITHUB_PREFIX = "sha256="
+
+
+def verify_github(secret: str, header: str, raw_body: bytes) -> bool:
+    """Whether *header* is GitHub's ``sha256=`` HMAC over *raw_body*.
+
+    Three differences from :func:`verify`, all of them GitHub's:
+
+    * **No timestamp**, so nothing here bounds how old a delivery may be. That
+      is what makes :func:`replay_nonce` load-bearing rather than belt-and-braces
+      on this path — a captured GitHub delivery is replayable forever on the
+      signature alone.
+    * **Over the raw bytes**, not a decoded string. GitHub HMACs the body
+      exactly as sent, and a body round-tripped through
+      ``decode("utf-8", "replace")`` is a *different* byte string the moment it
+      contains a sequence that does not decode — the replacement character is
+      three bytes where the original was one. Verifying the decoded form would
+      fail every delivery carrying an emoji in a commit message on some
+      encodings, and, worse, would be verifying something other than what was
+      received.
+    * **No version prefix to parse.** The whole value is ``sha256=<hex>``.
+
+    Hostile-input contract identical to :func:`verify`'s, and for the same
+    reason — this is reached by anyone holding the URL. Anything that is not
+    lowercase SHA-256 hex is ``False`` rather than an exception:
+    ``hmac.compare_digest`` raises ``TypeError`` on a non-ASCII string, which
+    would let an unauthenticated caller turn a 401 into a 500.
+    """
+    candidate = (header or "").strip()
+    if not candidate.startswith(_GITHUB_PREFIX):
+        return False
+    signature = candidate[len(_GITHUB_PREFIX) :]
+    if not _HEX.fullmatch(signature):
+        return False
+    expected = hmac.new(
+        secret.encode("utf-8"), raw_body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+
+
+def replay_nonce(*, delivery_id: str = "", signature: str = "") -> str | None:
+    """What makes one inbound delivery distinguishable from a replay of it.
+
+    Returns ``None`` when the request carries nothing that can serve — which is
+    the honest answer for an unsigned request with no delivery id, and the case
+    the caller must not silently treat as deduplicated.
+
+    **Why a signed request needs this at all.** ``verify`` bounds a Herald-signed
+    request to a five-minute window, and ``verify_github`` bounds one not at all.
+    Inside that window — or, for GitHub, forever — the identical bytes verify
+    identically, every time. ``POST /triggers/inbound/{token}`` answers a
+    verified request by *writing an article*: a full pass over the LLM chain, a
+    link check per outbound link, and a publish dispatch. So anybody who can
+    observe one delivery can spend the account's entire daily quota by sending
+    it again in a loop, and every copy is a genuinely valid signature.
+
+    **Why not the body.** ``signal_from_webhook`` deliberately leaves
+    ``dedupe_key`` empty when the sender configured no ``dedupe_path``, because
+    a key invented from the body would make an identical-but-genuine second
+    event invisible — two builds of the same commit, two alerts with the same
+    text. That reasoning is right and this does not touch it. A delivery id and
+    a signature are not the body: a genuine second event carries a fresh
+    delivery id, and a fresh signature (different ``t``, or different content).
+    Only a literal replay repeats either.
+
+    The delivery id wins when both are present. It is the sender's own name for
+    the delivery, so it identifies a redelivery *across* a signature the sender
+    recomputed — which is what GitHub's "Redeliver" button does.
+    """
+    for candidate in (delivery_id, signature):
+        value = (candidate or "").strip()
+        if value:
+            # Hashed rather than stored raw. `TriggerEvent.dedupe_key` is 200
+            # characters and a signature header is comfortably under that today,
+            # but the value comes from a request header — a caller choosing how
+            # long the string in a unique index is is a caller choosing whether
+            # the INSERT raises. A digest is the same width whatever arrives.
+            return signals.digest_key("replay", value)
+    return None
 
 
 def envelope(event: WebhookEvent, data: dict[str, Any]) -> dict[str, Any]:

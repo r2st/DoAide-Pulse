@@ -15,6 +15,8 @@ signature makes a leaked URL useless on its own.
 from __future__ import annotations
 
 import json
+import logging
+from dataclasses import dataclass, replace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
@@ -42,6 +44,8 @@ from app.schemas.trigger import (
 from app.services import triggers as trigger_service
 from app.services import webhooks
 from app.services.crypto import CredentialEncryptionError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/triggers", tags=["triggers"])
 
@@ -569,13 +573,69 @@ async def inbound(
     Only the thread it is computed on is different.
     """
     raw = await request.body()
-    signature = request.headers.get(webhooks.SIGNATURE_HEADER.lower()) or request.headers.get(
-        webhooks.SIGNATURE_HEADER
+    # Starlette's header mapping is already case-insensitive, so one read per
+    # header is enough. Both signature schemes are collected here rather than in
+    # `_ingest` because this is the only frame that has the request.
+    headers = _InboundHeaders(
+        herald_signature=request.headers.get(webhooks.SIGNATURE_HEADER) or "",
+        github_signature=request.headers.get(webhooks.GITHUB_SIGNATURE_HEADER) or "",
+        delivery_id=request.headers.get(webhooks.GITHUB_DELIVERY_HEADER) or "",
     )
-    return await run_in_threadpool(_ingest, db, token, raw, signature)
+    return await run_in_threadpool(_ingest, db, token, raw, headers)
 
 
-def _ingest(db: Session, token: str, raw: bytes, signature: str | None) -> dict:
+@dataclass(frozen=True)
+class _InboundHeaders:
+    """The headers one inbound firing is authenticated and deduplicated by.
+
+    A record rather than three positional arguments: ``_ingest`` is called
+    across a thread boundary and two of these are hex strings of similar
+    length, which is the shape of argument list that gets transposed once and
+    then verifies signatures against the wrong scheme forever.
+    """
+
+    herald_signature: str = ""
+    github_signature: str = ""
+    delivery_id: str = ""
+
+
+def _verified_signature(trigger: Trigger, raw: bytes, headers: _InboundHeaders) -> str:
+    """The signature that authenticated this request, or ``""`` if none did.
+
+    Both schemes are accepted and either is sufficient. Herald's own
+    (``X-Herald-Signature``) is what its docs tell an integrator to send;
+    GitHub's (``X-Hub-Signature-256``) is what GitHub sends and cannot be talked
+    out of, and a GitHub push event is the most likely thing this endpoint ever
+    receives. Refusing the latter meant a GitHub webhook could only be wired up
+    with ``require_signature`` off.
+
+    Herald's is checked first because it is the stricter of the two — it carries
+    a timestamp and so is bounded to a five-minute window on its own, where
+    GitHub's is bounded by nothing but the replay nonce.
+
+    The *value* comes back rather than a boolean because the caller needs it:
+    a verified signature is what :func:`app.services.webhooks.replay_nonce`
+    turns into a replay guard, and returning ``True`` would throw away the only
+    unforgeable thing about the request.
+    """
+    secret = trigger_service.read_secret(trigger)
+    if not secret:
+        return ""
+    # Decoded once, here, and only for Herald's scheme — which signs the decoded
+    # form. GitHub's signs the bytes; see `verify_github` on why the two must
+    # not share an input.
+    if headers.herald_signature and webhooks.verify(
+        secret, headers.herald_signature, raw.decode("utf-8", errors="replace")
+    ):
+        return headers.herald_signature
+    if headers.github_signature and webhooks.verify_github(
+        secret, headers.github_signature, raw
+    ):
+        return headers.github_signature
+    return ""
+
+
+def _ingest(db: Session, token: str, raw: bytes, headers: _InboundHeaders) -> dict:
     """One inbound firing, start to finish, off the event loop.
 
     Split out of :func:`inbound` rather than inlined there because that is the
@@ -597,15 +657,24 @@ def _ingest(db: Session, token: str, raw: bytes, signature: str | None) -> dict:
             detail=f"Payload larger than {MAX_INBOUND_BYTES // 1024} KB.",
         )
 
-    body_text = raw.decode("utf-8", errors="replace")
-    if trigger.setting("require_signature"):
-        secret = trigger_service.read_secret(trigger)
-        if not secret or not signature or not webhooks.verify(secret, signature, body_text):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing or invalid signature",
-            )
+    # Attempted whether or not the trigger *requires* one, because a signature
+    # that verifies is a replay nonce whether or not it was demanded — and an
+    # unsigned trigger that a sender chose to sign anyway should get the
+    # protection it paid for. Never a reason to reject on its own: only the
+    # `require_signature` branch below turns a missing one into a 401.
+    signature = _verified_signature(trigger, raw, headers)
+    if trigger.setting("require_signature") and not signature:
+        logger.info(
+            "trigger %s: inbound delivery %s rejected — no valid signature",
+            trigger.id,
+            headers.delivery_id or "-",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid signature",
+        )
 
+    body_text = raw.decode("utf-8", errors="replace")
     try:
         payload = json.loads(body_text) if body_text.strip() else {}
     except json.JSONDecodeError:
@@ -614,9 +683,40 @@ def _ingest(db: Session, token: str, raw: bytes, signature: str | None) -> dict:
         payload = {"text": body_text[:10000]}
 
     signal = trigger_service.signal_from_webhook(trigger, payload)
+    # Replay protection, layered *under* the sender's own dedupe rather than
+    # over it. A trigger with `dedupe_path` configured has told Herald what
+    # makes its events unique and that answer wins; this only fills the gap
+    # where there was no answer at all, which is the default and was therefore
+    # every trigger nobody had configured. See `webhooks.replay_nonce` for why
+    # a nonce can be used here when a body digest cannot.
+    if signal.dedupe_key is None:
+        signal = replace(
+            signal,
+            dedupe_key=webhooks.replay_nonce(
+                delivery_id=headers.delivery_id, signature=signature
+            ),
+        )
+
     event = trigger_service.fire(db, trigger, signal)
     if event is None:
+        # Logged, not silent. "The webhook fired and nothing happened" is the
+        # support question this endpoint generates, and a delivery absorbed as a
+        # duplicate is the answer to most of them — but the 202 the sender gets
+        # is deliberately identical to an accepted one, so the log is the only
+        # place the difference is recorded.
+        logger.info(
+            "trigger %s: inbound delivery %s deduplicated",
+            trigger.id,
+            headers.delivery_id or "-",
+        )
         return {"status": "duplicate"}
+    logger.info(
+        "trigger %s: inbound delivery %s accepted as event %s (%s)",
+        trigger.id,
+        headers.delivery_id or "-",
+        event.id,
+        event.status.value,
+    )
     return {
         "status": event.status.value,
         "event_id": event.id,
