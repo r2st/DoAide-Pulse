@@ -172,6 +172,18 @@ def _is_private(address: str) -> bool:
 _MAX_REDIRECTS = 10
 
 
+def _status_only(url: str, *, client: httpx.Client, method: str) -> httpx.Response:
+    """One request, body abandoned unread.
+
+    Returned from inside the ``with`` on purpose: leaving the block closes the
+    stream, and everything this module reads off a response — the status code,
+    the ``Location`` header, the request it was made from — is still there
+    afterwards. What is gone is the body, which is the point.
+    """
+    with client.stream(method, url) as response:
+        return response
+
+
 def _follow_safely(
     url: str, *, client: httpx.Client, method: str = "HEAD"
 ) -> httpx.Response:
@@ -181,10 +193,23 @@ def _follow_safely(
     ``_unreachable_for_a_reader``, so a 302 to ``http://169.254.169.254/``
     would bypass the pre-flight check. Following by hand lets us validate
     every Location header before the client connects.
+
+    Every hop is **streamed and closed unread**. A verdict here is built from a
+    status code and a ``Location`` header and nothing else, but ``client.request``
+    buffers the entire body first to hand back a ``.text`` this function never
+    looks at. On a HEAD that costs nothing; the GET retry below is the problem,
+    and it is not a hypothetical one — the retry exists precisely for hosts that
+    refuse HEAD, so the bodies Herald ends up fetching are exactly the ones it
+    did not choose to. The URL comes out of a user's document, the response size
+    is decided by whoever owns it, and :func:`check` runs
+    ``link_check_max_urls`` of these at once inside a request somebody is
+    waiting on: a handful of links to large files is a memory spike with no cap
+    on it at all. :func:`app.services.feeds._read_capped` has the same problem
+    and caps it; here the cap can be zero, because the body was never wanted.
     """
     current = url
     for _ in range(_MAX_REDIRECTS):
-        response = client.request(method, current)
+        response = _status_only(current, client=client, method=method)
         if response.is_redirect:
             location = response.headers.get("location", "")
             if not location:
