@@ -99,6 +99,23 @@ def test_a_version_number_is_not_split_into_digits(db, project):
     )
 
 
+def test_a_headline_with_no_significant_words_is_nobody_else_s_restatement(db, project):
+    """Nothing to compare is not the same as comparing equal.
+
+    ``_idea_tokens`` drops stopwords, so a headline that is entirely stopwords —
+    or an empty one, which is what a model returns on a bad afternoon — comes
+    back as an empty set. An overlap ratio over two empty sets is either a
+    division by zero or a vacuous 1.0, and 1.0 would mean every blank headline
+    swallowed the next real one. The early return is the guard; both directions
+    of it are checked because ``existing`` is empty exactly as often.
+    """
+    real = content_generator._idea_tokens("Shipping the calendar")
+
+    assert content_generator._is_restatement("of the and", real) is False
+    assert content_generator._is_restatement("", real) is False
+    assert content_generator._is_restatement("Shipping the calendar", frozenset()) is False
+
+
 def test_a_rephrasing_with_different_filler_words_is_the_same_idea(db, project):
     """"to production" against "into production" is one subject, twice.
 

@@ -1300,6 +1300,10 @@ def update_content(
     Approve button does, so a scripted caller does not need to know about a
     second endpoint.
 
+    ``scheduled_for`` means here what it means everywhere else: a time in the
+    past or beyond the horizon is refused with a 422, and the piece's publications
+    move with it — the ones still waiting, not the ones already out.
+
     Send ``If-Match`` with the ``version`` from the copy you are editing and a
     save that would land on top of somebody else's is refused with a 412. The
     new version comes back in the ``ETag`` header and in the body, so the next
@@ -1316,6 +1320,23 @@ def update_content(
 
     data = payload.model_dump(exclude_unset=True)
     reject_nulls(Content, data)
+
+    if "scheduled_for" in data:
+        # The same rule every other writer of this column applies to it, for the
+        # same reason. ``_queue_publish`` and the calendar's reschedule both run
+        # the requested time through :func:`app.services.scheduling.normalize`,
+        # which refuses a time in the past — "a mistyped year currently means
+        # publish immediately, which is the one outcome somebody setting a date
+        # did not want". This endpoint writes the identical column and applied
+        # nothing, so ``PATCH {"scheduled_for": "2025-..."}`` was accepted with a
+        # 200 where ``POST /schedule`` answers 422 for the same value, and
+        # ``release_approved`` then queued the piece for now.
+        try:
+            data["scheduled_for"] = scheduling.normalize(data["scheduled_for"])
+        except scheduling.ScheduleError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            ) from exc
 
     if _is_live(content) and set(data) - {"status", "scheduled_for"}:
         raise HTTPException(
@@ -1348,6 +1369,34 @@ def update_content(
 
     for key, value in data.items():
         setattr(content, key, value)
+
+    if "scheduled_for" in data:
+        # And the piece's date has to reach the rows that act on it. Every other
+        # writer of ``content.scheduled_for`` moves the publications with it —
+        # ``_queue_publish`` arms them at the new time, the calendar's reschedule
+        # re-times them, ``unschedule_content`` and ``cancel_armed`` clear both
+        # together. This one set the column alone, so a piece scheduled for
+        # Tuesday and then PATCHed to Friday went out on Tuesday while the editor
+        # showed Friday: one fact spelled two ways, with the wrong one on screen.
+        #
+        # Only the rows that are genuinely still waiting. A published row's time
+        # is a record of when it went rather than a plan; a failed or cancelled
+        # one is a question somebody has already settled; and ``publishing`` is
+        # the one the calendar's reschedule refuses outright, because a row a
+        # worker has already claimed is about to succeed and putting it back to
+        # ``scheduled`` is how it gets posted a second time. So a fully published
+        # piece has nothing here to move, which is why ``scheduled_for`` can stay
+        # in the freeze's exemption list above.
+        movable = (PublicationStatus.PENDING, PublicationStatus.SCHEDULED)
+        for publication in content.publications:
+            if publication.status not in movable:
+                continue
+            publication.scheduled_for = data["scheduled_for"]
+            publication.status = (
+                PublicationStatus.SCHEDULED
+                if data["scheduled_for"]
+                else PublicationStatus.PENDING
+            )
 
     if content.status == ContentStatus.ARCHIVED:
         # Whether this call archived the piece or it was already archived: in
@@ -1832,6 +1881,26 @@ def retry_publication(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Already published — retrying would post it twice.",
+        )
+    # The third arming path, and the one that was missing this. ``_queue_publish``
+    # states the invariant it keeps — "an archived piece has nothing armed, ever"
+    # — and the calendar's reschedule keeps it for the same reason: arming a
+    # piece the user has withdrawn cannot publish it, because
+    # :func:`app.services.publishing_service.execute` cancels the row at the last
+    # gate, so all it can do is answer 200 to a caller whose piece is not going
+    # anywhere and leave the row reading ``pending`` until a worker settles it
+    # back to ``cancelled``.
+    #
+    # Reachable from the ordinary UI, not just from the API: archiving cancels
+    # the armed rows with an error on them (``ARCHIVED_ERROR``), and a cancelled
+    # row with an error beside it is exactly what a Retry button is for. So the
+    # review queue's Reject and the publications list's Retry disagreed, and
+    # Retry appeared to win.
+    if content.status == ContentStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is archived, which means it is not going out. "
+            "Take it out of the archive first.",
         )
 
     hold = publishing_service.retry_hold(content, publication)
