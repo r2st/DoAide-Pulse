@@ -342,14 +342,17 @@ def scan_all_projects() -> dict:
     # Dispatch each project as a separate Celery task so they run in parallel
     # across workers instead of blocking a single task for the entire fleet.
     dispatched = 0
+    failed = 0
     inline = 0
     # One warning per sweep rather than per project — see the same flag in
     # ``trigger_tasks.check_due_triggers``.
     broker_warned = False
     for project_id in ids:
+        # Set from the inline branch's *return value*, not from an exception —
+        # see the break at the bottom of the loop.
+        out_of_time = False
         try:
             scan_project.delay(project_id)
-            dispatched += 1
         except SoftTimeLimitExceeded:
             # Must beat the broker fallback below, which would otherwise read
             # the timeout as a dead broker and answer it by scanning a repo and
@@ -372,14 +375,49 @@ def scan_all_projects() -> dict:
             if not broker_warned:
                 logger.warning("broker unavailable, scanning projects inline: %s", exc)
                 broker_warned = True
-            scan_project(project_id)
-            dispatched += 1
             inline += 1
+            try:
+                out_of_time = scan_project(project_id).get("status") == "timeout"
+            except Exception:
+                # The same rule ``publish_due`` states outright: one project's
+                # bad day must not end the pass. ``scan_project`` promises never
+                # to raise, but the promise is made by a ``try`` it enters after
+                # opening its session — so ``SessionLocal()`` and the ``close()``
+                # in its ``finally`` are both outside it, and land here.
+                #
+                # Escaping the loop would not lose one project, it would drop
+                # every later one in the fleet, and the next sweep selects the
+                # same ids in the same order and dies in the same place.
+                logger.exception("inline scan of project %s failed", project_id)
+                failed += 1
+                continue
+        dispatched += 1
+        if out_of_time:
+            # The inline branch is serial and spends *this* task's budget, so it
+            # is where the soft limit actually lands — but it never arrives here
+            # as an exception. ``scan_project`` catches its own
+            # ``SoftTimeLimitExceeded`` so as to leave the watermark where it is,
+            # and Celery raises it once, so by the time control is back in this
+            # loop the only trace left is the outcome it returned.
+            #
+            # Read as an ordinary result, the sweep carried on to the next
+            # project — a repo read and a model call, started after the deadline
+            # — and the one after that, until the hard limit killed the worker
+            # outright. ``acks_late`` then redelivered the whole batch, and the
+            # replacement worker began the fleet again from the top. The
+            # remaining projects keep their watermarks; the next scan takes them.
+            logger.warning(
+                "autopilot timed out scanning inline after %d of %d project(s)",
+                dispatched,
+                len(ids),
+            )
+            break
 
     logger.info(
-        "autopilot dispatched %d of %d project(s), %d inline",
+        "autopilot dispatched %d of %d project(s), %d inline, %d failed",
         dispatched,
         len(ids),
         inline,
+        failed,
     )
-    return {"scanned": len(ids), "dispatched": dispatched}
+    return {"scanned": len(ids), "dispatched": dispatched, "failed": failed}

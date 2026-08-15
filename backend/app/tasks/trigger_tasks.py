@@ -79,15 +79,18 @@ def check_due_triggers() -> dict:
         db.close()
 
     dispatched = 0
+    failed = 0
     inline = 0
     # One warning per sweep, not per trigger: the broker is a single shared
     # thing, so a hundred due triggers would otherwise log the same outage a
     # hundred times and bury it in its own noise.
     broker_warned = False
     for trigger_id in ids:
+        # Set from the inline branch's *return value*, not from an exception —
+        # see the break at the bottom of the loop.
+        out_of_time = False
         try:
             check_trigger.delay(trigger_id)
-            dispatched += 1
         except SoftTimeLimitExceeded:
             # Before the broker fallback, not after: the timeout arrives as an
             # Exception, so the handler below would read it as "broker down"
@@ -110,18 +113,57 @@ def check_due_triggers() -> dict:
             if not broker_warned:
                 logger.warning("broker unavailable, checking triggers inline: %s", exc)
                 broker_warned = True
-            check_trigger(trigger_id)
-            dispatched += 1
             inline += 1
+            try:
+                out_of_time = check_trigger(trigger_id).get("status") == "timeout"
+            except Exception:
+                # The same rule ``publish_due`` states outright: one trigger's
+                # bad day must not end the pass. ``check_trigger`` promises never
+                # to raise, but the promise is made by a ``try`` it enters after
+                # opening its session — so ``SessionLocal()`` and the ``close()``
+                # in its ``finally`` are both outside it, and land here.
+                #
+                # Escaping the loop would not lose one trigger, it would drop
+                # every later one that was due, and the next sweep selects the
+                # same ids in the same order and dies in the same place.
+                logger.exception("inline check of trigger %s failed", trigger_id)
+                failed += 1
+                continue
+        dispatched += 1
+        if out_of_time:
+            # The inline branch is serial and spends *this* task's budget, so it
+            # is where the soft limit actually lands — but it never arrives here
+            # as an exception. ``check_trigger`` catches its own
+            # ``SoftTimeLimitExceeded`` to report the timeout, and Celery raises
+            # it once, so by the time control is back in this loop the only trace
+            # left is the outcome it returned.
+            #
+            # Read as an ordinary result, the sweep carried on to the next
+            # trigger — a fresh feed fetch, started after the deadline — and the
+            # one after that, until the hard limit killed the worker outright.
+            # ``acks_late`` then redelivered the whole batch. The remaining
+            # triggers stay due and the next tick dispatches them.
+            logger.warning(
+                "trigger sweep timed out checking inline after %d of %d",
+                dispatched,
+                len(ids),
+            )
+            break
 
     if ids:
         logger.info(
-            "dispatched %d of %d due trigger(s), %d inline",
+            "dispatched %d of %d due trigger(s), %d inline, %d failed",
             dispatched,
             len(ids),
             inline,
+            failed,
         )
-    return {"due": len(ids), "dispatched": dispatched, "reclaimed": reclaimed}
+    return {
+        "due": len(ids),
+        "dispatched": dispatched,
+        "failed": failed,
+        "reclaimed": reclaimed,
+    }
 
 
 __all__ = ["check_due_triggers", "check_trigger"]

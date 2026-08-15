@@ -272,7 +272,11 @@ def test_a_broker_that_is_not_there_scans_inline_instead_of_giving_up(
     # back to calling ``scan_project`` itself, so the stub has to answer to both
     # names — one refusing, one recording.
     monkeypatch.setattr(
-        autopilot_tasks, "scan_project", lambda pid: inline.append(pid)
+        autopilot_tasks,
+        "scan_project",
+        # Returns what the real task returns: the sweep reads the status
+        # off it to tell an ordinary scan from one that ran out of time.
+        lambda pid: (inline.append(pid), {"project_id": pid, "status": "ok"})[1],
     )
     autopilot_tasks.scan_project.delay = no_broker
 
@@ -298,7 +302,11 @@ def test_a_dispatch_that_runs_out_of_time_stops_rather_than_scanning_inline(
         raise SoftTimeLimitExceeded()
 
     monkeypatch.setattr(
-        autopilot_tasks, "scan_project", lambda pid: inline.append(pid)
+        autopilot_tasks,
+        "scan_project",
+        # Returns what the real task returns: the sweep reads the status
+        # off it to tell an ordinary scan from one that ran out of time.
+        lambda pid: (inline.append(pid), {"project_id": pid, "status": "ok"})[1],
     )
     autopilot_tasks.scan_project.delay = times_out
 

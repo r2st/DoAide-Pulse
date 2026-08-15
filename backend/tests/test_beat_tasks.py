@@ -155,7 +155,7 @@ def test_checking_a_due_schedule_trigger_fires_it(db, schedule_trigger):
 
 def test_the_sweep_dispatches_every_due_trigger(db, schedule_trigger):
     result = trigger_tasks.check_due_triggers()
-    assert result == {"due": 1, "dispatched": 1, "reclaimed": 0}
+    assert result == {"due": 1, "dispatched": 1, "failed": 0, "reclaimed": 0}
 
 
 def test_the_sweep_skips_a_trigger_on_a_deactivated_account(
@@ -170,14 +170,24 @@ def test_the_sweep_skips_a_trigger_on_a_deactivated_account(
     user.is_active = False
     db.commit()
 
-    assert trigger_tasks.check_due_triggers() == {"due": 0, "dispatched": 0, "reclaimed": 0}
+    assert trigger_tasks.check_due_triggers() == {
+        "due": 0,
+        "dispatched": 0,
+        "failed": 0,
+        "reclaimed": 0,
+    }
 
 
 def test_the_sweep_skips_a_paused_project(db, schedule_trigger, project):
     project.is_active = False
     db.commit()
 
-    assert trigger_tasks.check_due_triggers() == {"due": 0, "dispatched": 0, "reclaimed": 0}
+    assert trigger_tasks.check_due_triggers() == {
+        "due": 0,
+        "dispatched": 0,
+        "failed": 0,
+        "reclaimed": 0,
+    }
 
 
 def test_the_sweep_ignores_inbound_webhook_triggers(db, project):
@@ -196,7 +206,12 @@ def test_the_sweep_ignores_inbound_webhook_triggers(db, project):
     )
     db.commit()
 
-    assert trigger_tasks.check_due_triggers() == {"due": 0, "dispatched": 0, "reclaimed": 0}
+    assert trigger_tasks.check_due_triggers() == {
+        "due": 0,
+        "dispatched": 0,
+        "failed": 0,
+        "reclaimed": 0,
+    }
 
 
 def test_a_broker_that_refuses_the_dispatch_falls_back_to_running_inline(
@@ -219,7 +234,12 @@ def test_a_broker_that_refuses_the_dispatch_falls_back_to_running_inline(
         lambda _db, trigger: ran.append(trigger.id) or {"status": "no_news"},
     )
 
-    assert trigger_tasks.check_due_triggers() == {"due": 1, "dispatched": 1, "reclaimed": 0}
+    assert trigger_tasks.check_due_triggers() == {
+        "due": 1,
+        "dispatched": 1,
+        "failed": 0,
+        "reclaimed": 0,
+    }
     assert ran == [schedule_trigger.id]
 
 
@@ -245,7 +265,12 @@ def test_a_dispatch_that_runs_out_of_time_does_not_fall_back_to_inline(
         lambda _db, trigger: ran.append(trigger.id) or {"status": "no_news"},
     )
 
-    assert trigger_tasks.check_due_triggers() == {"due": 1, "dispatched": 0, "reclaimed": 0}
+    assert trigger_tasks.check_due_triggers() == {
+        "due": 1,
+        "dispatched": 0,
+        "failed": 0,
+        "reclaimed": 0,
+    }
     assert ran == [], "the timeout must not trigger the broker-down fallback"
 
 
@@ -487,7 +512,7 @@ def test_the_autopilot_dispatch_does_not_scan_inline_when_it_runs_out_of_time(
 
     result = autopilot_tasks.scan_all_projects()
 
-    assert result == {"scanned": 1, "dispatched": 0}
+    assert result == {"scanned": 1, "dispatched": 0, "failed": 0}
     assert scanned == [], "a timeout must not become an inline repo scan"
 
 
@@ -525,7 +550,7 @@ def test_a_dead_broker_is_logged_when_the_trigger_sweep_falls_back(
     with caplog.at_level("WARNING"):
         result = trigger_tasks.check_due_triggers()
 
-    assert result == {"due": 1, "dispatched": 1, "reclaimed": 0}
+    assert result == {"due": 1, "dispatched": 1, "failed": 0, "reclaimed": 0}
     assert "redis is not listening" in caplog.text
     assert "inline" in caplog.text
 
@@ -602,13 +627,15 @@ def test_a_dead_broker_is_logged_when_the_autopilot_sweep_falls_back(
 
         def __call__(self, project_id):
             scanned.append(project_id)
+            # The shape the real task returns — the sweep reads a status off it.
+            return {"project_id": project_id, "status": "ideas_only"}
 
     monkeypatch.setattr(autopilot_tasks, "scan_project", _BrokerDown())
 
     with caplog.at_level("WARNING"):
         result = autopilot_tasks.scan_all_projects()
 
-    assert result == {"scanned": 1, "dispatched": 1}
+    assert result == {"scanned": 1, "dispatched": 1, "failed": 0}
     assert scanned == [project.id], "the scan still happened"
     assert "redis refused the connection" in caplog.text
     assert "inline" in caplog.text
@@ -625,7 +652,7 @@ def test_the_autopilot_summary_separates_inline_from_dispatched(
             raise ConnectionError("broker gone")
 
         def __call__(self, project_id):
-            pass
+            return {"project_id": project_id, "status": "no_news"}
 
     monkeypatch.setattr(autopilot_tasks, "scan_project", _BrokerDown())
 
@@ -633,4 +660,4 @@ def test_the_autopilot_summary_separates_inline_from_dispatched(
         autopilot_tasks.scan_all_projects()
 
     summary = [r.getMessage() for r in caplog.records if "autopilot dispatched" in r.getMessage()]
-    assert summary == ["autopilot dispatched 1 of 1 project(s), 1 inline"]
+    assert summary == ["autopilot dispatched 1 of 1 project(s), 1 inline, 0 failed"]
