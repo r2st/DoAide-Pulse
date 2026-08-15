@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import secrets
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
@@ -12,7 +13,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import ListOffset, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus
-from app.models.mixins import utcnow
+from app.models.mixins import elapsed_ms
 from app.models.project import Project, slugify
 from app.models.user import User
 from app.ratelimit import account_key, limiter
@@ -342,6 +343,7 @@ def scan_repo(
             detail="This project has no GitHub repo URL to scan.",
         )
 
+    started = time.monotonic()
     try:
         activity = github_client.fetch_activity(
             full_name,
@@ -367,7 +369,12 @@ def scan_repo(
 
     project.last_seen_commit_sha = activity.head_sha
     project.last_seen_release_tag = activity.latest_tag
-    project.last_scanned_at = utcnow()
+    # Through the same model method the beat sweep uses. A hand-run scan is a
+    # scan: it spends the same GitHub quota, takes the same time, and moves the
+    # same watermark, so leaving it out of the counter would make the frequency
+    # on `/api/v1/metrics` disagree with what the project page shows for any
+    # project somebody had been clicking Scan on.
+    project.record_scan(duration_ms=elapsed_ms(started))
     db.commit()
 
     return RepoActivityOut(

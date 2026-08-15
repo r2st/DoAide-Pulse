@@ -362,6 +362,7 @@ def chat_completion_detailed(
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
+    purpose: str = "",
 ) -> llm_router.Completion:
     """Run the provider chain and return the text *plus* who served it.
 
@@ -382,6 +383,7 @@ def chat_completion_detailed(
             temperature=temperature,
             max_tokens=max_tokens,
             timeout=timeout,
+            purpose=purpose,
         )
     except llm_router.AllProvidersFailed as exc:
         raise AIError(str(exc)) from exc
@@ -395,6 +397,7 @@ def chat_completion(
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
+    purpose: str = "",
 ) -> str:
     """Get a completion from the first provider in the chain that works.
 
@@ -408,6 +411,7 @@ def chat_completion(
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=timeout,
+        purpose=purpose,
     ).text
 
 
@@ -419,6 +423,7 @@ def json_completion(
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
+    purpose: str = "",
 ) -> tuple[dict[str, Any], llm_router.Completion]:
     """Ask for a JSON object and return it alongside the raw completion.
 
@@ -440,6 +445,7 @@ def json_completion(
         temperature=temperature,
         max_tokens=max_tokens,
         timeout=timeout,
+        purpose=purpose,
     )
     parsed = extract_json_object(completion.text)
     if parsed is None:

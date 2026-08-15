@@ -79,6 +79,8 @@ def test_an_ordinary_completion_still_comes_back(over_the_wire):
     """The guard on everything below: the streamed read is still a read."""
     over_the_wire["transport"] = _serving(_completion("A post about shipping."))
 
+    # ``.text`` because ``_call`` returns a ``_Served`` — the text plus the
+    # provider's raw ``usage`` block, which this module has no assertions about.
     text = llm_router._call(
         _provider(),
         [{"role": "user", "content": "hi"}],
@@ -86,7 +88,7 @@ def test_an_ordinary_completion_still_comes_back(over_the_wire):
         temperature=0.7,
         max_tokens=100,
         timeout=5.0,
-    )
+    ).text
 
     assert text == "A post about shipping."
 
@@ -185,7 +187,7 @@ def test_a_body_just_under_the_cap_is_still_served(over_the_wire):
         temperature=0.7,
         max_tokens=100,
         timeout=5.0,
-    )
+    ).text
 
     assert text == filler
 

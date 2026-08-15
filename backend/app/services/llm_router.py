@@ -71,9 +71,20 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services import llm_usage
 from app.services.breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
+
+
+def _elapsed_ms(started: float) -> int:
+    """Milliseconds since a :func:`time.monotonic` reading.
+
+    Rounded to an integer here rather than at the two call sites, so the number
+    written to :class:`app.models.llm_usage.LLMUsage` and the number in the log
+    line beside it can never disagree about the same attempt.
+    """
+    return int(round((time.monotonic() - started) * 1000))
 
 #: How long to wait out a rate limit that arrived without a ``Retry-After``.
 #: Assumes the per-minute case — see the module docstring.
@@ -302,6 +313,36 @@ class Completion:
     text: str
     provider: str
     model: str
+    #: Wall-clock for the one attempt that produced this, in milliseconds.
+    #: Defaulted rather than required because a completion is constructed in
+    #: tests and stubs that have no clock to consult, and a caller reading
+    #: ``duration_ms == 0`` learns the same thing from either.
+    duration_ms: int = 0
+    #: The provider's own token accounting, when it sent any. ``None`` — not
+    #: zero — when it did not, for the reason
+    #: :class:`app.models.llm_usage.LLMUsage` gives: a zero is a measurement and
+    #: a missing block is not.
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+@dataclass(frozen=True)
+class _Served:
+    """What one successful :func:`_call` produced, before the chain wraps it.
+
+    Separate from :class:`Completion` because ``_call`` knows two of the three
+    things a ``Completion`` carries and not the third: it has the text and the
+    provider's ``usage`` block, and it does not have the timing, which
+    :func:`_sweep` measures around it. Returning a tuple instead would make the
+    unpacking at the call site the only documentation of which half is which.
+    """
+
+    text: str
+    #: The raw ``usage`` mapping as the provider sent it, uninterpreted. Parsed
+    #: by :func:`app.services.llm_usage._tokens`, which is where every "somebody
+    #: else's JSON" coercion for this block lives.
+    usage: Any
 
 
 #: Phrases a provider uses when the refusal is a quota rather than a fault.
@@ -533,12 +574,18 @@ def _call(
     temperature: float,
     max_tokens: int,
     timeout: float,
-) -> str:
+) -> _Served:
     """One provider attempt with one model. Raises :class:`LLMError` on failure.
 
     *model* is already resolved — :func:`_model_chain` decides which of a
     provider's models this attempt is for, so this function never has to know
     whose override it is holding.
+
+    Returns the text with the provider's ``usage`` block still attached. The
+    block was already being read here for the truncation warning below and then
+    dropped; it is the only token accounting anybody gets, and carrying it out
+    is what lets :func:`app.services.llm_usage.record` answer "what did today
+    cost" from a process other than this one.
     """
     payload = {
         "model": model,
@@ -589,12 +636,21 @@ def _call(
     except (KeyError, IndexError, TypeError) as exc:
         raise LLMError(f"{provider.name} returned an unexpected payload: {exc}") from exc
 
+    # Read once, used twice: the truncation warning below wants the reasoning
+    # count out of it, and the caller wants the whole block for the usage table.
+    # Anything that is not a mapping becomes ``{}`` here rather than being
+    # carried out as itself — "absent", "null" and "a string where an object was
+    # documented" are one case to everything downstream, and collapsing them
+    # here is what keeps :func:`app.services.llm_usage._tokens` from being the
+    # second place that has to know it.
+    raw_usage = data.get("usage")
+    usage: dict[str, Any] = raw_usage if isinstance(raw_usage, dict) else {}
+
     # A response cut off at max_tokens is the single most confusing failure the
     # free tier produces: the JSON envelope ends mid-string, so the caller sees
     # "no parseable JSON" and blames the model's instruction-following. Say what
     # actually happened, loudly, with the numbers needed to fix it.
     if choice.get("finish_reason") == "length":
-        usage = data.get("usage") or {}
         reasoning_tokens = (usage.get("completion_tokens_details") or {}).get(
             "reasoning_tokens"
         )
@@ -611,7 +667,7 @@ def _call(
     text = message.get("content") or message.get("reasoning") or ""
     if not isinstance(text, str) or not text.strip():
         raise LLMError(f"{provider.name} returned an empty completion")
-    return text.strip()
+    return _Served(text=text.strip(), usage=usage)
 
 
 def _note_failure(provider: Provider, model: str, exc: LLMError) -> None:
@@ -699,6 +755,7 @@ def _sweep(
     temperature: float,
     max_tokens: int,
     timeout: float,
+    purpose: str = "",
 ) -> Completion | _Pass:
     """One pass over every provider and every model. No sleeping."""
     outcome = _Pass()
@@ -718,7 +775,7 @@ def _sweep(
             tried += 1
             started = time.monotonic()
             try:
-                text = _call(
+                served = _call(
                     provider,
                     messages,
                     model=candidate,
@@ -727,6 +784,18 @@ def _sweep(
                     timeout=timeout,
                 )
             except LLMError as exc:
+                # Recorded before the classification below, and with no tokens:
+                # a refused attempt spent no quota but it did spend *time*, and
+                # a provider whose every call times out at the ninety-second
+                # ceiling is the single biggest thing that can slow generation
+                # down. A table of successes only cannot show it.
+                llm_usage.record(
+                    provider=provider.name,
+                    model=candidate,
+                    purpose=purpose,
+                    ok=False,
+                    duration_ms=_elapsed_ms(started),
+                )
                 _note_failure(provider, candidate, exc)
                 outcome.errors.append(str(exc))
                 if isinstance(exc, LLMRateLimited):
@@ -742,13 +811,30 @@ def _sweep(
                 continue
 
             breaker.record_success(provider.name)
+            elapsed_ms = _elapsed_ms(started)
             logger.info(
                 "llm served by %s (%s) in %.2fs",
                 provider.name,
                 candidate,
-                time.monotonic() - started,
+                elapsed_ms / 1000,
             )
-            return Completion(text=text, provider=provider.name, model=candidate)
+            llm_usage.record(
+                provider=provider.name,
+                model=candidate,
+                purpose=purpose,
+                ok=True,
+                duration_ms=elapsed_ms,
+                usage=served.usage,
+            )
+            return Completion(
+                text=served.text,
+                provider=provider.name,
+                model=candidate,
+                duration_ms=elapsed_ms,
+                prompt_tokens=llm_usage.tokens(served.usage, "prompt_tokens"),
+                completion_tokens=llm_usage.tokens(served.usage, "completion_tokens"),
+                total_tokens=llm_usage.tokens(served.usage, "total_tokens"),
+            )
 
         # Every model this provider was given is gone. Now — and only now — it is
         # the provider that is misconfigured, and no amount of coming back
@@ -808,6 +894,7 @@ def complete(
     temperature: float = 0.7,
     max_tokens: int = 1200,
     timeout: float = 90.0,
+    purpose: str = "",
 ) -> Completion:
     """Try each configured provider in order; return the first success.
 
@@ -824,6 +911,12 @@ def complete(
 
     *fallback_models* lets a caller name siblings of its own *model* override;
     they apply to the same provider the override does.
+
+    *purpose* is a grouping label — ``"content"``, ``"headlines"`` — stored
+    against each attempt so ``/api/v1/metrics`` can say which feature spent the
+    day's quota. It changes nothing about which provider is asked or what comes
+    back, which is why it is defaulted: a caller that has not been given one
+    still gets a completion, and the row it writes is merely less specific.
 
     Raises :class:`AllProvidersFailed` when none of them produce usable text —
     the signal for the caller to use its own static template.
@@ -854,6 +947,7 @@ def complete(
             temperature=temperature,
             max_tokens=max_tokens,
             timeout=timeout,
+            purpose=purpose,
         )
         if isinstance(outcome, Completion):
             return outcome

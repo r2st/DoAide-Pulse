@@ -10,6 +10,7 @@ from app.models.content import (
     ContentStatus,
     ContentType,
 )
+from app.models.llm_usage import LLMUsage
 from app.models.metrics import ContentMetric
 from app.models.password_reset import PasswordResetToken
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
@@ -39,6 +40,7 @@ __all__ = [
     "ContentTemplate",
     "ContentType",
     "DeliveryStatus",
+    "LLMUsage",
     "PasswordResetToken",
     "Platform",
     "PlatformConnection",

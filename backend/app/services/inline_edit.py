@@ -322,6 +322,7 @@ def edit(
             # creative.
             temperature=0.3,
             max_tokens=_output_budget(operation, selection),
+            purpose="inline_edit",
         )
     except ai.AIError as exc:
         logger.info("inline edit (%s) failed: %s", operation.value, exc)

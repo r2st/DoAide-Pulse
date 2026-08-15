@@ -107,6 +107,7 @@ Reply with exactly this JSON object and nothing else:
             ],
             temperature=0.9,
             max_tokens=_OUTPUT_TOKENS + _REASONING_ALLOWANCE_TOKENS,
+            purpose="headlines",
         )
     except ai.AIError as exc:
         logger.info("headline generation for content %s fell back: %s", content.id, exc)

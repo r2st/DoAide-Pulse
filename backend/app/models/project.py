@@ -15,12 +15,21 @@ from datetime import datetime  # noqa: TC003
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.mixins import TimestampMixin
+from app.models.mixins import TimestampMixin, utcnow
 
 # Imported at runtime for the same reason as ``datetime`` above: it appears in a
 # ``Mapped[...]`` annotation. Safe despite the apparent cycle — ``publication``
@@ -173,6 +182,26 @@ class Project(Base, TimestampMixin):
         String(RELEASE_TAG_MAX_LENGTH)
     )
     last_scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: How long the last completed scan of this repo took, end to end, including
+    #: the GitHub round-trips. ``None`` until one finishes.
+    #:
+    #: Herald has no metrics backend, so "the autopilot got slow" was a thing
+    #: somebody noticed in the UI. A scan is bounded by a 180-second soft time
+    #: limit and does two or three HTTP calls to a rate-limited API, so it is
+    #: both the slowest recurring thing on the box and the one whose slowdown is
+    #: least visible — a scan that starts timing out simply stops producing
+    #: content, which looks like a quiet week.
+    last_scan_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    #: Completed scans of this repo, ever. With ``created_at`` this is the
+    #: scan *frequency*, which is the number that says whether the beat schedule
+    #: is doing what it was configured to do — a project scanned four times in a
+    #: fortnight is a project whose sweep is not running, and nothing else
+    #: reports that.
+    #:
+    #: Counted rather than derived from a table of scan rows: the value is read
+    #: by one endpoint and the alternative is a table that grows forever to
+    #: answer a question a counter answers.
+    scan_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="projects")
     content: Mapped[list[Content]] = relationship(
@@ -185,6 +214,36 @@ class Project(Base, TimestampMixin):
     triggers: Mapped[list[Trigger]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
+
+    def record_scan(self, *, duration_ms: int) -> None:
+        """Note that a scan of this repo finished, and how long it took.
+
+        Does not commit — the caller is mid-transaction with the watermark it is
+        about to write beside this.
+
+        On the model rather than in either caller because there are two of them
+        and they live on opposite sides of the app: the beat sweep in
+        :mod:`app.tasks.autopilot_tasks` and the hand-run ``POST
+        /projects/{id}/scan``. A router importing the task module to share a
+        helper would pull Celery onto the request path for three lines of
+        arithmetic.
+
+        ``scan_count`` is incremented from the loaded value rather than with a
+        SQL ``+ 1``: one project is scanned by one task at a time — the sweep
+        dispatches by id and does not fan a project out to two workers — so
+        there is no race for an atomic update to win.
+
+        Not called on the rate-limited path. Nothing was read there,
+        ``last_scanned_at`` deliberately stays where it was so the next sweep
+        still treats the project as due, and counting it would inflate a scan
+        frequency with attempts that never happened.
+        """
+        self.last_scanned_at = utcnow()
+        # Negative is not a duration. The value arrives from a caller's
+        # subtraction, and a stored negative would drag an average in the one
+        # direction nobody sanity-checks.
+        self.last_scan_duration_ms = max(0, int(duration_ms))
+        self.scan_count = (self.scan_count or 0) + 1
 
     @property
     def campaign(self) -> str:

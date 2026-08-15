@@ -133,6 +133,7 @@ def generate(content: Content, project: Project) -> RepurposedContent:
             _build_prompt(content, plain_body[:4000]),
             temperature=0.6,
             max_tokens=_OUTPUT_TOKENS + _REASONING_ALLOWANCE_TOKENS,
+            purpose="repurpose",
         )
     except ai.AIError as exc:
         logger.info("repurposing content %s fell back to mechanical builders: %s", content.id, exc)

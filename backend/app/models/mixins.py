@@ -1,6 +1,7 @@
-"""Shared model mixins."""
+"""Shared model mixins, and the clock the rest of the tree reads."""
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, func
@@ -10,6 +11,22 @@ from sqlalchemy.orm import Mapped, mapped_column
 def utcnow() -> datetime:
     """Timezone-aware "now". Used as a column default and by services."""
     return datetime.now(UTC)
+
+
+def elapsed_ms(started: float) -> int:
+    """Whole milliseconds since a :func:`time.monotonic` reading.
+
+    Three things now measure how long something took and store the answer — a
+    GitHub scan, an LLM attempt, and the projects router's hand-run scan — and
+    the arithmetic is the same subtraction, the same scale factor and the same
+    rounding each time. Written once so a duration recorded by one of them is
+    comparable with a duration recorded by another, which is the whole point of
+    putting them on one metrics endpoint.
+
+    ``time.monotonic`` rather than the wall clock, because these are elapsed
+    times and the wall clock can step sideways under an NTP correction.
+    """
+    return int(round((time.monotonic() - started) * 1000))
 
 
 def as_aware(value: datetime) -> datetime:

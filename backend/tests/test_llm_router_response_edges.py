@@ -52,6 +52,14 @@ def _provider() -> llm_router.Provider:
 
 
 def _call(monkeypatch, resp) -> str:
+    """The text ``_call`` produced, for the tests below that are about the text.
+
+    ``_call`` returns a ``_Served`` — text plus the provider's raw ``usage``
+    block, which :mod:`app.services.llm_usage` needs and none of the assertions
+    in this module are about. Unwrapped here so those assertions stay about the
+    one thing they were written for; the usage half is pinned in
+    ``test_llm_usage_is_recorded.py``.
+    """
     monkeypatch.setattr(llm_router, "_post", lambda *a, **k: resp)
     return llm_router._call(
         _provider(),
@@ -60,7 +68,7 @@ def _call(monkeypatch, resp) -> str:
         temperature=0.7,
         max_tokens=100,
         timeout=5.0,
-    )
+    ).text
 
 
 # --------------------------------------------------------------------------- #
