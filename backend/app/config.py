@@ -5,7 +5,9 @@ hard-coded — secrets come from the environment or the gitignored ``keys/`` dir
 """
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic import ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +22,21 @@ _BCRYPT_MIN_ROUNDS = 4
 _BCRYPT_MAX_ROUNDS = 31
 #: The lowest work factor production may run with, whatever the .env says.
 _BCRYPT_PRODUCTION_MIN_ROUNDS = 12
+
+#: Hostnames that never leave the machine, so a plaintext origin on one is not
+#: the exposure a plaintext origin normally is.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
+
+
+def _is_loopback(origin: str) -> bool:
+    """Whether *origin*'s host is this machine.
+
+    Used to spare ``http://localhost:5173`` from the production CORS filter —
+    see :meth:`Settings.cors_origins`. Parsed rather than matched as a prefix,
+    so that ``http://localhost.evil.test`` is not read as loopback because of
+    how it starts.
+    """
+    return (urlsplit(origin).hostname or "").lower() in _LOOPBACK_HOSTS
 
 
 class Settings(BaseSettings):
@@ -771,8 +788,43 @@ class Settings(BaseSettings):
         A list rather than the raw string because Starlette's middleware wants
         one, and blank entries are dropped so a trailing comma in an env file
         does not become an origin that matches nothing.
+
+        In production the list is also filtered: ``*`` and any plaintext
+        ``http://`` origin are dropped, with a warning naming each one. Both are
+        development conveniences that mean something much worse on a live box —
+        ``*`` lets any site on the internet read an authenticated response, and
+        an ``http://`` origin is one downgrade away from the same thing.
+
+        Filtered rather than refused at startup, which was the other candidate.
+        A hard error is the better signal in general, and it is the wrong trade
+        here: this property is read while the app is being built, so raising
+        turns a too-broad CORS entry — which production does not even use, since
+        Caddy serves the SPA and the API from one origin — into a box that will
+        not boot. Dropping the entry fails towards the strict policy and leaves
+        the operator a log line to act on. Localhost is left alone: it is
+        already unreachable from anywhere that matters, and an operator running
+        an SSH tunnel to debug a live box is a real thing to do.
         """
-        return [o.strip() for o in self.backend_cors_origins.split(",") if o.strip()]
+        origins = [o.strip() for o in self.backend_cors_origins.split(",") if o.strip()]
+        if not self.is_production:
+            return origins
+
+        kept, dropped = [], []
+        for origin in origins:
+            if origin == "*" or (
+                origin.startswith("http://") and not _is_loopback(origin)
+            ):
+                dropped.append(origin)
+            else:
+                kept.append(origin)
+        if dropped:
+            logging.getLogger(__name__).warning(
+                "dropped %d insecure CORS origin(s) in production: %s — "
+                "set BACKEND_CORS_ORIGINS to https:// origins only",
+                len(dropped),
+                ", ".join(dropped),
+            )
+        return kept
 
     @property
     def is_production(self) -> bool:

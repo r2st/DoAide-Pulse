@@ -41,6 +41,23 @@ logger = logging.getLogger(__name__)
 #: headroom while stopping a multi-GB upload from consuming all memory.
 MAX_BODY_BYTES = 1 * 1024 * 1024
 
+#: How deeply a request body may nest arrays and objects.
+#:
+#: Herald's deepest real payload is a handful of levels — a content create with
+#: a nested settings object and a list of tags — so 32 is far above anything the
+#: API asks for and far below anything that hurts.
+#:
+#: The cap exists because the byte limit above does not constrain *shape*.
+#: ``[`` repeated forty thousand times is 40 KB, sails through a 1 MB cap, and
+#: costs the JSON parser one C-stack frame per character. Python's parser stops
+#: itself at the recursion limit and FastAPI turns the resulting
+#: ``RecursionError`` into a 400, so this is not a crash — but the 400 arrives
+#: only *after* the descent has been paid for, on an unauthenticated route,
+#: which makes it cheap amplification for whoever is sending it. Counting
+#: brackets as the body streams past costs a comparison per byte and refuses the
+#: same request before the parser is ever handed it.
+MAX_JSON_DEPTH = 32
+
 
 class BodySizeLimitMiddleware:
     """Reject oversized request bodies, declared or not.
@@ -94,18 +111,28 @@ class BodySizeLimitMiddleware:
                 return
 
         read = 0
-        over = False
         started = False
+        #: ``None`` while the body is acceptable, otherwise the ``(status,
+        #: detail)`` to answer with. A tuple rather than the old boolean because
+        #: there are now two ways to fail and they are not the same answer: too
+        #: many bytes is a 413, too much nesting is a 400 — the body is a
+        #: perfectly ordinary size, it is the shape that is refused.
+        rejection: tuple[int, str] | None = None
+        depth = _JSONDepthScanner() if _is_json(scope) else None
 
         async def _counted_receive() -> Message:
-            nonlocal read, over
-            if over:
+            nonlocal read, rejection
+            if rejection is not None:
                 return {"type": "http.disconnect"}
             message = await receive()
             if message["type"] == "http.request":
-                read += len(message.get("body", b""))
+                body = message.get("body", b"")
+                read += len(body)
                 if read > MAX_BODY_BYTES:
-                    over = True
+                    rejection = (413, "Request body too large")
+                    return {"type": "http.disconnect"}
+                if depth is not None and depth.feed(body) > MAX_JSON_DEPTH:
+                    rejection = (400, "Request body nested too deeply")
                     return {"type": "http.disconnect"}
             return message
 
@@ -113,7 +140,7 @@ class BodySizeLimitMiddleware:
             nonlocal started
             # Whatever the app made of the truncated body, it is answering a
             # question it was never given the whole of. Drop it.
-            if over:
+            if rejection is not None:
                 return
             if message["type"] == "http.response.start":
                 started = True
@@ -121,14 +148,86 @@ class BodySizeLimitMiddleware:
 
         await self.app(scope, _counted_receive, _guarded_send)
 
-        if over and not started:
-            await _respond(scope, send, 413, "Request body too large")
-        elif over:
+        if rejection is not None and not started:
+            await _respond(scope, send, *rejection)
+        elif rejection is not None:
             # The route answered and then went back for more body. Its response
             # is already on the wire and cannot be taken back, so the cap has
             # done the half that mattered — the read stopped — and there is no
             # second answer to send.
-            logger.warning("body cap hit after the response had started")
+            logger.warning(
+                "body cap hit after the response had started: %s", rejection[1]
+            )
+
+
+def _is_json(scope: Scope) -> bool:
+    """Whether this request claims to carry JSON.
+
+    Only the declared type is consulted, which is the right level of trust for
+    what it gates: a body that lies about being JSON is not parsed as JSON
+    either, so it is never handed to the recursive descent the scanner exists to
+    keep short. Parameters are stripped so ``application/json; charset=utf-8``
+    counts, and so do the ``+json`` structured suffixes.
+    """
+    declared = Headers(scope=scope).get("content-type", "")
+    mime = declared.split(";")[0].strip().lower()
+    return mime == "application/json" or mime.endswith("+json")
+
+
+class _JSONDepthScanner:
+    """Tracks bracket nesting across a body that arrives in pieces.
+
+    A class rather than a function because the state has to outlive a chunk:
+    ASGI splits a body at arbitrary byte offsets, and the split lands inside a
+    string literal as readily as between two tokens. A scanner that reset per
+    chunk would read the tail of a truncated ``"...{{{"`` as structure and
+    reject a legitimate body — so ``in_string`` and ``escaped`` carry over the
+    boundary exactly as ``depth`` does.
+
+    Bytes, not text, for the same reason: a chunk can also split a multi-byte
+    UTF-8 sequence, and decoding one half raises. The four bytes that matter are
+    all ASCII, and every continuation byte of a multi-byte sequence is ``>=
+    0x80``, so none of them can be mistaken for a bracket. That makes the raw
+    bytes safe to scan and saves the decode.
+
+    This is deliberately not a parser. It does not validate, and it is not asked
+    to — an ill-formed body still fails at the real parse, and by then it has
+    been established that the descent is short enough to be worth attempting.
+    Strings are tracked only so that a ``{`` inside a quoted value is not
+    counted as nesting.
+    """
+
+    __slots__ = ("depth", "escaped", "in_string", "max_depth")
+
+    def __init__(self) -> None:
+        self.depth = 0
+        self.max_depth = 0
+        self.in_string = False
+        self.escaped = False
+
+    def feed(self, chunk: bytes) -> int:
+        """Scan *chunk* and return the deepest nesting seen in the body so far."""
+        for byte in chunk:
+            if self.in_string:
+                if self.escaped:
+                    self.escaped = False
+                elif byte == 0x5C:  # backslash
+                    self.escaped = True
+                elif byte == 0x22:  # closing quote
+                    self.in_string = False
+                continue
+            if byte == 0x22:  # opening quote
+                self.in_string = True
+            elif byte in (0x7B, 0x5B):  # { [
+                self.depth += 1
+                if self.depth > self.max_depth:
+                    self.max_depth = self.depth
+            # Clamped at zero so that a body with unbalanced closers cannot
+            # drive the counter negative and buy itself extra headroom on the
+            # way back up.
+            elif byte in (0x7D, 0x5D) and self.depth > 0:  # } ]
+                self.depth -= 1
+        return self.max_depth
 
 
 async def _respond(scope: Scope, send: Send, code: int, detail: str) -> None:
@@ -327,6 +426,41 @@ def create_app() -> FastAPI:
 
     # Security headers. Caddy already sets HSTS and some of these, but
     # defence-in-depth means the app should not rely on that.
+    #
+    # The CSP is built once here rather than per response. Its shape depends on
+    # whether the schema is being served: Swagger UI is the only thing this app
+    # returns that runs script at all, and it needs inline handlers plus its
+    # bundle from jsdelivr. Every other response is JSON, for which the
+    # locked-down policy costs nothing — so the loosening is scoped to the
+    # deployments that actually have the docs on, which in practice means
+    # development. (The comment here used to claim this and the code did not do
+    # it, so production was serving 'unsafe-inline' to buy nothing.)
+    csp = (
+        (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'none'; "
+            "form-action 'self'; "
+            "object-src 'none'"
+        )
+        if docs
+        else (
+            "default-src 'none'; "
+            "script-src 'none'; "
+            "style-src 'none'; "
+            "img-src 'none'; "
+            "connect-src 'self'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'none'; "
+            "form-action 'none'; "
+            "object-src 'none'"
+        )
+    )
+
     class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         async def dispatch(
             self, request: Request, call_next: RequestResponseEndpoint
@@ -341,15 +475,30 @@ def create_app() -> FastAPI:
             # Prevent caches (shared proxies, browsers) from storing
             # authenticated responses that may carry tokens or user data.
             response.headers["Cache-Control"] = "no-store"
-            # Basic CSP. 'unsafe-inline' is needed for Swagger UI's scripts
-            # and styles; tightened to 'self' when docs are disabled.
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self'; "
-                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "style-src 'self' 'unsafe-inline'; "
-                "img-src 'self' data:; "
-                "frame-ancestors 'none'"
+            response.headers["Content-Security-Policy"] = csp
+            # HSTS, but only on a request that actually arrived over TLS.
+            #
+            # A browser ignores this header on a plain-HTTP response, so
+            # emitting it unconditionally would be merely useless in most
+            # places — except on localhost, where a developer who once runs an
+            # HTTPS dev server pins their own machine to TLS for a year and
+            # gets to discover why every other project on :8000 stopped
+            # loading. There is no way to unpin it but to clear it by hand.
+            #
+            # In production the app is behind Caddy, which terminates TLS and
+            # forwards over plain HTTP on the docker bridge — so the request's
+            # own scheme says "http" and the forwarded header is the only
+            # honest signal. It is trustworthy here specifically because
+            # nothing but Caddy can reach the port: the services bind the
+            # bridge address, not a public one (see deploy/Caddyfile.herald).
+            forwarded_proto = request.headers.get("x-forwarded-proto", "")
+            over_tls = request.url.scheme == "https" or (
+                forwarded_proto.split(",")[0].strip().lower() == "https"
             )
+            if over_tls:
+                response.headers["Strict-Transport-Security"] = (
+                    "max-age=31536000; includeSubDomains"
+                )
             return response
 
     app.add_middleware(SecurityHeadersMiddleware)
