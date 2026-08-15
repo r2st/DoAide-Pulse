@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,12 +56,35 @@ def normalize(when: datetime | None, *, now: datetime | None = None) -> datetime
     build a timestamp with ``new Date().toISOString()`` always send an offset,
     but the ones that hand-assemble ``"2026-08-04T09:00"`` are common enough
     that refusing them would be pedantry.
+
+    An *aware* datetime is converted to UTC rather than kept in the offset it
+    arrived in. :func:`app.models.mixins.as_aware` only labels a naive value; it
+    leaves ``2026-09-01T09:00+05:30`` alone, and this function is where the
+    module docstring's "everything here is UTC" was supposed to become true. It
+    was not, and the consequences run in both directions:
+
+    * the value is stored. ``DateTime(timezone=True)`` is a real ``timestamptz``
+      on PostgreSQL, which normalises on the way in, but SQLite's DATETIME
+      writes the wall clock and drops the offset — so the whole test suite
+      records ``09:00+05:30`` and reads back ``09:00Z``, five and a half hours
+      from the instant the client asked for, and every scheduling test written
+      against an offset agrees with the bug.
+    * the value goes back out. ``scheduled_for`` is echoed in the publication
+      and content responses beside ``created_at`` and ``published_at``, which
+      are UTC by construction, and a client differencing the three gets a
+      number that is wrong by the offset.
+
+    A DST transition is where an offset genuinely carries information rather
+    than being an alternative spelling: ``2026-11-01T01:30-04:00`` and
+    ``2026-11-01T01:30-05:00`` are the same wall clock in New York an hour
+    apart, and the offset is the only thing separating them. Converting keeps
+    them apart; dropping it collapses both onto the first.
     """
     if when is None:
         return None
 
     moment = now or utcnow()
-    aware = as_aware(when)
+    aware = as_aware(when).astimezone(UTC)
 
     grace = timedelta(seconds=settings.schedule_past_grace_seconds)
     if aware < moment - grace:
