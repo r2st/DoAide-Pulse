@@ -20,7 +20,7 @@ from app.models.mixins import utcnow
 from app.models.project import AutopilotMode, Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
-from app.services import content_pipeline, publishing_service
+from app.services import content_pipeline, publish_recovery, publishing_service
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -248,6 +248,69 @@ def publish_due() -> dict:
     # ``dispatched`` counts what was handed on, not what was selected. Reporting
     # ``len(ids)`` claimed credit for rows this pass had just dropped.
     return {"dispatched": dispatched, "failed": failed, "reclaimed": reclaimed}
+
+
+@task(
+    name="app.tasks.publish_tasks.recover_unblocked_publications",
+    soft_time_limit=120,
+    time_limit=150,
+    autoretry_for=(OperationalError, ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+    max_retries=2,
+)
+def recover_unblocked_publications() -> dict:
+    """Beat task: re-arm publications a newly-added connection un-blocks.
+
+    See :mod:`app.services.publish_recovery` for which rows qualify and why the
+    match is as narrow as it is. This task is the schedule and the dispatch; the
+    decision is all there.
+
+    Failures inside :func:`~app.services.publish_recovery.recover` are not
+    swallowed the way ``release_approved_content`` swallows a per-piece failure,
+    because there is no per-piece loop to protect: the recovery commits once for
+    the batch, so a failure means nothing was re-armed and the next tick sees
+    exactly the same rows. Letting it raise puts it on the task's own retry.
+    """
+    db = SessionLocal()
+    try:
+        ready = publish_recovery.recover(db)
+    finally:
+        db.close()
+
+    if not ready:
+        return {"recovered": 0, "dispatched": 0}
+
+    dispatched = 0
+    for publication_id in ready:
+        try:
+            content_pipeline.publish_now(publication_id)
+            dispatched += 1
+        except SoftTimeLimitExceeded:
+            # As in the sweeps above: the rows are already re-armed and
+            # committed, so the ones not reached here are picked up by
+            # ``publish_due`` on its next pass rather than lost.
+            logger.warning(
+                "recover_unblocked_publications timed out after dispatching "
+                "%d of %d publication(s)",
+                dispatched,
+                len(ready),
+            )
+            break
+        except Exception:
+            # A broker that refuses one id must not cost the rest their
+            # dispatch. ``publish_due`` sweeps these rows anyway — they are
+            # ``pending`` and due now — so the worst case is a delay of one
+            # sweep interval, not a lost recovery.
+            logger.exception("could not dispatch recovered publication %s", publication_id)
+
+    logger.info(
+        "recover_unblocked_publications re-armed %d publication(s), dispatched %d",
+        len(ready),
+        dispatched,
+    )
+    return {"recovered": len(ready), "dispatched": dispatched}
 
 
 @task(

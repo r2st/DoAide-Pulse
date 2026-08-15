@@ -130,6 +130,15 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.publish_tasks.release_approved_content",
         "schedule": float(settings.publish_scan_interval_seconds) * 10,
     },
+    "recover-unblocked-publications": {
+        # Re-arms publications that failed only because a platform was not
+        # connected, once it is. The cure happens in Settings, on nobody's
+        # schedule, so this is a poll — on the same cadence as the backstop
+        # above, because a piece that has been waiting for a connection is not
+        # made worse by waiting one more sweep.
+        "task": "app.tasks.publish_tasks.recover_unblocked_publications",
+        "schedule": float(settings.publish_scan_interval_seconds) * 10,
+    },
     "scan-project-repos": {
         "task": "app.tasks.autopilot_tasks.scan_all_projects",
         "schedule": float(settings.autopilot_scan_interval_seconds),
