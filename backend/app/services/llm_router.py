@@ -62,7 +62,6 @@ import email.utils
 import json
 import logging
 import random
-import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -72,6 +71,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.services.breaker import CircuitBreaker
 
 logger = logging.getLogger(__name__)
 
@@ -269,87 +269,10 @@ def configured_providers() -> list[str]:
 # Circuit breaker                                                              #
 # --------------------------------------------------------------------------- #
 
-
-@dataclass
-class _BreakerState:
-    failures: int = 0
-    open_until: float = 0.0
-
-
-class CircuitBreaker:
-    """Per-provider consecutive-failure counter with a cool-down.
-
-    Deliberately trips on *consecutive* failures: an upstream that fails one
-    request in ten is degraded, not down, and tripping on a cumulative count
-    would eventually take it out of rotation permanently.
-    """
-
-    def __init__(self, threshold: int, cooldown_seconds: float) -> None:
-        self.threshold = threshold
-        self.cooldown = cooldown_seconds
-        self._state: dict[str, _BreakerState] = {}
-        self._lock = threading.Lock()
-
-    def is_open(self, name: str, *, now: float | None = None) -> bool:
-        """True when *name* should be skipped right now."""
-        now = time.monotonic() if now is None else now
-        with self._lock:
-            state = self._state.get(name)
-            return state is not None and state.open_until > now
-
-    def record_failure(self, name: str, *, now: float | None = None) -> bool:
-        """Count a failure; return True if this one tripped the breaker."""
-        now = time.monotonic() if now is None else now
-        with self._lock:
-            state = self._state.setdefault(name, _BreakerState())
-            state.failures += 1
-            if state.failures >= self.threshold:
-                state.open_until = now + self.cooldown
-                state.failures = 0
-                return True
-            return False
-
-    def open_for(self, name: str, seconds: float, *, now: float | None = None) -> None:
-        """Skip *name* for *seconds*, whatever its failure count.
-
-        For the one case the consecutive-failure counter reads wrong: a provider
-        that answered 429 with a long ``Retry-After`` has told us its quota is
-        spent, and there is nothing to learn from the two further failures the
-        threshold would otherwise wait for. Never shortens a window already
-        open — a later, vaguer refusal must not undo a definite one.
-        """
-        now = time.monotonic() if now is None else now
-        with self._lock:
-            state = self._state.setdefault(name, _BreakerState())
-            state.open_until = max(state.open_until, now + max(0.0, seconds))
-            state.failures = 0
-
-    def record_success(self, name: str) -> None:
-        """Clear *name*'s failure count and any open circuit.
-
-        Discards the state rather than decrementing it. A provider that answered
-        is working now, and a half-remembered run of failures from an outage an
-        hour ago would trip the breaker early on the next unrelated blip.
-        """
-        with self._lock:
-            self._state.pop(name, None)
-
-    def reset(self) -> None:
-        """Clear all state — used by tests and after a config change."""
-        with self._lock:
-            self._state.clear()
-
-    def snapshot(self) -> dict[str, dict[str, float]]:
-        """Current state, for the health endpoint / debugging."""
-        now = time.monotonic()
-        with self._lock:
-            return {
-                name: {
-                    "failures": state.failures,
-                    "seconds_until_retry": max(0.0, state.open_until - now),
-                }
-                for name, state in self._state.items()
-            }
+# The mechanism moved to app.services.breaker when the publishing adapters
+# needed the same one; it is imported at the top of this module and re-exported
+# here because ``llm_router.breaker`` and ``llm_router.CircuitBreaker`` are what
+# the rest of the tree — and the health endpoint — already say.
 
 
 breaker = CircuitBreaker(
