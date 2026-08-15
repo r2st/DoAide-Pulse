@@ -57,14 +57,33 @@ sudo -u herald /opt/Herald/.venv/bin/pip install -q -r /opt/Herald/backend/requi
 # above just made the source herald-owned, and a root-run unit file that a
 # service account can write is a privilege escalation.
 units_changed=0
+unit_names=()
 for source in /opt/Herald/deploy/systemd/*.service /opt/Herald/deploy/systemd/*.timer; do
   installed=/etc/systemd/system/$(basename "$source")
+  unit_names+=("$(basename "$source")")
   if ! cmp -s "$source" "$installed"; then
     install -m 0644 -o root -g root "$source" "$installed"
     echo "installed $(basename "$source")"
     units_changed=1
   fi
 done
+
+# A unit can be out of step without its content differing: the file in /etc
+# matches the repo, but systemd is still running what it loaded before somebody
+# copied that file there by hand. `cmp` cannot see it — it compares two files,
+# and systemd's loaded state is neither of them — so ask systemd instead.
+#
+# Not hypothetical, and not rare enough to leave out: herald-beat was in exactly
+# this state when the install loop above first ran. The hand-copy had already
+# made the contents match, so the loop correctly installed nothing, and beat
+# went on running a stale definition that no future deploy would ever have
+# noticed.
+if [ "$units_changed" -eq 0 ] && [ ${#unit_names[@]} -gt 0 ] &&
+   systemctl show "${unit_names[@]}" -p NeedDaemonReload --value | grep -qx yes; then
+  echo "systemd is running an outdated copy of a unit"
+  units_changed=1
+fi
+
 # Only on a change: daemon-reload re-executes every generator on the box, and
 # this runs on every deploy. The restarts below pick up whatever it loaded.
 if [ "$units_changed" -eq 1 ]; then

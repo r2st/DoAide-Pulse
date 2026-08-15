@@ -134,6 +134,26 @@ def test_the_reload_is_conditional_on_something_having_changed(script: str, inst
     assert guarded, "daemon-reload is no longer guarded on a unit having changed"
 
 
+def test_a_unit_systemd_has_not_re_read_is_also_a_change(script: str):
+    """Matching contents are not the same as a loaded unit.
+
+    ``cmp`` compares the repo's copy against ``/etc``, and systemd's *loaded*
+    state is neither of them. A unit copied into place by hand and never
+    reloaded satisfies the comparison above while the box goes on running the
+    definition from before the copy — the original bug, surviving the fix aimed
+    at it, in the one state that fix cannot see.
+
+    ``herald-beat`` was in exactly that state the first time the install loop
+    ran, which is why this asks systemd rather than trusting the files.
+    """
+    assert "NeedDaemonReload" in script
+
+    triggered = re.search(
+        r"NeedDaemonReload.*?\n.*?units_changed=1", script, re.DOTALL
+    )
+    assert triggered, "a unit systemd has not re-read no longer forces a reload"
+
+
 def test_the_units_are_installed_before_anything_is_restarted(script: str):
     """Order is the difference between a fix that ships and one that ships next
     time. A restart that happens before the new unit is loaded runs the old
