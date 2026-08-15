@@ -73,6 +73,48 @@ def _check_redis() -> _Probe:
     return _Probe(True)
 
 
+def _check_workers() -> _Probe | None:
+    """Whether any Celery worker is actually consuming, or ``None`` if none should be.
+
+    Redis answering ``PING`` is not the same fact. The broker is a queue: it
+    accepts everything whether or not anything is draining it, so a worker that
+    was OOM-killed or never came back from a deploy leaves every probe here
+    green while nothing publishes, no repo is scanned, no trigger fires and no
+    webhook is delivered — Herald's entire product runs in that process.
+
+    This is deliberately *not* on the public ``/health``. Two reasons, and each
+    would be enough:
+
+    * Caddy polls that endpoint as its ``health_uri``, so its status code
+      decides whether the API stays in rotation. A dead worker does not stop
+      the API serving requests, and taking the site down over one would turn a
+      background outage into a total one — including the UI somebody needs to
+      find out what happened.
+    * This probe is a *broadcast* over the broker with a wait attached, unlike
+      the two local round-trips beside it. On an anonymous endpoint that
+      answers sixty times a minute per caller, that is an amplifier pointed at
+      the queue the workers are trying to read.
+
+    ``None`` when ``celery_enabled`` is off: tasks run inline in the API
+    process, so there is no worker to look for and "unavailable" would be a
+    false alarm about the intended configuration.
+    """
+    if not settings.celery_enabled:
+        return None
+    try:
+        from app.tasks.celery_app import celery_app
+
+        # Bounded by the same timeout as the other probes. With nothing
+        # listening this waits it out in full, which is the cost of the answer.
+        replies = celery_app.control.ping(timeout=settings.health_check_timeout_seconds)
+    except Exception as exc:  # kombu raises a family of unrelated errors
+        return _Probe(False, _short(exc), _short(exc, public=False))
+    if not replies:
+        detail = "no worker answered"
+        return _Probe(False, detail, detail)
+    return _Probe(True)
+
+
 def _short(exc: BaseException, *, public: bool = True) -> str:
     """One line of cause, truncated.
 
@@ -190,10 +232,21 @@ def health_detail(
     for the person trying to fix it; here the message comes with it.
     """
     healthy, db_out, redis_out = _health_core(response, db, public=False)
+    workers = _check_workers()
+    # Never folded into `healthy`: a dead worker is a real outage and not this
+    # endpoint's kind of one — see `_check_workers`. It is reported so the
+    # person asking "why has nothing published?" is told, rather than shown
+    # three green dependencies and left to guess.
+    workers_out = DependencyOut(
+        status="disabled" if workers is None else ("ok" if workers.ok else "unavailable"),
+        required=False,
+        detail="" if workers is None else workers.describe(public=False),
+    )
     return HealthDetailOut(
         status="ok" if healthy else "degraded",
         database=db_out,
         redis=redis_out,
+        workers=workers_out,
         llm_providers=llm_router.configured_providers(),
         llm_breakers_open=llm_router.breaker.snapshot(),
         github_configured=bool(settings.github_token),

@@ -68,7 +68,8 @@ class PlatformCapability(BaseModel):
 class DependencyOut(BaseModel):
     """One backing service the health check probed."""
 
-    #: "ok" | "unavailable".
+    #: "ok" | "unavailable" | "disabled" (the dependency is switched off by
+    #: configuration, so there is nothing to be unavailable).
     status: str
     #: Whether ``status != "ok"`` is enough to fail the whole health check.
     required: bool = True
@@ -100,6 +101,12 @@ class HealthOut(BaseModel):
 class HealthDetailOut(HealthOut):
     """Authenticated detail view — answers "why isn't X working?"."""
 
+    #: Whether anything is draining the task queue. Only here, never on the
+    #: public probe — see :func:`app.routers.misc._check_workers`. Never
+    #: required: a dead worker does not stop the API answering, and failing
+    #: this check would pull the site out of Caddy's rotation over a background
+    #: outage.
+    workers: DependencyOut = DependencyOut(status="unknown", required=False)
     llm_providers: list[str] = []
     llm_breakers_open: dict = {}
     github_configured: bool = False
