@@ -33,6 +33,7 @@ human — so the backlog they defer is one a later sweep clears:
 from __future__ import annotations
 
 import logging
+import time
 from datetime import timedelta
 
 from celery.exceptions import SoftTimeLimitExceeded
@@ -43,11 +44,11 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal
 from app.models.content import Content, ContentIdea, ContentType
-from app.models.mixins import utcnow
+from app.models.mixins import elapsed_ms, utcnow
 from app.models.project import AutopilotMode, Project
 from app.models.trigger import Trigger, TriggerKind
 from app.models.user import User
-from app.services import content_generator, content_pipeline, github_client
+from app.services import content_generator, content_pipeline, dedup, github_client
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,12 @@ def scan_project(project_id: int) -> dict:
         if not full_name:
             return {"project_id": project_id, "status": "no_repo"}
 
+        # Started here rather than at the top of the task: the three returns
+        # above are cheap rejections that never touched GitHub, and timing them
+        # would mix sub-millisecond no-ops into an average that exists to show
+        # when the *network* half got slow.
+        started = time.monotonic()
+
         try:
             activity = github_client.fetch_activity(
                 full_name,
@@ -139,7 +146,7 @@ def scan_project(project_id: int) -> dict:
             return {"project_id": project_id, "status": "rate_limited"}
         except github_client.GitHubError as exc:
             logger.warning("autopilot could not read %s: %s", full_name, exc)
-            project.last_scanned_at = utcnow()
+            project.record_scan(duration_ms=elapsed_ms(started))
             db.commit()
             return {"project_id": project_id, "status": "unreachable"}
 
@@ -163,9 +170,9 @@ def scan_project(project_id: int) -> dict:
             project.last_seen_commit_sha = activity.head_sha
             project.last_seen_release_tag = activity.latest_tag
         # Always: we did look, whatever we decided to do about it.
-        project.last_scanned_at = utcnow()
+        project.record_scan(duration_ms=elapsed_ms(started))
         db.commit()
-        return {"project_id": project_id, **result}
+        return {"project_id": project_id, **result, "scan_ms": project.last_scan_duration_ms}
     except SoftTimeLimitExceeded:
         logger.warning("autopilot timed out on project %s", project_id)
         return {"project_id": project_id, "status": "timeout"}
@@ -258,6 +265,33 @@ def _act_on(
     if _daily_count(db, project.id) >= settings.autopilot_daily_content_limit:
         return {"status": "daily_limit_reached"}
 
+    # The one duplicate check that runs *before* the model is called, and the
+    # only one that can: these commits are already in hand, and a stored piece
+    # that names all of them is proof this scan is a repeat rather than a
+    # judgement that it might be. Cheap enough to be worth asking every time —
+    # one indexed window query against a generation.
+    #
+    # It fires where the two watermarks in this system overlap. A project can be
+    # scanned by this sweep *and* watched by a `github` trigger with its own
+    # `last_sha`, and the two advance independently; the trigger writing about a
+    # push does not stop the sweep writing about the same push an hour later.
+    # Nothing joined those up, and the piece it produced was not a near-duplicate
+    # — it was the same commits, twice.
+    #
+    # Below the ideas, deliberately. An idea banked from these commits is still
+    # worth having: `bank_ideas` has its own restatement check, so a genuine
+    # repeat is dropped there, and the calendar's suggestions should not go
+    # quiet because the article was already written.
+    shas = dedup.commit_shas(activity)
+    duplicate_id = dedup.duplicate_of(db, project.id, shas=shas)
+    if duplicate_id is not None:
+        logger.info(
+            "project %s: scan covers commits already written up as content %s",
+            project.id,
+            duplicate_id,
+        )
+        return {"status": "duplicate", "duplicate_of": duplicate_id}
+
     routed = content_pipeline.generate_and_route(
         db,
         project,
@@ -268,6 +302,10 @@ def _act_on(
             "trigger": "release" if activity.new_release else "commits",
             "release_tag": activity.new_release.tag if activity.new_release else None,
             "commit_count": len(activity.new_commits),
+            # What makes the check above possible next time. Written here rather
+            # than inside the pipeline because this is the only caller that has
+            # commits to record — a trigger firing on an RSS entry has none.
+            dedup.SOURCE_COMMITS_KEY: shas,
         },
         # The scan can read the same commits again — see the module docstring.
         defer_on_outage=True,

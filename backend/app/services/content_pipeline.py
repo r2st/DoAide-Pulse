@@ -43,6 +43,7 @@ from app.models.webhook import WebhookEvent
 from app.services import (
     ai,
     content_generator,
+    dedup,
     factcheck,
     github_client,
     link_check,
@@ -371,6 +372,32 @@ def generate_and_route(
             ", ".join(str(claim) for claim in unsupported),
         )
 
+    # A fifth gate, and the only one that reads the piece against the *other*
+    # pieces rather than against itself. Everything above asks whether this
+    # article is sound; this asks whether it is the second copy of one Herald
+    # already wrote for the same project.
+    #
+    # It runs here, after the generation, because for the autopilot path the
+    # thing being judged is the title and the title is what the generation
+    # produced — there is nothing to compare before the model has answered. The
+    # commit-level check that *does* run first lives in
+    # :func:`app.tasks.autopilot_tasks._act_on`; the two are complementary, and
+    # :mod:`app.services.dedup` explains why neither is sufficient alone.
+    #
+    # Held back rather than discarded, like every gate above it. The piece is
+    # written and paid for, a near-duplicate is a judgement rather than a fact,
+    # and a reviewer looking at the two side by side is the right resolution —
+    # whereas an auto-publish puts the twin on Dev.to next to its original,
+    # where it cannot be taken back.
+    duplicate_of = dedup.duplicate_of(db, project.id, title=generated.title)
+    if auto and duplicate_of is not None:
+        auto = False
+        logger.info(
+            "held %r back from auto-publish: restates content %s",
+            generated.title,
+            duplicate_of,
+        )
+
     content = content_generator.content_from_generated(
         db,
         project_id=project.id,
@@ -384,6 +411,12 @@ def generate_and_route(
             "seo_score": score,
             "seo_errors": seo_errors,
             "garbled_runs": garbled,
+            # Banked whether or not it held the piece back, like the gate
+            # results above: "this restates #41" is the single most useful
+            # sentence a reviewer can be handed about a piece that looks
+            # familiar, and it is not reconstructible later — the window it was
+            # judged over moves.
+            "duplicate_of": duplicate_of,
             # The name *and* the sentence it appears in. A reviewer judging
             # "Wird" cannot do it from the word alone — the question is what the
             # piece claims about it, and that is in the surrounding clause.

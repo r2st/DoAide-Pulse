@@ -349,6 +349,20 @@ class Settings(BaseSettings):
     # Maximum unused ideas kept per project. Oldest unused are pruned each scan.
     autopilot_ideas_cap: int = 50
 
+    # ---- Duplicate content ----
+    # How far back `app.services.dedup` looks when asking "have we written this
+    # already?". A window rather than the whole history, because the answer is
+    # about editorial repetition and repetition has a horizon: a follow-up post
+    # a quarter after the original is a follow-up, and the same post a day after
+    # the original is a mistake. Thirty days is roughly the point at which a
+    # reader would not notice.
+    dedup_window_days: int = 30
+    # Most recent pieces compared against. The comparison is in Python over
+    # titles, so this bounds both the query and the loop; a project writing
+    # twice a day fills a thirty-day window with sixty pieces, and the cap
+    # bites only on an account well past that.
+    dedup_compare_limit: int = 200
+
     # ---- Triggers ----
     # How often the beat task sweeps polled triggers (RSS, GitHub, schedule) for
     # ones whose interval has elapsed. Must be comfortably shorter than the
@@ -584,6 +598,13 @@ class Settings(BaseSettings):
         "autopilot_daily_content_limit",
         "db_pool_recycle_seconds",
         "db_pool_size",
+        # Both are windows the dedupe comparison is taken over, and zero is not
+        # a way to switch it off — zero days is a window nothing falls in, and
+        # zero rows is a comparison against nothing. Switching it off is what
+        # a project's own settings are for; a config value that silently means
+        # "never dedupe" is the kind of off-switch nobody knows is thrown.
+        "dedup_compare_limit",
+        "dedup_window_days",
         "feed_max_new_entries",
         "learned_cadence_min_bucket",
         "learned_cadence_min_samples",

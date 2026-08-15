@@ -32,7 +32,6 @@ The two causes need opposite handling upstream and had been indistinguishable:
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -43,7 +42,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.content import TARGET_WORDS, ContentIdea, ContentType
 from app.models.project import Project, Tone
-from app.services import ai, formats, seo
+from app.services import ai, dedup, formats, seo
 from app.services.github_client import RepoActivity
 from app.services.signals import TriggerSignal, from_repo_activity
 
@@ -595,6 +594,7 @@ def generate(
             fallback_models=(sibling,),
             temperature=0.7,
             max_tokens=max_tokens,
+            purpose="content",
         )
     except ai.UnusableResponse as exc:
         # Before the ``AIError`` arm below, which is its parent class.
@@ -818,6 +818,7 @@ Reply with exactly this JSON object:
             # Small output, same large reasoning overhead — see
             # _REASONING_ALLOWANCE_TOKENS.
             max_tokens=_REASONING_ALLOWANCE_TOKENS,
+            purpose="ideas",
         )
     except ai.AIError as exc:
         logger.info("idea generation for project %s fell back: %s", project.id, exc)
@@ -845,56 +846,16 @@ Reply with exactly this JSON object:
 # Banking ideas                                                                #
 # --------------------------------------------------------------------------- #
 
-#: Words carrying no subject, dropped before two headlines are compared. Short
-#: and deliberately so: this is not a stemmer, it is the handful of words that
-#: differ between two phrasings of the same idea ("How to deploy Herald *to*
-#: production" against the same headline with *into*) and never distinguish two
-#: real ones.
-_IDEA_STOPWORDS = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how", "in",
-    "into", "is", "it", "its", "of", "on", "or", "that", "the", "this", "to",
-    "what", "when", "where", "which", "why", "with", "you", "your",
-})
-
-#: Possessives and the ``'s`` contraction, dropped before tokenizing so
-#: "Herald's caching layer" and "the caching layer in Herald" reduce to the same
-#: words. Curly apostrophes included: the model emits them and a user typing a
-#: headline on a Mac gets them by autocorrect.
-_IDEA_POSSESSIVE = re.compile(r"['’]s\b|['’]")
-
-#: Kept together across a dot or hyphen so "2.0" and "double-post" stay one word
-#: — a version number split into "2" and "0" would make every release headline
-#: look like every other one.
-_IDEA_TOKEN = re.compile(r"[0-9a-z]+(?:[.\-][0-9a-z]+)*")
-
-#: How much of two headlines' subject matter must coincide before the second is
-#: taken as a restatement of the first. Tuned against the pair this has to keep
-#: *apart*: "Getting started with Herald" and "Getting started with Herald Pro"
-#: share three of four significant words — 0.75 — and are two different pieces.
-IDEA_SIMILARITY_THRESHOLD = 0.8
-
-
-def _idea_tokens(headline: str) -> frozenset[str]:
-    """The significant words of a headline, for comparing it against another."""
-    plain = _IDEA_POSSESSIVE.sub("", (headline or "").casefold())
-    return frozenset(
-        w for w in _IDEA_TOKEN.findall(plain) if w not in _IDEA_STOPWORDS
-    )
-
-
-def _is_restatement(candidate: str, existing: frozenset[str]) -> bool:
-    """Whether *candidate* says what a headline with *existing* tokens already said."""
-    tokens = _idea_tokens(candidate)
-    if not tokens or not existing:
-        return False
-    # Under two significant words there is not enough of a subject to judge
-    # overlap on: "Caching" would swallow "Caching" and nothing else usefully,
-    # while any single shared word would score 1.0 against another one-word
-    # headline. Exact match only, down there.
-    if len(tokens) < 2 or len(existing) < 2:
-        return tokens == existing
-    overlap = len(tokens & existing) / len(tokens | existing)
-    return overlap >= IDEA_SIMILARITY_THRESHOLD
+#: The similarity machinery lives in :mod:`app.services.dedup`, which is the
+#: module that also asks the question about *stored content*. It started here,
+#: deduplicating banked ideas, and moved when the second caller appeared —
+#: because an idea and the piece written from it are the same headline at two
+#: moments in its life, and two thresholds tuned separately would eventually
+#: disagree about one string. Aliased rather than re-exported so the names the
+#: rest of this module reads by stay the ones it always used.
+IDEA_SIMILARITY_THRESHOLD = dedup.SIMILARITY_THRESHOLD
+_idea_tokens = dedup.tokens
+_is_restatement = dedup.is_restatement
 
 
 def bank_ideas(
