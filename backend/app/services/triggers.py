@@ -273,20 +273,45 @@ def is_due(trigger: Trigger, *, moment: Any = None) -> bool:
     of "every 168 hours" is a post a week, and a check that finds nothing should
     not reset the clock. Fetch-based kinds are judged against
     ``last_checked_at``, because for them a check *is* the work.
+
+    A schedule pinned to an hour counts **days**, not hours, whenever the
+    interval is a whole number of them. Elapsed-hours drifts and the pinned hour
+    is what it drifts out of: ``last_fired_at`` is stamped when the worker runs,
+    which is the poll instant plus however long generating a piece took, so each
+    firing lands a little later than the last. "Every 24 hours at 09:00" then
+    needs a poll at 09:00:45, gets one at 09:10, and next time needs 09:10:45 —
+    marching forward until it runs out of pinned hour, skips that day entirely,
+    and resets a poll interval later. At a ten-minute sweep that is one missed
+    day in seven, silently, on the trigger whose whole promise is "daily".
+    Comparing calendar days removes the accumulator: the hour gate already
+    allows only one firing window a day, so the day count is the schedule.
     """
     now = moment or utcnow()
     kind = trigger.kind if isinstance(trigger.kind, TriggerKind) else TriggerKind(trigger.kind)
 
     if kind == TriggerKind.SCHEDULE:
         hour = trigger.setting("hour_utc")
+        pinned: int | None = None
         if hour is not None:
             try:
-                if now.hour != int(hour):
-                    return False
+                pinned = int(hour)
             except (TypeError, ValueError):
-                pass
+                # Junk pins nothing rather than pinning "never" — see
+                # ``test_an_uninterpretable_hour_utc_is_ignored_rather_than...``.
+                pinned = None
+        if pinned is not None and now.hour != pinned:
+            return False
+
         last = trigger.last_fired_at
-        window = timedelta(hours=interval_hours(trigger))
+        hours = interval_hours(trigger)
+        # Whole days only. A 36-hour interval has no day count to compare and an
+        # unpinned one has no gate keeping it to one firing a day, so both keep
+        # the elapsed-hours reading they already had.
+        if pinned is not None and hours >= 24 and hours % 24 == 0:
+            if last is None:
+                return True
+            return (now.date() - as_aware(last).date()).days >= round(hours / 24)
+        window = timedelta(hours=hours)
     else:
         last = trigger.last_checked_at
         window = timedelta(hours=interval_hours(trigger))
