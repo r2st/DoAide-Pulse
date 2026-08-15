@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import ListOffset, RowId, get_current_user
 from app.models.user import User
 from app.models.webhook import (
     SUBSCRIBABLE_EVENTS,
@@ -56,7 +56,7 @@ EVENT_DESCRIPTIONS: dict[WebhookEvent, str] = {
 MAX_WEBHOOKS_PER_USER = 20
 
 
-def _owned(webhook_id: int, db: Session, user: User) -> Webhook:
+def _owned(webhook_id: RowId, db: Session, user: User) -> Webhook:
     """Fetch a webhook, 404ing if it isn't this user's — see ``deps.owned_project``."""
     webhook = db.get(Webhook, webhook_id)
     if webhook is None or webhook.user_id != user.id:
@@ -100,7 +100,7 @@ def list_events(request: Request, response: Response) -> list[WebhookEventOut]:
 def list_webhooks(
     response: Response,
     limit: int = Query(default=MAX_WEBHOOKS_PER_USER, ge=1, le=MAX_WEBHOOKS_PER_USER),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[WebhookOut]:
@@ -174,7 +174,7 @@ def create_webhook(
     responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 def update_webhook(
-    webhook_id: int,
+    webhook_id: RowId,
     payload: WebhookUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -211,7 +211,7 @@ def update_webhook(
     responses=errors(*OWNED),
 )
 def delete_webhook(
-    webhook_id: int,
+    webhook_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
@@ -233,7 +233,7 @@ def delete_webhook(
     responses=errors(*OWNED, status.HTTP_500_INTERNAL_SERVER_ERROR),
 )
 def rotate_secret(
-    webhook_id: int,
+    webhook_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> WebhookCreated:
@@ -254,7 +254,7 @@ def rotate_secret(
 )
 @limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def ping(
-    webhook_id: int,
+    webhook_id: RowId,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
@@ -293,11 +293,11 @@ def ping(
     responses=errors(*OWNED),
 )
 def list_deliveries(
-    webhook_id: int,
+    webhook_id: RowId,
     response: Response,
     delivery_status: DeliveryStatus | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[WebhookDeliveryOut]:
@@ -329,8 +329,8 @@ def list_deliveries(
 )
 @limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def redeliver(
-    webhook_id: int,
-    delivery_id: int,
+    webhook_id: RowId,
+    delivery_id: RowId,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),

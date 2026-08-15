@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user, owned_project
+from app.deps import ListOffset, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentStatus, unique_content_slug
 from app.models.project import Project
 from app.models.template import ContentTemplate, TemplateMode
@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/templates", tags=["templates"])
 
 
-def _owned(template_id: int, db: Session, user: User) -> ContentTemplate:
+def _owned(template_id: RowId, db: Session, user: User) -> ContentTemplate:
     """Fetch a template, 404ing if it isn't this user's.
 
     Same status for missing and forbidden, for the reason in ``deps``.
@@ -154,7 +154,7 @@ def list_templates(
         description="Carry each template's body_template, as this used to.",
     ),
     limit: int = Query(default=MAX_TEMPLATES_PER_USER, ge=1, le=MAX_TEMPLATES_PER_USER),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TemplateOut]:
@@ -259,7 +259,7 @@ def create_template(
     responses=errors(*OWNED),
 )
 def get_template(
-    template_id: int,
+    template_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TemplateOut:
@@ -278,7 +278,7 @@ def get_template(
     ),
 )
 def update_template(
-    template_id: int,
+    template_id: RowId,
     payload: TemplateUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -341,7 +341,7 @@ def update_template(
     responses=errors(*OWNED),
 )
 def delete_template(
-    template_id: int,
+    template_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
@@ -357,7 +357,7 @@ def delete_template(
     responses=errors(*OWNED),
 )
 def preview_template(
-    template_id: int,
+    template_id: RowId,
     payload: RenderRequest,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -393,7 +393,7 @@ def preview_template(
 )
 @limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def use_template(
-    template_id: int,
+    template_id: RowId,
     payload: TemplateUseRequest,
     request: Request,
     response: Response,

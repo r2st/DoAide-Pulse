@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, lazyload, load_only, selectinload
 
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user, owned_project
+from app.deps import ListOffset, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus
 from app.models.mixins import utcnow
 from app.models.project import Project, slugify
@@ -133,7 +133,7 @@ def list_projects(
     # than 65535 bind parameters. Same bounds and the same X-Total-Count as
     # every other listing here; see `list_content` on why `ge=1` matters.
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[ProjectOut]:
@@ -231,7 +231,7 @@ def create_project(
     responses=errors(*OWNED),
 )
 def get_project(
-    project_id: int,
+    project_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
@@ -246,7 +246,7 @@ def get_project(
     responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 def update_project(
-    project_id: int,
+    project_id: RowId,
     payload: ProjectUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -289,7 +289,7 @@ def update_project(
     responses=errors(*OWNED),
 )
 def delete_project(
-    project_id: int,
+    project_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
@@ -316,7 +316,7 @@ def delete_project(
 )
 @limiter.limit(settings.rate_limit_repo_scan, key_func=account_key)
 def scan_repo(
-    project_id: int,
+    project_id: RowId,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
@@ -384,7 +384,7 @@ def scan_repo(
 @router.get("/{project_id}/feed.xml", include_in_schema=False)
 @limiter.limit(settings.rate_limit_public_feed)
 def project_feed(
-    project_id: int,
+    project_id: RowId,
     request: Request,
     db: Session = Depends(get_db),
 ) -> Response:
@@ -537,7 +537,7 @@ def _not_refreshing(request: Request) -> bool:
     settings.rate_limit_ai_generate, key_func=account_key, exempt_when=_not_refreshing
 )
 def list_ideas(
-    project_id: int,
+    project_id: RowId,
     request: Request,
     response: Response,
     refresh: bool = False,

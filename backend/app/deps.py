@@ -1,7 +1,9 @@
 """Shared FastAPI dependencies (current-user resolution, ownership guards)."""
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, status
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, Path, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -13,6 +15,38 @@ from app.models.user import User
 from app.security import decode_access_token_claims, issued_at
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.api_v1_prefix}/auth/login")
+
+#: The widest value a primary key in this tree can hold.
+#:
+#: Every ``id`` column here is a SQLAlchemy ``Integer``, which is PostgreSQL
+#: ``integer`` — signed 32-bit. Nothing said so at the edge, and ``int`` in a
+#: path signature means a Python int, which has no width at all. So an id one
+#: past this bound passed validation, reached the driver, and came back as
+#: ``NumericValueOutOfRange`` — a 500 on ``GET /projects/2147483648``, which is
+#: not a hostile input so much as the next integer after a valid one.
+#:
+#: Declared as a bound rather than caught as an error for the reason
+#: :mod:`app.schemas.limits` gives: a constraint in the type is in the generated
+#: OpenAPI, so a client is told the range before it sends anything. It is also
+#: the same answer for every id in the tree, which a per-router ``try`` around
+#: each query would not be.
+ROW_ID_MAX = 2**31 - 1
+
+#: A path parameter naming a row by its primary key.
+#:
+#: Only an upper bound. Zero and negatives are left to 404 the way any other
+#: absent id does — they are ids that do not exist, not ids the database cannot
+#: be asked about, and turning them into a 422 would tell an enumerating caller
+#: something the 404 deliberately does not.
+RowId = Annotated[int, Path(le=ROW_ID_MAX)]
+
+#: How far a listing may be paged into.
+#:
+#: ``offset`` had a floor and no ceiling, and it reaches the database as a
+#: literal in ``OFFSET`` — so the same overflow the id bound closes was reachable
+#: on every paged endpoint too. The bound is the row-id one because that is the
+#: most rows there could be to skip.
+ListOffset = Annotated[int, Query(ge=0, le=ROW_ID_MAX)]
 
 _credentials_exc = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,

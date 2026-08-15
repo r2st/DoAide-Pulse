@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session, defer
 
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user, owned_project
+from app.deps import ListOffset, RowId, get_current_user, owned_project
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.ratelimit import account_key, limiter
@@ -73,7 +73,7 @@ MAX_TRIGGERS_PER_PROJECT = 20
 MAX_INBOUND_BYTES = 128 * 1024
 
 
-def _owned(trigger_id: int, db: Session, user: User) -> Trigger:
+def _owned(trigger_id: RowId, db: Session, user: User) -> Trigger:
     """Fetch a trigger, 404ing if its project isn't this user's."""
     trigger = db.get(Trigger, trigger_id)
     if trigger is None:
@@ -158,7 +158,7 @@ def list_triggers(
     # projects the caller had made. Same contract as /triggers/{id}/events
     # below.
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TriggerOut]:
@@ -249,7 +249,7 @@ def create_trigger(
     responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_CONTENT),
 )
 def update_trigger(
-    trigger_id: int,
+    trigger_id: RowId,
     payload: TriggerUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -295,7 +295,7 @@ def update_trigger(
     responses=errors(*OWNED),
 )
 def delete_trigger(
-    trigger_id: int,
+    trigger_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
@@ -320,7 +320,7 @@ def delete_trigger(
     ),
 )
 def rotate_secret(
-    trigger_id: int,
+    trigger_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TriggerCreated:
@@ -358,7 +358,7 @@ def rotate_secret(
 )
 @limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def check_now(
-    trigger_id: int,
+    trigger_id: RowId,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
@@ -411,7 +411,7 @@ def _event_out(event: TriggerEvent, *, payload: bool) -> TriggerEventOut:
     responses=errors(*OWNED),
 )
 def list_trigger_events(
-    trigger_id: int,
+    trigger_id: RowId,
     response: Response,
     event_status: TriggerEventStatus | None = Query(default=None, alias="status"),
     # Off by default, which is the change of contract worth naming. An event's
@@ -431,7 +431,7 @@ def list_trigger_events(
         ),
     ),
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[TriggerEventOut]:
@@ -467,8 +467,8 @@ def list_trigger_events(
     responses=errors(*OWNED),
 )
 def get_trigger_event(
-    trigger_id: int,
-    event_id: int,
+    trigger_id: RowId,
+    event_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TriggerEventOut:

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db, refresh_all
-from app.deps import get_current_user
+from app.deps import RowId, get_current_user
 from app.models.content import Content, ContentStatus
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
@@ -216,7 +216,7 @@ def get_calendar(
     ),
 )
 def reschedule(
-    content_id: int,
+    content_id: RowId,
     payload: ScheduleUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),

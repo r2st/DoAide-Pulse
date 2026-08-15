@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user
+from app.deps import RowId, get_current_user
 from app.models.content import Content, ContentStatus
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
@@ -95,7 +95,7 @@ def velocity_summary(
     responses=errors(*OWNED),
 )
 def velocity_curve(
-    publication_id: int,
+    publication_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:

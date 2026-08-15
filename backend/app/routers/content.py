@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, defer, joinedload, selectinload
 
 from app.config import settings
 from app.database import get_db, refresh_all
-from app.deps import get_current_user, owned_project
+from app.deps import ListOffset, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
 from app.models.preview_link import PreviewLink
 from app.models.project import Project
@@ -82,7 +82,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/content", tags=["content"])
 
 
-def _owned_content(content_id: int, db: Session, user: User) -> Content:
+def _owned_content(content_id: RowId, db: Session, user: User) -> Content:
     content = db.get(Content, content_id)
     if content is None or content.project.user_id != user.id:
         raise HTTPException(
@@ -304,7 +304,7 @@ def list_content(
     # caller's entire content table past the 500 cap, while Postgres refuses it
     # outright and the request becomes a 500.
     limit: int = Query(default=100, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[ContentOut]:
@@ -367,7 +367,7 @@ def list_content(
 def review_queue(
     response: Response,
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[ContentOut]:
@@ -402,7 +402,7 @@ def review_queue(
 def publication_queue(
     response: Response,
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PublicationOut]:
@@ -635,7 +635,7 @@ def get_public_preview(
     responses=errors(*OWNED),
 )
 def internal_link_suggestions(
-    content_id: int,
+    content_id: RowId,
     limit: int = Query(default=5, ge=1, le=20),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -691,7 +691,7 @@ def internal_link_suggestions(
     responses=errors(*OWNED),
 )
 def social_cards_preview(
-    content_id: int,
+    content_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> SocialCardsOut:
@@ -735,7 +735,7 @@ def social_cards_preview(
 )
 @limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def repurpose_content(
-    content_id: int,
+    content_id: RowId,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
@@ -773,7 +773,7 @@ def repurpose_content(
 )
 @limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def edit_passage(
-    content_id: int,
+    content_id: RowId,
     payload: InlineEditIn,
     request: Request,
     response: Response,
@@ -838,7 +838,7 @@ def edit_passage(
 )
 @limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def generate_headline_variants(
-    content_id: int,
+    content_id: RowId,
     request: Request,
     response: Response,
     count: int = Query(default=4, ge=2, le=6),
@@ -867,7 +867,7 @@ def generate_headline_variants(
     responses=errors(*OWNED),
 )
 def apply_content_headline(
-    content_id: int,
+    content_id: RowId,
     payload: HeadlineApplyIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -892,7 +892,7 @@ def apply_content_headline(
     responses=errors(*OWNED),
 )
 def content_headline_performance(
-    content_id: int,
+    content_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[HeadlineWindowOut]:
@@ -922,7 +922,7 @@ def _winner_out(verdict: headlines.Winner, *, applied: bool = False) -> Headline
     responses=errors(*OWNED),
 )
 def content_headline_winner(
-    content_id: int,
+    content_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> HeadlineWinnerOut:
@@ -942,7 +942,7 @@ def content_headline_winner(
     responses=errors(*OWNED),
 )
 def apply_headline_winner(
-    content_id: int,
+    content_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> HeadlineWinnerOut:
@@ -968,7 +968,7 @@ def apply_headline_winner(
     responses=errors(*OWNED),
 )
 def get_content(
-    content_id: int,
+    content_id: RowId,
     response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -997,7 +997,7 @@ def get_content(
 )
 @limiter.limit(settings.rate_limit_link_check, key_func=account_key)
 def check_links(
-    content_id: int,
+    content_id: RowId,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
@@ -1064,7 +1064,7 @@ def _to_preview_link(link: PreviewLink, *, url: str | None = None) -> PreviewLin
     responses=errors(*OWNED),
 )
 def list_preview_links(
-    content_id: int,
+    content_id: RowId,
     response: Response,
     # The one listing here that had no ceiling at all. Nothing prunes preview
     # links and revoking keeps the row, so a draft that goes round a team for a
@@ -1072,7 +1072,7 @@ def list_preview_links(
     # ``preview_links.list_for_content``. Same bounds and the same
     # ``X-Total-Count`` as every other listing in this router.
     limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    offset: ListOffset = 0,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PreviewLinkOut]:
@@ -1102,7 +1102,7 @@ def list_preview_links(
     responses=errors(*OWNED),
 )
 def create_preview_link(
-    content_id: int,
+    content_id: RowId,
     payload: PreviewLinkCreate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1125,8 +1125,8 @@ def create_preview_link(
     responses=errors(*OWNED),
 )
 def revoke_preview_link(
-    content_id: int,
-    link_id: int,
+    content_id: RowId,
+    link_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
@@ -1275,7 +1275,7 @@ def create_content(
     ),
 )
 def update_content(
-    content_id: int,
+    content_id: RowId,
     payload: ContentUpdate,
     response: Response,
     if_match: str | None = Header(
@@ -1422,7 +1422,7 @@ def update_content(
     responses=errors(*OWNED),
 )
 def delete_content(
-    content_id: int,
+    content_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
@@ -1449,7 +1449,7 @@ def delete_content(
     responses=errors(*OWNED, status.HTTP_409_CONFLICT),
 )
 def approve_content(
-    content_id: int,
+    content_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentOut:
@@ -1606,7 +1606,7 @@ def _queue_publish(
     ),
 )
 def publish_content(
-    content_id: int,
+    content_id: RowId,
     payload: PublishRequestIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1653,7 +1653,7 @@ def _canonical_platform(content: Content) -> Platform | None:
     responses=errors(*OWNED, status.HTTP_400_BAD_REQUEST),
 )
 def schedule_suggestions(
-    content_id: int,
+    content_id: RowId,
     platforms: list[Platform] | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1694,7 +1694,7 @@ def schedule_suggestions(
     ),
 )
 def schedule_content(
-    content_id: int,
+    content_id: RowId,
     payload: ScheduleContentIn,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1773,7 +1773,7 @@ def schedule_content(
     responses=errors(*OWNED),
 )
 def unschedule_content(
-    content_id: int,
+    content_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PublicationOut]:
@@ -1857,8 +1857,8 @@ def _dispatch(publication_ids: list[int]) -> None:
     responses=errors(*OWNED, status.HTTP_409_CONFLICT),
 )
 def retry_publication(
-    content_id: int,
-    publication_id: int,
+    content_id: RowId,
+    publication_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> PublicationOut:
@@ -1959,7 +1959,7 @@ def retry_publication(
 )
 @limiter.limit(settings.rate_limit_ai_generate, key_func=account_key)
 def write_from_idea(
-    idea_id: int,
+    idea_id: RowId,
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
