@@ -39,6 +39,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.logging_config import request_id_var
 from app.models.mixins import utcnow
 from app.models.webhook import (
     DeliveryStatus,
@@ -62,6 +63,17 @@ logger = logging.getLogger(__name__)
 SIGNATURE_HEADER = "X-Herald-Signature"
 EVENT_HEADER = "X-Herald-Event"
 DELIVERY_HEADER = "X-Herald-Delivery"
+
+#: The id of whatever caused this delivery — the API request, or the sweep that
+#: re-armed it — so a receiver debugging "you sent me something wrong" can quote
+#: an id that appears in Herald's own journal. Outside the signature on purpose:
+#: :func:`sign` covers the timestamp and the body, and widening it to a header
+#: would break every receiver already verifying deliveries.
+#:
+#: Distinct from ``X-Request-ID``, which the API *returns* on its own responses.
+#: This is the same value travelling in the other direction, and naming it apart
+#: keeps a receiver's own request id from being overwritten by ours.
+CORRELATION_HEADER = "X-Herald-Request-ID"
 
 #: The prefix a signature's version field carries.
 SIGNATURE_VERSION = "v1"
@@ -381,6 +393,7 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
         "User-Agent": f"Herald/0.1 webhooks (+{settings.openrouter_app_url})",
         EVENT_HEADER: delivery.event.value,
         DELIVERY_HEADER: str(delivery.id),
+        CORRELATION_HEADER: request_id_var.get(),
         SIGNATURE_HEADER: sign(secret, timestamp, body),
     }
 
@@ -557,6 +570,7 @@ def requeue(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
 
 
 __all__ = [
+    "CORRELATION_HEADER",
     "DELIVERY_HEADER",
     "EVENT_HEADER",
     "SIGNATURE_HEADER",

@@ -182,3 +182,15 @@ celery_app.conf.beat_schedule = {
         "schedule": 86400.0,  # once a day
     },
 }
+
+# Imported for its side effect: the module is nothing but signal receivers, and
+# a receiver that is never imported is never connected. It goes at the bottom
+# because it imports back into ``app.services`` for the failure classification,
+# and this module is imported by every dispatch site in the tree — including
+# request handlers, which have no reason to pull in the publishing adapters
+# before ``celery_app`` has finished defining the decorator they came for.
+#
+# Present in all three processes on purpose. The worker and beat need the timing
+# and failure lines; the API needs ``before_task_publish``, which is the half
+# that puts a request's id into the message before it crosses the broker.
+from app.tasks import observability  # noqa: E402,F401

@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from app.config import settings
+from app.logging_config import request_id_var
 from app.models.content import Content, ContentStatus, ContentType
 from app.models.mixins import as_aware, utcnow
 from app.models.publication import Platform, Publication, PublicationStatus
@@ -220,6 +221,55 @@ def test_the_request_carries_a_verifiable_signature(db, webhook, endpoint):
     )
     assert sent.headers[webhooks.EVENT_HEADER] == "content.published"
     assert sent.headers[webhooks.DELIVERY_HEADER] == str(delivery.id)
+
+
+def test_the_request_carries_the_id_of_whatever_caused_it(db, webhook, endpoint):
+    """The receiver's half of the trace.
+
+    A delivery is dispatched by an API request or re-armed by a sweep, and both
+    already stamp every line Herald writes about it. Sending the same id lets a
+    receiver debugging "you posted me something wrong" quote something that
+    appears in Herald's own journal, instead of a timestamp and a description.
+    """
+    token = request_id_var.set("abc123def456")
+    try:
+        delivery = _delivery(db, webhook)
+        webhooks.deliver(db, delivery)
+    finally:
+        request_id_var.reset(token)
+
+    assert endpoint.requests[-1].headers[webhooks.CORRELATION_HEADER] == "abc123def456"
+
+
+def test_the_correlation_id_is_outside_the_signature(db, webhook, endpoint):
+    """``sign`` covers the timestamp and the body, and widening it to a header
+    would break every receiver already verifying deliveries — the signature
+    scheme is Stripe's precisely so that existing libraries can check it."""
+    token = request_id_var.set("abc123def456")
+    try:
+        delivery = _delivery(db, webhook)
+        webhooks.deliver(db, delivery)
+    finally:
+        request_id_var.reset(token)
+
+    sent = endpoint.requests[-1]
+    assert webhooks.verify(
+        "shhh-a-secret-value",
+        sent.headers[webhooks.SIGNATURE_HEADER],
+        sent.content.decode("utf-8"),
+    )
+
+
+def test_a_delivery_with_no_request_behind_it_still_sends_the_header(
+    db, webhook, endpoint
+):
+    """``-`` rather than an absent header: a receiver that reads it
+    unconditionally should not have to handle two shapes, and the marker says
+    "nothing dispatched this" — which is true of a sweep-driven retry."""
+    delivery = _delivery(db, webhook)
+    webhooks.deliver(db, delivery)
+
+    assert endpoint.requests[-1].headers[webhooks.CORRELATION_HEADER] == "-"
 
 
 def test_the_body_carries_the_event_and_the_delivery_id(db, webhook, endpoint):
