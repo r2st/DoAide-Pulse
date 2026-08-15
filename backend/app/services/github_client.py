@@ -156,6 +156,55 @@ def _reset_at(resp: httpx.Response) -> str:
     return moment.strftime("%H:%M UTC")
 
 
+@dataclass(frozen=True)
+class Throttle:
+    """GitHub saying "not now": which of its two limits, and for how long.
+
+    Deliberately carries no message. The two callers are talking to different
+    people about different tokens — the autopilot about ``GITHUB_TOKEN``, the
+    publisher about the user's own PAT — so the wording is theirs and only the
+    facts are shared.
+    """
+
+    #: The burst limit rather than the hourly quota. It is the one that sends
+    #: ``Retry-After``, and the one a busy sweep or a batch of publishes trips.
+    secondary: bool
+    #: Seconds GitHub asked us to wait, when it said. Only the secondary limit
+    #: sends it.
+    retry_after: int | None
+    #: When the hourly quota comes back, phrased for a human.
+    reset_at: str
+
+
+def throttle_reason(resp: httpx.Response) -> Throttle | None:
+    """Whether this 403/429 is GitHub throttling us, or a genuine refusal.
+
+    Public because two unrelated callers need this discrimination and both got
+    it wrong the same way. GitHub reports its *secondary* limit as a **403**,
+    and a 403 reads as "forbidden" to anyone not looking for this — so a
+    throttled request presents as an access failure and gets answered by
+    telling somebody their credentials are bad. See :func:`_rate_limit` for
+    what that cost the autopilot, and
+    :meth:`app.services.publishers.git.GitAdapter._translate` for what it cost
+    publishing.
+    """
+    retry_after = _retry_after(resp)
+    if retry_after is not None:
+        return Throttle(secondary=True, retry_after=retry_after, reset_at=_reset_at(resp))
+
+    # No header. The body carries the same news, and a secondary limit without
+    # ``Retry-After`` is common enough that treating it as an access failure
+    # would leave the same hole half-open. Clipped: this is an error body being
+    # scanned for a phrase, not a payload being read.
+    body = (resp.text or "")[:1000].lower()
+    if any(hint in body for hint in _SECONDARY_LIMIT_HINTS):
+        return Throttle(secondary=True, retry_after=None, reset_at=_reset_at(resp))
+
+    if resp.status_code == 429 or resp.headers.get("X-RateLimit-Remaining") == "0":
+        return Throttle(secondary=False, retry_after=None, reset_at=_reset_at(resp))
+    return None
+
+
 def _rate_limit(resp: httpx.Response) -> GitHubRateLimited | None:
     """The rate-limit error this 403/429 is, or ``None`` if it is not one.
 
@@ -182,31 +231,24 @@ def _rate_limit(resp: httpx.Response) -> GitHubRateLimited | None:
     for a private repo the caller cannot see, precisely so that a 403 does not
     confirm it exists.
     """
-    retry_after = _retry_after(resp)
-    if retry_after is not None:
-        return GitHubRateLimited(
-            f"GitHub is throttling this account (secondary rate limit); it "
-            f"asked us to wait {retry_after}s.",
-            retry_after=retry_after,
-        )
-
-    # No header. The body carries the same news, and a secondary limit without
-    # ``Retry-After`` is common enough that treating it as an access failure
-    # would leave the same hole half-open. Clipped: this is an error body being
-    # scanned for a phrase, not a payload being read.
-    body = (resp.text or "")[:1000].lower()
-    if any(hint in body for hint in _SECONDARY_LIMIT_HINTS):
+    throttle = throttle_reason(resp)
+    if throttle is None:
+        return None
+    if throttle.secondary:
+        if throttle.retry_after is not None:
+            return GitHubRateLimited(
+                f"GitHub is throttling this account (secondary rate limit); it "
+                f"asked us to wait {throttle.retry_after}s.",
+                retry_after=throttle.retry_after,
+            )
         return GitHubRateLimited(
             "GitHub is throttling this account (secondary rate limit). "
             "Slow down and try again shortly."
         )
-
-    if resp.status_code == 429 or resp.headers.get("X-RateLimit-Remaining") == "0":
-        return GitHubRateLimited(
-            f"GitHub rate limit exhausted (resets at {_reset_at(resp)}). "
-            "Set GITHUB_TOKEN to raise the ceiling from 60 to 5000 req/hour."
-        )
-    return None
+    return GitHubRateLimited(
+        f"GitHub rate limit exhausted (resets at {throttle.reset_at}). "
+        "Set GITHUB_TOKEN to raise the ceiling from 60 to 5000 req/hour."
+    )
 
 
 def _get(path: str, *, params: dict | None = None) -> httpx.Response:
@@ -472,7 +514,9 @@ __all__ = [
     "GitHubRateLimited",
     "Release",
     "RepoActivity",
+    "Throttle",
     "fetch_activity",
     "fetch_commits",
     "fetch_latest_release",
+    "throttle_reason",
 ]

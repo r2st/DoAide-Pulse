@@ -34,9 +34,11 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
+
 from app.config import settings
 from app.models.publication import Platform
-from app.services import seo, social_cards
+from app.services import github_client, seo, social_cards
 from app.services.publishers import formatting
 from app.services.publishers.base import (
     Adapter,
@@ -45,6 +47,7 @@ from app.services.publishers.base import (
     PublishError,
     PublishRequest,
     PublishResult,
+    RateLimited,
 )
 
 logger = logging.getLogger(__name__)
@@ -325,6 +328,67 @@ class GitAdapter(Adapter):
 
     # -- the adapter -------------------------------------------------------- #
 
+    def _translate(self, resp: httpx.Response) -> PublishError | None:
+        """Tell GitHub throttling us apart from GitHub refusing us.
+
+        The base class reads every 403 as a rejected credential, which is true
+        of every other destination Herald publishes to and false of this one.
+        GitHub reports its *secondary* rate limit — the burst limit, tripped by
+        a sweep publishing several pieces at once — as a **403** carrying
+        ``Retry-After``, with the hourly quota still nearly untouched.
+
+        Left to the base class that 403 became a
+        :class:`~app.services.publishers.base.CredentialError`, and a
+        credential error is terminal by design: no retry, publication failed
+        for good, and the piece marked ``failed`` with "GitHub rejected the
+        credentials" against a token that was working a second earlier and
+        would work a minute later. The user's repair for that message is to go
+        and reissue a PAT that was never the problem.
+
+        As a :class:`~app.services.publishers.base.RateLimited` it instead
+        reaches :func:`app.services.publishing_service._defer`, which parks the
+        row until the time GitHub actually named and lets it publish itself.
+
+        ``github_client.throttle_reason`` is the same discrimination the
+        autopilot's scan path already had to learn; the note there records the
+        matching mis-read on that side.
+        """
+        if resp.status_code in (403, 429):
+            throttle = github_client.throttle_reason(resp)
+            if throttle is not None:
+                return RateLimited(
+                    self._throttle_message(throttle),
+                    retry_after=throttle.retry_after,
+                )
+        return super()._translate(resp)
+
+    @staticmethod
+    def _throttle_message(throttle: github_client.Throttle) -> str:
+        """What to tell the user, in terms of the token *they* control.
+
+        ``github_client`` words the same facts for the autopilot, where the
+        token is Herald's own ``GITHUB_TOKEN`` and "set one to raise the
+        ceiling" is useful advice. Here the token is the user's PAT and that
+        advice is noise: nothing they can set changes this limit, and the row
+        is already parked, so the honest message says who is waiting and for
+        how long.
+        """
+        if throttle.secondary:
+            if throttle.retry_after is not None:
+                return (
+                    "GitHub is throttling this account (secondary rate limit); "
+                    f"it asked us to wait {throttle.retry_after}s. The commit is "
+                    "queued and will go out after that."
+                )
+            return (
+                "GitHub is throttling this account (secondary rate limit). "
+                "The commit is queued and will be retried shortly."
+            )
+        return (
+            f"GitHub's hourly rate limit for this token is spent (resets at "
+            f"{throttle.reset_at}). The commit is queued until then."
+        )
+
     def verify(self, credentials: dict[str, Any]) -> str:
         """Return the repository, refusing a token that cannot write to it.
 
@@ -364,6 +428,14 @@ class GitAdapter(Adapter):
             )
         except CredentialError:
             raise  # 401/403 must surface, not be silenced as "file not found"
+        except RateLimited:
+            # "I was not allowed to look" is not "there is nothing there", and
+            # the difference decides whether the commit below carries a ``sha``.
+            # Swallowed, a throttled lookup makes ``publish`` treat an existing
+            # post as new: the contents API refuses a create over a live path,
+            # so a correction to a published piece would fail as a 422 naming a
+            # file the user can see perfectly well in their repo.
+            raise
         except PublishError:
             return None
         data = self._json(resp)
