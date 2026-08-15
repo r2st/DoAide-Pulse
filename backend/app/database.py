@@ -73,6 +73,41 @@ def _statement_timeout_option(seconds: float) -> dict[str, str]:
     return {"options": f"-c statement_timeout={math.ceil(seconds * 1000)}"}
 
 
+#: libpq's own floor. ``connect_timeout=1`` is silently read as 2, and 0 means
+#: "wait forever" — so a setting below this either does not mean what it says or
+#: means the opposite of it.
+MIN_CONNECT_TIMEOUT_SECONDS = 2
+
+
+def _connect_timeout_arg(seconds: float) -> dict[str, int]:
+    """A bound on *opening* a connection, which nothing else here provides.
+
+    ``statement_timeout`` is a ceiling on a query, and a query cannot start
+    until there is a connection to run it on. Getting one had no bound at all:
+    ``pool_pre_ping`` discards a connection that has gone stale and opens a
+    replacement, and if PostgreSQL is unreachable in the way that actually
+    happens in production — a box that is up but dropping packets, rather than
+    one refusing them — that open sits in the kernel's TCP retry schedule for
+    over two minutes before libpq is told anything.
+
+    Which makes it a *health check* problem before it is a request problem. The
+    ``/health`` probe runs ``SELECT 1`` on a pooled session, so it inherits that
+    wait; Caddy polls the same endpoint every 30s as its ``health_uri`` and
+    gives up long before an answer arrives. The intended failure mode — a fast
+    503 that says the database is unreachable, ejects the upstream, and gets an
+    operator to the right dependency — was instead a probe that hung, two
+    uvicorn workers stuck in a connect, and a site that timed out without ever
+    saying why.
+
+    Rounded up to a whole second because libpq's parameter has no finer
+    resolution, and floored at :data:`MIN_CONNECT_TIMEOUT_SECONDS` because
+    anything under it is not the setting it appears to be.
+    """
+    if seconds <= 0:
+        return {}
+    return {"connect_timeout": max(MIN_CONNECT_TIMEOUT_SECONDS, math.ceil(seconds))}
+
+
 def _connect_options(seconds: float) -> dict[str, str]:
     """Every libpq startup setting Herald needs, as one ``connect_args``.
 
@@ -131,7 +166,10 @@ def _make_engine(url: str) -> Engine:
         max_overflow=settings.db_max_overflow,
         pool_timeout=settings.db_pool_timeout_seconds,
         pool_recycle=settings.db_pool_recycle_seconds,
-        connect_args=_connect_options(settings.db_statement_timeout_seconds),
+        connect_args={
+            **_connect_options(settings.db_statement_timeout_seconds),
+            **_connect_timeout_arg(settings.db_connect_timeout_seconds),
+        },
     )
 
 

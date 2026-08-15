@@ -213,6 +213,13 @@ class Settings(BaseSettings):
     # notices, and the pool's own timeout cannot reclaim what was legitimately
     # checked out. Set to 0 to disable.
     db_statement_timeout_seconds: float = 30.0
+    # How long *opening* a connection may take, which neither of the two above
+    # covers — see `app.database._connect_timeout_arg` for why an unbounded
+    # connect is a health-check outage rather than a slow request. Five seconds
+    # is many times a healthy connect on this box (same host, unix-fast) and
+    # well inside the 30s interval Caddy re-probes on. libpq's floor is 2; 0
+    # disables the bound and restores the multi-minute kernel default.
+    db_connect_timeout_seconds: float = 5.0
 
     # ---- Redis / Celery ----
     redis_url: str = "redis://localhost:6379/0"
@@ -620,6 +627,8 @@ class Settings(BaseSettings):
     @field_validator(
         # Zero disables the ceiling, which is PostgreSQL's own spelling for it.
         "db_statement_timeout_seconds",
+        # Zero is libpq's spelling for "no bound on connecting" too.
+        "db_connect_timeout_seconds",
         "publish_retry_defer_seconds",
         "publish_retry_max_defer_seconds",
     )
