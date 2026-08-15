@@ -1,12 +1,16 @@
 /**
- * React Router v7 behaviour, opted into on v6.
+ * React Router v7 behaviour, now the version actually installed.
  *
- * Router 6.30 prints a console warning per flag per router it mounts, which in
- * the test suite is two lines for every page test — several hundred lines of
- * stderr that a real warning would have had to compete with. Silencing them by
- * filtering console output would have kept the old behaviour and hidden the
- * notice; these flags take the new behaviour instead, which is the point of the
- * notice and what the v7 upgrade will do anyway.
+ * Originally these were v6 opt-ins: router 6.30 printed a console warning per
+ * flag per router it mounted, which in the test suite was two lines for every
+ * page test — several hundred lines of stderr that a real warning would have
+ * had to compete with. Taking the new behaviour was the point of the notice.
+ *
+ * The upgrade to v7 has since happened (for GHSA-wrjc-x8rr-h8h6 and
+ * GHSA-337j-9hxr-rhxg, which have no fix on the 6.x line), so both flags now
+ * describe the default and passing them changes nothing. They are kept because
+ * the object is also what pins app and tests to one router configuration, and
+ * because the descriptions below are the record of what that configuration is.
  *
  * - `v7_startTransition` wraps router state updates in `React.startTransition`,
  *   so a navigation that suspends keeps the current screen up instead of

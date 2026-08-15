@@ -20,7 +20,11 @@ bcrypt>=4.1
 # Rate limiting for /auth/* (login guessing, signup, reset-mail flooding).
 slowapi>=0.1.9
 # Credential encryption at rest (Fernet).
-cryptography>=42.0
+# Floor is 50.0 for PYSEC-2026-3552 (a decryption oracle in the PKCS7 helpers).
+# Herald only uses Fernet and never touches those, so the exposure was nil — but
+# the floor is what `pip install -r` on the box compares against, and at >=42.0
+# an already-installed 49.0.0 satisfied it and was never upgraded.
+cryptography>=50.0
 
 # ---- Queue ----
 celery[redis]>=5.4
