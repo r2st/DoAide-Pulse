@@ -45,6 +45,32 @@ chown -R herald:herald /opt/Herald
 
 sudo -u herald /opt/Herald/.venv/bin/pip install -q -r /opt/Herald/backend/requirements.txt
 
+# Unit files. rsync puts them under /opt/Herald/deploy/systemd, which is not
+# where systemd looks — until this ran, editing a unit and deploying changed
+# nothing, and the drift was invisible because `systemctl status` reports the
+# copy in /etc while the reviewed one sits in the repo. R71's uvicorn drain
+# window and R72's worker TimeoutStopSec were both committed, tested, deployed
+# and inert for exactly that reason.
+#
+# Copied rather than symlinked: a symlink into /opt would make an rsync mid-run
+# a live edit of an active unit. Ownership is set explicitly because the chown
+# above just made the source herald-owned, and a root-run unit file that a
+# service account can write is a privilege escalation.
+units_changed=0
+for source in /opt/Herald/deploy/systemd/*.service /opt/Herald/deploy/systemd/*.timer; do
+  installed=/etc/systemd/system/$(basename "$source")
+  if ! cmp -s "$source" "$installed"; then
+    install -m 0644 -o root -g root "$source" "$installed"
+    echo "installed $(basename "$source")"
+    units_changed=1
+  fi
+done
+# Only on a change: daemon-reload re-executes every generator on the box, and
+# this runs on every deploy. The restarts below pick up whatever it loaded.
+if [ "$units_changed" -eq 1 ]; then
+  systemctl daemon-reload
+fi
+
 systemctl stop herald-beat herald-worker || true
 cd /opt/Herald/backend
 sudo -u herald env $(grep -E '^DATABASE_URL=' /opt/Herald/.env | xargs) \
