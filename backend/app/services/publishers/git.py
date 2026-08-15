@@ -61,8 +61,34 @@ _API = "https://api.github.com"
 #: `owner/repo`, the only form the contents API takes.
 _REPO_RE = re.compile(r"^[\w.-]+/[\w.-]+$")
 
-#: Path components that would escape the repo or the checkout.
-_UNSAFE_PATH = re.compile(r"(^/)|(\.\.)|(^~)")
+#: Path shapes that would escape the repo, the checkout, or the URL.
+#:
+#: The first three are the filesystem ones — a leading ``/`` or ``~`` anchors
+#: somewhere other than the repo root, and ``..`` climbs out of it.
+#:
+#: The rest are there because this path is not only a path. It is interpolated
+#: straight into ``{_API}/repos/{repo}/contents/{path}``, and httpx leaves every
+#: one of these characters alone when it builds the URL — verified, not assumed:
+#:
+#: * ``?`` and ``#`` are not filename characters at that point, they are the
+#:   query and fragment delimiters. ``blog/{slug}.md?draft`` does not commit to
+#:   a file with a question mark in its name; it commits to ``blog/<slug>.md``
+#:   and hands GitHub a parameter. The file lands somewhere the user did not
+#:   ask for and nothing reports it, which is the same failure the ``..`` check
+#:   above exists to prevent, reached through the URL instead of the tree.
+#: * ``%`` starts a percent-escape that survives to GitHub intact, so ``%2e%2e``
+#:   is a ``..`` this regex would never see. Whether the far end decodes it
+#:   before resolving the path is GitHub's business and not something to bet a
+#:   write on.
+#: * ``\`` passes through unencoded too, and is a separator on the checkout
+#:   that every ``/``-shaped rule here is blind to.
+#: * Control characters, including the newline, have no business in a filename
+#:   and every business in a smuggled request line.
+#:
+#: Rejecting rather than escaping: a legitimate post path contains none of
+#: these, so the template that carries one is a mistake to report, not an input
+#: to sanitise into something the user did not write either.
+_UNSAFE_PATH = re.compile(r"(^/)|(\.\.)|(^~)|([?#%\\])|([\x00-\x1f\x7f])")
 
 #: The per-entry fields carried through a sitemap rewrite. ``loc`` is renamed to
 #: ``url`` on the way in because that is what ``seo.build_sitemap_xml`` reads.
@@ -244,9 +270,21 @@ class GitAdapter(Adapter):
         # Check first, normalise second. Trimming leading "./" from a path that
         # begins "../" would turn a traversal into a plausible-looking relative
         # path and commit it somewhere the user did not ask for.
+        #
+        # Checked *after* formatting, so a slug carrying one of these is caught
+        # as well as a template that does. Nothing should be able to produce one
+        # — ``app.models.project.slugify`` reduces a title to ``[a-z0-9-]`` —
+        # but the guard is one line either way and the slug is the half that
+        # arrives from a user rather than from a settings form.
         path = path.strip()
         if _UNSAFE_PATH.search(path):
-            raise CredentialError(f"'{template}' resolves outside the repository")
+            raise CredentialError(
+                f"'{template}' resolves to '{path}', which is not a path inside "
+                "the repository. Paths are relative to the repo root and cannot "
+                "contain '..', '?', '#', '%' or a backslash."
+            )
+        if path.endswith("/"):
+            raise CredentialError(f"'{template}' resolves to a directory, not a file")
         return path.removeprefix("./")
 
     def build_file(self, request: PublishRequest) -> str:
