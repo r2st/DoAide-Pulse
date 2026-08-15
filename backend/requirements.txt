@@ -15,6 +15,23 @@ pydantic>=2.7
 pydantic-settings>=2.3
 
 # ---- Auth ----
+# JWTs are PyJWT's, not python-jose's. Worth stating because `python-jose` was
+# the dependency here once, and removing a line from this file does not remove
+# the package from a virtualenv that already has it: `pip install -r` installs
+# and upgrades, it never uninstalls.
+#
+# So both python-jose and its `ecdsa` dependency outlived the requirement. As of
+# 2026-08-15 the production box still carries an orphaned `ecdsa` 0.19.2 —
+# nothing declares it, nothing imports it, and pip-audit reports it every run
+# for PYSEC-2026-1325 (a Minerva timing attack on P-256, no fix released).
+#
+# Nothing loads it, so it is dead weight rather than exposure, but it cannot be
+# cleared from here — only on the box, and only by hand:
+#
+#   sudo -u herald /opt/Herald/.venv/bin/pip uninstall -y ecdsa python-jose
+#
+# Until somebody runs that, an `ecdsa` line in a pip-audit report is this, and
+# not a dependency that came back.
 PyJWT>=2.8
 bcrypt>=4.1
 # Rate limiting for /auth/* (login guessing, signup, reset-mail flooding).
