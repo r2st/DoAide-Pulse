@@ -415,6 +415,22 @@ class Settings(BaseSettings):
     # occasionally answer Retry-After with something enormous, and a post that
     # silently disappears for a day looks like a bug rather than a queue.
     publish_rate_limit_max_defer_seconds: int = 3600
+    # Circuit breaker in front of the platforms — the layer above the two retry
+    # settings, and the only one that can see more than one publication at a
+    # time. After this many consecutive failures on one account's route to one
+    # platform, rows for that route are parked without being sent and without
+    # spending an attempt, so a platform having a twenty-minute outage costs the
+    # queue a wait rather than every row's retry budget. See
+    # app.services.publishers.breaker for why the key is per account.
+    publish_breaker_enabled: bool = True
+    publish_breaker_threshold: int = 4
+    publish_breaker_cooldown_seconds: int = 300
+    # A platform that answers 429 with a `Retry-After` gets that as its
+    # cool-down instead, capped here — the same reasoning as
+    # llm_breaker_max_cooldown_seconds, and the same ceiling as the row-level
+    # publish_rate_limit_max_defer_seconds above so the two layers cannot
+    # disagree about how long an hour is.
+    publish_breaker_max_cooldown_seconds: int = 3600
     # How long a row may sit in `publishing` before the sweep assumes the worker
     # that claimed it is gone and re-arms it. `publish_one` claims the row and
     # then commits, so a worker killed between the two (OOM, a deploy restart,
@@ -575,6 +591,7 @@ class Settings(BaseSettings):
         "preview_link_default_ttl_hours",
         "preview_link_max_ttl_hours",
         "preview_link_retention_days",
+        "publish_breaker_threshold",
         "publish_max_retries",
         "publish_stuck_after_seconds",
         "trigger_daily_content_limit",
@@ -638,6 +655,11 @@ class Settings(BaseSettings):
         "db_max_overflow",
         "publish_request_retries",
         "publish_rate_limit_max_defer_seconds",
+        # Zero is a real setting for both: a cool-down of zero means the breaker
+        # counts failures and never actually skips, which is the honest way to
+        # watch it before turning it on.
+        "publish_breaker_cooldown_seconds",
+        "publish_breaker_max_cooldown_seconds",
         "schedule_past_grace_seconds",
     )
     @classmethod

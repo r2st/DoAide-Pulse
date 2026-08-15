@@ -109,6 +109,11 @@ class HealthDetailOut(HealthOut):
     workers: DependencyOut = DependencyOut(status="unknown", required=False)
     llm_providers: list[str] = []
     llm_breakers_open: dict = {}
+    #: The publishing breakers, keyed ``platform:user_id``. Beside the LLM ones
+    #: because they answer the same question from the other end: "why has
+    #: nothing published?" has two shapes, and "the route to Dev.to for this
+    #: account is being skipped for another four minutes" is one of them.
+    publish_breakers_open: dict = {}
     github_configured: bool = False
     credential_encryption: bool = False
     implemented_platforms: list[str] = []

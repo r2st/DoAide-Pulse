@@ -18,6 +18,7 @@ from app.schemas.errors import AUTHENTICATED, errors
 from app.schemas.settings import DependencyOut, HealthDetailOut, HealthOut
 from app.services import llm_router, publishers
 from app.services.crypto import encryption_enabled
+from app.services.publishers import breaker as publishers_breaker
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,7 @@ def health_detail(
         workers=workers_out,
         llm_providers=llm_router.configured_providers(),
         llm_breakers_open=llm_router.breaker.snapshot(),
+        publish_breakers_open=publishers_breaker.snapshot(),
         github_configured=bool(settings.github_token),
         credential_encryption=encryption_enabled(),
         implemented_platforms=[p.value for p in publishers.implemented_platforms()],

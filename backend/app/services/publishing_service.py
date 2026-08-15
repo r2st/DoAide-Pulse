@@ -37,7 +37,7 @@ from app.models.webhook import WebhookEvent
 from app.services import publishers, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
 from app.services.errors import clip_error, redact
-from app.services.publishers import formatting
+from app.services.publishers import breaker, formatting
 from app.services.publishers.base import (
     CredentialError,
     NotImplementedAdapter,
@@ -53,6 +53,20 @@ logger = logging.getLogger(__name__)
 
 class NotConnected(PublishError):
     """The user has no live credentials for that platform."""
+
+
+def not_connected_error(platform: Platform) -> str:
+    """What a row says when the account has no live connection for *platform*.
+
+    A function rather than an f-string at the raise site because two other
+    places have to recognise the sentence again later:
+    :func:`app.services.publish_recovery.recoverable` matches it to find the
+    rows that a *new* connection un-blocks, and the tests pin it. A message
+    only one caller knows the shape of is a message nothing can act on, and
+    this failure is the one whose cure happens somewhere else entirely — in
+    Settings, minutes or days after the row went terminal.
+    """
+    return f"No live {platform.value} connection — add one in Settings."
 
 
 def queue(
@@ -358,9 +372,7 @@ def _credentials_for(db: Session, user_id: int, platform: Platform) -> dict:
         )
     )
     if connection is None or connection.status != ConnectionStatus.CONNECTED:
-        raise NotConnected(
-            f"No live {platform.value} connection — add one in Settings."
-        )
+        raise NotConnected(not_connected_error(platform))
     try:
         return decrypt_credentials(connection.encrypted_credentials)
     except CredentialEncryptionError as exc:
@@ -593,6 +605,31 @@ def execute(db: Session, publication: Publication) -> Publication:
     user_id = content.project.user_id
     adapter = publishers.get_adapter(publication.platform)
 
+    # Third gate, and the only one about the *route* rather than about the piece
+    # or the account. A platform this account has just failed against four times
+    # running is one every other row in the queue is about to fail against too,
+    # and each of them would spend an attempt finding that out. Parking here
+    # costs the row a wait; not parking costs it a retry it will want later.
+    #
+    # Before the attempt counter, deliberately. The budget is for attempts that
+    # reached a platform — charging a row for a request that was never sent is
+    # how a piece arrives at terminal ``failed`` during an outage it never
+    # touched, which is the failure this whole layer exists to prevent.
+    #
+    # **Only a row that has not been tried yet.** A row already in the retry
+    # cycle is let through however shut the route looks, and that asymmetry is
+    # the whole design rather than an oversight. ``_fail`` and ``_defer``
+    # guarantee that a platform failing every attempt ends up terminal, in front
+    # of a human, after ``publish_max_retries`` — a guarantee a breaker that
+    # could hold any row indefinitely would quietly repeal, leaving a queue that
+    # waits forever on an outage nobody is told about. So the row that first met
+    # the outage stays the canary and keeps its own escalation, and the ones
+    # behind it are spared: one report per outage instead of thirty, which is
+    # both the cheaper answer and the more readable one.
+    if publication.attempts == 0 and breaker.is_open(publication.platform, user_id):
+        _defer_for_breaker(db, publication, user_id)
+        return publication
+
     publication.status = PublicationStatus.PUBLISHING
     publication.attempts += 1
     db.flush()
@@ -621,9 +658,18 @@ def execute(db: Session, publication: Publication) -> Publication:
     except (NotConnected, NotImplementedAdapter, UnsupportedOption) as exc:
         # None of these is transient: no amount of retrying connects an account,
         # finishes an adapter, or gives a platform a feature it does not have.
+        #
+        # And none of them is evidence about the route, so the breaker is not
+        # told. Each is a fact about *this request* that a perfectly healthy
+        # platform would state the same way every time, and a breaker that
+        # counted them would open on a platform with nothing wrong with it and
+        # then park the rows that would have gone out.
         _fail(db, publication, str(exc), terminal=True)
         return publication
     except CredentialError as exc:
+        # Not counted either, for the same reason: a rejected token is this
+        # connection's problem. The connection is marked invalid below, which is
+        # the thing that actually stops the other rows trying.
         _mark_connection_invalid(db, user_id, publication.platform, str(exc))
         _fail(db, publication, str(exc), terminal=True)
         return publication
@@ -631,9 +677,22 @@ def execute(db: Session, publication: Publication) -> Publication:
         # The platform said when to come back, and coming back sooner is how a
         # soft limit becomes a ban. Park the row until then rather than leaving
         # it `pending` for the next sweep, which is minutes away at most.
+        #
+        # The breaker is told, and told the window: a rate limit is charged
+        # against this account's key, so every other row queued for this
+        # platform on this account is about to be refused the same way. Parking
+        # them behind one refusal is the difference between a queue that waits
+        # out a limit and a queue that hardens it into a ban.
+        breaker.record_failure(
+            publication.platform, user_id, retry_after=exc.retry_after
+        )
         _defer(db, publication, exc)
         return publication
     except PublishError as exc:
+        # The one that is evidence about the route: "something went wrong while
+        # publishing, and it might not recur". One of these is a blip; four in a
+        # row is a platform.
+        breaker.record_failure(publication.platform, user_id)
         _fail(
             db,
             publication,
@@ -655,6 +714,9 @@ def execute(db: Session, publication: Publication) -> Publication:
         # A timeout says nothing about the post, only about how long the
         # platform took, so it goes on the same budget as any other retryable
         # failure rather than ending the row.
+        # Counted: a platform too slow to answer inside the worker's soft limit
+        # is a platform the next row will also be too slow for.
+        breaker.record_failure(publication.platform, user_id)
         _fail(
             db,
             publication,
@@ -666,6 +728,11 @@ def execute(db: Session, publication: Publication) -> Publication:
         logger.exception("unexpected error publishing %s", publication.id)
         _fail(db, publication, f"Unexpected error: {exc}", terminal=True)
         return publication
+
+    # The route works. Discard whatever run of failures preceded this rather
+    # than decrementing it: a half-remembered outage from an hour ago would
+    # otherwise trip the breaker early on the next unrelated blip.
+    breaker.record_success(publication.platform, user_id)
 
     publication.status = PublicationStatus.PUBLISHED
     publication.published_at = utcnow()
@@ -901,6 +968,47 @@ def _defer(db: Session, publication: Publication, exc: RateLimited) -> None:
         publication.platform.value,
         publication.attempts,
         wait,
+    )
+
+
+#: What a publication's ``error`` says while its route is being skipped. Not a
+#: failure message — nothing failed and nothing was sent — but the ``error``
+#: column is the one the publications list renders, and a row that has silently
+#: moved twenty minutes into the future with nothing beside it is the state an
+#: operator cannot tell from a bug.
+BREAKER_OPEN_ERROR = (
+    "Paused: recent publishes to this platform have been failing. "
+    "Waiting for it to recover before trying again."
+)
+
+
+def _defer_for_breaker(db: Session, publication: Publication, user_id: int) -> None:
+    """Park a publication for as long as its route stays shut. Commits.
+
+    Held for exactly the breaker's own remaining window rather than for a
+    backoff of this row's invention: the breaker has said when it will let the
+    route be tried again, and a row that comes back before then only re-parks
+    itself, one dispatch at a time, for the whole cooldown.
+
+    ``scheduled`` and no attempt spent — see the gate in :func:`execute`. A
+    floor of one sweep interval because a window that has almost elapsed would
+    otherwise put the row back in front of the very next sweep, which is the
+    busy-wait this is here to avoid.
+    """
+    wait = max(
+        breaker.seconds_remaining(publication.platform, user_id),
+        float(settings.publish_scan_interval_seconds),
+    )
+    publication.status = PublicationStatus.SCHEDULED
+    publication.scheduled_for = utcnow() + timedelta(seconds=wait)
+    publication.error = clip_error(BREAKER_OPEN_ERROR)
+    db.commit()
+    logger.info(
+        "publication %s to %s held %.0fs: the breaker for %s is open",
+        publication.id,
+        publication.platform.value,
+        wait,
+        breaker.key(publication.platform, user_id),
     )
 
 

@@ -100,6 +100,7 @@ from app.main import app  # noqa: E402
 from app.models.project import Project, Tone  # noqa: E402
 from app.models.user import User  # noqa: E402
 from app.security import hash_password  # noqa: E402
+from app.services.publishers import breaker as publishers_breaker  # noqa: E402
 
 # Wire the rebuilt limiter into the running app. ``create_app()`` already set
 # ``app.state.limiter``, but if the module was loaded before conftest's rebuild
@@ -129,6 +130,27 @@ def _fresh_rate_limits():
     ratelimit.reset()
     yield
     ratelimit.reset()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_publishing_breaker():
+    """Empty the publishing circuit breaker around each test.
+
+    Another module-level singleton with in-process state, and one that outlives
+    the database the rest of the suite rebuilds per test: it is keyed by
+    ``platform:user_id`` and the ``user`` fixture hands out id 1 every time, so
+    the failures a test deliberately provokes are still counted against the next
+    test's account. Four such tests in a row — and there are more than four —
+    and the fifth finds its route already shut, its publication parked instead
+    of attempted, and an assertion failing a long way from the cause.
+
+    Autouse and here rather than per-file, unlike ``llm_router.breaker``'s
+    resets: publishing is exercised from a dozen test modules that have no
+    reason to know a breaker exists.
+    """
+    publishers_breaker.reset()
+    yield
+    publishers_breaker.reset()
 
 
 @pytest.fixture
