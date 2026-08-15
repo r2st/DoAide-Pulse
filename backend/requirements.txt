@@ -35,3 +35,7 @@ httpx>=0.27
 markdown>=3.6
 # Strips HTML back to plain text for character-limited platforms.
 beautifulsoup4>=4.12
+# Sanitises rendered post HTML before it is published. Markdown passes raw HTML
+# straight through, so this is what stands between a <script> in a body and the
+# author's readers. See app.services.publishers.formatting.sanitize_html.
+nh3>=0.2.18

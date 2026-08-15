@@ -12,11 +12,87 @@ from __future__ import annotations
 import re
 
 import markdown as markdown_lib
+import nh3
 from bs4 import BeautifulSoup
 
 #: Extensions that cover what generated posts actually use: fenced code blocks
 #: with language hints, tables, and footnote-free smart handling of line breaks.
 _MD_EXTENSIONS = ["fenced_code", "tables", "sane_lists", "nl2br"]
+
+#: The tags a rendered Herald post is allowed to contain — the union of what
+#: ``_MD_EXTENSIONS`` can emit and what :func:`lead_image_html` prepends.
+#: Anything outside this list is dropped by :func:`sanitize_html`.
+_ALLOWED_TAGS = {
+    "p", "br", "hr",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "strong", "em", "b", "i", "u", "s", "del", "ins", "sup", "sub", "small",
+    "code", "pre", "kbd", "samp", "var",
+    "blockquote", "q", "cite",
+    "ul", "ol", "li", "dl", "dt", "dd",
+    "a", "img", "figure", "figcaption",
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
+    "span", "div",
+}  # fmt: skip
+
+#: Per-tag attribute allow-list. ``class`` is permitted on the code elements
+#: because ``fenced_code`` puts the language hint there (``class="language-py"``)
+#: and every platform's highlighter reads it; dropping it would silently turn
+#: every code block on a published post into unhighlighted grey.
+_ALLOWED_ATTRIBUTES = {
+    # No ``rel``: ``link_rel`` below manages it, and nh3 refuses to be given
+    # both.
+    "a": {"href", "title"},
+    "img": {"src", "alt", "title", "width", "height"},
+    "code": {"class"},
+    "pre": {"class"},
+    "span": {"class"},
+    "div": {"class"},
+    "th": {"align", "colspan", "rowspan", "scope"},
+    "td": {"align", "colspan", "rowspan"},
+    "col": {"align", "span"},
+    "ol": {"start"},
+}
+
+#: Schemes a link or image may point at. ``javascript:`` is the omission that
+#: matters; ``data:`` is left out too, since a data URL is how an image
+#: smuggles a script past a reviewer who only looked at the tag name.
+_ALLOWED_URL_SCHEMES = {"http", "https", "mailto"}
+
+
+def sanitize_html(html: str) -> str:
+    """Strip anything executable out of rendered post HTML.
+
+    Markdown is *not* a sanitiser and has never claimed to be: Python-Markdown
+    passes raw HTML in the source straight through to its output, by design.
+    That is fine when the author and the reader are the same person, and it is
+    not what happens here — a Herald post reaches its audience on the author's
+    Medium or WordPress blog, and the Markdown it was rendered from may have
+    been written by a model, assembled from an RSS trigger, or pasted in from
+    somewhere nobody vetted. Any of those paths can carry a ``<script>`` tag, an
+    ``onerror=`` handler or a ``javascript:`` href to every reader the author
+    has.
+
+    Both target platforms sanitise their own input, which is exactly the
+    argument for doing it here as well rather than instead: the one that stops
+    mattering is whichever one is silently relaxed first, and Herald finds out
+    about that from its readers.
+
+    An allow-list rather than a block-list, and ``nh3`` (Rust's ammonia) rather
+    than a hand-rolled pass over the soup, because the interesting failures in
+    this area are not the tags anyone thinks to ban — they are mutation-XSS,
+    where a parser's error recovery reassembles harmless-looking markup into a
+    tag that was never written.
+    """
+    return nh3.clean(
+        html,
+        tags=_ALLOWED_TAGS,
+        attributes=_ALLOWED_ATTRIBUTES,
+        url_schemes=_ALLOWED_URL_SCHEMES,
+        strip_comments=True,
+        # Outbound links on a published post point wherever the body said, so
+        # they get the usual treatment for links you do not control.
+        link_rel="noopener noreferrer",
+    )
 
 #: Twitter's limit. URLs are counted as 23 characters regardless of length
 #: (t.co wrapping), which is why the reserve below is a constant, not len(url).
@@ -41,8 +117,12 @@ BLUESKY_LIMIT = 300
 
 
 def to_html(body_markdown: str) -> str:
-    """Render Markdown to the HTML subset every blogging platform accepts."""
-    return markdown_lib.markdown(body_markdown, extensions=_MD_EXTENSIONS)
+    """Render Markdown to the HTML subset every blogging platform accepts.
+
+    Sanitised on the way out — see :func:`sanitize_html` for why the renderer's
+    raw-HTML passthrough is not something to hand to a publisher unfiltered.
+    """
+    return sanitize_html(markdown_lib.markdown(body_markdown, extensions=_MD_EXTENSIONS))
 
 
 def to_plain_text(body_markdown: str) -> str:
@@ -345,6 +425,7 @@ __all__ = [
     "hashtagify",
     "lead_image_html",
     "normalize_tags",
+    "sanitize_html",
     "to_html",
     "to_plain_text",
     "truncate_for_linkedin",
