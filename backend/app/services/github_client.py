@@ -14,6 +14,8 @@ Two things this module deliberately does *not* do:
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -462,6 +464,49 @@ def fetch_latest_release(full_name: str) -> Release | None:
     return _release_from_payload(payload[0])
 
 
+#: How much of a README is read. Generous — the fact-check vocabulary wants the
+#: feature list, which is usually well past the badges — and bounded, because
+#: this is somebody else's file and a monorepo README runs to tens of thousands
+#: of words that all end up in a set.
+README_MAX_CHARS = 200_000
+
+
+def fetch_readme(full_name: str) -> str:
+    """The repo's README as text, or ``""`` if it has none.
+
+    The one thing Herald can read that says what a project actually *does* in
+    the project's own words, which is why
+    :mod:`app.services.factcheck` grounds product claims against it.
+
+    Returns ``""`` rather than raising for the two ways this legitimately comes
+    back empty — a repo with no README (404), and a payload in an encoding
+    GitHub has not documented — because the caller is a *gate*, and a gate that
+    raises where it meant to abstain fails the piece instead of passing it. A
+    repo that cannot be read at all still raises :class:`GitHubError`, which is
+    what every caller of this module already catches.
+    """
+    path = f"/repos/{full_name}/readme"
+    try:
+        payload = _json(_get(path), path)
+    except GitHubNotFound:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+
+    content = _text(payload.get("content"))
+    if _text(payload.get("encoding")) != "base64":
+        # The API documents base64 and nothing else here, but it honours an
+        # Accept header that returns raw text, and a proxy in front of it may
+        # have done exactly that. Whatever came back as a string is closer to
+        # the README than an empty vocabulary is.
+        return content[:README_MAX_CHARS]
+    try:
+        raw = base64.b64decode(content)
+    except (binascii.Error, ValueError):
+        return ""
+    return raw.decode("utf-8", "replace")[:README_MAX_CHARS]
+
+
 def fetch_activity(
     full_name: str,
     *,
@@ -518,5 +563,6 @@ __all__ = [
     "fetch_activity",
     "fetch_commits",
     "fetch_latest_release",
+    "fetch_readme",
     "throttle_reason",
 ]

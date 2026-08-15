@@ -43,6 +43,8 @@ from app.models.webhook import WebhookEvent
 from app.services import (
     ai,
     content_generator,
+    factcheck,
+    github_client,
     link_check,
     publishers,
     publishing_service,
@@ -95,6 +97,10 @@ class RoutedContent:
     #: (:func:`app.services.ai.stray_script_runs`) followed by words carrying a
     #: letter that is not theirs (:func:`app.services.ai.stray_letter_splices`).
     garbled_runs: list[str] = field(default_factory=list)
+    #: Product and feature names the copy claims that nothing on file supports
+    #: — see :mod:`app.services.factcheck`. Holds a piece back the same way the
+    #: three above do.
+    unsupported_names: list[str] = field(default_factory=list)
     platforms: list[str] = field(default_factory=list)
     is_fallback: bool = False
 
@@ -117,9 +123,56 @@ class RoutedContent:
             body["seo_errors"] = self.seo_errors
         if self.garbled_runs:
             body["garbled_runs"] = self.garbled_runs
+        if self.unsupported_names:
+            body["unsupported_names"] = self.unsupported_names
         if self.platforms:
             body["platforms"] = self.platforms
         return body
+
+
+def _unsupported_claims(
+    project: Project,
+    text: str,
+    *,
+    activity: Any = None,
+    signal: TriggerSignal | None = None,
+) -> list[factcheck.Claim]:
+    """Product names in *text* that nothing Herald knows about *project* supports.
+
+    Two passes, and the second one is why this is a function rather than two
+    lines inline. The first grounds the copy against what is already in the
+    database — the brief, the keywords, the commits or feed entries that
+    prompted the piece — which costs nothing and settles the great majority of
+    pieces, because the great majority of pieces name nothing surprising.
+
+    Only a piece that *fails* that pass is worth a network call, and then the
+    README is the right thing to fetch: it is the project describing itself, in
+    its own vocabulary, including the feature names that live nowhere in
+    Herald's columns. A piece naming a real module that the brief never
+    mentioned is exactly the false positive this removes, and it is paid for
+    once, by the pieces that earned it.
+
+    Never raises. A GitHub outage, a rate limit, a repo the token cannot see —
+    all of them mean "no README to check against", which leaves the first pass's
+    answer standing. Failing a generation because a *validator's* optional input
+    was unavailable would be the gate doing more harm than the thing it guards.
+    """
+    known = factcheck.project_vocabulary(project, activity=activity, signal=signal)
+    claims = factcheck.unsupported_names(text, known)
+    if not claims or not settings.factcheck_readme_enabled:
+        return claims
+
+    full_name = project.repo_full_name
+    if not full_name:
+        return claims
+    try:
+        readme = github_client.fetch_readme(full_name)
+    except github_client.GitHubError as exc:
+        logger.info("no README to fact-check project %s against: %s", project.id, exc)
+        return claims
+    if not readme:
+        return claims
+    return factcheck.unsupported_names(text, known | factcheck.vocabulary(readme))
 
 
 def generate_and_route(
@@ -281,6 +334,27 @@ def generate_and_route(
             ", ".join(garbled),
         )
 
+    # A fourth gate, on the claims rather than the characters. The three above
+    # all read the piece as an artefact — is it structurally sound, is it
+    # complete, is it spelled in one script — and a model that invents a product
+    # satisfies every one of them. `## Integration with Wird` scored fine, had
+    # no dead links, and is ASCII from end to end.
+    #
+    # Banked on the row whether or not it holds the piece back, for the same
+    # reason as the gates above, and computed even when the gate is switched
+    # off: a name nothing supports is the single most useful thing a reviewer
+    # can be handed about an automated piece, and the switch is about whether
+    # Herald *acts* on it, not about whether the reviewer gets to see it.
+    unsupported = _unsupported_claims(project, checked, activity=activity, signal=signal)
+    if auto and unsupported and settings.factcheck_enabled:
+        auto = False
+        logger.info(
+            "held %r back from auto-publish: %d unsupported name(s): %s",
+            generated.title,
+            len(unsupported),
+            ", ".join(str(claim) for claim in unsupported),
+        )
+
     content = content_generator.content_from_generated(
         db,
         project_id=project.id,
@@ -294,6 +368,13 @@ def generate_and_route(
             "seo_score": score,
             "seo_errors": seo_errors,
             "garbled_runs": garbled,
+            # The name *and* the sentence it appears in. A reviewer judging
+            # "Wird" cannot do it from the word alone — the question is what the
+            # piece claims about it, and that is in the surrounding clause.
+            "unsupported_names": [
+                {"name": claim.name, "rule": claim.rule, "context": claim.context}
+                for claim in unsupported
+            ],
             # Alongside the gate results and for the same reason: a reviewer
             # looking at a piece that was meant to publish itself should be able
             # to see why it did not without reading the logs.
@@ -318,6 +399,7 @@ def generate_and_route(
                 "seo_score": score,
                 "seo_errors": seo_errors,
                 "dead_links": dead_links,
+                "unsupported_names": [claim.name for claim in unsupported],
                 "review_url": f"{settings.frontend_url.rstrip('/')}/content/{content.id}",
             },
         )
@@ -329,6 +411,7 @@ def generate_and_route(
             dead_links=dead_links,
             seo_errors=seo_errors,
             garbled_runs=garbled,
+            unsupported_names=[claim.name for claim in unsupported],
             is_fallback=generated.is_fallback,
         )
 

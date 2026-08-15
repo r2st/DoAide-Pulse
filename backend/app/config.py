@@ -430,6 +430,19 @@ class Settings(BaseSettings):
     # Latency guard on a single publish request, not a policy about post length.
     link_check_max_urls: int = 25
 
+    # ---- Claim validation ----
+    # Hold a piece back from auto-publish when it names a product or feature
+    # that nothing on file supports — see app.services.factcheck. Off means the
+    # gate is skipped; the names are still computed and banked on the content
+    # row so a reviewer can see them.
+    factcheck_enabled: bool = True
+    # Whether an unsupported name is worth one GitHub call to the project's
+    # README before it is reported. Only ever paid for a piece that already
+    # looks wrong, so the common case costs nothing — but it is still a call to
+    # somebody else's API from inside a generation, and a deployment with no
+    # GitHub token (or a repo the token cannot see) gets nothing for it.
+    factcheck_readme_enabled: bool = True
+
     # ---- Weekly digest ----
     # The window each digest reports on, and the comparison window is the one
     # immediately before it.
