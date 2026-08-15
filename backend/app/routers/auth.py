@@ -11,7 +11,6 @@ import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -31,7 +30,7 @@ from app.schemas.auth import (
 )
 from app.schemas.errors import AUTHENTICATED, errors
 from app.security import create_access_token, hash_password, verify_password
-from app.services import mailer, password_reset
+from app.services import accounts, mailer, password_reset
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -110,13 +109,15 @@ def register(
     """
     _assert_registration_allowed(payload.invite_token)
 
-    existing = db.scalar(select(User).where(User.email == payload.email))
-    if existing:
+    # Case-insensitively, and stored lowercased: an address differing from an
+    # existing one only in case is the same mailbox, so it is a duplicate here
+    # and must not become a second account. See :mod:`app.services.accounts`.
+    if accounts.email_taken(db, payload.email):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
         )
     user = User(
-        email=payload.email,
+        email=accounts.normalize_email(payload.email),
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
     )
@@ -166,8 +167,10 @@ def login(
     who has an account. A deactivated account is a 403: the credentials were
     right, and telling the owner so is not a disclosure.
     """
-    # OAuth2PasswordRequestForm uses ``username``; we treat it as the email.
-    user = db.scalar(select(User).where(User.email == form.username))
+    # OAuth2PasswordRequestForm uses ``username``; we treat it as the email, and
+    # match it the way a mailbox is addressed rather than as a case-sensitive
+    # string — see :mod:`app.services.accounts`.
+    user = accounts.find_by_email(db, form.username)
 
     # Always run bcrypt even when the user does not exist — otherwise the
     # response-time difference between "email not found" (instant) and "wrong
@@ -229,7 +232,11 @@ def request_password_reset(
     than one that takes a second. When SMTP is unconfigured the link goes to the
     log instead — see :mod:`app.services.mailer`.
     """
-    user = db.scalar(select(User).where(User.email == payload.email))
+    # Case-insensitive for the reason the reset exists: the person asking has
+    # already failed to sign in, and matching their address only in the case it
+    # happens to be stored in makes this endpoint a second dead end rather than
+    # the way out of the first.
+    user = accounts.find_by_email(db, payload.email)
     if user is not None and user.is_active:
         raw_token = password_reset.issue(db, user)
         subject, body = password_reset.build_email(raw_token)

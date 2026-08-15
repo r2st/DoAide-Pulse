@@ -32,6 +32,7 @@ from app.models.content import ContentIdea, ContentType
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.user import User
 from app.security import hash_password
+from app.services import accounts
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("seed")
@@ -332,7 +333,11 @@ def seed(email: str | None = None, password: str | None = None) -> None:
     ``SEED_PASSWORD``, which beat a generated password — which is the default
     precisely so a hardcoded one cannot reach production through this path.
     """
-    email = email or os.environ.get("SEED_EMAIL", DEFAULT_EMAIL)
+    # Normalized, and matched case-insensitively below: this function's whole
+    # contract is that running it twice tops the same account up rather than
+    # building a second one, and a ``SEED_EMAIL`` retyped in another case broke
+    # that silently — see :mod:`app.services.accounts`.
+    email = accounts.normalize_email(email or os.environ.get("SEED_EMAIL", DEFAULT_EMAIL))
     # A generated password beats a hardcoded one that ends up in a public repo
     # and then in production. It is printed once, here.
     generated = password is None and "SEED_PASSWORD" not in os.environ
@@ -340,7 +345,7 @@ def seed(email: str | None = None, password: str | None = None) -> None:
 
     db = SessionLocal()
     try:
-        user = db.scalar(select(User).where(User.email == email))
+        user = accounts.find_by_email(db, email)
         if user is None:
             user = User(
                 email=email,
