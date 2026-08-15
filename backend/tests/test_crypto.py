@@ -58,11 +58,18 @@ def test_refuses_plaintext_in_production(no_key, monkeypatch):
 
 
 def test_decrypt_with_wrong_key(fernet_key, monkeypatch):
+    """The old key *replaced* rather than appended — the recoverable mistake.
+
+    The message names the recovery (put the previous key back on the end of the
+    setting) because with a key list that is now a real option, where it used to
+    be "reconnect the platform" and nothing else. See
+    ``test_credential_key_rotation.py`` for the path where it is appended.
+    """
     stored = encrypt_credentials({"x": "y"})
     # Swap to a different key
     new_key = Fernet.generate_key().decode()
     monkeypatch.setattr("app.services.crypto.settings.token_encryption_key", new_key)
-    with pytest.raises(CredentialEncryptionError, match="changed"):
+    with pytest.raises(CredentialEncryptionError, match="no key in TOKEN_ENCRYPTION_KEY"):
         decrypt_credentials(stored)
 
 

@@ -125,8 +125,42 @@ with no restart needed.
 
 `/opt/Herald/.env`, mode 600, owned by `herald`; systemd reads it via
 `EnvironmentFile`. Generated at deploy time and **never** in git. `JWT_SECRET`
-and `TOKEN_ENCRYPTION_KEY` were generated on the box —
-rotating `TOKEN_ENCRYPTION_KEY` invalidates every stored platform credential.
+and `TOKEN_ENCRYPTION_KEY` were generated on the box.
+
+### Rotating `TOKEN_ENCRYPTION_KEY`
+
+`TOKEN_ENCRYPTION_KEY` holds a **comma-separated list, newest first**: the head
+key encrypts, every key in the list decrypts. Replacing the value outright is
+still an outage — it makes every stored platform credential, webhook signing
+secret and inbound trigger secret unreadable at once — so rotate in three steps
+instead, with nothing going down in between:
+
+1. **Prepend** the new key, keeping the old one behind it, and restart:
+
+   ```sh
+   NEW=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+   # TOKEN_ENCRYPTION_KEY=<new>,<old>
+   systemctl restart herald-api herald-worker herald-beat
+   ```
+
+   Everything still reads; new writes go under the new key.
+
+2. **Re-encrypt** what is already stored. The `rewrap-credentials` beat job does
+   this nightly, but after a rotation run it now:
+
+   ```sh
+   cd /opt/Herald/backend && .venv/bin/celery -A app.tasks.celery_app \
+       call app.tasks.maintenance_tasks.rewrap_credentials
+   ```
+
+   It logs how many rows moved, per table, and is safe to run repeatedly.
+
+3. **Drop the old key** — `TOKEN_ENCRYPTION_KEY=<new>` — and restart again.
+
+Do not do step 3 before step 2: the ciphertext is the only copy of those
+secrets. If it happens anyway, the fix is to put the old key back on the end of
+the list and run step 2 — the sweep counts rows it cannot read and leaves them
+untouched precisely so that recovery stays possible.
 
 LLM calls go to **OpenRouter free models** (`openai/gpt-oss-20b:free`,
 `openai/gpt-oss-120b:free`), using the same key Documedic uses. That key is on

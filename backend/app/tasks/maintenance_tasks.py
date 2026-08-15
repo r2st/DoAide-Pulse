@@ -15,7 +15,7 @@ from app.models.mixins import utcnow
 from app.models.preview_link import PreviewLink
 from app.models.trigger import TriggerEvent, TriggerEventStatus
 from app.models.webhook import DeliveryStatus, WebhookDelivery
-from app.services import password_reset
+from app.services import credential_rotation, password_reset
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,33 @@ def purge_expired_tokens() -> dict:
         if count:
             logger.info("purged %d expired password reset token(s)", count)
         return {"purged": count}
+    finally:
+        db.close()
+
+
+@task(
+    name="app.tasks.maintenance_tasks.rewrap_credentials",
+    soft_time_limit=120,
+    time_limit=180,
+)
+def rewrap_credentials() -> dict:
+    """Move stored secrets onto the current ``TOKEN_ENCRYPTION_KEY``.
+
+    A no-op on every install that has not rotated its key, which is the usual
+    state — the sweep asks one cheap question per stored row and writes nothing.
+    It earns its place on the schedule the day somebody does rotate: prepending
+    a new key keeps everything readable, and this is what makes the *old* key
+    removable afterwards, without which a rotation is only ever half done.
+
+    Unlike the purge tasks either side of it, this one is worth running by hand
+    straight after a rotation rather than waiting for the next daily tick:
+
+        celery -A app.tasks.celery_app call \\
+            app.tasks.maintenance_tasks.rewrap_credentials
+    """
+    db = SessionLocal()
+    try:
+        return credential_rotation.rewrap_all(db).as_dict()
     finally:
         db.close()
 

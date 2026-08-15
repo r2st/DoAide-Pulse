@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     # Blank means tokens are stored in the clear — fine for local dev, refused
     # in production (see app.services.crypto).
+    #
+    # Accepts a comma-separated *list*, newest first: the head encrypts, all of
+    # them decrypt. That is how the key is rotated with nothing going dark —
+    # prepend the new key, let the nightly rewrap sweep move the stored rows
+    # onto it, then drop the old one.
     token_encryption_key: str = ""
     # bcrypt's work factor: the cost of one hash is 2**rounds, so each step up
     # doubles it. 12 is the current sensible default for a password hash and is
@@ -712,16 +717,25 @@ class Settings(BaseSettings):
         Validated as a Fernet key, not merely as non-empty, for the same
         reason: a malformed one is indistinguishable from a good one until the
         moment it is used.
+
+        The value may hold **several** keys, comma- or whitespace-separated,
+        newest first — that is how a key is rotated without every stored
+        credential going unreadable at once (see ``app.services.crypto``). Every
+        one of them is validated, because a typo in the *old* key is the one
+        nobody would notice: it only matters while rows are still encrypted
+        under it, which is exactly the window where the sweep needs it to work.
         """
         env = (info.data.get("environment") or "development").lower()
         if env not in {"production", "prod"}:
             return v
-        key = v.strip()
+        import re
+
+        keys = [k for k in re.split(r"[,\s]+", v.strip()) if k]
         generate = (
             'generate one with: python -c "from cryptography.fernet import '
             'Fernet; print(Fernet.generate_key().decode())"'
         )
-        if not key:
+        if not keys:
             raise ValueError(
                 "TOKEN_ENCRYPTION_KEY must be set in production — without it "
                 "Herald cannot store a platform credential, and any credential "
@@ -729,12 +743,16 @@ class Settings(BaseSettings):
             )
         from cryptography.fernet import Fernet
 
-        try:
-            Fernet(key.encode("utf-8"))
-        except (ValueError, TypeError) as exc:
-            raise ValueError(
-                f"TOKEN_ENCRYPTION_KEY is not a valid Fernet key — {generate}"
-            ) from exc
+        for index, key in enumerate(keys):
+            try:
+                Fernet(key.encode("utf-8"))
+            except (ValueError, TypeError) as exc:
+                where = "TOKEN_ENCRYPTION_KEY" if index == 0 else (
+                    f"key {index + 1} of TOKEN_ENCRYPTION_KEY"
+                )
+                raise ValueError(
+                    f"{where} is not a valid Fernet key — {generate}"
+                ) from exc
         return v
 
     @field_validator("bcrypt_rounds")
