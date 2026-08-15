@@ -135,11 +135,23 @@ def test_a_repo_response_with_no_name_falls_back_to_what_was_configured():
 # --------------------------------------------------------------------------- #
 
 
+def _not_found() -> PublishError:
+    """What ``_request`` raises for a file that is not in the repo.
+
+    The status matters as much as the type: ``_existing_sha`` reads "no file
+    there" off a 404 specifically, because every *other* failure means it was
+    not able to look — see ``test_a_lookup_that_fails_is_not_a_new_post``.
+    """
+    error = PublishError("GitHub returned 404: Not Found")
+    error.status_code = 404
+    return error
+
+
 def test_a_missing_file_is_a_new_post_not_a_failure():
     adapter = GitAdapter()
 
     def not_found(*a, **k):
-        raise PublishError("404 Not Found")
+        raise _not_found()
 
     adapter._request = not_found
 
@@ -221,7 +233,7 @@ class _Repo:
         path = url.split("/contents/", 1)[1] if "/contents/" in url else None
         if method == "GET":
             if path not in self.files:
-                raise PublishError("404 Not Found")
+                raise _not_found()
             body = self.files[path].encode("utf-8")
             return _Response(
                 {"sha": f"blob-{path}", "content": base64.b64encode(body).decode("ascii")}

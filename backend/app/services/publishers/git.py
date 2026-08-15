@@ -366,8 +366,13 @@ class GitAdapter(Adapter):
 
     # -- the adapter -------------------------------------------------------- #
 
-    def _translate(self, resp: httpx.Response) -> PublishError | None:
+    def _classify(self, resp: httpx.Response) -> PublishError | None:
         """Tell GitHub throttling us apart from GitHub refusing us.
+
+        Overrides the classification half of ``_translate`` rather than
+        ``_translate`` itself, so whatever this returns still gets the status
+        stamped on it by the base class — see
+        :attr:`~app.services.publishers.base.PublishError.status_code`.
 
         The base class reads every 403 as a rejected credential, which is true
         of every other destination Herald publishes to and false of this one.
@@ -398,7 +403,7 @@ class GitAdapter(Adapter):
                     self._throttle_message(throttle),
                     retry_after=throttle.retry_after,
                 )
-        return super()._translate(resp)
+        return super()._classify(resp)
 
     @staticmethod
     def _throttle_message(throttle: github_client.Throttle) -> str:
@@ -455,6 +460,23 @@ class GitAdapter(Adapter):
 
         The contents API needs it to overwrite rather than reject, and a 404
         here is the ordinary "this is a new post" case, not a failure.
+
+        **A 404 and only a 404.** "I was not allowed to look" is not "there is
+        nothing there", and the difference decides whether the commit below
+        carries a ``sha``. Read as "new post", a failed lookup makes ``publish``
+        send a create over a live path, which the contents API refuses — so a
+        correction to a published piece fails as a 422 naming a file the user
+        can see perfectly well in their own repo, and the retry that would have
+        fixed it never happens because the lookup fails the same way each time.
+
+        That argument was first made for a throttle, which is a ``RateLimited``,
+        and it is not about throttling: a 500 from GitHub, a gateway timing out
+        mid-read and a connect error are all the same statement. Each one used
+        to take the swallow, because each one is a bare ``PublishError`` and the
+        carve-outs were written as a list of the two types that had been seen.
+        Asking the status instead makes the ordinary case the narrow one, which
+        is the way round it should have been: a new destination for this failure
+        does not need a new ``except``.
         """
         params = {"ref": branch} if branch else None
         try:
@@ -464,18 +486,12 @@ class GitAdapter(Adapter):
                 headers=self._headers(token),
                 params=params,
             )
-        except CredentialError:
-            raise  # 401/403 must surface, not be silenced as "file not found"
-        except RateLimited:
-            # "I was not allowed to look" is not "there is nothing there", and
-            # the difference decides whether the commit below carries a ``sha``.
-            # Swallowed, a throttled lookup makes ``publish`` treat an existing
-            # post as new: the contents API refuses a create over a live path,
-            # so a correction to a published piece would fail as a 422 naming a
-            # file the user can see perfectly well in their repo.
+        except PublishError as exc:
+            if exc.status_code == 404:
+                return None
+            # 401/403 (a rejected token), a throttle, a 5xx, a timeout, a
+            # connect error — none of them say the file is not there.
             raise
-        except PublishError:
-            return None
         data = self._json(resp)
         # A directory comes back as a list, which means the path is unusable —
         # a more useful answer than the generic shape error below, so it is

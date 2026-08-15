@@ -62,12 +62,25 @@ class _FakeResponse:
         return self._payload
 
 
+def _github_error(status: int, message: str) -> PublishError:
+    """A failure shaped the way :meth:`Adapter._translate` shapes one.
+
+    The status is not decoration. ``_existing_sha`` decides "this is a new post"
+    from a 404 and re-raises everything else, so a fake that raises a statusless
+    ``PublishError`` for a missing file is not modelling the seam it replaces.
+    """
+    error = PublishError(message)
+    error.status_code = status
+    return error
+
+
 class _FakeGitHub:
     """Just enough of the contents API to see what gets committed.
 
     ``files`` maps a repo path to its decoded text. A path that is absent 404s,
-    which for :meth:`Adapter._request` means a ``PublishError`` — the same
-    signal the real one raises and the adapter's "no sitemap yet" branch reads.
+    which for :meth:`Adapter._request` means a ``PublishError`` carrying that
+    status — the same signal the real one raises and the adapter's "no sitemap
+    yet" branch reads.
     """
 
     def __init__(self, files: dict[str, str] | None = None):
@@ -82,7 +95,7 @@ class _FakeGitHub:
 
         if method == "GET":
             if path not in self.files:
-                raise PublishError("404 Not Found")
+                raise _github_error(404, "GitHub returned 404: Not Found")
             body = self.files[path].encode("utf-8")
             return _FakeResponse(
                 {"sha": f"blob-{path}", "content": base64.b64encode(body).decode("ascii")}
@@ -397,7 +410,7 @@ def test_the_post_is_committed_and_the_sitemap_failure_cannot_block_it(request_)
     class _SitemapRefuses(_FakeGitHub):
         def __call__(self, method, url, **kwargs):
             if method == "PUT" and _SITEMAP_PATH in url:
-                raise PublishError("500 from GitHub")
+                raise _github_error(500, "GitHub returned 500: Server Error")
             return super().__call__(method, url, **kwargs)
 
     github = _SitemapRefuses()

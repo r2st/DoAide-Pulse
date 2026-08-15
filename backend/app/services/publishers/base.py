@@ -74,7 +74,26 @@ _MAX_REDIRECTS = 10
 
 
 class PublishError(RuntimeError):
-    """Publishing failed for a reason that might not recur."""
+    """Publishing failed for a reason that might not recur.
+
+    :attr:`status_code` carries the HTTP status the failure was translated from,
+    when there was a response at all — ``None`` for a connect error, a read
+    timeout, or an error an adapter raised on its own reading of a body.
+
+    It exists because "the platform said 404" and "the platform said nothing
+    useful" are the same type and must not always be the same decision. The
+    caller that needs the distinction is
+    :meth:`~app.services.publishers.git.GitAdapter._existing_sha`: a 404 there
+    is the ordinary "this is a new post" case, and every other failure is "I was
+    not allowed to look", which is not the same statement and must not be
+    answered by committing as though the file were new.
+    """
+
+    #: The HTTP status behind this failure, or ``None`` when there was no
+    #: response. Stamped by :meth:`Adapter._translate`; adapters that raise on
+    #: their own reading of a body leave it unset, which is correct — those
+    #: failures are not a status.
+    status_code: int | None = None
 
 
 class CredentialError(PublishError):
@@ -514,7 +533,19 @@ class Adapter(ABC):
             )
 
     def _translate(self, resp: httpx.Response) -> PublishError | None:
-        """The error a response deserves, or ``None`` when it is a success."""
+        """The error a response deserves, or ``None`` when it is a success.
+
+        Whatever comes back is stamped with the status it was translated from,
+        so a caller that needs to tell one 4xx from another does not have to
+        parse the message. See :attr:`PublishError.status_code`.
+        """
+        error = self._classify(resp)
+        if error is not None:
+            error.status_code = resp.status_code
+        return error
+
+    def _classify(self, resp: httpx.Response) -> PublishError | None:
+        """The error a response deserves, before the status is stamped on it."""
         if resp.status_code in (401, 403):
             return CredentialError(
                 f"{self.display_name} rejected the credentials "

@@ -132,6 +132,20 @@ def request_() -> PublishRequest:
     )
 
 
+def _not_found() -> PublishError:
+    """What ``_request`` raises for a path that is not in the repo.
+
+    The status is part of the signal, not decoration: ``_existing_sha`` reads
+    "there is no file here" off a 404 specifically and re-raises everything
+    else, because "I was not allowed to look" is not "there is nothing there".
+    A fake that raises a statusless ``PublishError`` for a missing file is not
+    modelling the seam it stands in for.
+    """
+    error = PublishError("GitHub returned 404: Not Found")
+    error.status_code = 404
+    return error
+
+
 class _Contents:
     """A contents API that can be told to answer oddly for the sitemap."""
 
@@ -144,10 +158,10 @@ class _Contents:
 
         if method == "GET" and path == _SITEMAP_PATH:
             if self.sitemap_payload is _MISSING:
-                raise PublishError("404 Not Found")
+                raise _not_found()
             return _Response(self.sitemap_payload)
         if method == "GET":
-            raise PublishError("404 Not Found")
+            raise _not_found()
         if method == "PUT":
             self.written[path] = base64.b64decode(json_body["content"]).decode("utf-8")
             return _Response(
