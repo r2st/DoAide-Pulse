@@ -29,10 +29,21 @@ claim carries the name of the one that fired so a reviewer knows what they are
 looking at:
 
 ``fused``
-    An internal capital after a lowercase letter — ``builtExamples``,
-    ``TalentPing``, ``PostgreSQL``. Almost nothing in English is spelled this
-    way, so the shape is either a real product name (which the vocabulary will
-    have) or two words welded together by a sampler that dropped the space.
+    An internal capital after a lowercase letter, in a token that itself
+    *starts* lowercase — ``builtExamples``, ``aboutSPECIFIC``, ``forEditor``.
+    Almost nothing in English is spelled this way, so the shape is two words
+    welded together by a sampler that dropped the space.
+
+    The lowercase head is what separates the splice from the shape's other
+    inhabitant, which is most of the technology industry's brand names:
+    ``SmartRecruiters``, ``ClearTax``, ``MagicBricks``, ``PreToolUse``. Those
+    are proper nouns, so they are capitalized, and a project is not expected to
+    have every third-party name it mentions in passing on file — an early
+    version reported six such mentions across the production corpus against
+    four real splices, all four of which began with an English word
+    mid-sentence and therefore lowercase. A capitalized invention is not lost
+    with them: ``framed`` reads it the moment the copy claims the product ships
+    it, which is the case worth holding a piece back for.
 
 ``framed``
     A capitalized word in a phrase that asserts it is *part of the product*:
@@ -292,6 +303,10 @@ _WELL_KNOWN = frozenset(
         "JavaScriptCore", "OpenSSL", "OpenSSH", "cURL", "jQuery", "DataFrame",
         "JupyterLab", "PyCharm", "IntelliJ", "VSCode", "Xcode", "Gradle",
         "Maven", "NuGet", "RubyGems", "Homebrew", "systemd", "launchd",
+        # The brands that genuinely start lowercase and take a capital second,
+        # which is the one shape `_is_splice` cannot tell from a dropped space.
+        "iPhone", "iPad", "iPadOS", "iCloud", "iMac", "iTunes", "watchOS",
+        "tvOS", "eBay", "eSIM", "eCommerce",
         # Platforms and companies developers name in passing
         "WhatsApp", "Telegram", "Signal", "iMessage", "WeChat", "TikTok",
         "Instagram", "Facebook", "Snapchat", "Pinterest", "Threads",
@@ -480,6 +495,9 @@ _TOKEN = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[-‐‑'’.][A-Za-z0-9]+)*")
 
 #: An internal capital following a lowercase letter, which is the ``fused``
 #: shape. ``PostgreSQL`` matches (``eS``); ``API`` and ``AI`` do not.
+#:
+#: Matching the shape is not sufficient on its own — see :func:`_is_splice`,
+#: which is what tells ``builtExamples`` from ``SmartRecruiters``.
 _FUSED = re.compile(r"[a-z][A-Z]")
 
 _HYPHEN_SPLIT = re.compile(r"[-‐‑]")
@@ -591,6 +609,27 @@ def _accounted_for(name: str, known: Collection[str]) -> bool:
     )
 
 
+def _is_splice(token: str, known: Collection[str]) -> bool:
+    """Whether *token* is two words welded together rather than a name.
+
+    Both are spelled the same way — a capital in the middle of a word — and the
+    head is what tells them apart. A brand is a proper noun and starts with a
+    capital (``SmartRecruiters``, ``ClearTax``, ``PreToolUse``); a splice starts
+    with whatever English word the sampler was mid-sentence in when it dropped
+    the space, which is lowercase (``builtExamples``, ``forEditor``).
+
+    That asymmetry is the whole discriminator, and it is worth stating why it is
+    allowed to be: the vocabulary cannot carry every third-party product a piece
+    mentions once in passing, so *unknown* and *capitalized* is the ordinary
+    condition of a brand name rather than evidence against it. The claim arms
+    are where a capitalized unknown gets read — this one only has to find the
+    tokens that are not words at all.
+    """
+    return bool(
+        token[:1].islower() and _FUSED.search(token) and not _is_known(token, known)
+    )
+
+
 def _hyphen_fragment(token: str, known: Collection[str]) -> bool:
     """Whether *token* is a capitalized word welded to a non-word fragment.
 
@@ -676,7 +715,7 @@ def unsupported_names(
         # judging the welded pair as one unknown token reported both.
         offset = match.start()
         for part in _split_parts(token):
-            if _FUSED.search(part.text) and not _is_known(part.text, known):
+            if _is_splice(part.text, known):
                 record(part.text, "fused", offset + part.start, offset + part.end)
                 break
         else:

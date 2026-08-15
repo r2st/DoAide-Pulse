@@ -119,6 +119,57 @@ def test_the_ones_nothing_had_noticed(sentence, name):
     assert [c.name for c in factcheck.unsupported_names(sentence, KNOWN)] == [name]
 
 
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        # Every one of these is the real clause out of the row it held back,
+        # before the `fused` arm was made to read the head of a token as well
+        # as its middle. Five of the six are a list of other people's products,
+        # which is the shape a project has least reason to have on file.
+        "Inbound inquiries from property portals (99acres, MagicBricks, "
+        "Housing.com) are automatically captured.",  # 4
+        "WhatsApp is essential in India/SE Asia/LatAm.",  # 7
+        "TalentPing reads employer ATS boards directly — **Greenhouse, Lever, "
+        "Ashby, Workable and SmartRecruiters** — because that is the freshest "
+        "source.",  # 23, 26
+        "Writes the hooks into settings.json — Stop, Notification, "
+        "SubagentStop and PreToolUse — and installs a launchd service.",  # 28
+        "**2. Compliance platforms (ClearTax, Taxilla, IRIS, Cygnet).** "
+        "Purpose-built for GST at volume.",  # 38, 45
+    ],
+)
+def test_a_third_party_brand_is_not_a_splice(sentence):
+    """A capitalized name Herald has not been told about is a brand, not a slip.
+
+    Six of the thirteen rows an unrestricted `fused` arm flagged across the
+    production corpus were this — a real product named once, in passing, that no
+    project has any reason to carry in its brief. Holding a piece back for one
+    is a review with nothing at the end of it, and six of them is how a reviewer
+    learns to wave the queue through.
+    """
+    assert factcheck.unsupported_names(sentence, KNOWN) == []
+
+
+def test_a_brand_is_still_read_when_the_copy_claims_it_ships():
+    """What the tightened arm gives up, and where it is caught instead.
+
+    `GoSumoX` is unknown and capitalized, so the shape arm now leaves it alone.
+    The frame does not: the sentence claims TalentPing integrates with it, and
+    that claim is the thing a reader would act on.
+    """
+    claims = factcheck.unsupported_names("Integration with GoSumoX is live.", KNOWN)
+
+    assert [claim.name for claim in claims] == ["GoSumoX"]
+    assert claims[0].rule == "framed"
+
+
+def test_a_lowercase_brand_that_takes_a_capital_is_left_alone():
+    """`iPhone` is the one real spelling shaped exactly like the corruption."""
+    text = "The iPhone build ships alongside the iPad and watchOS clients."
+
+    assert factcheck.unsupported_names(text, KNOWN) == []
+
+
 def test_one_bad_token_is_one_claim_not_two():
     """``NestJSManchester‑poweredubar`` matches a frame *and* the fused shape.
 
