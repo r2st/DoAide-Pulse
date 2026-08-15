@@ -370,6 +370,12 @@ def truncate_for_linkedin(text: str, *, url: str | None = None) -> str:
     No attempt is made to stay under the "…see more" fold — that is an
     editorial choice, and cutting a post to 1300 characters to avoid it loses
     more than the fold costs.
+
+    An empty *text* yields the bare link rather than a link with two blank lines
+    in front of it. The separator exists to hold the link away from the prose,
+    and with no prose there is nothing to hold it away from — the same call
+    :func:`truncate_with_link` already makes for the short platforms, made here
+    too so the two do not disagree about the same empty string.
     """
     reserve = len(url) + 2 if url else 0
     budget = LINKEDIN_HARD_LIMIT - reserve
@@ -380,7 +386,9 @@ def truncate_for_linkedin(text: str, *, url: str | None = None) -> str:
         cut = clipped.rfind(" ")
         body = (clipped[:cut] if cut > budget // 2 else clipped).rstrip() + "…"
 
-    return f"{body}\n\n{url}" if url else body
+    if not url:
+        return body
+    return f"{body}\n\n{url}" if body else url
 
 
 def normalize_tags(tags: list[str], *, limit: int, allow_spaces: bool = False) -> list[str]:

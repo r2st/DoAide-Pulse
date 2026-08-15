@@ -56,8 +56,25 @@ class LinkedInAdapter(Adapter):
         LinkedIn renders no markup at all, so the body is flattened to plain
         text. The excerpt leads because the first two lines are all that show
         above the "…see more" fold.
+
+        The title is the last fallback, and it is the one this was missing.
+        Mastodon and Bluesky both compose from ``excerpt or title``; here the
+        second term was the flattened body, which has a case the other two do
+        not — it can come back **empty**. A piece whose body is images and
+        nothing else (``![diagram](…)`` twice over, which is what a changelog
+        built from screenshots looks like) flattens to the empty string, because
+        an ``<img>`` has no text in it. With no excerpt either, the post that
+        went out was two blank lines and a bare link: no title, no words, and
+        nothing saying what it pointed at. A piece always has a title —
+        ``ContentCreate`` requires one and ``_assemble`` substitutes
+        ``"{project}: {label}"`` when the model does not supply it — so there is
+        always something better than nothing to lead with.
         """
-        lead = request.excerpt or formatting.to_plain_text(request.body_markdown)
+        lead = (
+            request.excerpt
+            or formatting.to_plain_text(request.body_markdown)
+            or request.title
+        )
         tags = formatting.hashtagify(request.tags, limit=3)
         if tags:
             lead = f"{lead}\n\n{tags}"
