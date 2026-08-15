@@ -90,8 +90,10 @@ class RoutedContent:
     #: ``error``-level SEO issues, which hold a piece back on their own however
     #: it scored — see :func:`app.services.seo.blocking_issues`.
     seo_errors: list[str] = field(default_factory=list)
-    #: Foreign-script runs the model spliced into the copy, which hold a piece
-    #: back the same way — see :func:`app.services.ai.stray_script_runs`.
+    #: What the model spliced into the copy, which holds a piece back the same
+    #: way: runs from a script Herald never writes in
+    #: (:func:`app.services.ai.stray_script_runs`) followed by words carrying a
+    #: letter that is not theirs (:func:`app.services.ai.stray_letter_splices`).
     garbled_runs: list[str] = field(default_factory=list)
     platforms: list[str] = field(default_factory=list)
     is_fallback: bool = False
@@ -253,18 +255,23 @@ def generate_and_route(
     # Banked on the row even when `auto` is already false, for the same reason
     # the SEO errors are: the reviewer should see every reason, and these runs
     # are the only one that tells them *where* to edit.
-    garbled = ai.stray_script_runs(
-        "\n".join(
-            part
-            for part in (
-                generated.title,
-                generated.body_markdown,
-                generated.excerpt,
-                generated.meta_description,
-            )
-            if part
+    #
+    # Both halves of it. `stray_script_runs` reads the scripts Herald never
+    # writes in; `stray_letter_splices` reads the ranges that gate exempts on
+    # purpose — Greek, and the Latin supplements that make `résumé` legal — where
+    # the same slip produces a word rather than a run. Two of the pieces that
+    # went out carried only the second kind.
+    checked = "\n".join(
+        part
+        for part in (
+            generated.title,
+            generated.body_markdown,
+            generated.excerpt,
+            generated.meta_description,
         )
+        if part
     )
+    garbled = ai.stray_script_runs(checked) + ai.stray_letter_splices(checked)
     if auto and garbled:
         auto = False
         logger.info(

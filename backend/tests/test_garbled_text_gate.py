@@ -299,3 +299,207 @@ def test_the_runs_are_banked_even_when_something_else_held_the_piece(
 
     assert routed.status == content_pipeline.QUEUED_FOR_REVIEW
     assert routed.garbled_runs == [CYRILLIC]
+
+
+# --------------------------------------------------------------------------- #
+# stray_letter_splices — the other half of the same slip                       #
+# --------------------------------------------------------------------------- #
+#
+# The script gate above exempts Greek and the Latin supplements on purpose, so
+# that "a lambda folded over sigma", "Bücher" and "résumé" survive. The sampler
+# slips inside those ranges too, and there the damage is a word rather than a
+# run: nothing about the codepoint in "démontrated" differs from the one in
+# "résumé". Two of these reached Dev.to and Bluesky and were *not* among the six
+# the script gate caught, because every character in them was allowed.
+#
+# The literals are the real words from the affected production rows.
+
+SPLICES = {
+    "latin-e-diaeresis": ("rënd", "the cost‑of‑capital methodology rënd the base case"),
+    "schwa": ("nətive", "invoices are uploaded via a nətive file picker"),
+    "latin-a-diaeresis": ("stärker", "an alert in the stärker dashboard, AI draft ready"),
+    "latin-e-acute": ("démontrated", "démontrated latency improvements translate directly"),
+    "latin-i-acute": ("vísit", "the system vísit checks if the cache is still fresh"),
+    "latin-o-diaeresis": ("tört", "a FastAPI endpoint creates a tört draft in the database"),
+    "welded-onto-english": ("Slowämp", "## The Problem: Slowämp Real estate agents"),
+    "vietnamese-a": ("hấp", "cross-references market data and flags any outasy hấp"),
+    "vietnamese-o": ("theồng", "a toggle lets users switch between theồng of the three"),
+    "greek-welded": ("α‑authentic", "ensuring only α‑authentic requests reach the database"),
+    "greek-run": ("φω", "FastAPI is used to expose φω webhooks and preview routes"),
+}
+
+
+@pytest.mark.parametrize(
+    ("word", "sentence"), list(SPLICES.values()), ids=list(SPLICES)
+)
+def test_every_splice_seen_in_production_is_caught(word, sentence):
+    """One regression per affected row, named for the letter that broke it."""
+    assert ai.stray_letter_splices(f"{_BODY} {sentence}.") == [word]
+
+
+def test_clean_english_has_no_splices():
+    assert ai.stray_letter_splices(_BODY) == []
+
+
+def test_empty_text_has_no_splices():
+    assert ai.stray_letter_splices("") == []
+
+
+def test_distinct_splices_are_all_reported():
+    text = f"{_BODY} a nətive picker, a tört draft, and the stärker dashboard."
+
+    assert ai.stray_letter_splices(text) == ["nətive", "tört", "stärker"]
+
+
+def test_a_repeated_splice_is_reported_once():
+    text = f"{_BODY} a tört draft and another tört draft."
+
+    assert ai.stray_letter_splices(text) == ["tört"]
+
+
+def test_the_limit_caps_the_splice_list():
+    text = _BODY + " ".join(f"wörd{chr(ord('a') + i)}" for i in range(20))
+
+    assert len(ai.stray_letter_splices(text, limit=4)) == 4
+
+
+def test_the_whole_word_is_returned_not_the_offending_letter():
+    """"rënd" tells a reviewer what it was meant to say; "ë" tells them nothing."""
+    runs = ai.stray_letter_splices(f"{_BODY} the methodology rënd the assumption.")
+
+    assert runs == ["rënd"]
+    assert "ë" not in runs
+
+
+# --------------------------------------------------------------------------- #
+# What must *not* fire                                                         #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "loanword",
+    ["résumé", "résumés", "café", "naïve", "cliché", "façade", "déjà", "über"],
+)
+def test_words_english_actually_borrows_are_not_splices(loanword):
+    """The production row that has these is a real post about job ads."""
+    assert ai.stray_letter_splices(f"{_BODY} collects {loanword} into a pipeline.") == []
+
+
+def test_a_lone_greek_letter_is_a_symbol_not_a_splice():
+    """Same prose the script gate protects: "a lambda folded over sigma"."""
+    assert ai.stray_letter_splices(f"{_BODY} The λ folds over σ with α and π.") == []
+
+
+def test_typography_is_not_a_splice():
+    text = f"{_BODY} Herald’s retries — which never double-post … are careful."
+
+    assert ai.stray_letter_splices(text) == []
+
+
+def test_currency_and_maths_signs_are_not_splices():
+    """From a live GSTBot row: "within a tolerance of ±₹5"."""
+    text = f"{_BODY} ensuring values match within a tolerance of ±₹5 per invoice."
+
+    assert ai.stray_letter_splices(text) == []
+
+
+def test_a_middle_dot_separating_links_is_not_a_splice():
+    """The footer every published N409 and Telechat post carries."""
+    text = f"{_BODY} [n409.aiknol.com](https://n409.aiknol.com) · [GitHub](https://x.com)"
+
+    assert ai.stray_letter_splices(text) == []
+
+
+def test_text_written_in_another_language_is_not_contaminated_by_one():
+    """Same escape hatch as the script gate: a translation is not a glitch."""
+    german = "Bücher über Bücher, für größere Läden. " * 20
+
+    assert ai.stray_letter_splices(german) == []
+
+
+def test_a_run_the_script_gate_already_names_is_not_reported_twice():
+    """One bad word should not read as two separate problems in the queue."""
+    text = f"{_BODY} selects a publish time {CYRILLIC}."
+
+    assert ai.stray_script_runs(text) == [CYRILLIC]
+    assert ai.stray_letter_splices(text) == []
+
+
+def test_an_unknown_accented_name_is_held_for_review():
+    """The documented cost of the trade, pinned so it is a decision not a bug.
+
+    "Zürich" is a real word and this holds it back. The gate cannot tell it from
+    "stärker", which is also a real German word and was a sampler slip in a live
+    GoSumo post — no property of the letters separates them. One glance at a
+    review queue is the price of not publishing the other one.
+    """
+    assert ai.stray_letter_splices(f"{_BODY} our Zürich office opened.") == ["Zürich"]
+
+
+# --------------------------------------------------------------------------- #
+# The splice gate, through the pipeline                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_spliced_body_goes_to_review_instead_of_publishing(db, auto_project, writes):
+    """The bug this half fixes: two of these published, and nothing looked."""
+    writes(_generated(body_markdown=f"{_BODY} a nətive file picker uploads it."))
+
+    routed = _route(db, auto_project)
+
+    assert routed.status == content_pipeline.QUEUED_FOR_REVIEW
+    assert routed.content.status == ContentStatus.REVIEW
+
+
+def test_a_spliced_title_goes_to_review(db, auto_project, writes):
+    writes(_generated(title="Retries in Herald, démontrated"))
+
+    assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
+
+
+def test_a_spliced_excerpt_goes_to_review(db, auto_project, writes):
+    writes(_generated(excerpt="How the stärker dashboard shows retries."))
+
+    assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
+
+
+def test_a_spliced_meta_description_goes_to_review(db, auto_project, writes):
+    writes(
+        _generated(
+            meta_description=(
+                "How retries work in Herald, why a retry never double-posts, and "
+                "what the tört backoff does when a platform is down."
+            )
+        )
+    )
+
+    assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
+
+
+def test_the_splices_reach_the_reviewer(db, auto_project, writes):
+    writes(_generated(body_markdown=f"{_BODY} a nətive file picker uploads it."))
+
+    routed = _route(db, auto_project)
+
+    assert routed.garbled_runs == ["nətive"]
+    assert routed.content.source["garbled_runs"] == ["nətive"]
+
+
+def test_both_gates_report_into_the_same_list(db, auto_project, writes):
+    """A piece carrying one of each names both, so the reviewer edits once."""
+    writes(
+        _generated(
+            body_markdown=f"{_BODY} a publish time {CYRILLIC} and a nətive picker."
+        )
+    )
+
+    routed = _route(db, auto_project)
+
+    assert routed.garbled_runs == [CYRILLIC, "nətive"]
+
+
+def test_a_clean_piece_with_a_loanword_still_auto_publishes(db, auto_project, writes):
+    """The false positive that would matter most: it would hold back real posts."""
+    writes(_generated(body_markdown=f"{_BODY} It collects résumés into a pipeline."))
+
+    assert _route(db, auto_project).status == content_pipeline.AUTO_PUBLISHED

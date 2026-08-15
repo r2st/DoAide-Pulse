@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Iterator
 from typing import Any
 
@@ -222,6 +223,106 @@ def stray_script_runs(text: str, *, limit: int = 10) -> list[str]:
     for run in runs:
         if run not in seen:
             seen.append(run)
+        if len(seen) >= limit:
+            break
+    return seen
+
+
+#: Accented words English actually borrows. Everything else carrying a letter
+#: from outside Basic Latin is treated as a splice.
+#:
+#: Short on purpose, and it does not need to be complete. A word missing from
+#: here costs one glance at a review queue; a word wrongly *added* to it is a
+#: hole in the gate for as long as it sits here.
+_LOANWORDS = frozenset(
+    {
+        "résumé", "résumés", "resumé", "café", "cafés", "naïve", "naïveté",
+        "cliché", "clichés", "façade", "façades", "fiancé", "fiancée",
+        "déjà", "piñata", "jalapeño", "señor", "über", "doppelgänger",
+        "crème", "brûlée", "entrée", "entrées", "soufflé", "purée", "sauté",
+        "sautéed", "protégé", "protégée", "exposé", "décor", "début", "débuts",
+        "éclair", "garçon", "voilà", "apéritif", "touché", "attaché",
+        "communiqué", "née", "blasé", "smörgåsbord", "à",
+    }
+)
+
+#: Greek, including the polytonic block. Split out from :data:`_FOREIGN_SCRIPTS`
+#: because a lone Greek letter is prose a developer writes on purpose.
+_GREEK = re.compile(r"[Ͱ-Ͽἀ-῿]")
+
+#: A word: letters, plus the hyphens and apostrophes that hold a compound
+#: together. Joining across the hyphen is what makes ``α-authentic`` one token
+#: rather than a lone Greek letter standing next to an English word.
+_WORD = re.compile(r"[^\W\d_]+(?:[-‐‑'’][^\W\d_]+)*")
+
+_NON_ASCII_LETTER = re.compile(r"[^\x00-\x7f]")
+
+
+def stray_letter_splices(text: str, *, limit: int = 10) -> list[str]:
+    """English words carrying a letter that does not belong to them.
+
+    The companion to :func:`stray_script_runs`, for the half of the same failure
+    that one cannot see. That gate looks for *scripts* Herald never writes in,
+    and it deliberately exempts Greek and the Latin supplements so that "a lambda
+    folded over sigma", "Bücher" and "résumé" survive. The sampler slips inside
+    those ranges too, and when it does the result reads as an ordinary word::
+
+        the cost‑of‑capital methodology rënd the base scenario
+        invoices are uploaded via a nətive file picker
+        an SMB owner receives an alert in GoSumo's stärker dashboard
+        démontrated latency improvements translate directly to …
+        ensuring only α‑authentic requests modify the database
+
+    Two of those published to Dev.to and Bluesky under the user's name and were
+    not among the six the script gate later caught, because every character in
+    them is one this module had good reason to allow.
+
+    The discriminator is the *word*, not the character. ``é`` is fine in
+    "résumé" and wrong in "démontrated", and no property of the codepoint
+    separates them — so a word carrying a letter from outside Basic Latin is a
+    splice unless it is one English genuinely borrows (:data:`_LOANWORDS`), or a
+    single Greek letter standing on its own as a symbol.
+
+    Returned whole rather than as the offending character, and returned rather
+    than repaired, for the same reason as :func:`stray_script_runs`: "rënd" tells
+    a reviewer where to look and what it was probably meant to say, where "ë"
+    tells them almost nothing.
+
+    Biased toward review, and the false positives are the honest cost: "Zürich"
+    and "λ-calculus" are both held for a human glance. That is one click, against
+    a corrupted post going out under the user's byline — which is what the
+    unbiased version of this did six times, then twice more.
+    """
+    if not text:
+        return []
+    if not _NON_ASCII_LETTER.search(text):
+        return []
+
+    # Same escape hatch as the script gate: text genuinely written in another
+    # language is not this gate's business either.
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return []
+    foreign = sum(1 for ch in letters if ord(ch) > 127)
+    if foreign >= len(letters) * _MULTILINGUAL_SHARE:
+        return []
+
+    seen: list[str] = []
+    for word in _WORD.findall(text):
+        odd = [ch for ch in word if ch.isalpha() and ord(ch) > 127]
+        if not odd:
+            continue
+        # Runs of a script the other gate already names; reporting them twice
+        # would make one bad word look like two problems.
+        if _FOREIGN_RUN.search(word):
+            continue
+        if unicodedata.normalize("NFC", word).casefold() in _LOANWORDS:
+            continue
+        # A symbol, not a word: "the λ folds over σ".
+        if len(odd) == 1 and len(word) == 1 and _GREEK.match(word):
+            continue
+        if word not in seen:
+            seen.append(word)
         if len(seen) >= limit:
             break
     return seen
