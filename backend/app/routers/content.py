@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Sequence
+from datetime import timedelta
 
 from fastapi import (
     APIRouter,
@@ -23,6 +24,7 @@ from app.config import settings
 from app.database import get_db, refresh_all
 from app.deps import ListOffset, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
+from app.models.mixins import utcnow
 from app.models.preview_link import PreviewLink
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
@@ -30,6 +32,8 @@ from app.models.user import User
 from app.ratelimit import account_key, limiter
 from app.routers._patch import reject_nulls
 from app.schemas.content import (
+    ArchiveOldIn,
+    ArchiveOldOut,
     BulkContentIn,
     BulkFailureOut,
     BulkPublishIn,
@@ -37,6 +41,7 @@ from app.schemas.content import (
     ContentCreate,
     ContentDetail,
     ContentOut,
+    ContentStatusIn,
     ContentUpdate,
     GenerateRequest,
     HeadlineApplyIn,
@@ -54,6 +59,7 @@ from app.schemas.content import (
     PublicPreviewOut,
     PublishRequestIn,
     RepurposeOut,
+    RetryResultOut,
     ScheduleContentIn,
     SeoIssueOut,
     SlotOut,
@@ -80,6 +86,24 @@ from app.services import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/content", tags=["content"])
+
+#: The publication states a retry means something for. ``published`` is refused
+#: rather than skipped — retrying it would post a second copy — and everything
+#: else here is a row that has stopped without having gone out. ``pending``,
+#: ``scheduled`` and ``publishing`` are left alone by the batch retries: the
+#: first two are already queued and the third is claimed by a worker that is
+#: about to succeed, and re-arming that one is how a post goes out twice.
+RETRYABLE = (
+    PublicationStatus.FAILED,
+    PublicationStatus.CANCELLED,
+)
+
+#: What an age-based sweep archives when the caller does not say. The two
+#: statuses that accumulate without anybody deciding anything: a draft nobody
+#: finished and a review-queue piece nobody judged. ``approved`` is left out on
+#: purpose — somebody said yes to it, and a piece waiting on a schedule is not
+#: abandoned — though a caller may name it explicitly.
+_ARCHIVE_SWEEP_DEFAULT_STATUSES = (ContentStatus.DRAFT, ContentStatus.REVIEW)
 
 
 def _owned_content(content_id: RowId, db: Session, user: User) -> Content:
@@ -579,6 +603,143 @@ def bulk_publish_content(
             continue
         succeeded.append(content_id)
     return BulkResultOut(succeeded=succeeded, failed=failed)
+
+
+@router.post(
+    "/bulk/retry",
+    response_model=BulkResultOut,
+    summary="Retry every stopped publication on many pieces",
+    responses=errors(*AUTHENTICATED),
+)
+def bulk_retry_content(
+    payload: BulkContentIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> BulkResultOut:
+    """Re-arm the failed publications on many pieces in one call.
+
+    The batch form of ``POST /content/{id}/retry``, and it re-arms through the
+    same :func:`_rearm`, so a syndicated copy is held behind its original here
+    exactly as it is there.
+
+    A piece with nothing retryable on it is a *failure* in the result rather
+    than a silent success. The distinction matters on the publications list,
+    where "Retry all" over a mixed selection is the button this serves: a
+    caller told 200-and-succeeded for a piece whose only publication is live
+    has been told its retry happened.
+    """
+    succeeded: list[int] = []
+    failed: list[BulkFailureOut] = []
+    to_dispatch: list[int] = []
+    owned = _owned_content_map(payload.content_ids, db, user)
+
+    for content_id in payload.content_ids:
+        content = owned.get(content_id)
+        if content is None:
+            failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
+            continue
+        # The same refusal the single-piece endpoint makes, for the same
+        # reason: arming an archived piece cannot publish it — `execute`
+        # cancels the row at the last gate — so it would answer success to a
+        # caller whose piece is not going anywhere.
+        if content.status == ContentStatus.ARCHIVED:
+            failed.append(
+                BulkFailureOut(
+                    content_id=content_id,
+                    reason="Archived — take it out of the archive first.",
+                )
+            )
+            continue
+        retryable = [p for p in content.publications if p.status in RETRYABLE]
+        if not retryable:
+            failed.append(
+                BulkFailureOut(content_id=content_id, reason="Nothing to retry")
+            )
+            continue
+        for publication in retryable:
+            if _rearm(content, publication):
+                to_dispatch.append(publication.id)
+        succeeded.append(content_id)
+
+    # One commit for the batch, then one dispatch. Committing per piece would
+    # leave a half-retried batch behind if a later row raised, and dispatching
+    # before the commit would hand a worker rows this request has not written.
+    db.commit()
+    _dispatch(to_dispatch)
+    return BulkResultOut(succeeded=succeeded, failed=failed)
+
+
+@router.post(
+    "/bulk/archive-old",
+    response_model=ArchiveOldOut,
+    summary="Archive pieces older than a given age",
+    responses=errors(*AUTHENTICATED),
+)
+def archive_old_content(
+    payload: ArchiveOldIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ArchiveOldOut:
+    """Archive this account's old drafts, for clearing out a review queue.
+
+    The only write in this router that acts on rows the caller has not named
+    one by one, which is what ``dry_run`` is for and why ``older_than_days``
+    has no default.
+
+    **Published pieces are never swept**, whatever ``statuses`` asks for. The
+    rest of the tree treats archiving a live post as a deliberate act with a
+    consequence — it cancels the armed rows and hides the piece from the lists
+    — and doing that to a month of live posts because somebody typed 30 is not
+    a bulk convenience, it is an outage in the analytics. The single-piece
+    PATCH remains the way to archive something that is live.
+
+    Measured on ``created_at`` rather than ``updated_at``: the question is "how
+    long has this been sitting here", and a draft nudged last week has still
+    been sitting here since it was written.
+    """
+    statuses = set(payload.statuses or _ARCHIVE_SWEEP_DEFAULT_STATUSES)
+    statuses -= {ContentStatus.PUBLISHED, ContentStatus.ARCHIVED}
+    if not statuses:
+        # Everything asked for was filtered out. An empty IN would match no
+        # rows and answer a cheerful zero, which reads as "nothing was old
+        # enough" rather than "nothing you asked for can be swept this way".
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nothing sweepable in that status list — published and "
+            "archived pieces are not swept by age.",
+        )
+
+    cutoff = utcnow() - timedelta(days=payload.older_than_days)
+    query = (
+        select(Content)
+        .join(Project, Project.id == Content.project_id)
+        .where(
+            Project.user_id == user.id,
+            Content.status.in_(statuses),
+            Content.created_at < cutoff,
+        )
+        .order_by(Content.id)
+    )
+    if payload.project_id is not None:
+        query = query.where(Content.project_id == payload.project_id)
+
+    candidates = list(db.scalars(query))
+    if payload.dry_run:
+        return ArchiveOldOut(
+            archived=[c.id for c in candidates], count=len(candidates), dry_run=True
+        )
+
+    for content in candidates:
+        content.status = ContentStatus.ARCHIVED
+        # Archiving has to take the piece off the queue as well as out of the
+        # list, or the beat sweep publishes what was just archived — the same
+        # pairing ``/bulk/reject`` and the PATCH both make. An old *approved*
+        # draft is exactly the case with something armed behind it.
+        publishing_service.cancel_armed(db, content)
+    db.commit()
+    return ArchiveOldOut(
+        archived=[c.id for c in candidates], count=len(candidates), dry_run=False
+    )
 
 
 @router.get(
@@ -1805,6 +1966,35 @@ def unschedule_content(
     return [PublicationOut.model_validate(p) for p in targets]
 
 
+def _rearm(content: Content, publication: Publication) -> bool:
+    """Put one stopped publication back in the queue. Returns "dispatch it now".
+
+    The three retry endpoints — one publication, one piece, a batch of pieces —
+    all re-arm through here, because the interesting part is not the status
+    assignment but the *hold*: a syndicated copy whose original has not
+    published yet must come back ``scheduled`` behind the original rather than
+    being dispatched, or it lands on a platform before there is a canonical URL
+    for it to point at. See :func:`app.services.publishing_service.retry_hold`.
+    Three copies of that rule is three chances for one of them to lose it.
+
+    Does not commit — the caller decides the transaction boundary, because the
+    batch endpoints re-arm many rows and a commit per row would leave a partly
+    retried batch behind if one of them raised.
+    """
+    hold = publishing_service.retry_hold(content, publication)
+    publication.status = (
+        PublicationStatus.SCHEDULED if hold else PublicationStatus.PENDING
+    )
+    publication.attempts = 0
+    publication.error = None
+    publication.scheduled_for = hold
+    # The piece is no longer out of platforms to try. Without this it went on
+    # reading ``failed`` while a worker was publishing it — see
+    # :func:`app.services.publishing_service.sync_content_status`.
+    publishing_service.sync_content_status(content)
+    return hold is None
+
+
 def _dispatch(publication_ids: list[int]) -> None:
     """Hand publications to a worker, or run them inline.
 
@@ -1903,26 +2093,143 @@ def retry_publication(
             "Take it out of the archive first.",
         )
 
-    hold = publishing_service.retry_hold(content, publication)
-    publication.status = (
-        PublicationStatus.SCHEDULED if hold else PublicationStatus.PENDING
-    )
-    publication.attempts = 0
-    publication.error = None
-    publication.scheduled_for = hold
-    # The piece is no longer out of platforms to try. Without this it went on
-    # reading ``failed`` while a worker was publishing it — see
-    # :func:`app.services.publishing_service.sync_content_status`.
-    publishing_service.sync_content_status(content)
+    dispatchable = _rearm(content, publication)
     db.commit()
 
     # A held row would be refused by ``publish_one``'s claim anyway; not
     # dispatching it saves a worker the round trip and keeps the parked row's
     # one route to a platform the beat sweep, which is where its time is checked.
-    if hold is None:
+    if dispatchable:
         _dispatch([publication.id])
     db.refresh(publication)
     return PublicationOut.model_validate(publication)
+
+
+@router.post(
+    "/{content_id}/retry",
+    response_model=RetryResultOut,
+    summary="Retry every stopped publication on a piece",
+    responses=errors(*OWNED, status.HTTP_409_CONFLICT),
+)
+def retry_content(
+    content_id: RowId,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> RetryResultOut:
+    """Re-arm all of this piece's failed publications at once.
+
+    The endpoint the publications list's "Retry" actually wants: a piece that
+    failed usually failed on more than one platform, and retrying it one row at
+    a time is the same call repeated with ids the caller had to read out of the
+    list first.
+
+    Re-arms through the same :func:`_rearm` as the per-publication endpoint,
+    which is what keeps a syndicated copy held behind its original rather than
+    dispatched ahead of it.
+
+    Answers 200 with an empty ``retried`` when nothing was retryable, rather
+    than 409. The per-publication endpoint 409s because the caller named one
+    row and that row cannot be retried, which is a contradiction worth
+    reporting; here the caller named a *piece*, and "none of its publications
+    needed retrying" is a true answer about it. ``skipped`` says which rows
+    were passed over and why.
+    """
+    content = _owned_content(content_id, db, user)
+    # Same refusal, same reason as the per-publication retry above: arming an
+    # archived piece cannot publish it, so it would answer success to a caller
+    # whose piece is not going anywhere.
+    if content.status == ContentStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is archived, which means it is not going out. "
+            "Take it out of the archive first.",
+        )
+
+    retried: list[int] = []
+    skipped: list[BulkFailureOut] = []
+    to_dispatch: list[int] = []
+    for publication in content.publications:
+        if publication.status in RETRYABLE:
+            if _rearm(content, publication):
+                to_dispatch.append(publication.id)
+            retried.append(publication.id)
+            continue
+        skipped.append(
+            BulkFailureOut(
+                content_id=publication.id,
+                reason=(
+                    "Already published"
+                    if publication.status == PublicationStatus.PUBLISHED
+                    else f"Still {publication.status.value}"
+                ),
+            )
+        )
+
+    db.commit()
+    _dispatch(to_dispatch)
+    return RetryResultOut(content_id=content.id, retried=retried, skipped=skipped)
+
+
+@router.post(
+    "/{content_id}/status",
+    response_model=ContentDetail,
+    summary="Move a piece to a named status",
+    responses=errors(
+        *OWNED, status.HTTP_409_CONFLICT, status.HTTP_422_UNPROCESSABLE_CONTENT
+    ),
+)
+def set_content_status(
+    content_id: RowId,
+    payload: ContentStatusIn,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ContentDetail:
+    """Promote or demote one piece, explicitly.
+
+    Everything this does, ``PATCH /content/{id}`` with a ``status`` also does.
+    It exists because that is not discoverable — a caller moving a piece
+    through the pipeline should not have to know that the way to do it is a
+    partial update of the whole entity — and because the transitions carry
+    consequences (approving *releases*, archiving *cancels the armed rows*)
+    that are worth naming in a summary rather than leaving in the PATCH's
+    docstring.
+
+    It is deliberately not a second rulebook. The settable set is
+    ``ContentUpdate``'s own validator, so ``published`` and ``failed`` are
+    refused here exactly as they are there; the freeze on a live piece is the
+    same check; and the release and the cancel are the same two calls. What is
+    missing on purpose is ``If-Match``: this endpoint writes one column that
+    the caller has stated in full, so there is no edit underneath it to lose —
+    unlike the PATCH, where a blind save lands on top of somebody's paragraph.
+    """
+    content = _owned_content(content_id, db, user)
+    new_status = payload.status
+
+    # The identical rule the PATCH applies, quoted rather than re-derived: the
+    # one status a published piece may take is archived. Moving it back to
+    # draft says it is not published while it is still live everywhere it went.
+    if (
+        content.status == ContentStatus.PUBLISHED
+        and new_status != ContentStatus.ARCHIVED
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is live on the platforms. Archive it to hide it "
+            "from Herald, or unpublish it there first.",
+        )
+
+    content.status = new_status
+    if new_status == ContentStatus.ARCHIVED:
+        publishing_service.cancel_armed(db, content)
+    db.commit()
+    # After the commit, as in the PATCH and the bulk approve: a release that
+    # dispatches a worker must not hand it a row this request has not written.
+    if new_status == ContentStatus.APPROVED:
+        content_pipeline.release_approved(db, content)
+    db.refresh(content)
+    response.headers["ETag"] = _etag(content)
+    return _to_detail(content)
 
 
 @router.post(

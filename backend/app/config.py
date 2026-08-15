@@ -321,6 +321,13 @@ class Settings(BaseSettings):
     # down": a provider asking for longer than this is treated as having spent
     # a daily quota rather than a per-minute one.
     llm_retry_max_backoff_seconds: float = 30.0
+    # How long the per-completion accounting rows are kept before the daily
+    # maintenance sweep prunes them. Bounded by age rather than by row count —
+    # see `app.models.llm_usage`: the window is what /api/v1/metrics reports
+    # relative to, and a cap of N rows would make that window depend on how
+    # busy the week was. Comfortably wider than the endpoint's own longest
+    # window so the numbers it quotes are never truncated by the purge.
+    llm_usage_retention_days: int = 30
 
     # ---- GitHub (project change monitoring) ----
     # A classic or fine-grained PAT with `repo` read. Optional: without it the
@@ -608,6 +615,10 @@ class Settings(BaseSettings):
         "feed_max_new_entries",
         "learned_cadence_min_bucket",
         "learned_cadence_min_samples",
+        # Zero would not mean "keep forever" — it is a cutoff of `utcnow()`,
+        # which deletes the rows the metrics endpoint is about the moment they
+        # are written.
+        "llm_usage_retention_days",
         "password_reset_token_ttl_minutes",
         "preview_link_default_ttl_hours",
         "preview_link_max_ttl_hours",

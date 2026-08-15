@@ -15,7 +15,7 @@ from app.models.mixins import utcnow
 from app.models.preview_link import PreviewLink
 from app.models.trigger import TriggerEvent, TriggerEventStatus
 from app.models.webhook import DeliveryStatus, WebhookDelivery
-from app.services import credential_rotation, password_reset
+from app.services import credential_rotation, llm_usage, password_reset
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -180,6 +180,37 @@ def purge_old_preview_links() -> dict:
         count = result.rowcount or 0
         if count:
             logger.info("purged %d dead preview link row(s)", count)
+        return {"purged": count}
+    finally:
+        db.close()
+
+
+@task(
+    name="app.tasks.maintenance_tasks.purge_old_llm_usage",
+    soft_time_limit=60,
+    time_limit=120,
+)
+def purge_old_llm_usage() -> dict:
+    """Drop LLM accounting rows past ``llm_usage_retention_days``.
+
+    The one table in Herald written on a path that nothing rate-limits: a row
+    per completion *attempt*, so a provider chain failing over three ways writes
+    three, and the autopilot sweep spends them on a schedule whether or not
+    anybody asked for a piece. Left alone it is the table that grows fastest and
+    is read least.
+
+    Unlike the sweeps above it there is no "settled" condition to check — every
+    row here is a finished fact about a call that has already returned, so age
+    is the only thing that decides. The deletion itself lives in
+    :func:`app.services.llm_usage.purge` beside the ``summary`` it bounds, so
+    the retention window and the window the metrics endpoint reports are stated
+    against the same table by the same module.
+    """
+    db = SessionLocal()
+    try:
+        count = llm_usage.purge(db, days=settings.llm_usage_retention_days)
+        if count:
+            logger.info("purged %d llm usage row(s)", count)
         return {"purged": count}
     finally:
         db.close()

@@ -19,8 +19,12 @@ from app.schemas.analytics import (
     DigestOut,
     DigestSendOut,
     EngagementTrendPointOut,
+    GenerationCostPointOut,
     OverviewOut,
+    PlatformStatsOut,
+    PublishedPointOut,
     ReadTimeOut,
+    TopContentOut,
     VelocityCurveDetailOut,
     VelocitySummaryOut,
 )
@@ -56,6 +60,107 @@ def engagement_trend(
 ) -> list[dict]:
     """Views and engagement recorded per day, for the dashboard trend chart."""
     return analytics_service.engagement_trend(db, user.id, days=days)
+
+
+@router.get(
+    "/published",
+    response_model=list[PublishedPointOut],
+    summary="Pieces published per day or per week",
+    responses=errors(*AUTHENTICATED),
+)
+def published_series(
+    days: int = Query(default=30, ge=1, le=365),
+    weekly: bool = Query(
+        default=False,
+        description=(
+            "Bucket by week instead of by day, labelled by the Monday each "
+            "week starts on. The first and last buckets are partial — the "
+            "window starts on whatever weekday it starts on."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """How many pieces went out per period.
+
+    Counts pieces, not publications — see ``/analytics/overview``'s
+    ``timeline`` for the other question, which counts each cross-post
+    separately.
+    """
+    return analytics_service.published_series(db, user.id, days=days, weekly=weekly)
+
+
+@router.get(
+    "/top-content",
+    response_model=list[TopContentOut],
+    summary="Best-performing pieces",
+    responses=errors(*AUTHENTICATED),
+)
+def top_content(
+    limit: int = Query(default=10, ge=1, le=50),
+    sort: str = Query(
+        default="views",
+        description=(
+            "What to rank by. `views` is the default because every platform "
+            "reports it; `engagement` is the better measure where it is "
+            "reported, which is not everywhere."
+        ),
+        pattern="^(views|engagement|clicks|reads)$",
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """The best-performing pieces, ranked by the counter you name.
+
+    Also in ``/analytics/overview``, fixed at ten by views. This one is for the
+    dashboard's own "top posts" panel, where the sort is a control.
+    """
+    return analytics_service.top_content(db, user.id, limit=limit, sort=sort)
+
+
+@router.get(
+    "/platforms",
+    response_model=list[PlatformStatsOut],
+    summary="Performance per platform",
+    responses=errors(*AUTHENTICATED),
+)
+def platform_breakdown(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+) -> list[dict]:
+    """How each platform is doing — reach, engagement, and what failed there.
+
+    The same breakdown ``/analytics/overview`` carries, on its own so a panel
+    that only needs this does not fetch the read-time bands and the full
+    engagement trend to get it.
+    """
+    return analytics_service.by_platform(db, user.id)
+
+
+@router.get(
+    "/generation-cost",
+    response_model=list[GenerationCostPointOut],
+    summary="Token spend per day",
+    responses=errors(*AUTHENTICATED),
+)
+def generation_cost(
+    days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict]:
+    """What generation has been costing, per day, in tokens.
+
+    **Install-wide, not scoped to the caller** — unlike every other endpoint in
+    this router. The usage table has no owner column, because the router that
+    writes it is a pure HTTP client that does not know whose request it is
+    serving; see :mod:`app.services.ops_metrics`. On the single-tenant
+    deployment Herald ships as the distinction is invisible, and on a
+    multi-account one every caller sees the same series.
+
+    Bounded by ``LLM_USAGE_RETENTION_DAYS`` — ask for a longer window and the
+    early buckets read zero because the rows were purged, not because nothing
+    was generated.
+    """
+    return analytics_service.generation_cost_trend(db, days=days)
 
 
 @router.get(

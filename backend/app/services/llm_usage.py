@@ -11,8 +11,16 @@ Herald, including the ones made from request handlers that already hold a
 different session.
 
 :func:`summary` is called once, from ``/api/v1/metrics``, with the caller's
-session. It aggregates in SQL rather than loading rows, because the window it
-covers is a day of them and the endpoint is unauthenticated.
+session. It aggregates in SQL rather than loading rows because the window it
+covers is a day of them — a day of completions is a lot of rows to load in
+order to add up five columns, and the endpoint is on a dashboard that polls.
+
+The endpoint is **authenticated** (bearer token, like every other read here).
+An earlier draft of this module planned it open and said so in two places; that
+would have published token spend and per-provider failure rates to anyone who
+asked, which is operational detail about the install rather than about any
+caller. What survives from that plan is the SQL aggregation, which is worth
+keeping on its own merits.
 
 **record never raises.** Not "should not" — the ``except Exception`` is
 unconditional and the reason is worth being explicit about, because a blanket
@@ -126,8 +134,7 @@ def summary(db: Session, *, hours: int = 24) -> dict[str, Any]:
     """Token spend and latency over the last *hours*, overall and per provider.
 
     One grouped query plus one total, rather than a query per provider: the
-    provider list is configuration and could grow, and the endpoint this feeds
-    is reachable without a token.
+    provider list is configuration and could grow.
 
     ``avg_duration_ms`` counts *every* attempt including failed ones, which is
     the number an operator wants — a provider timing out at ninety seconds is
@@ -184,6 +191,58 @@ def summary(db: Session, *, hours: int = 24) -> dict[str, Any]:
     }
 
 
+def by_purpose(db: Session, *, hours: int = 24) -> list[dict[str, Any]]:
+    """The same window as :func:`summary`, grouped by what the call was *for*.
+
+    Split out from ``summary`` rather than added to it because the two answer
+    different questions and only one of them is per-provider. ``summary`` says
+    which upstream the tokens went to — the quota question. This says which
+    feature spent them, which is the only place "average generation time" can
+    honestly come from: Herald stores no generation duration on ``Content``, so
+    the number is the mean wall-clock of the completions tagged
+    :data:`GENERATION_PURPOSE`, and tagging is done by the callers listed in
+    :mod:`app.models.llm_usage`'s note on the column.
+
+    Rows written before a caller started tagging carry ``""``. They are grouped
+    as-is rather than dropped or folded into another bucket: an untagged call
+    still spent the quota, and hiding it would make the purposes sum to less
+    than the total ``summary`` reports for the same window.
+    """
+    since = utcnow() - timedelta(hours=hours)
+    failed = func.sum(case((LLMUsage.ok.is_(False), 1), else_=0))
+
+    rows = db.execute(
+        select(
+            LLMUsage.purpose,
+            func.count(LLMUsage.id),
+            failed,
+            func.sum(LLMUsage.total_tokens),
+            func.avg(LLMUsage.duration_ms),
+        )
+        .where(LLMUsage.created_at >= since)
+        .group_by(LLMUsage.purpose)
+        .order_by(LLMUsage.purpose)
+    ).all()
+
+    return [
+        {
+            "purpose": purpose or "",
+            "calls": int(calls or 0),
+            "calls_failed": int(failures or 0),
+            "total_tokens": int(total or 0),
+            "avg_duration_ms": int(round(float(avg_ms or 0))),
+        }
+        for purpose, calls, failures, total, avg_ms in rows
+    ]
+
+
+#: The ``purpose`` tag :mod:`app.services.content_generator` writes when it
+#: generates a piece. Named here rather than spelled as a literal at the reader
+#: because the metrics endpoint reports its duration as "average generation
+#: time", and a typo would report a confident zero rather than an error.
+GENERATION_PURPOSE = "content"
+
+
 def _weighted_mean(providers: list[dict[str, Any]]) -> int:
     """The per-call mean duration across providers, weighted by call count."""
     calls = sum(p["calls"] for p in providers)
@@ -206,4 +265,4 @@ def purge(db: Session, *, days: int) -> int:
     return int(deleted or 0)
 
 
-__all__ = ["purge", "record", "summary", "tokens"]
+__all__ = ["GENERATION_PURPOSE", "by_purpose", "purge", "record", "summary", "tokens"]

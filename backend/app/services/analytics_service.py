@@ -31,6 +31,7 @@ from app.models.content import (
     ContentType,
     read_minutes_for,
 )
+from app.models.llm_usage import LLMUsage
 from app.models.metrics import ContentMetric
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
@@ -423,8 +424,29 @@ def by_project(db: Session, user_id: int) -> list[dict]:
     return sorted(out, key=lambda d: (d["views"], d["published"]), reverse=True)
 
 
-def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
-    """The best-performing individual pieces."""
+#: What "best-performing" may be measured by. ``views`` is the default because
+#: every platform reports it; ``engagement`` is the sum of the interaction
+#: counters and is the better measure where it is reported, which is not
+#: everywhere — see :meth:`app.models.metrics.ContentMetric.engagement`.
+TOP_CONTENT_SORTS = ("views", "engagement", "clicks", "reads")
+
+
+def top_content(
+    db: Session, user_id: int, *, limit: int = 10, sort: str = "views"
+) -> list[dict]:
+    """The best-performing individual pieces, by *sort*.
+
+    Sorting on a counter no platform in the account reports gives every piece
+    the same zero and returns them in an arbitrary order rather than an empty
+    list — the pieces are real and their views are real, it is the ranking that
+    is meaningless. The counts come back either way so a reader can see the
+    column is empty; ``_rates`` already distinguishes "nobody did it" from "no
+    platform reports it" for the derived rates beside them.
+    """
+    if sort not in TOP_CONTENT_SORTS:
+        raise ValueError(
+            f"cannot rank by {sort!r}; known: {', '.join(TOP_CONTENT_SORTS)}"
+        )
     scores: dict[int, dict] = defaultdict(_blank_metrics)
     for publication, metric in _latest_metrics(db, user_id):
         _accumulate(scores[publication.content_id], metric)
@@ -465,7 +487,7 @@ def top_content(db: Session, user_id: int, *, limit: int = 10) -> list[dict]:
         for cid, data in scores.items()
         if cid in content_rows
     ]
-    return sorted(out, key=lambda d: d["views"], reverse=True)[:limit]
+    return sorted(out, key=lambda d: d[sort] or 0, reverse=True)[:limit]
 
 
 def utc_day(value: datetime) -> str:
@@ -546,6 +568,136 @@ def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
         }
         for offset in range(days + 1)
     ]
+
+
+#: Where a week's bucket starts. ISO weeks begin on Monday, and the label a
+#: reader is shown is that Monday's date — so "week of the 3rd" means the seven
+#: days from the 3rd, not the seven ending there.
+_WEEK_START_WEEKDAY = 0
+
+
+def utc_week(value: datetime) -> str:
+    """Which UTC week a stored timestamp falls in, labelled by its Monday.
+
+    The weekly counterpart of :func:`utc_day`, and through the same
+    :func:`as_aware` conversion for the same reason: a reading shifted by a
+    stored offset does not move buckets, it matches none of them and leaves the
+    chart.
+    """
+    day = as_aware(value).astimezone(UTC).date()
+    return (day - timedelta(days=(day.weekday() - _WEEK_START_WEEKDAY) % 7)).isoformat()
+
+
+def published_series(
+    db: Session, user_id: int, *, days: int = 30, weekly: bool = False
+) -> list[dict]:
+    """Pieces published per day, or per week, over the last *days*.
+
+    Counts **content**, not publications — the difference is the whole reason
+    this sits beside :func:`timeline` rather than replacing it. A piece
+    cross-posted to five platforms is five rows in ``Publication`` and one
+    thing the author wrote; ``timeline`` answers "how much did Herald send"
+    (five) and this answers "how much did I publish" (one). Charting the first
+    as the second makes a quiet week with a wide cross-post look like a busy
+    one.
+
+    Every bucket in the window is present including the empty ones, for the
+    reason :func:`timeline` gives: a chart that omits its zero days compresses
+    a quiet fortnight into a flat line and makes it look like activity.
+
+    The weekly form's first and last buckets are partial — the window starts on
+    whatever weekday it starts on. That is left as it is rather than trimmed:
+    dropping them would silently change the range the caller asked for, and a
+    reader comparing the last bar against the one before it is looking at a
+    week in progress in either case.
+    """
+    since = window_start(days)
+    rows = db.execute(
+        select(Content.published_at)
+        .join(Project, Project.id == Content.project_id)
+        .where(
+            Project.user_id == user_id,
+            Content.status == ContentStatus.PUBLISHED,
+            Content.published_at.is_not(None),
+            Content.published_at >= since,
+        )
+    ).all()
+
+    key = utc_week if weekly else utc_day
+    counts: dict[str, int] = defaultdict(int)
+    for (published_at,) in rows:
+        counts[key(published_at)] += 1
+
+    start = since.date()
+    if weekly:
+        first = start - timedelta(days=(start.weekday() - _WEEK_START_WEEKDAY) % 7)
+        labels = []
+        cursor = first
+        last = utcnow().date()
+        while cursor <= last:
+            labels.append(cursor.isoformat())
+            cursor += timedelta(days=7)
+    else:
+        labels = [(start + timedelta(days=n)).isoformat() for n in range(days + 1)]
+
+    return [{"period": label, "published": counts.get(label, 0)} for label in labels]
+
+
+def generation_cost_trend(db: Session, *, days: int = 30) -> list[dict]:
+    """Token spend per day over the last *days*, with the calls behind it.
+
+    **Install-wide, not per-account.** :class:`~app.models.llm_usage.LLMUsage`
+    has no owner column — see :mod:`app.services.ops_metrics` for why — so this
+    is the deployment's spend, and on a multi-account install every caller sees
+    the same series. It lives here rather than on the metrics endpoint because
+    the question it answers ("is generation getting more expensive") is a
+    dashboard question, and the caveat travels with it into the schema.
+
+    "Cost" is tokens. Herald runs on free tiers where the scarce thing is
+    quota rather than money, and there is no price table to multiply by — a
+    currency figure here would be invented. ``calls`` sits beside the tokens
+    because the two move independently: a day whose token count doubled because
+    twice as much was written is a different fact from one that doubled because
+    each generation got longer, and ``tokens_per_call`` is what separates them.
+
+    Rows are counted in the day they were *written*, which for a completion is
+    when it finished. Every bucket in the window is present.
+    """
+    since = window_start(days)
+    rows = db.execute(
+        select(
+            LLMUsage.created_at,
+            LLMUsage.total_tokens,
+        ).where(LLMUsage.created_at >= since)
+    ).all()
+
+    tokens: dict[str, int] = defaultdict(int)
+    calls: dict[str, int] = defaultdict(int)
+    for created_at, total in rows:
+        bucket = utc_day(created_at)
+        calls[bucket] += 1
+        tokens[bucket] += int(total or 0)
+
+    start = since.date()
+    out = []
+    for offset in range(days + 1):
+        label = (start + timedelta(days=offset)).isoformat()
+        day_calls = calls.get(label, 0)
+        day_tokens = tokens.get(label, 0)
+        out.append(
+            {
+                "date": label,
+                "calls": day_calls,
+                "total_tokens": day_tokens,
+                # None, not zero, on a day nothing was generated: "each call
+                # averaged no tokens" is the one reading that is certainly
+                # wrong, and a chart would plot it as a collapse in cost.
+                "tokens_per_call": (
+                    round(day_tokens / day_calls, 1) if day_calls else None
+                ),
+            }
+        )
+    return out
 
 
 #: The fields a daily gain is computed for. ``engagement`` is derived rather
@@ -948,14 +1100,18 @@ def overview(db: Session, user_id: int) -> dict:
 
 
 __all__ = [
+    "TOP_CONTENT_SORTS",
     "Totals",
     "by_content_type",
     "by_platform",
     "by_project",
     "engagement_trend",
+    "generation_cost_trend",
     "overview",
+    "published_series",
     "read_time",
     "timeline",
     "top_content",
     "totals",
+    "utc_week",
 ]

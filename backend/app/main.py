@@ -24,6 +24,7 @@ from app.routers import (
     auth,
     calendar,
     content,
+    metrics,
     misc,
     projects,
     templates,
@@ -529,6 +530,7 @@ def create_app() -> FastAPI:
     app.include_router(content.router, prefix=prefix)
     app.include_router(calendar.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
+    app.include_router(metrics.router, prefix=prefix)
     app.include_router(settings_router.router, prefix=prefix)
     app.include_router(webhooks.router, prefix=prefix)
     app.include_router(triggers.router, prefix=prefix)

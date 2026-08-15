@@ -105,6 +105,23 @@ _SETTABLE_STATUSES = frozenset(
 )
 
 
+def _settable_status(value: ContentStatus | None) -> ContentStatus | None:
+    """Refuse a status that is derived rather than chosen.
+
+    Shared by ``ContentUpdate`` and ``ContentStatusIn`` — the PATCH and the
+    dedicated transition endpoint are two doors to the same column, and a
+    status settable through one but not the other is a way to write
+    ``published`` onto a piece with nothing behind it.
+    """
+    if value is not None and value not in _SETTABLE_STATUSES:
+        allowed = ", ".join(sorted(s.value for s in _SETTABLE_STATUSES))
+        raise ValueError(
+            f"'{value.value}' follows from this piece's publications and "
+            f"cannot be set directly. Settable statuses: {allowed}."
+        )
+    return value
+
+
 class GenerateRequest(BaseModel):
     """Ask the engine for a new draft."""
 
@@ -165,16 +182,7 @@ class ContentUpdate(BaseModel):
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
     _check_canonical = field_validator("canonical_url")(_absolute_canonical_url)
 
-    @field_validator("status")
-    @classmethod
-    def _settable(cls, value: ContentStatus | None) -> ContentStatus | None:
-        if value is not None and value not in _SETTABLE_STATUSES:
-            allowed = ", ".join(sorted(s.value for s in _SETTABLE_STATUSES))
-            raise ValueError(
-                f"'{value.value}' follows from this piece's publications and "
-                f"cannot be set directly. Settable statuses: {allowed}."
-            )
-        return value
+    _settable = field_validator("status")(_settable_status)
 
 
 class PublicationOut(BaseModel):
@@ -460,6 +468,90 @@ class BulkResultOut(BaseModel):
 
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
+
+
+class RetryResultOut(BaseModel):
+    """What a piece-level retry re-armed.
+
+    Separate from :class:`BulkResultOut` because the unit is different: that
+    one reports per *piece*, this one reports how many *publications* on a
+    single piece went back in the queue. A piece with three failed platforms
+    is one success there and three here.
+    """
+
+    content_id: int
+    retried: list[int] = Field(
+        default=[], description="Publication ids put back in the queue."
+    )
+    skipped: list[BulkFailureOut] = Field(
+        default=[],
+        description=(
+            "Publications left alone, with the reason — already published, or "
+            "still in flight. Reported rather than silently ignored so a "
+            "caller can tell 'nothing needed retrying' from 'nothing was "
+            "retryable'."
+        ),
+    )
+
+
+class ArchiveOldIn(BaseModel):
+    """Which old pieces to archive."""
+
+    older_than_days: int = Field(
+        ge=1,
+        le=3650,
+        description=(
+            "Archive pieces created at least this many days ago. No default — "
+            "an age-based bulk write should not have one, because the value "
+            "that gets typed by accident is the one that was already there."
+        ),
+    )
+    statuses: list[ContentStatus] | None = Field(
+        default=None,
+        description=(
+            "Which statuses to sweep. Defaults to draft and review — the two "
+            "that accumulate. Published is never swept whatever is asked for: "
+            "archiving a live post hides the record of something that is still "
+            "on the platforms."
+        ),
+    )
+    project_id: int | None = Field(
+        default=None, description="Limit the sweep to one project."
+    )
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "Report what would be archived and change nothing. Worth doing "
+            "first: this is the one endpoint here that writes to rows the "
+            "caller has not named individually."
+        ),
+    )
+
+
+class ArchiveOldOut(BaseModel):
+    """What an age-based archive swept, or would have."""
+
+    archived: list[int] = Field(
+        default=[], description="The pieces archived, or on a dry run, the candidates."
+    )
+    count: int
+    dry_run: bool
+
+
+class ContentStatusIn(BaseModel):
+    """Move one piece to a named status."""
+
+    status: ContentStatus = Field(
+        description=(
+            "The status to move the piece to. The same rules the editor's own "
+            "save applies: a published piece may only be archived, and moving "
+            "a piece to approved releases it exactly as the Approve button "
+            "does. `published` and `failed` are derived from the piece's "
+            "publications and cannot be set here."
+        )
+    )
+
+    _settable = field_validator("status")(_settable_status)
 
 
 class ScheduleContentIn(BaseModel):
