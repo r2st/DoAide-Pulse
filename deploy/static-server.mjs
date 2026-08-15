@@ -52,6 +52,54 @@ function cacheControl(pathname) {
     : "no-cache";
 }
 
+// The SPA is the document an XSS would actually execute in — the API only ever
+// returns JSON — so the Content-Security-Policy that matters is this one, and
+// until now nothing set it: Caddy's shared header block covers nosniff, frame
+// options and HSTS for the whole vhost, but no CSP, and this server sent only
+// the nosniff.
+//
+// The policy is derived from what the build actually loads (frontend/index.html
+// plus `npm run build` output), not from a template:
+//
+//   script-src 'self'   Vite emits one external module and no inline script, so
+//                       this needs no escape hatch. It is the directive doing
+//                       the real work — an injected <script> or a smuggled
+//                       onclick has nowhere to run.
+//   style-src           Google Fonts serves the stylesheet from googleapis.com.
+//                       'unsafe-inline' stays because a stylesheet cannot be
+//                       nonced from here and the injection it would permit is
+//                       cosmetic once script-src is closed.
+//   font-src            ...and the font files themselves from gstatic.com.
+//   img-src https:      Post previews, lead images and social cards point at
+//                       whatever host the author's image lives on.
+//   connect-src 'self'  The API is same-origin behind Caddy (see
+//                       Caddyfile.herald), so nothing else needs reaching.
+//
+// frame-ancestors repeats X-Frame-Options because the header is the legacy
+// spelling and the directive is the one modern browsers honour.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' data: https://fonts.gstatic.com",
+  "img-src 'self' data: https:",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "object-src 'none'",
+].join("; ");
+
+// Applied to every response this server makes, including the 404 and the SPA
+// fallback — a header that only covers the happy path is not a policy.
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  "Content-Security-Policy": CSP,
+};
+
 async function resolveFile(pathname) {
   // normalize() collapses `..` before the prefix check, so a crafted
   // /../../etc/passwd cannot escape ROOT.
@@ -85,7 +133,9 @@ const server = createServer(async (req, res) => {
     // otherwise a typo'd script src silently returns HTML and the console
     // fills with "Unexpected token '<'".
     if (extname(pathname)) {
-      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }).end("Not Found");
+      res
+        .writeHead(404, { "Content-Type": "text/plain; charset=utf-8", ...SECURITY_HEADERS })
+        .end("Not Found");
       return;
     }
     file = join(ROOT, "index.html");
@@ -95,7 +145,7 @@ const server = createServer(async (req, res) => {
   res.writeHead(status, {
     "Content-Type": TYPES[extname(file).toLowerCase()] ?? "application/octet-stream",
     "Cache-Control": cacheControl(pathname),
-    "X-Content-Type-Options": "nosniff",
+    ...SECURITY_HEADERS,
   });
   if (req.method === "HEAD") {
     res.end();
