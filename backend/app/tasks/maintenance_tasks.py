@@ -87,6 +87,13 @@ def purge_old_trigger_events() -> dict:
     Only settled ones. A ``received`` row is a firing whose outcome was never
     recorded — a worker died mid-generation — and that is exactly the row worth
     keeping until somebody has looked at it.
+
+    Which somebody now can: ``triggers.reclaim_stuck_events``, run at the head
+    of every trigger sweep, adopts the piece such a firing wrote or marks it
+    failed. So a row reaching this query in ``received`` is one abandoned inside
+    the last sweep interval and far too young for the cutoff, and the rows this
+    deletes are settled ones carrying a stated reason — which is the state a
+    firing should be in before it is thrown away.
     """
     cutoff = utcnow() - timedelta(days=settings.trigger_event_retention_days)
     db = SessionLocal()

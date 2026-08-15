@@ -338,6 +338,15 @@ class Settings(BaseSettings):
     # How long trigger event rows are kept before the maintenance sweep prunes
     # them. Long enough to answer "why didn't my trigger fire last week?".
     trigger_event_retention_days: int = 60
+    # How long a firing may sit at `received` before the sweep concludes that
+    # whatever was acting on it is gone. `triggers.record` commits the event
+    # before generation starts, so a worker killed in between (OOM, a deploy
+    # restart, the hard time limit) leaves a row nothing will ever settle — and
+    # the firing cannot come back, because its dedupe key is spent. Must
+    # comfortably exceed `check_trigger`'s hard time limit, and the inbound
+    # webhook request that fires one on the API thread; inside that window the
+    # generation is still running and the row is not stuck at all.
+    trigger_event_stuck_after_seconds: int = 900
     # Per-request budget for reading a user-supplied feed.
     feed_timeout_seconds: float = 15.0
     # New feed entries acted on in one poll. A backfill of forty entries is not
@@ -541,6 +550,7 @@ class Settings(BaseSettings):
         "publish_stuck_after_seconds",
         "trigger_daily_content_limit",
         "trigger_disable_after_failures",
+        "trigger_event_stuck_after_seconds",
         "trigger_scan_interval_seconds",
         "underperformance_max_age_hours",
         "velocity_benchmark_window_hours",

@@ -66,7 +66,14 @@ def check_trigger(trigger_id: int) -> dict:
 def check_due_triggers() -> dict:
     """Beat task: dispatch every polled trigger whose interval has elapsed."""
     db = SessionLocal()
+    reclaimed = 0
     try:
+        # Before the dispatch, the same way ``publish_tasks.publish_due`` puts
+        # ``reclaim_stuck`` before its own query. A firing whose worker died is
+        # not something this sweep will rediscover — its dedupe key stops the
+        # source from ever offering it again — so if this sweep does not settle
+        # it, nothing does. See ``triggers.reclaim_stuck_events``.
+        reclaimed = trigger_service.reclaim_stuck_events(db)
         ids = [t.id for t in trigger_service.due_triggers(db)]
     finally:
         db.close()
@@ -114,7 +121,7 @@ def check_due_triggers() -> dict:
             len(ids),
             inline,
         )
-    return {"due": len(ids), "dispatched": dispatched}
+    return {"due": len(ids), "dispatched": dispatched, "reclaimed": reclaimed}
 
 
 __all__ = ["check_due_triggers", "check_trigger"]

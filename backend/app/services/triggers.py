@@ -459,6 +459,16 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
             instructions=str(trigger.setting("instructions") or ""),
             source={
                 "kind": "trigger",
+                # The link back to the firing, and the only one that exists in
+                # that direction: ``TriggerEvent.content_id`` is written two
+                # statements below this call, in a *later* transaction, so a
+                # worker that dies in between leaves a committed piece with
+                # nothing pointing at it and a firing that never names it.
+                # Written here, inside the transaction that stores the piece,
+                # it cannot come apart — which is what lets
+                # :func:`reclaim_stuck_events` tell a firing that was
+                # interrupted after the work from one interrupted before it.
+                "event_id": event.id,
                 "trigger_id": trigger.id,
                 "trigger_kind": signal.kind.value,
                 "trigger_name": trigger.name,
@@ -497,6 +507,121 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
         routed.status,
     )
     return event
+
+
+# --------------------------------------------------------------------------- #
+# Firings nobody finished                                                      #
+# --------------------------------------------------------------------------- #
+
+
+#: What a reclaimed firing says about itself when the piece survived.
+ADOPTED_DETAIL = (
+    "Written, but Herald was interrupted before it recorded the outcome. "
+    "The piece below was matched back to this firing by a later sweep."
+)
+#: …and when it did not.
+ABANDONED_DETAIL = (
+    "Herald was interrupted while acting on this firing and nothing was "
+    "written. It will not be retried: the firing's dedupe key is already "
+    "spent, so re-sending the same event is ignored as a duplicate."
+)
+
+
+def reclaim_stuck_events(db: Session, *, now: Any = None) -> int:
+    """Settle firings abandoned mid-generation. Returns how many. Commits.
+
+    :func:`record` commits the event at ``received`` before a single word is
+    written, which is what makes the dedupe key a promise: the moment the row
+    exists, that feed entry, webhook delivery or commit range can never start a
+    second piece. :func:`fire` then moves the row to ``generated``, ``skipped``
+    or ``failed`` — and it is the *only* thing in Herald that ever moves it.
+
+    So a process that dies in between (OOM, a deploy restarting the worker,
+    ``check_trigger``'s hard time limit, an API worker recycled mid-request on
+    the inbound webhook path) leaves the row at ``received`` permanently. That
+    is worse than an unfinished job, because of what the dedupe key already
+    promised: nothing retries the firing, and nothing *can*, since the sender's
+    redelivery and the next feed poll both collide with the key and are recorded
+    as duplicates. The news is gone, and the only trace is a row that reads
+    "Fired." in the UI for as long as it is kept.
+
+    Two outcomes, and which one a firing gets is a question of fact rather than
+    of guesswork, because :func:`fire` stamps the event's id into the piece's
+    ``source`` inside the transaction that stores it:
+
+    * the piece exists — the crash landed between storing it and recording that
+      it had been stored. The firing is ``generated`` and points at it, which is
+      what it would have said had the worker lived. Getting this right matters
+      beyond tidiness: the piece may well have auto-published, and calling that
+      firing "failed" would be a plain untruth in the one place a user looks.
+    * nothing was written. The firing is ``failed``, and says so — a firing that
+      is visibly lost is worth much more than one that looks pending forever,
+      and being terminal it also becomes eligible for the retention sweep.
+
+    Deliberately not a retry. The publication sweep re-arms what it reclaims
+    because a publish has an attempt counter to spend; a firing has none, and
+    re-running a generation that has already killed one worker would cycle for
+    as long as the payload keeps doing it — with a model call each time. One
+    death is enough evidence to hand this to a human.
+
+    The cutoff is what keeps a *live* generation out of the query — see
+    ``settings.trigger_event_stuck_after_seconds``. ``created_at`` is the right
+    clock: a ``received`` row is never updated, so its age is the age of the
+    attempt.
+    """
+    from app.models.content import Content  # avoid a circular import
+
+    cutoff = (now or utcnow()) - timedelta(
+        seconds=settings.trigger_event_stuck_after_seconds
+    )
+    stuck = list(
+        db.scalars(
+            select(TriggerEvent)
+            .where(
+                TriggerEvent.status == TriggerEventStatus.RECEIVED,
+                TriggerEvent.created_at <= cutoff,
+            )
+            .order_by(TriggerEvent.id)
+        )
+    )
+    if not stuck:
+        return 0
+
+    # One statement for the whole batch rather than one per row: the moment
+    # this sweep has work to do is the moment something is already wrong, and a
+    # deploy that restarted the worker mid-sweep leaves a row per trigger.
+    written = dict(
+        db.execute(
+            select(Content.source["event_id"].as_integer(), Content.id).where(
+                Content.source["event_id"].as_integer().in_([e.id for e in stuck])
+            )
+        ).all()
+    )
+
+    adopted = 0
+    for event in stuck:
+        content_id = written.get(event.id)
+        if content_id is not None:
+            event.status = TriggerEventStatus.GENERATED
+            event.content_id = content_id
+            event.detail = ADOPTED_DETAIL
+            adopted += 1
+        else:
+            event.status = TriggerEventStatus.FAILED
+            event.detail = ABANDONED_DETAIL
+    db.commit()
+
+    # Counted above rather than read back off the rows: the commit expires every
+    # one of them, so asking a settled event what its status is costs a SELECT
+    # per row — paid at the moment something has already gone wrong, which is
+    # the worst moment to be paying it.
+    logger.warning(
+        "settled %d trigger firing(s) abandoned mid-generation "
+        "(%d had a piece to adopt)",
+        len(stuck),
+        adopted,
+    )
+    return len(stuck)
 
 
 # --------------------------------------------------------------------------- #
@@ -680,6 +805,8 @@ def _fired(event: TriggerEvent | None, *, extra: dict[str, Any] | None = None) -
 
 
 __all__ = [
+    "ABANDONED_DETAIL",
+    "ADOPTED_DETAIL",
     "TriggerError",
     "check",
     "content_type_for",
@@ -690,6 +817,7 @@ __all__ = [
     "interval_hours",
     "is_due",
     "read_secret",
+    "reclaim_stuck_events",
     "record",
     "signal_from_entries",
     "signal_from_schedule",
