@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.models.content import Content
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
+from app.models.user import User
 from app.services import publishers, publishing_service
 from app.tasks.celery_app import task
 
@@ -61,14 +62,34 @@ def collect_all_metrics() -> dict:
         # The publication itself is still re-read after each one — it is the row
         # being written about, and ``collect_metrics`` re-checks its status
         # before polling — but that is one narrow SELECT, not three wide ones.
+        #
+        # The owner's ``is_active`` is part of the WHERE for the same reason it
+        # is in every other sweep here (publishing, headlines, autopilot,
+        # triggers, the digest): deactivation is how an account is switched off,
+        # and this was the sweep that did not notice. What it polls with is the
+        # account's own stored platform credentials — ``collect_metrics`` takes
+        # *user_id* precisely to look them up — so a deactivated account went on
+        # making authenticated requests to Dev.to and Hashnode under its owner's
+        # tokens, every few hours, indefinitely. That is the shape
+        # :func:`app.services.preview_links.resolve` argues about: switching an
+        # account off has to close the doors it opened, and a scheduled job
+        # holding its credentials is one of them.
+        #
+        # The *project*'s flag is deliberately not here, though the sweeps that
+        # write do check it. Pausing a project says "write nothing new for
+        # this"; it does not say "stop counting what already went out", and the
+        # views still accruing on its posts are its owner's numbers to come back
+        # to.
         rows = db.execute(
             select(Publication, Project.user_id)
             .join(Content, Content.id == Publication.content_id)
             .join(Project, Project.id == Content.project_id)
+            .join(User, User.id == Project.user_id)
             .where(
                 Publication.status == PublicationStatus.PUBLISHED,
                 Publication.platform.in_(metric_platforms),
                 Publication.external_id.is_not(None),
+                User.is_active.is_(True),
             )
         ).all()
         recorded = 0

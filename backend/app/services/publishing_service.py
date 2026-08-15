@@ -253,6 +253,12 @@ def _syndication_schedule(
 #: What the row says once archiving takes it off the queue.
 ARCHIVED_ERROR = "This piece was archived before it went out."
 
+#: What the row says when the account that armed it has since been switched off.
+#: Distinct from :data:`ARCHIVED_ERROR` because it is a different fact about a
+#: different thing — the piece is fine, the account is not — and because it is
+#: what the owner reads if they are ever switched back on.
+DEACTIVATED_ERROR = "The account was deactivated before this went out."
+
 
 def cancel_armed(db: Session, content: Content) -> list[Publication]:
     """Take *content* off the queue: cancel what has not run, drop its date.
@@ -508,6 +514,37 @@ def execute(db: Session, publication: Publication) -> Publication:
             publication.id,
             publication.platform.value,
             content.id,
+        )
+        return publication
+
+    # The same gate, for the account rather than the piece — and it belongs here
+    # for the reason the comment above gives, because the window is the same one
+    # and wider. ``release_approved_content`` will not *arm* anything for a
+    # deactivated account, but a row armed while the account was live outlives
+    # the switch-off: ``due_publications`` selects on status and time alone, so
+    # a piece scheduled for next Tuesday went out on Tuesday, to a platform,
+    # under credentials belonging to an account Herald had been told to stop.
+    #
+    # Deactivation means the whole account everywhere else — tokens
+    # (:func:`app.deps.get_current_user`), preview links
+    # (:func:`app.services.preview_links.resolve`), inbound triggers
+    # (:func:`app.services.triggers.fire`), and the sweeps that scan, write,
+    # mail and poll. Publishing was the one path that could still act outward on
+    # a switched-off account's behalf, which made it the one that mattered most.
+    #
+    # Cancelled rather than failed, as above: nothing failed, and the row is not
+    # waiting for a retry that must never happen.
+    owner = content.project.user
+    if owner is None or not owner.is_active:
+        publication.status = PublicationStatus.CANCELLED
+        publication.scheduled_for = None
+        publication.error = DEACTIVATED_ERROR
+        db.commit()
+        logger.info(
+            "publication %s to %s dropped: account %s is deactivated",
+            publication.id,
+            publication.platform.value,
+            content.project.user_id,
         )
         return publication
 
