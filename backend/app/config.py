@@ -663,6 +663,54 @@ class Settings(BaseSettings):
             )
         return v
 
+    @field_validator("token_encryption_key")
+    @classmethod
+    def _token_encryption_key_present_and_valid_in_production(
+        cls, v: str, info: ValidationInfo
+    ) -> str:
+        """Refuse to start in production without a usable credential key.
+
+        ``app.services.crypto.encrypt_credentials`` already refuses to write a
+        platform credential in the clear when this is unset, so nothing leaks
+        either way. What it cannot do is tell anyone *early*: the refusal
+        arrives as a 500 the first time someone connects a platform, which may
+        be weeks after the deploy that dropped the key, and it arrives at the
+        user rather than at the operator who can fix it.
+
+        Worse, it is only the *write* side that fails closed. A box running
+        without the key still serves every stored connection, because a blob
+        with no ``fernet:v1:`` prefix is read as plaintext JSON — so a key lost
+        in a .env edit turns "credentials are encrypted at rest" into something
+        nobody finds out is false until they look.
+
+        Validated as a Fernet key, not merely as non-empty, for the same
+        reason: a malformed one is indistinguishable from a good one until the
+        moment it is used.
+        """
+        env = (info.data.get("environment") or "development").lower()
+        if env not in {"production", "prod"}:
+            return v
+        key = v.strip()
+        generate = (
+            'generate one with: python -c "from cryptography.fernet import '
+            'Fernet; print(Fernet.generate_key().decode())"'
+        )
+        if not key:
+            raise ValueError(
+                "TOKEN_ENCRYPTION_KEY must be set in production — without it "
+                "Herald cannot store a platform credential, and any credential "
+                f"already stored is read back in the clear; {generate}"
+            )
+        from cryptography.fernet import Fernet
+
+        try:
+            Fernet(key.encode("utf-8"))
+        except (ValueError, TypeError) as exc:
+            raise ValueError(
+                f"TOKEN_ENCRYPTION_KEY is not a valid Fernet key — {generate}"
+            ) from exc
+        return v
+
     @field_validator("bcrypt_rounds")
     @classmethod
     def _bcrypt_rounds_in_range_and_strong_in_production(cls, v: int, info: ValidationInfo) -> int:

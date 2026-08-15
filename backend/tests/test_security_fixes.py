@@ -294,12 +294,17 @@ def test_default_jwt_secret_rejected_in_production():
 
 def test_custom_jwt_secret_accepted_in_production():
     """A real secret should work fine in production."""
+    from cryptography.fernet import Fernet
+
     from app.config import Settings
 
     s = Settings(
         environment="production",
         jwt_secret="a-real-secret-that-is-not-the-default",
         database_url="sqlite://",
+        # Production refuses to start without one; this test is about the JWT
+        # secret, not about credential encryption.
+        token_encryption_key=Fernet.generate_key().decode(),
     )
     assert s.jwt_secret == "a-real-secret-that-is-not-the-default"
 

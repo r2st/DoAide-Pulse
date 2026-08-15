@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import bcrypt
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.config import (
@@ -28,7 +29,18 @@ from app.security import hash_password, verify_password
 
 
 def _settings(**kwargs):
-    return Settings(database_url="sqlite://", _env_file=None, **kwargs)
+    """A Settings built for the work-factor rules and nothing else.
+
+    ``token_encryption_key`` is supplied because production refuses to start
+    without one, and every production case below is about BCRYPT_ROUNDS. An
+    explicit value in *kwargs* still wins.
+    """
+    return Settings(
+        database_url="sqlite://",
+        token_encryption_key=Fernet.generate_key().decode(),
+        _env_file=None,
+        **kwargs,
+    )
 
 
 def _cost_of(hashed: str) -> int:

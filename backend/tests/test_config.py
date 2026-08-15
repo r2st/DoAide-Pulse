@@ -6,6 +6,7 @@ deploy that forgets to set an env var fails closed rather than open.
 from __future__ import annotations
 
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.config import Settings
@@ -59,7 +60,12 @@ def test_is_production_property():
         # Long enough to clear the production strength floor — this test is
         # about ``is_production``, not about the secret.
         s = Settings(
-            environment=env, jwt_secret="real-secret-here" * 3, _env_file=None
+            environment=env,
+            jwt_secret="real-secret-here" * 3,
+            # Production refuses to start without one; this test is about
+            # ``is_production``, not about credential encryption.
+            token_encryption_key=Fernet.generate_key().decode(),
+            _env_file=None,
         )
         assert s.is_production is True
     for env in ("development", "staging", "test"):

@@ -12,11 +12,14 @@ existed is still readable after one is added.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from cryptography.fernet import Fernet, InvalidToken
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 #: Marks a payload as Fernet ciphertext. Anything without it is plaintext JSON
 #: from a keyless development run.
@@ -66,6 +69,20 @@ def decrypt_credentials(stored: str) -> dict[str, Any]:
         return {}
     if not stored.startswith(_PREFIX):
         # Written before a key was configured.
+        if settings.is_production:
+            # Production refuses to *write* one of these, so a production box
+            # reading one means the row predates the key, arrived in a restored
+            # dump, or was written while ENVIRONMENT said something else. It is
+            # still usable and is deliberately still used — refusing here would
+            # break publishing for a credential that works, and the remedy is
+            # the same either way. But it is a live credential sitting in
+            # Postgres in the clear, and the one thing it must not do is stay
+            # quiet about it.
+            logger.warning(
+                "platform credentials read from an unencrypted row — re-save "
+                "the connection in Settings to store it under "
+                "TOKEN_ENCRYPTION_KEY"
+            )
         try:
             return json.loads(stored)
         except ValueError as exc:

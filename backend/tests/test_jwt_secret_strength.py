@@ -12,6 +12,7 @@ RFC 7518 §3.2 sets the floor at the hash output size: 256 bits, 32 bytes.
 from __future__ import annotations
 
 import pytest
+from cryptography.fernet import Fernet
 from pydantic import ValidationError
 
 from app.config import _MIN_JWT_SECRET_BYTES, Settings
@@ -21,7 +22,18 @@ _STRONG = "x" * _MIN_JWT_SECRET_BYTES
 
 
 def _settings(**kwargs):
-    return Settings(database_url="sqlite://", _env_file=None, **kwargs)
+    """A Settings built for the JWT rules and nothing else.
+
+    ``token_encryption_key`` is supplied because production refuses to start
+    without one, and every production case below is about the secret. An
+    explicit value in *kwargs* still wins.
+    """
+    return Settings(
+        database_url="sqlite://",
+        token_encryption_key=Fernet.generate_key().decode(),
+        _env_file=None,
+        **kwargs,
+    )
 
 
 @pytest.mark.parametrize(
