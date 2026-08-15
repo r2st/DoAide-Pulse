@@ -95,7 +95,7 @@ def test_a_retired_model_is_not_read_as_an_ordinary_failure(two_providers, monke
             return _FakeResponse({}, status_code=404, text=_GEMINI_404)
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
 
@@ -120,7 +120,7 @@ def test_a_retired_model_is_reported_at_error_naming_the_setting(
             return _FakeResponse({}, status_code=404, text=_GEMINI_404)
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     with caplog.at_level(logging.ERROR, logger="app.services.llm_router"):
         llm_router.complete([{"role": "user", "content": "hi"}])
@@ -141,7 +141,7 @@ def test_the_same_fault_is_caught_when_it_arrives_as_a_200(two_providers, monkey
             )
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
 
@@ -170,7 +170,7 @@ def test_a_rate_limit_is_still_a_rate_limit(two_providers, monkeypatch):
             )
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     llm_router.complete([{"role": "user", "content": "hi"}])
 
@@ -198,7 +198,7 @@ def test_a_server_error_mentioning_a_model_is_not_a_retired_model(
             )
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     llm_router.complete([{"role": "user", "content": "hi"}])
 
@@ -231,7 +231,7 @@ def test_a_working_fallback_model_still_serves_and_keeps_its_provider(
             return _FakeResponse({}, status_code=404, text=_GEMINI_404)
         return _FakeResponse(_completion("gemini's fallback wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
 
@@ -253,7 +253,7 @@ def test_the_provider_is_stood_down_only_when_every_model_is_gone(
             return _FakeResponse({}, status_code=404, text=_GEMINI_404)
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
 
@@ -278,7 +278,7 @@ def test_a_stood_down_provider_is_not_asked_again_on_the_next_call(
             return _FakeResponse({}, status_code=404, text=_GEMINI_404)
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     llm_router.complete([{"role": "user", "content": "hi"}])
     first_round = len([u for u in urls if "generativelanguage" in u])

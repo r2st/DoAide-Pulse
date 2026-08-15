@@ -59,6 +59,7 @@ for how rarely this fires.
 from __future__ import annotations
 
 import email.utils
+import json
 import logging
 import random
 import threading
@@ -66,6 +67,7 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 import httpx
 
@@ -81,6 +83,26 @@ _DEFAULT_RATE_LIMIT_PAUSE = 20.0
 #: 408 and 409 are in for completeness; 429 and the 5xx family are what the free
 #: tiers actually send.
 _RETRYABLE_STATUSES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+
+#: The most of a provider's answer Herald will take off the socket.
+#:
+#: Every caller bounds its own request with ``max_tokens``, and the largest
+#: budget in the tree is a long-form article's ~8,000 — call it 100 KB of JSON
+#: once the reasoning field and the envelope are counted. So this is roughly
+#: forty times the largest answer anything here legitimately asks for, which
+#: makes it a backstop rather than a limit generation can run into.
+#:
+#: It is a backstop worth having because the size of the reply is decided
+#: entirely by the far end. The base URLs are settings
+#: (``OPENROUTER_BASE_URL`` and friends), the workers run two to a 4 GB box, and
+#: a provider having a bad day — a proxy that answers a completion with an HTML
+#: error page, a compat layer that loops — is not a thing Herald can fix from
+#: here. What it can do is refuse to buffer it. Same reasoning, and same
+#: mechanism, as ``feeds.MAX_FEED_BYTES`` and the streamed reads in
+#: ``link_check``: the only place a body can be refused cheaply is on the way
+#: in, because by the time there is a ``len()`` to test it has already been paid
+#: for.
+MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 
 class LLMError(RuntimeError):
@@ -504,6 +526,82 @@ def _model_chain(provider: Provider, override: str | None,
     return chain
 
 
+@dataclass(frozen=True)
+class _Answer:
+    """What came back, once it is known to be small enough to hold.
+
+    The three things the router reads off a reply, and nothing else: the status
+    line to tell "come back later" from "never", the headers for ``Retry-After``,
+    and the body. Deliberately the same shape ``httpx.Response`` presents for
+    those, so :func:`_status_error` cannot tell the difference.
+    """
+
+    status_code: int
+    headers: Mapping[str, str]
+    text: str
+
+    def json(self) -> Any:
+        """The body as JSON. Raises ``ValueError`` like ``Response.json`` does."""
+        return json.loads(self.text)
+
+
+class OversizedResponse(Exception):
+    """A provider's answer went past :data:`MAX_RESPONSE_BYTES`.
+
+    Not an :class:`LLMError` itself: :func:`_post` does not know which provider
+    it is talking to — it is handed a URL, like ``httpx.post`` was — and an
+    error in this module is expected to name one. :func:`_call` catches this and
+    re-raises it named, the same way it does a transport failure.
+    """
+
+
+def _post(
+    url: str, *, json: dict, headers: Mapping[str, str], timeout: float
+) -> _Answer:
+    """One request, with the answer bounded on the way in.
+
+    Deliberately the signature ``httpx.post`` presented here before, because
+    what changed is not what a caller passes but how much of the reply is
+    allowed into memory. That is also why the body parameter is called ``json``
+    and shadows the module of the same name for the length of this function —
+    nothing in here needs the module, and :meth:`_Answer.json` reaches it from
+    class scope.
+
+    Streamed rather than fetched whole. ``httpx.post`` returns only once the
+    entire body is buffered, so every check this module could make on the size
+    of a reply — ``len(resp.content)``, a ``Content-Length`` test, the
+    ``_short()`` clip on the way into a log line — is a check made after the
+    cost has already been paid. There is no reply so large that reading it all
+    is the right thing to do, and the loop below is the only place that can say
+    so while it is still true.
+    """
+    with (
+        httpx.Client(timeout=timeout) as client,
+        client.stream("POST", url, json=json, headers=dict(headers)) as response,
+    ):
+        chunks: list[bytes] = []
+        size = 0
+        for chunk in response.iter_bytes():
+            size += len(chunk)
+            if size > MAX_RESPONSE_BYTES:
+                raise OversizedResponse(
+                    f"answered with more than "
+                    f"{MAX_RESPONSE_BYTES // (1024 * 1024)} MB, which is far "
+                    f"more than any completion Herald asks for"
+                )
+            chunks.append(chunk)
+        body = b"".join(chunks)
+        return _Answer(
+            status_code=response.status_code,
+            headers=response.headers,
+            # ``iter_bytes`` has already undone any content encoding, so the
+            # charset is all that is left to apply — and ``replace`` rather than
+            # a raise, because a body that will not decode is still evidence and
+            # ``_status_error`` wants to quote it.
+            text=body.decode(response.encoding or "utf-8", "replace"),
+        )
+
+
 def _call(
     provider: Provider,
     messages: list[dict[str, str]],
@@ -527,9 +625,16 @@ def _call(
     }
 
     try:
-        resp = httpx.post(
+        resp = _post(
             provider.url, json=payload, headers=provider.headers(), timeout=timeout
         )
+    except OversizedResponse as exc:
+        # A provider answering with something enormous is a provider that is
+        # broken now, and the ordinary response to that — count it against the
+        # breaker and move to the next one — is the right one. Not retryable:
+        # asking the same endpoint the same question again buys another few
+        # megabytes off the same socket.
+        raise LLMError(f"{provider.name} {exc}") from exc
     except httpx.HTTPError as exc:
         # Not retried here, deliberately. A provider that cannot be reached at
         # all has three more behind it, and the chain gets to a working one

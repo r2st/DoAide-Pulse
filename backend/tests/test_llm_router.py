@@ -85,7 +85,7 @@ def test_chain_falls_through_to_groq_when_the_first_two_fail(all_keys, monkeypat
             raise httpx.ConnectError("no route to host")
         return _FakeResponse(_completion("groq wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
     assert result.provider == "groq"
@@ -116,7 +116,7 @@ def test_a_per_call_model_override_does_not_leak_to_the_fallbacks(all_keys, monk
             raise httpx.ConnectError("down")
         return _FakeResponse(_completion("fallback text"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     llm_router.complete(
         [{"role": "user", "content": "hi"}],
@@ -137,7 +137,7 @@ def test_an_open_breaker_skips_a_provider_without_calling_it(all_keys, monkeypat
         urls.append(url)
         return _FakeResponse(_completion("gemini wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
     assert result.provider == "gemini"
@@ -146,8 +146,8 @@ def test_an_open_breaker_skips_a_provider_without_calling_it(all_keys, monkeypat
 
 def test_every_provider_failing_names_every_provider(all_keys, monkeypatch):
     monkeypatch.setattr(
-        llm_router.httpx,
-        "post",
+        llm_router,
+        "_post",
         lambda *a, **kw: (_ for _ in ()).throw(httpx.ConnectError("down")),
     )
     with pytest.raises(llm_router.AllProvidersFailed) as exc:
@@ -163,7 +163,7 @@ def test_a_lone_fallback_key_is_enough_to_generate(monkeypatch):
     monkeypatch.setattr(settings, "gemini_api_key", "")
     monkeypatch.setattr(settings, "groq_api_key", "key-groq")
     monkeypatch.setattr(
-        llm_router.httpx, "post", lambda *a, **kw: _FakeResponse(_completion("hi"))
+        llm_router, "_post", lambda *a, **kw: _FakeResponse(_completion("hi"))
     )
     assert llm_router.complete([{"role": "user", "content": "x"}]).provider == "groq"
 
@@ -321,7 +321,7 @@ def test_a_429_does_not_delay_a_provider_that_would_have_worked(
             return _rate_limited("30")
         return _FakeResponse(_completion("gemini wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
     assert result.provider == "gemini"
@@ -347,7 +347,7 @@ def test_a_whole_chain_of_429s_is_waited_out_rather_than_given_up_on(
             return _rate_limited("5")
         return _FakeResponse(_completion("second time lucky"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
     assert result.text == "second time lucky"
@@ -365,7 +365,7 @@ def test_the_wait_is_the_shortest_one_any_provider_named(
     def fake_post(url, *, json, headers, timeout):
         return _rate_limited(next(waits, "300"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     with pytest.raises(llm_router.AllProvidersFailed):
         llm_router.complete([{"role": "user", "content": "hi"}])
@@ -378,7 +378,7 @@ def test_a_rate_limit_with_no_retry_after_is_treated_as_a_per_minute_one(
 ):
     """Guessing wrong in this direction costs one short nap; the other costs a post."""
     monkeypatch.setattr(
-        llm_router.httpx, "post", lambda *a, **kw: _rate_limited(None)
+        llm_router, "_post", lambda *a, **kw: _rate_limited(None)
     )
     with pytest.raises(llm_router.AllProvidersFailed):
         llm_router.complete([{"role": "user", "content": "hi"}])
@@ -391,8 +391,8 @@ def test_a_failure_that_is_not_a_rate_limit_is_not_slept_on(
 ):
     """A dead host does not become reachable because we waited thirty seconds."""
     monkeypatch.setattr(
-        llm_router.httpx,
-        "post",
+        llm_router,
+        "_post",
         lambda *a, **kw: (_ for _ in ()).throw(httpx.ConnectError("down")),
     )
     with pytest.raises(llm_router.AllProvidersFailed):
@@ -408,7 +408,7 @@ def test_a_bad_key_is_not_retried(all_keys, no_sleeping, monkeypatch):
         calls.append(url)
         return _FakeResponse({}, status_code=401, text="invalid api key")
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     with pytest.raises(llm_router.AllProvidersFailed):
         llm_router.complete([{"role": "user", "content": "hi"}])
@@ -435,7 +435,7 @@ def test_openrouters_200_with_a_rate_limit_body_is_read_as_a_rate_limit(
             )
         return _FakeResponse(_completion("after the wait"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     assert llm_router.complete([{"role": "user", "content": "hi"}]).text == (
         "after the wait"
@@ -452,8 +452,8 @@ def test_a_long_retry_after_stands_the_provider_down_for_that_long(
     provider that has already said, in seconds, when it will next say yes.
     """
     monkeypatch.setattr(
-        llm_router.httpx,
-        "post",
+        llm_router,
+        "_post",
         lambda *a, **kw: _rate_limited("1800"),
     )
     with pytest.raises(llm_router.AllProvidersFailed):
@@ -473,7 +473,7 @@ def test_a_stood_down_provider_is_not_swept_again(all_keys, no_sleeping, monkeyp
         calls.append(url)
         return _rate_limited("1800")
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     with pytest.raises(llm_router.AllProvidersFailed):
         llm_router.complete([{"role": "user", "content": "hi"}])
@@ -485,7 +485,7 @@ def test_the_breaker_cooldown_from_a_retry_after_is_capped(all_keys, monkeypatch
     monkeypatch.setattr(settings, "llm_breaker_max_cooldown_seconds", 60)
     monkeypatch.setattr(llm_router, "_sleep", lambda _s: None)
     monkeypatch.setattr(
-        llm_router.httpx, "post", lambda *a, **kw: _rate_limited("604800")
+        llm_router, "_post", lambda *a, **kw: _rate_limited("604800")
     )
     with pytest.raises(llm_router.AllProvidersFailed):
         llm_router.complete([{"role": "user", "content": "hi"}])
@@ -531,7 +531,7 @@ def test_a_rate_limited_model_falls_back_to_its_sibling_on_the_same_key(
             return _rate_limited(None)
         return _FakeResponse(_completion("the sibling answered"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete([{"role": "user", "content": "hi"}])
     assert result.provider == "openrouter"
@@ -552,7 +552,7 @@ def test_a_caller_can_name_its_own_sibling_model(all_keys, no_sleeping, monkeypa
             return _rate_limited(None)
         return _FakeResponse(_completion("the other model answered"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete(
         [{"role": "user", "content": "hi"}],
@@ -578,7 +578,7 @@ def test_a_caller_named_sibling_does_not_leak_to_another_provider(
             return _rate_limited(None)
         return _FakeResponse(_completion("gemini wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     result = llm_router.complete(
         [{"role": "user", "content": "hi"}],
@@ -601,7 +601,7 @@ def test_a_spent_daily_quota_skips_the_sibling_too(all_keys, no_sleeping, monkey
             return _rate_limited("3600")
         return _FakeResponse(_completion("gemini wrote this"))
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     assert llm_router.complete([{"role": "user", "content": "hi"}]).provider == "gemini"
     assert models.count(settings.openrouter_model) == 1
@@ -624,7 +624,7 @@ def test_the_sweep_budget_is_spent_exactly_and_not_slept_off_at_the_end(
     # than that a constant happens to match.
     monkeypatch.setattr(settings, "llm_max_attempts", 2)
     monkeypatch.setattr(
-        llm_router.httpx, "post", lambda *a, **kw: _rate_limited("5")
+        llm_router, "_post", lambda *a, **kw: _rate_limited("5")
     )
 
     # Count passes over the chain rather than HTTP calls: once the breaker
@@ -650,7 +650,7 @@ def test_a_single_attempt_budget_never_waits(all_keys, no_sleeping, monkeypatch)
     """``llm_max_attempts=1`` means one pass and no nap before giving up."""
     monkeypatch.setattr(settings, "llm_max_attempts", 1)
     monkeypatch.setattr(
-        llm_router.httpx, "post", lambda *a, **kw: _rate_limited("5")
+        llm_router, "_post", lambda *a, **kw: _rate_limited("5")
     )
 
     with pytest.raises(llm_router.AllProvidersFailed):
@@ -674,7 +674,7 @@ def test_a_nonsense_attempt_budget_still_makes_one_pass(
         calls["n"] += 1
         return _rate_limited("5")
 
-    monkeypatch.setattr(llm_router.httpx, "post", fake_post)
+    monkeypatch.setattr(llm_router, "_post", fake_post)
 
     with pytest.raises(llm_router.AllProvidersFailed):
         llm_router.complete([{"role": "user", "content": "hi"}])

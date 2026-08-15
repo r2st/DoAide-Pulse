@@ -52,7 +52,7 @@ def _provider() -> llm_router.Provider:
 
 
 def _call(monkeypatch, resp) -> str:
-    monkeypatch.setattr(llm_router.httpx, "post", lambda *a, **k: resp)
+    monkeypatch.setattr(llm_router, "_post", lambda *a, **k: resp)
     return llm_router._call(
         _provider(),
         [{"role": "user", "content": "hi"}],
