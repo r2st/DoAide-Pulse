@@ -140,6 +140,17 @@ _COSTLY_CALLS = (
     # unlimited was a way around `rate_limit_repo_scan`.
     "webhooks.deliver(",
     "trigger_service.check(",
+    # Connecting or re-checking a platform verifies the credentials against the
+    # platform, synchronously, before answering — so it is the same outbound
+    # request the ping is, reached from the settings page. Two things make it
+    # the sharper of the pair. `PUT /settings/connections` verifies credentials
+    # taken *from the request body*, so unlimited it answers "is this token
+    # good?" for any token at all, at Herald's address rather than the
+    # caller's. And `GitAdapter._token` falls back to the install's shared
+    # GITHUB_TOKEN when the connection carries none, which is the
+    # `rate_limit_repo_scan` budget again — the second way around it, after
+    # `trigger_service.check`.
+    "adapter.verify(",
 )
 
 #: Endpoints that touch a costly call but must not carry an account limit, with
@@ -228,6 +239,14 @@ def test_the_costly_endpoints_are_the_ones_expected():
         # It is the one of the four a retry loop reaches most naturally, since
         # it is the button beside a delivery that just failed.
         "/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver",
+        # Verifying credentials is an outbound request too, and these two were
+        # making it unlimited. They are the settings page's Connect and
+        # Re-check buttons — see `_COSTLY_CALLS` on why the first is the worse
+        # of them. Both were found by reading the routers *for this*, not by
+        # the sweep: `adapter.verify` was not on the list of costly calls, so
+        # the sweep agreed with itself that there was nothing to find.
+        "/settings/connections",
+        "/settings/connections/{platform}/verify",
     }
 
 

@@ -6,16 +6,18 @@ never from the stored blob.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.mixins import utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import Platform
 from app.models.user import User
+from app.ratelimit import account_key, limiter
 from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.schemas.settings import ConnectionCreate, ConnectionOut, PlatformCapability
 from app.services import publishers
@@ -67,12 +69,16 @@ def list_platforms(
         status.HTTP_400_BAD_REQUEST,
         *AUTHENTICATED,
         status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status.HTTP_429_TOO_MANY_REQUESTS,
         status.HTTP_501_NOT_IMPLEMENTED,
         status.HTTP_502_BAD_GATEWAY,
     ),
 )
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def upsert_connection(
     payload: ConnectionCreate,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ConnectionOut:
@@ -81,6 +87,18 @@ def upsert_connection(
     Verification is not optional. Storing an unverified token means the user
     finds out it is wrong when a scheduled post fails overnight, which is the
     worst possible moment.
+
+    Which is also why this carries the outbound-probe budget: verification is a
+    synchronous request to the platform, made from Herald's address on the
+    caller's say-so, and the credentials it verifies are the ones in the body
+    rather than anything already stored — so it is the one endpoint here that
+    answers "is this token good?" for a token the caller just made up. Left
+    unlimited it is a credential-stuffing oracle against the platforms, run
+    from Herald. On the Git adapter it is worse than that: ``GitAdapter._token``
+    falls back to the install's shared ``GITHUB_TOKEN`` when the connection
+    carries none, so an unlimited loop here spends the same single budget that
+    ``rate_limit_repo_scan`` exists to protect, and answers 403 to every account
+    on the install once it is gone.
     """
     adapter = publishers.get_adapter(payload.platform)
 
@@ -168,10 +186,13 @@ def upsert_connection(
     "/connections/{platform}/verify",
     response_model=ConnectionOut,
     summary="Re-check stored credentials",
-    responses=errors(*OWNED),
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def verify_connection(
     platform: Platform,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ConnectionOut:
@@ -182,6 +203,13 @@ def verify_connection(
     merely unreachable leaves ``status`` alone rather than marking the
     connection invalid: an outage is not proof the token is bad, and flipping it
     would make the user re-enter one that works.
+
+    Carries the outbound-probe budget for the reason
+    :func:`upsert_connection` does — one call is one synchronous request to the
+    platform — minus the stuffing-oracle half, since the credentials here are
+    the stored ones. What is left is still a button that turns one HTTP request
+    from the caller into one from Herald, and on the Git adapter one that can
+    spend the install's shared ``GITHUB_TOKEN``.
     """
     from app.services.crypto import decrypt_credentials
 
