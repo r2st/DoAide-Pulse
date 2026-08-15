@@ -415,6 +415,30 @@ def _release_from_payload(payload: dict) -> Release:
     )
 
 
+def _commits_page(full_name: str, *, per_page: int) -> list[dict]:
+    """One page of the commits endpoint, as a list of raw objects.
+
+    The endpoint is asked without a ``sha`` parameter, which is what makes this
+    cost the same on a repo with one branch and a repo with four hundred:
+    GitHub's default is the repo's *default branch*, and there is no per-branch
+    fan-out anywhere in Herald. That is deliberate rather than incidental — a
+    scan that walked every branch would multiply both the request count and the
+    editorial noise (a post about somebody's abandoned spike), against an API
+    that rate-limits per account. ``tests/test_a_scan_does_not_walk_branches.py``
+    pins it, because "no ``sha`` param" is a property that is one well-meant
+    patch away from being lost.
+    """
+    path = f"/repos/{full_name}/commits"
+    resp = _get(path, params={"per_page": per_page})
+    payload = _json(resp, path)
+    if not isinstance(payload, list):
+        raise GitHubError(f"Unexpected commits payload for {full_name}")
+    # A list whose entries are not objects is not a commits page. Dropping the
+    # entry rather than raising keeps one malformed element from losing the
+    # ninety-nine good ones either side of it.
+    return [item for item in payload if isinstance(item, dict)]
+
+
 def fetch_commits(full_name: str, *, since_sha: str | None = None) -> list[Commit]:
     """Commits newest-first, truncated at *since_sha* if it appears.
 
@@ -422,20 +446,39 @@ def fetch_commits(full_name: str, *, since_sha: str | None = None) -> list[Commi
     ``_COMMIT_PAGE_SIZE`` commits, or the branch was rewritten — the whole page
     is returned. Over-reporting is the right failure here: it means the post
     says "a lot has changed", not that a change is missed.
+
+    **The common case is answered with a one-commit page.** A poll loop asks
+    this question every ``autopilot_scan_interval_seconds`` and the honest
+    answer is almost always "nothing new" — the watermark *is* HEAD. That answer
+    was costing a hundred fully-populated commit objects every time, per project,
+    for the whole day: each entry carries the commit message, both author and
+    committer blocks, the tree, and four URLs, so a no-op scan was transferring
+    on the order of a hundred kilobytes to discover a single sha it already had.
+
+    So the sha is checked first, with ``per_page=1``, and the full page is only
+    fetched when the top of the branch has actually moved. The trade is one
+    extra round-trip on the scans that *do* have news, against a page saved on
+    the many that do not — and GitHub's rate limit counts requests, not bytes,
+    so this is not free. It is worth it because the ratio is not close: an
+    active repo moves a handful of times a day against a scan every hour, and
+    the saved request on a no-news scan is the same 1 the extra one costs, so
+    the request count is unchanged in the worst case and the bytes are not.
+
+    Skipped entirely when there is no watermark — a first scan has nothing to
+    compare against, and the pre-flight would be a wasted request.
     """
-    path = f"/repos/{full_name}/commits"
-    resp = _get(path, params={"per_page": _COMMIT_PAGE_SIZE})
-    payload = _json(resp, path)
-    if not isinstance(payload, list):
-        raise GitHubError(f"Unexpected commits payload for {full_name}")
+    if since_sha:
+        head = _commits_page(full_name, per_page=1)
+        # An empty page means an empty repo, which has no commits to report and
+        # no HEAD to compare. Falling through to the full fetch would ask the
+        # same endpoint the same question again for the same empty answer.
+        if not head:
+            return []
+        if _commit_from_payload(head[0]).sha == since_sha:
+            return []
 
     commits: list[Commit] = []
-    for item in payload:
-        # A list whose entries are not objects is not a commits page. Skipping
-        # the entry rather than raising keeps one malformed element from losing
-        # the ninety-nine good ones either side of it.
-        if not isinstance(item, dict):
-            continue
+    for item in _commits_page(full_name, per_page=_COMMIT_PAGE_SIZE):
         commit = _commit_from_payload(item)
         if since_sha and commit.sha == since_sha:
             break
