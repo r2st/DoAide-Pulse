@@ -85,6 +85,68 @@ CANONICAL_URL_MAX_LENGTH = 500
 TAG_MAX_LENGTH = 100
 
 
+def clamp_body(body_markdown: str, *, limit: int = BODY_MARKDOWN_MAX_LENGTH) -> str:
+    """A body cut to *limit* characters at the last paragraph break that fits.
+
+    :data:`BODY_MARKDOWN_MAX_LENGTH` was described as the ceiling "the paths
+    that build a body *without* going through that schema apply", and exactly
+    one of them did — :mod:`app.services.templates`, which caps a rendered
+    template at ``BODY_LIMIT``. The path that actually produces most of Herald's
+    bodies did not: :func:`app.services.content_generator.content_from_generated`
+    writes ``generated.body_markdown`` into the column as it came out of the
+    model.
+
+    Which leaves the size of every row in the table a decision the provider
+    makes. ``llm_router`` refuses a completion past
+    :data:`app.services.llm_router.MAX_RESPONSE_BYTES` — 4 MB — so that is the
+    real bound on a generated body, twenty times the one the API enforces, and
+    the failure it produces is not an exception anybody sees. It is a row that
+    every listing, every adapter, every SEO audit and every editor render pays
+    for from then on: 250 KB of Markdown costs a quarter-second to flatten to
+    plain text, so a 4 MB body costs seconds *per platform per publish*, inside
+    a task with a soft time limit.
+
+    A generation reaching this cap is a malfunction, not a long article. The
+    longest shape Herald asks for is a 1200-word tutorial, and the token budget
+    derived from it cannot produce 30,000 words — so the value here is not a
+    judgement about article length, it is where a runaway completion stops being
+    stored whole.
+
+    Cut at a paragraph break rather than mid-character-run, because the result
+    is still Markdown: a hard slice can land inside a fenced code block or a
+    link and leave a body that renders as something else entirely. Falls back to
+    a hard cut when there is no blank line in the last tenth of the budget,
+    which is the same shape of decision :func:`app.services.publishers.
+    formatting.clip` makes about word boundaries and for the same reason.
+    """
+    if len(body_markdown) <= limit:
+        return body_markdown
+
+    head = body_markdown[:limit]
+    # Only look for a break in the last tenth: a body whose one paragraph break
+    # is at character 300 would otherwise be cut back to 300 characters.
+    split = head.rfind("\n\n")
+    if split > limit - limit // 10:
+        return head[:split].rstrip()
+    return head.rstrip()
+
+
+def clamp_tags(tags: list[str], *, limit: int = TAG_MAX_LENGTH) -> list[str]:
+    """Tags cut to *limit* characters each, empties dropped.
+
+    :data:`TAG_MAX_LENGTH` has the same hole :data:`BODY_MARKDOWN_MAX_LENGTH`
+    had, for the same reason and with the same one exception: it is enforced on
+    ``ContentCreate`` and ``ContentUpdate``, and nowhere on the path the model
+    writes. ``tags`` is a JSON column, so nothing raises — the over-long tag is
+    stored, shown in the editor's tag panel, and handed to whichever adapter
+    publishes next. ``formatting.normalize_tags`` strips the characters a
+    platform will not take but says nothing about length, so what reaches Dev.to
+    is a single tag as long as the model felt like making it.
+    """
+    out = [tag[:limit].strip() for tag in tags]
+    return [tag for tag in out if tag]
+
+
 def word_count_of(body_markdown: str) -> int:
     """Words in a body. The definition :attr:`Content.word_count` stores.
 

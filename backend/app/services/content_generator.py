@@ -252,8 +252,32 @@ def content_from_generated(
 
     Centralises the field mapping that was previously duplicated in the content
     router (generate, write_from_idea) and in autopilot_tasks.
+
+    Being that funnel is why the two length caps are applied here rather than at
+    each caller. There are exactly three places a ``Content`` row is built —
+    ``routers.content.create_content`` behind ``ContentCreate``,
+    ``routers.templates`` behind ``templates.BODY_LIMIT``, and this one — and
+    this was the only one of the three that wrote a body and a tag list whose
+    length nobody had an opinion about. The model chose both. See
+    :func:`app.models.content.clamp_body` and
+    :func:`app.models.content.clamp_tags` for what each was costing.
     """
-    from app.models.content import Content, unique_content_slug  # avoid circular
+    from app.models.content import (  # avoid circular
+        Content,
+        clamp_body,
+        clamp_tags,
+        unique_content_slug,
+    )
+
+    body_markdown = clamp_body(generated.body_markdown)
+    if len(body_markdown) < len(generated.body_markdown):
+        logger.warning(
+            "generated body for project %s was %d characters — stored the "
+            "first %d",
+            project_id,
+            len(generated.body_markdown),
+            len(body_markdown),
+        )
 
     return Content(
         project_id=project_id,
@@ -261,11 +285,11 @@ def content_from_generated(
         status=status,
         title=generated.title,
         slug=unique_content_slug(db, project_id, generated.title),
-        body_markdown=generated.body_markdown,
+        body_markdown=body_markdown,
         excerpt=generated.excerpt,
         meta_description=generated.meta_description,
         keywords=generated.keywords,
-        tags=generated.tags,
+        tags=clamp_tags(generated.tags),
         focus_keyword=generated.focus_keyword,
         confidence=generated.confidence,
         generated_by_provider=generated.provider,
