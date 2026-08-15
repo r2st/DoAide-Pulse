@@ -90,8 +90,14 @@ class RateLimited(PublishError):
     so ``retry_after`` is honoured by parking the publication until then (see
     ``app.services.publishing_service.execute``).
 
+    Not only 429: a 503 that carries a ``Retry-After`` is the same statement in
+    a different status — "not now, come back at *this* time" — and is translated
+    to this type so it gets the same treatment. A 503 without one is a plain
+    :class:`PublishError`, because then there is nothing to honour.
+
     ``retry_after`` is ``None`` when the platform declined to say — the caller
-    falls back to its own backoff.
+    falls back to its own backoff. Only a 429 can produce that; the 503 arm only
+    fires when the header parsed.
     """
 
     def __init__(self, message: str, *, retry_after: float | None = None) -> None:
@@ -519,6 +525,28 @@ class Adapter(ABC):
                 f"{self.display_name} rate-limited the request",
                 retry_after=_retry_after(resp),
             )
+        if resp.status_code == 503:
+            # RFC 9110 §10.2.3 puts ``Retry-After`` on 503 for the same reason it
+            # puts it on 429, and it answers the same question: the platform has
+            # told us when it will be ready. Reading it only for 429 meant a
+            # maintenance window announcing "back in an hour" was answered with
+            # Herald's own one-second backoff — the whole in-process budget spent
+            # inside the first blink of the outage, and then a row parked on
+            # ``retry_defer_seconds`` as though nobody had said anything, when
+            # the platform had already given the one number worth having.
+            #
+            # Only a *usable* header takes this branch. A bare 503 stays a plain
+            # ``PublishError`` and keeps the behaviour it has always had: still
+            # retryable, still replayable even for a POST — ``503`` remains in
+            # :data:`_REJECTED_WITHOUT_PROCESSING` — just on our schedule,
+            # because there is nothing else to go on.
+            wait = _retry_after(resp)
+            if wait is not None:
+                return RateLimited(
+                    f"{self.display_name} is unavailable (503) and asked for "
+                    f"{round(wait)}s: {_short(resp.text)}",
+                    retry_after=wait,
+                )
         if resp.status_code >= 400:
             return PublishError(
                 f"{self.display_name} returned {resp.status_code}: {_short(resp.text)}"

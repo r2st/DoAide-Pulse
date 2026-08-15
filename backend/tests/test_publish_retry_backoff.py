@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import httpx
 import pytest
 
 from app.config import settings
@@ -301,6 +302,87 @@ def test_the_last_deferral_does_not_outlive_the_publication(
 
     assert publication.status == PublicationStatus.FAILED
     assert publication.scheduled_for is None
+
+
+def test_an_announced_outage_parks_the_row_until_the_platform_is_back(
+    db, content, connected, monkeypatch
+):
+    """A 503 with a ``Retry-After`` reaches ``_defer``, not the default window.
+
+    The whole chain, because this is where it used to break in the middle: the
+    adapter's ``_translate`` turns the 503 into a ``RateLimited``, ``_is_retryable``
+    sees a wait longer than the in-process ceiling and hands it up rather than
+    sleeping a fraction of it, and ``execute`` parks the row at the platform's
+    time. Before, the 503 was a plain ``PublishError`` the whole way down: three
+    fast in-process replays into a platform that had just said it was down, then
+    ``retry_defer_seconds`` — 300s against an announced 900.
+    """
+    from app.services.publishers import base
+    from app.services.publishers.devto import DevToAdapter
+
+    announced = 900.0
+    assert announced > settings.publish_retry_max_backoff_seconds
+    assert announced > settings.publish_retry_defer_seconds
+
+    calls: list[str] = []
+
+    def fake_request(method, url, **kwargs):
+        calls.append(method)
+        return httpx.Response(
+            503,
+            headers={"Retry-After": str(int(announced))},
+            json={"error": "scheduled maintenance"},
+            request=httpx.Request(method, url),
+        )
+
+    monkeypatch.setattr(base.httpx, "request", fake_request)
+    monkeypatch.setattr(base, "_sleep", lambda seconds: pytest.fail(
+        f"slept {seconds}s against a platform that asked for {announced}s"
+    ))
+    monkeypatch.setattr(
+        DevToAdapter, "publish", lambda self, request, credentials: self._request(
+            "POST", "https://dev.to/api/articles", json_body={}
+        )
+    )
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    before = utcnow()
+    publishing_service.execute(db, publication)
+
+    # One call: the loop declined to replay into an outage it was told about.
+    assert calls == ["POST"]
+    assert publication.status == PublicationStatus.SCHEDULED
+    waited = as_aware(publication.scheduled_for) - before
+    assert timedelta(seconds=announced - 5) <= waited <= timedelta(
+        seconds=announced + 10
+    )
+    # The budget is spent one attempt at a time, not all at once.
+    assert publication.attempts == 1
+
+
+def test_an_announced_outage_is_still_capped(db, content, connected, monkeypatch):
+    """A platform is allowed to say "next week"; Herald is not allowed to wait.
+
+    ``_defer``'s cap is what stops a hostile or mistaken header parking a row
+    past the point anybody is still watching for it.
+    """
+    from app.services.publishers.devto import DevToAdapter
+
+    forever = float(settings.publish_rate_limit_max_defer_seconds) * 10
+
+    def publish(self, request, credentials):
+        raise RateLimited("dev.to is unavailable (503)", retry_after=forever)
+
+    monkeypatch.setattr(DevToAdapter, "publish", publish)
+
+    publication = publishing_service.queue(db, content, ["devto"])[0]
+    db.commit()
+    before = utcnow()
+    publishing_service.execute(db, publication)
+
+    waited = as_aware(publication.scheduled_for) - before
+    assert waited <= timedelta(seconds=settings.publish_rate_limit_max_defer_seconds + 5)
 
 
 def test_a_platform_that_says_when_is_still_obeyed(db, content, connected, monkeypatch):

@@ -276,6 +276,100 @@ def test_a_wait_inside_the_ceiling_is_still_honoured_in_process(
     assert no_waiting == [wait]
 
 
+# --------------------------------------------------------------------------- #
+# A 503 that says when                                                        #
+# --------------------------------------------------------------------------- #
+#
+# ``Retry-After`` is not a 429 header (RFC 9110 §10.2.3) — a 503 carries it to
+# announce a maintenance window, and it answers the same question. Herald read
+# it only on 429, so a platform saying "back in an hour" got the one-second
+# backoff, the whole in-process budget inside the first blink of the outage, and
+# then a row parked on ``retry_defer_seconds`` as though nothing had been said.
+
+
+def test_a_503_that_says_when_is_a_rate_limit_carrying_the_wait(probe):
+    error = probe._translate(_response(503, headers={"Retry-After": "900"}))
+
+    assert isinstance(error, RateLimited)
+    assert error.retry_after == 900.0
+
+
+def test_a_503_can_say_when_with_a_date_too(probe):
+    later = datetime.now(UTC) + timedelta(seconds=600)
+    error = probe._translate(
+        _response(503, headers={"Retry-After": format_datetime(later)})
+    )
+
+    assert isinstance(error, RateLimited)
+    assert error.retry_after is not None
+    assert 590 <= error.retry_after <= 601
+
+
+def test_a_bare_503_stays_a_plain_error_on_our_own_schedule(probe):
+    """The other side of the branch, and the one that must not move.
+
+    With no header there is nothing to honour, so a 503 keeps exactly the
+    behaviour it has always had — retryable, and replayable even for a POST,
+    because 503 still means "I did not process this".
+    """
+    error = probe._translate(_response(503))
+
+    assert type(error) is PublishError
+    assert "returned 503" in str(error)
+
+
+@pytest.mark.parametrize("raw", ["", "soon", "when we're back"])
+def test_a_503_whose_header_is_unusable_falls_back_to_our_own_schedule(probe, raw):
+    error = probe._translate(_response(503, headers={"Retry-After": raw}))
+
+    assert type(error) is PublishError
+
+
+def test_a_503_is_still_replayed_for_a_post(probe, transport, no_waiting):
+    """Reclassifying the error must not cost 503 its POST replay.
+
+    ``_is_retryable`` reaches that decision through the *response* status, not
+    the error type, so a 503 stays in :data:`_REJECTED_WITHOUT_PROCESSING`
+    whichever branch of ``_translate`` built the error.
+    """
+    calls = transport(
+        _response(503, headers={"Retry-After": "2"}), _response(200)
+    )
+    assert probe._request("POST", _URL).status_code == 200
+
+    assert calls == ["POST", "POST"]
+    assert no_waiting == [2.0]
+
+
+def test_the_wait_from_a_503_beats_our_backoff(probe, transport, no_waiting):
+    calls = transport(_response(503, headers={"Retry-After": "12"}), _response(200))
+    probe._request("GET", _URL)
+
+    assert len(calls) == 2
+    # Not the ~1s the exponential window would have chosen on a first attempt.
+    assert no_waiting == [12.0]
+
+
+def test_a_long_503_wait_is_handed_upwards_not_slept_through(
+    probe, transport, no_waiting
+):
+    """The case the fix is really for: an announced outage longer than the loop.
+
+    Sleeping the ceiling and retrying anyway comes back before the platform said
+    to *and* spends the publication's budget doing it, so the row reaches
+    ``publishing_service._defer`` with nothing left. Raising parks it until the
+    platform's own time instead.
+    """
+    calls = transport(_response(503, headers={"Retry-After": "3600"}), _response(200))
+
+    with pytest.raises(RateLimited) as caught:
+        probe._request("POST", _URL)
+
+    assert caught.value.retry_after == 3600.0
+    assert len(calls) == 1
+    assert no_waiting == []
+
+
 def test_backoff_grows_and_stays_inside_its_window(probe, transport, no_waiting):
     transport(_response(503), _response(503), _response(200))
     probe._request("GET", _URL)
