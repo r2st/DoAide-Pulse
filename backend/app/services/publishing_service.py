@@ -37,6 +37,7 @@ from app.models.webhook import WebhookEvent
 from app.services import publishers, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
 from app.services.errors import clip_error, redact
+from app.services.publishers import formatting
 from app.services.publishers.base import (
     CredentialError,
     NotImplementedAdapter,
@@ -424,7 +425,23 @@ def build_request(
     return PublishRequest(
         title=content.title,
         body_markdown=tagged.markdown(content.body_markdown),
-        excerpt=content.excerpt,
+        # Flattened, because for four of the ten destinations this *is* the post.
+        #
+        # Mastodon, Bluesky, Twitter and LinkedIn all compose from
+        # ``excerpt or …``, so the excerpt is the first term in every one of
+        # them and the fallbacks behind it rarely run. The body reaching those
+        # composers goes through ``formatting.to_plain_text`` — that is what
+        # stops a ``<script>`` in a body being posted as the literal text
+        # ``alert('xss')`` under the author's name — and the excerpt beside it
+        # went out exactly as written. Same provenance as the body (a model
+        # writing from somebody else's README, an RSS trigger, a paste), same
+        # treatment.
+        #
+        # Here rather than in the four composers because that is the shape of
+        # bug this is: one term short in the component nobody demos. A
+        # destination added next year gets a plain-text excerpt without having
+        # to know why.
+        excerpt=formatting.to_plain_text(content.excerpt or ""),
         meta_description=content.meta_description,
         tags=list(content.tags or []),
         keywords=list(content.keywords or []),
