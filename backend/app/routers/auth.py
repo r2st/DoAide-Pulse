@@ -9,7 +9,15 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -29,7 +37,12 @@ from app.schemas.auth import (
     UserOut,
 )
 from app.schemas.errors import AUTHENTICATED, errors
-from app.security import create_access_token, hash_password, verify_password
+from app.security import (
+    create_access_token,
+    dummy_hash,
+    hash_password,
+    verify_password,
+)
 from app.services import accounts, mailer, password_reset
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -175,8 +188,10 @@ def login(
     # Always run bcrypt even when the user does not exist — otherwise the
     # response-time difference between "email not found" (instant) and "wrong
     # password" (~100 ms of bcrypt) lets an attacker enumerate valid emails.
-    _dummy_hash = "$2b$12$LJ3m4ys3Lf0mtVxlhEEPLu0PjGiHSPjxjdocRRiS/cFEhJdPmWEy."
-    if not verify_password(form.password, user.hashed_password if user else _dummy_hash):
+    # The stand-in hash carries the configured work factor rather than a pinned
+    # one, because a dummy that is cheaper (or dearer) than the real hashes
+    # re-opens that difference from the other side — see :func:`dummy_hash`.
+    if not verify_password(form.password, user.hashed_password if user else dummy_hash()):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -222,15 +237,31 @@ _RESET_REQUESTED = (
 def request_password_reset(
     request: Request,
     response: Response,
+    background: BackgroundTasks,
     payload: PasswordResetRequest,
     db: Session = Depends(get_db),
 ) -> MessageOut:
     """Email a single-use reset link.
 
-    Always 202. Sending happens inline rather than on a worker: it is one SMTP
-    round trip, and a reset that silently waits on a broker being up is worse
-    than one that takes a second. When SMTP is unconfigured the link goes to the
-    log instead — see :mod:`app.services.mailer`.
+    Always 202, and always in about the same time. Both halves are the same
+    defence: the body says "if that address has an account" precisely so the
+    requester cannot learn whether it does, and a handler that goes to SMTP for
+    a real address and returns straight away for an unknown one answers the
+    question anyway, in a channel the wording does not cover. One SMTP round
+    trip is tens to hundreds of milliseconds against a database lookup's
+    fraction of one — not a subtle statistical edge, a difference you can see
+    in a single request.
+
+    So the send is handed to a background task. Starlette runs it after the
+    response has gone out, which puts the whole variable cost past the point
+    the caller can time. Still in-process rather than on a worker, keeping what
+    the inline version was right about: a reset that silently waits on a broker
+    being up is worse than one that takes a second. When SMTP is unconfigured
+    the link goes to the log instead — see :mod:`app.services.mailer`.
+
+    Issuing the token stays on the request path: it needs the request-scoped
+    session, which is closed by the time a background task runs, and it is two
+    local statements either way.
     """
     # Case-insensitive for the reason the reset exists: the person asking has
     # already failed to sign in, and matching their address only in the case it
@@ -240,14 +271,23 @@ def request_password_reset(
     if user is not None and user.is_active:
         raw_token = password_reset.issue(db, user)
         subject, body = password_reset.build_email(raw_token)
-        try:
-            mailer.send(to=user.email, subject=subject, body=body)
-        except Exception:
-            # SMTP failures must not leak through — the response is deliberately
-            # vague, and a 500 here reveals "this email has an account".
-            logging.getLogger(__name__).exception("password reset email failed")
+        background.add_task(_send_reset_email, user.email, subject, body)
 
     return MessageOut(detail=_RESET_REQUESTED)
+
+
+def _send_reset_email(to: str, subject: str, body: str) -> None:
+    """Deliver a reset email, swallowing whatever SMTP does about it.
+
+    Runs after the response. Nothing is left to raise into: an exception here
+    unwinds inside Starlette's background runner, not the request, so this
+    logs and returns rather than letting a dead mail server become a 500 in
+    the server log for a request that succeeded.
+    """
+    try:
+        mailer.send(to=to, subject=subject, body=body)
+    except Exception:
+        logging.getLogger(__name__).exception("password reset email failed")
 
 
 @router.post(

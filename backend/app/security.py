@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -46,6 +47,42 @@ def hash_password(password: str) -> str:
     """
     salt = bcrypt.gensalt(rounds=settings.bcrypt_rounds)
     return bcrypt.hashpw(_prepare(password), salt).decode("utf-8")
+
+
+#: Dummy hashes by work factor. Built on demand, once per factor per process.
+_DUMMY_HASHES: dict[int, str] = {}
+
+
+def dummy_hash() -> str:
+    """A hash to verify against when the account does not exist.
+
+    :func:`app.routers.auth.login` runs bcrypt whether or not the address
+    matches an account, so that "no such user" and "wrong password" cost the
+    same and cannot be told apart by a stopwatch. That only holds if the two
+    hashes carry the *same* work factor, which is why this is computed from
+    ``settings.bcrypt_rounds`` rather than written down as a literal.
+
+    A literal is what it used to be — a cost-12 hash, pinned, while the setting
+    it was standing in for is only held to *at least* 12 in production (see
+    ``Settings._bcrypt_rounds_in_range_and_strong_in_production``). Raising
+    BCRYPT_ROUNDS to 14, the sort of thing done to a live box on purpose, made
+    every real account four times slower to reject than an address with no
+    account behind it, and handed back exactly the enumeration oracle the dummy
+    verify exists to close. The suite, which drops to 4, had it the other way
+    round: unknown addresses were the slow ones.
+
+    The password hashed is random per process, so nothing here is a hash of a
+    guessable string, and it is never compared against anything but a wrong
+    guess.
+    """
+    rounds = settings.bcrypt_rounds
+    cached = _DUMMY_HASHES.get(rounds)
+    if cached is None:
+        cached = bcrypt.hashpw(
+            _prepare(secrets.token_urlsafe(32)), bcrypt.gensalt(rounds=rounds)
+        ).decode("utf-8")
+        _DUMMY_HASHES[rounds] = cached
+    return cached
 
 
 def verify_password(plain: str, hashed: str) -> bool:
