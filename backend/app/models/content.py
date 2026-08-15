@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -173,6 +174,34 @@ class Content(Base, TimestampMixin):
     __tablename__ = "content"
     __table_args__ = (
         UniqueConstraint("project_id", "slug", name="uq_content_project_slug"),
+        # The two composites below exist for the *sort*, not for the filter.
+        # ``project_id`` and ``status`` were each already indexed on their own,
+        # so the rows were found cheaply and then handed to a sort over a column
+        # with no index under it at all — ``created_at`` and ``published_at``
+        # are the two this table orders by and neither was indexed. Postgres
+        # answers that by reading every matching row and sorting it, which is
+        # work that grows with the project while the page size stays at 100.
+        #
+        # Trailing ``id`` in both because both orderings carry it as the
+        # tiebreaker (see the ``order_by`` in ``routers.content.list_content``
+        # and in the feed) — without it in the index the tiebreak is a sort the
+        # index cannot satisfy, which is the thing being removed. Ascending
+        # columns for descending queries on purpose: both are scanned backwards.
+        #
+        # ``GET /content?project_id=`` — the app's main listing, ordered newest
+        # first with OFFSET paging under it.
+        Index("ix_content_project_created", "project_id", "created_at", "id"),
+        # ``GET /projects/{id}/feed.xml`` — equality on both leading columns,
+        # then the ordered read the LIMIT 50 takes its window from. This is the
+        # anonymous endpoint every subscriber's reader polls on a timer, so it
+        # is the one query here that runs on somebody else's schedule.
+        Index(
+            "ix_content_project_status_published",
+            "project_id",
+            "status",
+            "published_at",
+            "id",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

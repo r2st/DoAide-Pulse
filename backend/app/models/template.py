@@ -122,8 +122,15 @@ class ContentTemplate(Base, TimestampMixin):
     #: The project this template is usually for. Only a default for the picker —
     #: a template is owned by the user precisely so it can be used anywhere.
     #: Not a cascade: deleting a project should not delete the author's writing.
+    #:
+    #: Indexed for two separate reasons, either of which would be enough. It is
+    #: a *filter* — ``GET /templates?project_id=`` narrows on this column
+    #: directly — and it is the referencing side of an ``ON DELETE SET NULL``,
+    #: which Postgres enforces by finding the rows that point at the project
+    #: being deleted. Unindexed, both of those read the whole table, and the
+    #: second one does it inside the delete's transaction.
     default_project_id: Mapped[int | None] = mapped_column(
-        ForeignKey("projects.id", ondelete="SET NULL")
+        ForeignKey("projects.id", ondelete="SET NULL"), index=True
     )
 
     #: How many pieces this template has produced. The only honest answer to
