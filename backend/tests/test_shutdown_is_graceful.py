@@ -22,6 +22,21 @@ from pathlib import Path
 
 import pytest
 
+# Imported for the side effect as much as for the object: ``include=`` on the
+# app is lazy, so the registry is only complete once the task modules have
+# actually been imported.
+from app.tasks import (  # noqa: F401
+    autopilot_tasks,
+    digest_tasks,
+    headline_tasks,
+    maintenance_tasks,
+    metrics_tasks,
+    publish_tasks,
+    trigger_tasks,
+    webhook_tasks,
+)
+from app.tasks.celery_app import celery_app
+
 _UNITS = Path(__file__).resolve().parents[2] / "deploy" / "systemd"
 
 
@@ -91,6 +106,43 @@ def test_the_celery_units_bound_how_long_they_may_take(service):
     stop = _directive(_unit(service), "TimeoutStopSec")
 
     assert stop is not None and int(stop) > 0
+
+
+def test_the_worker_outlives_the_longest_task_it_can_be_running():
+    """The drain window has to clear the hard limit of whatever is in flight.
+
+    This is the same arithmetic the API is held to above, against the other
+    end's deadline. Celery's warm shutdown stops accepting work and waits for
+    what it already has; ``time_limit`` is the promise that "what it already
+    has" ends by itself. If systemd's kill lands first, the drain is decorative
+    — the pool dies mid-task exactly as if there had been no warm shutdown at
+    all, and ``acks_late`` hands the batch to the next worker to begin again.
+
+    Derived from the registry rather than written down, because the failure is
+    silent and arrives by addition: a task with a longer limit than any before
+    it re-opens the gap, and nothing about writing that task looks like editing
+    a unit file.
+    """
+    hard_limits = {
+        name: task.time_limit
+        for name, task in celery_app.tasks.items()
+        if name.startswith("app.tasks.")
+    }
+    # A guard on the discovery, the same way the glob above is guarded: an empty
+    # registry (nothing imported) would make the assertion below vacuous.
+    assert len(hard_limits) >= 10, hard_limits
+    assert all(limit for limit in hard_limits.values()), (
+        "every task names a hard time_limit: " + repr(hard_limits)
+    )
+
+    longest = max(hard_limits.items(), key=lambda item: item[1])
+    stop = int(_directive(_unit("worker"), "TimeoutStopSec"))
+
+    assert stop > longest[1], (
+        f"herald-worker is killed after {stop}s but {longest[0]} may run for "
+        f"{longest[1]}s — the warm shutdown cannot finish what Celery still "
+        "considers in time."
+    )
 
 
 def test_the_worker_is_given_longer_to_stop_than_beat():
