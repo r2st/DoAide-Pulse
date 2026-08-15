@@ -195,7 +195,14 @@ def test_a_null_body_reads_as_an_empty_object(probe, transport):
         (HashnodeAdapter(), lambda a: a.verify({"api_key": "k"})),
         (
             MastodonAdapter(),
-            lambda a: a.verify({"access_token": "t", "base_url": "https://mastodon.test"}),
+            # `instance_url`, not `base_url`: the wrong key is missing-required,
+            # so the adapter raises CredentialError — itself a PublishError —
+            # before it makes a request, and this arm passes having swept
+            # nothing. See `_reaches_the_transport` in
+            # test_every_adapter_answers_a_bad_day_the_same_way.py.
+            lambda a: a.verify(
+                {"access_token": "t", "instance_url": "https://mastodon.test"}
+            ),
         ),
         (
             BlueskyAdapter(),
@@ -248,7 +255,14 @@ def test_medium_verifies_an_account_with_no_name_at_all(transport):
         (HashnodeAdapter(), lambda a: a.verify({"api_key": "k"})),
         (
             MastodonAdapter(),
-            lambda a: a.verify({"access_token": "t", "base_url": "https://mastodon.test"}),
+            # `instance_url`, not `base_url`: the wrong key is missing-required,
+            # so the adapter raises CredentialError — itself a PublishError —
+            # before it makes a request, and this arm passes having swept
+            # nothing. See `_reaches_the_transport` in
+            # test_every_adapter_answers_a_bad_day_the_same_way.py.
+            lambda a: a.verify(
+                {"access_token": "t", "instance_url": "https://mastodon.test"}
+            ),
         ),
         (
             BlueskyAdapter(),
