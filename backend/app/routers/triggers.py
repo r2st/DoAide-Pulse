@@ -19,6 +19,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, defer
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.database import get_db
@@ -538,6 +539,49 @@ async def inbound(
     Answers 202 for anything it accepts, including a duplicate, because the
     caller is a machine that will retry a non-2xx and a retry of a duplicate is
     exactly the thing dedupe exists to absorb.
+
+    The only ``async def`` endpoint in the API, and it is one under protest: it
+    is written this way because reading the raw body needs an ``await``, and for
+    no other reason. Everything a firing actually *does* is synchronous and
+    slow — a ``SELECT`` for the trigger, then :func:`triggers.fire`, which
+    writes a piece through :mod:`app.services.content_pipeline`: blocking
+    ``httpx.post`` calls to the LLM chain, up to ``llm_max_attempts`` sweeps of
+    four providers with a rate-limit sleep of up to
+    ``llm_retry_max_backoff_seconds`` in between, then a link check per outbound
+    link, then publish dispatch.
+
+    Awaited straight from the handler, all of that runs *on the event loop*, and
+    a coroutine that blocks the loop does not slow one request down — it stops
+    the worker. Nothing else that process is serving gets a byte until the model
+    answers: not a dashboard, not a login, not Caddy's ``/health`` poll, which is
+    how "somebody's CI job fired a webhook" becomes "the site is down" and then
+    an unhealthy backend. Two uvicorn workers means two concurrent firings to
+    stall the whole deployment, and the endpoint that starts it is the one
+    anybody holding a URL can call.
+
+    Every other route in this app is a plain ``def``, which is what puts it on
+    Starlette's worker threads. :func:`_ingest` is the same arrangement, made
+    explicit: the loop reads the body and hands off, and the slow half runs
+    where the rest of the app runs.
+
+    The checks stay in the order they were in — unknown token before oversized
+    body before bad signature — so the answer to any given request is unchanged.
+    Only the thread it is computed on is different.
+    """
+    raw = await request.body()
+    signature = request.headers.get(webhooks.SIGNATURE_HEADER.lower()) or request.headers.get(
+        webhooks.SIGNATURE_HEADER
+    )
+    return await run_in_threadpool(_ingest, db, token, raw, signature)
+
+
+def _ingest(db: Session, token: str, raw: bytes, signature: str | None) -> dict:
+    """One inbound firing, start to finish, off the event loop.
+
+    Split out of :func:`inbound` rather than inlined there because that is the
+    whole point: this function is the blocking half, and it has to be callable
+    from a worker thread. ``HTTPException`` raised in here propagates out of
+    ``run_in_threadpool`` unchanged, so the status codes are the handler's own.
     """
     trigger = db.scalar(select(Trigger).where(Trigger.token == token))
     if trigger is None or not trigger.is_active:
@@ -547,7 +591,6 @@ async def inbound(
             status_code=status.HTTP_404_NOT_FOUND, detail="Unknown trigger"
         )
 
-    raw = await request.body()
     if len(raw) > MAX_INBOUND_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
@@ -555,9 +598,6 @@ async def inbound(
         )
 
     body_text = raw.decode("utf-8", errors="replace")
-    signature = request.headers.get(webhooks.SIGNATURE_HEADER.lower()) or request.headers.get(
-        webhooks.SIGNATURE_HEADER
-    )
     if trigger.setting("require_signature"):
         secret = trigger_service.read_secret(trigger)
         if not secret or not signature or not webhooks.verify(secret, signature, body_text):
