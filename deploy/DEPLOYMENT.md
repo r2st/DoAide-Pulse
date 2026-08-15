@@ -338,17 +338,55 @@ ssh … '
 
 **Restoring.** `--format=custom` is what makes a single table recoverable
 without replaying the whole database, which is what an accidental delete
-actually needs:
+actually needs.
+
+One thing to know before the incident rather than during it: `backup.sh` runs
+`umask 077`, so the dumps are `0600` inside a `0700` directory owned by
+`herald`. That is deliberate — a dump holds every password hash and every
+encrypted platform credential in the database, on a box six products share. It
+also means **`sudo -u postgres pg_restore` cannot read them.** Handing the path
+straight to the `postgres` user fails with
+
+```
+pg_restore: error: could not open input file "...": Permission denied
+```
+
+which at 03:00 reads like a corrupt backup and is not one. Stage a copy the
+`postgres` user owns, and keep it `0600` while it exists:
 
 ```bash
-# What is in the dump.
+# What is in the dump. As root, which is not subject to the mode bits.
 pg_restore --list /var/backups/herald/herald-<stamp>.dump
+
+# Stage it where postgres can read it, without widening the mode.
+install -d -o postgres -g postgres -m 0700 /var/backups/herald-restore
+install -o postgres -g postgres -m 0600 \
+  /var/backups/herald/herald-<stamp>.dump /var/backups/herald-restore/dump
 
 # One table, into a scratch database first — never straight over prod.
 sudo -u postgres createdb herald_restore
 sudo -u postgres pg_restore -d herald_restore -t content \
-  /var/backups/herald/herald-<stamp>.dump
+  /var/backups/herald-restore/dump
+
+# The staged copy is a second unencrypted copy of the database. Remove it.
+rm -rf /var/backups/herald-restore
 ```
+
+**Restore drill.** The above, whole rather than one table, is how you find out
+the dumps are real before you need them. `--exit-on-error` is the point: without
+it `pg_restore` reports a partial restore as success.
+
+```bash
+sudo -u postgres createdb herald_restore_drill
+sudo -u postgres pg_restore --exit-on-error -d herald_restore_drill \
+  /var/backups/herald-restore/dump
+# Compare against live, then drop it.
+sudo -u postgres psql -d herald_restore_drill -c 'select count(*) from content'
+sudo -u postgres dropdb herald_restore_drill
+```
+
+Last drilled 2026-08-15 against `herald-20260815T033246Z.dump`: restored clean,
+15/15 tables, 53 indexes and 14 foreign keys matching live, same Alembic head.
 
 Two limits, stated so they are not discovered during an incident: the dumps sit
 on the **same disk** as the database, so they cover operator error and

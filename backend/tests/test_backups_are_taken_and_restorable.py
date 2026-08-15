@@ -193,6 +193,61 @@ def test_the_dump_is_read_back_before_it_counts_as_a_backup():
     assert body.index("pg_restore --list") < body.index('mv "$partial" "$target"')
 
 
+def test_the_dumps_are_private_to_the_service_account():
+    """``umask 077``. Six products share this box and a dump is the database.
+
+    Every password hash and every encrypted platform credential Herald holds is
+    in that file. It is also the reason the restore runbook has to stage a copy
+    — see the test below, which is the other half of this one.
+    """
+    assert "umask 077" in _code(_SCRIPT.read_text())
+
+
+def test_the_documented_restore_does_not_hand_postgres_a_file_it_cannot_read():
+    """The runbook has to work as written, on the dumps the script actually makes.
+
+    ``umask 077`` puts the dumps at ``0600`` in a ``0700`` directory owned by
+    ``herald``, so ``sudo -u postgres pg_restore /var/backups/herald/…`` — which
+    is what DEPLOYMENT.md used to say — fails with ``Permission denied``. That is
+    the wrong failure at the worst time: it arrives during an incident, from the
+    one command nobody has rehearsed, and it reads as a corrupt backup rather
+    than as a mode bit.
+
+    Dropping to ``postgres`` is what makes it a problem, so that is what this
+    checks: any command that does both must name the staged copy, not the vault.
+
+    Continuations are joined first, and that is not a detail — the runbook line
+    this was written for wrapped the path onto the next line with a ``\\``, so a
+    scan that reads the file line by line finds ``sudo -u postgres`` and the
+    path in different strings and passes on the very command it exists to catch.
+    """
+    body = _DEPLOY.joinpath("DEPLOYMENT.md").read_text()
+    # One shell command per element, however it was wrapped for the page.
+    commands = body.replace("\\\n", " ").splitlines()
+
+    offenders = [
+        command.strip()
+        for command in commands
+        if "sudo -u postgres" in command and "/var/backups/herald/" in command
+    ]
+
+    assert not offenders, (
+        "DEPLOYMENT.md tells the reader to run pg_restore as `postgres` against "
+        "a dump only `herald` can read: " + " | ".join(offenders)
+    )
+
+
+def test_the_restore_drill_would_notice_a_partial_restore():
+    """``pg_restore`` exits 0 on a restore that threw errors the whole way down.
+
+    A drill without ``--exit-on-error`` is a drill that passes on a broken dump,
+    which is the same false confidence the nightly verification exists to avoid.
+    """
+    body = _DEPLOY.joinpath("DEPLOYMENT.md").read_text()
+
+    assert "--exit-on-error" in body
+
+
 def test_an_interrupted_run_leaves_nothing_that_looks_like_a_backup():
     """Written as ``*.dump.partial`` and renamed only after it verifies.
 
