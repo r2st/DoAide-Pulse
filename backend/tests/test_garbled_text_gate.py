@@ -247,6 +247,109 @@ def test_a_garbled_excerpt_goes_to_review(db, auto_project, writes):
     assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
 
 
+# --------------------------------------------------------------------------- #
+# The fields nobody reads                                                      #
+# --------------------------------------------------------------------------- #
+#
+# `tags`, `keywords` and `focus_keyword` come out of the same sampler as the
+# body and reach a published post just as directly, but for a long time the gate
+# read only the four prose fields — so a slip that would have held the piece back
+# from its body went out unread from a tag.
+
+
+def test_a_garbled_tag_goes_to_review(db, auto_project, writes):
+    """A tag is published copy: Dev.to renders it on the post.
+
+    And it is the worst of the three, because the corruption does not survive to
+    be seen — see the normalisation test below.
+    """
+    writes(_generated(tags=["python", f"retries{CYRILLIC}"]))
+
+    routed = _route(db, auto_project)
+
+    assert routed.status == content_pipeline.QUEUED_FOR_REVIEW
+    assert routed.garbled_runs == [CYRILLIC]
+
+
+def test_a_garbled_keyword_goes_to_review(db, auto_project, writes):
+    writes(_generated(keywords=["retries", f"backoff {DEVANAGARI}"]))
+
+    assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
+
+
+def test_a_garbled_focus_keyword_reaches_the_reviewer(db, auto_project, writes):
+    """It drives the meta description and the SEO panel's whole verdict.
+
+    The status assertion alone would pass either way here — a focus keyword that
+    appears nowhere in the body fails the SEO gate on its own, so the piece is
+    held for a reason that has nothing to do with the garbling. What the gate
+    adds is *why*: without it the reviewer is told the score is low and left to
+    work out that the keyword is unreadable.
+    """
+    writes(_generated(focus_keyword=f"retries {TELUGU}"))
+
+    routed = _route(db, auto_project)
+
+    assert routed.status == content_pipeline.QUEUED_FOR_REVIEW
+    assert routed.garbled_runs == [TELUGU]
+
+
+def test_a_spliced_tag_goes_to_review(db, auto_project, writes):
+    """The half that reads as an ordinary word, in the field nobody read."""
+    writes(_generated(tags=["python", "wörkflow"]))
+
+    routed = _route(db, auto_project)
+
+    assert routed.status == content_pipeline.QUEUED_FOR_REVIEW
+    assert routed.garbled_runs == ["wörkflow"]
+
+
+def test_normalisation_would_have_hidden_a_garbled_tag_entirely():
+    """Why the tags are read *here* rather than left to the adapter.
+
+    `normalize_tags` strips a tag to what Dev.to accepts, which quietly deletes
+    the evidence. The reader is not shown a glitch they can discount but a
+    plausible, permanent, wrong tag — and by the time a tag reaches an adapter
+    there is nothing left to gate on.
+    """
+    from app.services.publishers import formatting
+
+    assert formatting.normalize_tags(["wörkflow"], limit=4) == ["wrkflow"]
+    assert formatting.normalize_tags([f"retries{CYRILLIC}"], limit=4) == ["retries"]
+
+
+def test_a_tag_is_gated_as_part_of_the_piece_not_on_its_own():
+    """And why it is *joined* to the body rather than checked field by field.
+
+    Both gates bail on text that is more than ``_MULTILINGUAL_SHARE`` foreign,
+    because that is a translation rather than a contamination. A tag is a couple
+    of words, so one bad letter in it clears that bar comfortably and the gate
+    reads it as prose written in another language — a per-field check would find
+    nothing. Against eight hundred words of body the same letter is the rounding
+    error the share was calibrated for.
+    """
+    assert ai.stray_letter_splices("wörkflow") == []
+    assert ai.stray_script_runs(f"retries{CYRILLIC}") == []
+
+    assert ai.stray_letter_splices(f"{_BODY}\nwörkflow") == ["wörkflow"]
+    assert ai.stray_script_runs(f"{_BODY}\nretries{CYRILLIC}") == [CYRILLIC]
+
+
+def test_clean_tags_and_keywords_do_not_hold_a_piece_back(db, auto_project, writes):
+    """The control for the three above: ordinary metadata still publishes."""
+    writes(
+        _generated(
+            tags=["python", "celery", "retries"],
+            keywords=["retry backoff", "rate limiting"],
+        )
+    )
+
+    routed = _route(db, auto_project)
+
+    assert routed.status == content_pipeline.AUTO_PUBLISHED
+    assert routed.garbled_runs == []
+
+
 def test_the_gate_does_not_fire_on_a_clean_piece_with_typography(
     db, auto_project, writes
 ):

@@ -314,6 +314,19 @@ def generate_and_route(
     # purpose — Greek, and the Latin supplements that make `résumé` legal — where
     # the same slip produces a word rather than a run. Two of the pieces that
     # went out carried only the second kind.
+    # Every field the model wrote, not just the prose ones. `tags`, `keywords`
+    # and `focus_keyword` came out of the same sampler as the body and reach a
+    # published artefact just as directly — Dev.to renders `tags` as the post's
+    # public tags, and `keywords`/`focus_keyword` drive the meta the SEO panel
+    # reports on — but they sat outside every gate below, so a slip that would
+    # have held the piece back from the body went out unread from a tag.
+    #
+    # The tag is the worse half of it, because the corruption does not survive to
+    # be seen. `publishers.formatting.normalize_tags` strips a tag to `[a-z0-9]`
+    # for the platforms that demand it, so `wörkflow` publishes as `wrkflow` and
+    # a Cyrillic `аutomation` as `utomation`: not a visible glitch a reader
+    # discounts, but a plausible, permanent, wrong tag. Reading the tags *here*,
+    # before that normalisation, is the only place the evidence still exists.
     checked = "\n".join(
         part
         for part in (
@@ -321,6 +334,9 @@ def generate_and_route(
             generated.body_markdown,
             generated.excerpt,
             generated.meta_description,
+            " ".join(generated.tags or []),
+            " ".join(generated.keywords or []),
+            generated.focus_keyword,
         )
         if part
     )
