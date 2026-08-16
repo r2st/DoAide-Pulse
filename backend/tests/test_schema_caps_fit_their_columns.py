@@ -174,6 +174,11 @@ def test_every_write_schema_is_paired_with_its_model():
         "BulkPublishIn",
         "PasswordResetRequest",  # email -> looked up, never written
         "PasswordResetConfirm",  # token/password -> hashed before storage
+        # old/new name a tag rather than carrying one to a column. The cap is
+        # Content.tags' entry cap, which is the right one and is checked on the
+        # value that lands there — `tags.normalize` clips a rename's output to
+        # the same TAG_MAX_LENGTH before it is written.
+        "TagRenameIn",
     }
     paired = {schema.__name__ for schema, _ in WRITE_PAIRS}
 

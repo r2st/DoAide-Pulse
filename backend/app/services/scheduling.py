@@ -30,6 +30,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -46,7 +47,110 @@ class ScheduleError(ValueError):
     """The requested time cannot be honoured. The message is user-facing."""
 
 
-def normalize(when: datetime | None, *, now: datetime | None = None) -> datetime | None:
+#: The longest string accepted as a timezone name.
+#:
+#: The longest key in the IANA database is ``America/Argentina/ComodRivadavia``
+#: at 31 characters, and :func:`zoneinfo.ZoneInfo` builds a filesystem path out
+#: of whatever it is handed. It already refuses to leave ``TZPATH`` — a key with
+#: ``..`` in it raises ``ValueError`` — so this is not the traversal guard; it is
+#: the guard on the *stat storm*, because every miss is a walk of every entry in
+#: ``TZPATH`` before the lookup gives up. A name twice the length of the longest
+#: real one is not a timezone anybody typed.
+TIMEZONE_MAX_LENGTH = 64
+
+
+def resolve_zone(name: str | ZoneInfo | None) -> ZoneInfo | None:
+    """Turn a timezone *name* into a zone, or refuse it in the user's words.
+
+    ``None`` and the empty string pass through as ``None``, which
+    :func:`normalize` reads as "the client sent an offset, or meant UTC" — the
+    behaviour every caller had before timezones existed here.
+
+    A :class:`~zoneinfo.ZoneInfo` passes through unchanged so callers that
+    already hold one (the tests, mostly) need not spell its name back out.
+
+    The failure is a :class:`ScheduleError` rather than the three unrelated
+    exceptions :mod:`zoneinfo` raises for the same mistake — ``KeyError`` for a
+    key it will not touch on some paths, ``ValueError`` for one that escapes
+    ``TZPATH``, ``ZoneInfoNotFoundError`` for one that simply is not there —
+    because the caller above is a router that turns exactly one exception type
+    into a 422, and a typo'd zone is a 422 whichever way :mod:`zoneinfo` chose
+    to say so.
+    """
+    if name is None:
+        return None
+    if isinstance(name, ZoneInfo):
+        return name
+    cleaned = name.strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > TIMEZONE_MAX_LENGTH:
+        raise ScheduleError(
+            f"{cleaned[:TIMEZONE_MAX_LENGTH]!r} is not a timezone name — expected "
+            "something like 'Europe/Berlin'."
+        )
+    try:
+        return ZoneInfo(cleaned)
+    except (ZoneInfoNotFoundError, ValueError, KeyError) as exc:
+        raise ScheduleError(
+            f"{cleaned!r} is not a timezone I know. Use an IANA name like "
+            "'Europe/Berlin' or 'America/New_York'."
+        ) from exc
+
+
+def in_zone(local: datetime, zone: ZoneInfo) -> datetime:
+    """Read a naive wall-clock *local* time as a time in *zone*, as an instant.
+
+    This is the whole point of the timezone parameter, and it is not the same
+    thing as attaching a fixed offset. "09:00 on 5 November in Europe/Berlin" is
+    08:00 UTC and "09:00 on 5 July" is 07:00 UTC; a client that resolves the
+    offset itself at the moment it builds the request gets whichever of the two
+    is true *today* and books the wrong hour for anything on the far side of the
+    next transition. The zone name is the durable form of the intent, so the
+    conversion belongs here, once, against the date being asked for.
+
+    The two hours a year where a wall clock is not a function of an instant are
+    handled explicitly rather than left to whatever ``replace(tzinfo=...)``
+    happens to do:
+
+    * **The gap.** On the spring transition the clocks jump and 02:30 never
+      happens. :pep:`495` says a naive 02:30 with ``fold=0`` converts using the
+      offset from *before* the jump, so it silently becomes 03:30 local — an
+      hour later than the person typing it meant, on the one day of the year
+      they are least likely to check. It is refused instead: the request names a
+      time that does not exist, and there is no correct answer to substitute.
+    * **The overlap.** On the autumn transition 01:30 happens twice. Both
+      answers are real, so neither is an error; the earlier one is taken
+      (``fold=0``, still on summer time), because a scheduler that has to guess
+      should guess early rather than publish an hour after it said it would.
+
+    A time not near a transition takes neither branch: the offsets on both sides
+    of the fold agree and the conversion is the ordinary one.
+    """
+    if local.tzinfo is not None:  # pragma: no cover - callers check first
+        raise ScheduleError("in_zone takes a wall-clock time with no offset on it.")
+
+    earlier = local.replace(tzinfo=zone)
+    later = local.replace(tzinfo=zone, fold=1)
+    if earlier.utcoffset() != later.utcoffset():
+        # Ambiguous or non-existent — the two readings disagree either way. Which
+        # of the two it is comes from the round trip: a real wall-clock time is
+        # still itself after a trip through UTC, and one in the gap is not.
+        round_tripped = earlier.astimezone(UTC).astimezone(zone)
+        if round_tripped.replace(tzinfo=None) != local:
+            raise ScheduleError(
+                f"{local.isoformat()} does not exist in {zone.key} — the clocks "
+                "move forward over that hour. Pick a time before or after it."
+            )
+    return earlier.astimezone(UTC)
+
+
+def normalize(
+    when: datetime | None,
+    *,
+    now: datetime | None = None,
+    tz: str | ZoneInfo | None = None,
+) -> datetime | None:
     """Validate and canonicalise a requested publish time.
 
     ``None`` passes through — it means "as soon as a worker picks it up", which
@@ -56,6 +160,21 @@ def normalize(when: datetime | None, *, now: datetime | None = None) -> datetime
     build a timestamp with ``new Date().toISOString()`` always send an offset,
     but the ones that hand-assemble ``"2026-08-04T09:00"`` are common enough
     that refusing them would be pedantry.
+
+    *tz* names the zone those hand-assembled wall-clock times are in. It changes
+    nothing for a value that already carries an offset — an instant is an
+    instant, and a client that computed one has already answered the question
+    *tz* exists to answer. It is only consulted for the naive case, and there it
+    replaces the UTC assumption above: with ``tz="Europe/Berlin"``,
+    ``"2026-08-04T09:00"`` is 07:00 UTC rather than 09:00 UTC. See
+    :func:`in_zone` for what happens on the two days a year when a wall clock
+    names no instant, or two.
+
+    Note which way round the checks then run: the past/horizon comparisons below
+    are made on the *instant*, after the conversion, never on the wall clock. A
+    time 30 minutes ahead in Auckland is 11 hours behind in Los Angeles, and the
+    only reading of "in the past" that a worker will agree with is the one in
+    the units the worker sweeps in.
 
     An *aware* datetime is converted to UTC rather than kept in the offset it
     arrived in. :func:`app.models.mixins.as_aware` only labels a naive value; it
@@ -81,10 +200,19 @@ def normalize(when: datetime | None, *, now: datetime | None = None) -> datetime
     them apart; dropping it collapses both onto the first.
     """
     if when is None:
+        # Resolved even though there is nothing to convert: "clear the schedule,
+        # and by the way here is a zone name" is either a client bug or a typo,
+        # and answering 200 to a request carrying a zone that does not exist
+        # teaches the caller the name was accepted.
+        resolve_zone(tz)
         return None
 
     moment = now or utcnow()
-    aware = as_aware(when).astimezone(UTC)
+    zone = resolve_zone(tz)
+    if zone is not None and when.tzinfo is None:
+        aware = in_zone(when, zone)
+    else:
+        aware = as_aware(when).astimezone(UTC)
 
     grace = timedelta(seconds=settings.schedule_past_grace_seconds)
     if aware < moment - grace:
@@ -213,9 +341,12 @@ def optimal_slots(
 
 
 __all__ = [
+    "TIMEZONE_MAX_LENGTH",
     "ScheduleError",
     "Slot",
+    "in_zone",
     "normalize",
     "optimal_slots",
+    "resolve_zone",
     "taken_slots",
 ]

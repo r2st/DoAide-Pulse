@@ -233,6 +233,12 @@ def reschedule(
     validation that matters most is missing from the one surface where a
     mis-drop is easiest: a slot behind "now" is not a schedule at all, it is a
     publish on the next sweep wearing a date.
+
+    ``timezone`` reads a ``scheduled_for`` with no offset on it as a wall-clock
+    time in that zone. A calendar that draws local days is exactly where this
+    matters: dropping a card on "Tuesday 09:00" three months out means 09:00 in
+    the user's own week, and an offset the browser resolved today is the wrong
+    one if a daylight-saving change falls in between.
     """
     content = db.get(Content, content_id)
     if content is None or content.project.user_id != user.id:
@@ -256,7 +262,7 @@ def reschedule(
         )
 
     try:
-        when = scheduling.normalize(payload.scheduled_for)
+        when = scheduling.normalize(payload.scheduled_for, tz=payload.timezone)
     except scheduling.ScheduleError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

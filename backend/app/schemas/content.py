@@ -15,8 +15,20 @@ from app.models.content import (
 )
 from app.models.project import Tone
 from app.models.publication import Platform, PublicationStatus
-from app.schemas.limits import Keyword, Tag
+from app.schemas.limits import Keyword, Tag, Timezone
 from app.services import inline_edit
+
+#: The description every ``timezone`` field on a scheduling request carries.
+#:
+#: One string rather than four copies because the rule is subtle enough that a
+#: client will read it, and four copies of a subtle rule become four rules.
+TIMEZONE_HELP = (
+    "IANA name — 'Europe/Berlin', 'America/New_York' — for reading a "
+    "'scheduled_for' that carries no offset. Ignored when it does: a timestamp "
+    "with an offset already names an instant. This is the durable way to say "
+    "'09:00 local' for a date past the next daylight-saving change, which a "
+    "client-side offset would get wrong by an hour."
+)
 
 
 def _absolute_image_url(value: str | None) -> str | None:
@@ -343,6 +355,7 @@ class PublishRequestIn(BaseModel):
     platforms: list[Platform] = Field(min_length=1)
     #: ``None`` publishes as soon as a worker picks it up.
     scheduled_for: datetime | None = None
+    timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
     #: Create it as a draft on the platform rather than going live.
     as_draft: bool = False
     #: Publish even though a link in the body is definitively dead. The gate
@@ -601,11 +614,23 @@ class BulkContentIn(BaseModel):
     """A batch of pieces to act on from the review queue."""
 
     content_ids: list[int] = Field(min_length=1, max_length=100)
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "Answer with the outcome and change nothing. Every check the real "
+            "call makes is made here, in the same order and by the same code, "
+            "so a piece reported as succeeding is one the real call would act "
+            "on. That includes the link check on a bulk publish, which costs a "
+            "network round trip per piece: a preview that skipped it would "
+            "promise success for the pieces most likely to be refused."
+        ),
+    )
 
 
 class BulkPublishIn(BulkContentIn):
     platforms: list[Platform] = Field(min_length=1)
     scheduled_for: datetime | None = None
+    timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
     as_draft: bool = False
     allow_broken_links: bool = False
 
@@ -622,6 +647,43 @@ class BulkResultOut(BaseModel):
 
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
+    dry_run: bool = Field(
+        default=False,
+        description=(
+            "Echoed from the request. On the wire so that a caller reading a "
+            "response out of a log can tell a batch that ran from one that was "
+            "only costed — the two bodies are otherwise identical, which is the "
+            "point of a dry run and also the way to misread one."
+        ),
+    )
+    #: ``len(succeeded) + len(failed)``, which is also ``len(content_ids)``:
+    #: every id named gets exactly one verdict.
+    #:
+    #: Sent rather than left to the client to add up because this is the number
+    #: a progress bar is drawn against, and a client that computes it has to
+    #: know that the two lists partition the input — which is true, and is
+    #: precisely the kind of invariant that stops being true one refactor later.
+    total: int = 0
+
+    @classmethod
+    def of(
+        cls,
+        succeeded: list[int],
+        failed: list[BulkFailureOut],
+        *,
+        dry_run: bool = False,
+    ) -> BulkResultOut:
+        """Build a result with ``total`` derived rather than passed.
+
+        The one constructor the bulk endpoints use, so the count cannot be
+        computed correctly in four places and wrongly in a fifth.
+        """
+        return cls(
+            succeeded=succeeded,
+            failed=failed,
+            dry_run=dry_run,
+            total=len(succeeded) + len(failed),
+        )
 
 
 class RetryResultOut(BaseModel):
@@ -737,6 +799,7 @@ class ScheduleUpdate(BaseModel):
     """Drag-and-drop on the calendar lands here."""
 
     scheduled_for: datetime | None = None
+    timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
     #: Optional: move only this publication rather than the whole piece.
     publication_id: int | None = None
 

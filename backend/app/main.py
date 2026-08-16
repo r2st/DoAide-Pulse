@@ -30,6 +30,7 @@ from app.routers import (
     misc,
     projects,
     revisions,
+    tags,
     templates,
     translations,
     triggers,
@@ -547,6 +548,11 @@ def create_app() -> FastAPI:
     app.include_router(webhooks.router, prefix=prefix)
     app.include_router(triggers.router, prefix=prefix)
     app.include_router(templates.router, prefix=prefix)
+    # Top-level rather than under ``/content``, and for the same reason
+    # ``/languages`` is: a tag is an account-level fact counted and rewritten
+    # across every project, so a path segment naming one piece would be a lie
+    # about the scope of ``POST /tags/rename``.
+    app.include_router(tags.router, prefix=prefix)
     app.include_router(api_keys.router, prefix=prefix)
     # Last, and deliberately apart from the rest: everything above authenticates
     # a person with a bearer token, and this one authenticates a machine with a

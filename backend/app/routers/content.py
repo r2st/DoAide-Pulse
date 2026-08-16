@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import secrets
 from collections.abc import Sequence
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import (
     APIRouter,
@@ -555,6 +555,12 @@ def bulk_approve_content(
     Each approved piece is released exactly as the single-item endpoint releases
     it — the two must not disagree about what Approve means, and the batch is
     the button the review queue actually offers.
+
+    With ``dry_run`` the same verdicts come back and nothing is written or
+    released. Worth it here despite approving being reversible, because
+    releasing is not: a project on ``auto`` publishes what this approves, so
+    "which of these forty would go straight out?" is a question with a real
+    answer and no way to ask it afterwards.
     """
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
@@ -570,9 +576,20 @@ def bulk_approve_content(
                 BulkFailureOut(content_id=content_id, reason="Already published")
             )
             continue
+        succeeded.append(content_id)
+        if payload.dry_run:
+            continue
         content.status = ContentStatus.APPROVED
         approved.append(content_id)
-        succeeded.append(content_id)
+    if payload.dry_run:
+        # Nothing above wrote, but the loop still loaded rows and something
+        # earlier in the request may have touched one. Rolling back rather than
+        # simply not committing is what makes "changes nothing" a property of
+        # this endpoint instead of a property of how carefully the loop was
+        # read: the session goes back to the connection pool either way, and
+        # ``get_db`` does not roll back a clean-looking session for us.
+        db.rollback()
+        return BulkResultOut.of(succeeded, failed, dry_run=True)
     db.commit()
     # After the commit, so a release that dispatches a worker cannot hand it a
     # row this request has not written yet — which means re-reading the rows,
@@ -591,7 +608,7 @@ def bulk_approve_content(
             .where(Content.id.in_(approved))
         ).unique():
             content_pipeline.release_approved(db, content)
-    return BulkResultOut(succeeded=succeeded, failed=failed)
+    return BulkResultOut.of(succeeded, failed)
 
 
 @router.post(
@@ -609,6 +626,11 @@ def bulk_reject_content(
 
     There is no ``rejected`` status — archiving is the same "not going out"
     outcome a human hits one at a time from the editor, just batched.
+
+    ``dry_run`` reports the same verdicts and archives nothing, which is the
+    one of these four previews with an obvious use: a selection made from a
+    filtered list is easy to get wrong by one page, and this is the batch that
+    cancels armed publications on its way through.
     """
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
@@ -623,15 +645,20 @@ def bulk_reject_content(
                 BulkFailureOut(content_id=content_id, reason="Already published")
             )
             continue
+        succeeded.append(content_id)
+        if payload.dry_run:
+            continue
         content.status = ContentStatus.ARCHIVED
         # Rejecting a piece has to take it off the queue as well as out of the
         # list, or the beat sweep publishes the thing that was just rejected —
         # see :func:`app.services.publishing_service.cancel_armed`, which clears
         # the piece's own calendar date along with the publications.
         publishing_service.cancel_armed(db, content)
-        succeeded.append(content_id)
+    if payload.dry_run:
+        db.rollback()
+        return BulkResultOut.of(succeeded, failed, dry_run=True)
     db.commit()
-    return BulkResultOut(succeeded=succeeded, failed=failed)
+    return BulkResultOut.of(succeeded, failed)
 
 
 @router.post(
@@ -653,12 +680,24 @@ def bulk_publish_content(
     single-item publish (adapter implemented, platform connected, no dead
     links) — one bad piece in the batch fails on its own and does not block
     the rest.
+
+    ``dry_run`` runs those checks and queues nothing. This is the batch that
+    most needs it: the failures here are the ones a caller cannot predict from
+    the list they are looking at — a platform they have not connected, an
+    adapter that is not finished, a link that has rotted since the piece was
+    written — and half a batch queued is half a batch that has to be found and
+    unqueued one publication at a time.
+
+    ``timezone`` applies to the whole batch, as ``scheduled_for`` does. A batch
+    is one instant for every piece in it; staggering across a week is what the
+    calendar's reschedule and ``POST /content/{id}/schedule`` are for.
     """
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
     single = PublishRequestIn(
         platforms=payload.platforms,
         scheduled_for=payload.scheduled_for,
+        timezone=payload.timezone,
         as_draft=payload.as_draft,
         allow_broken_links=payload.allow_broken_links,
     )
@@ -669,12 +708,18 @@ def bulk_publish_content(
             failed.append(BulkFailureOut(content_id=content_id, reason="Not found"))
             continue
         try:
-            _queue_publish(content, single, db, user)
+            if payload.dry_run:
+                _assert_publishable(content, single, user)
+            else:
+                _queue_publish(content, single, db, user)
         except _PublishError as exc:
             failed.append(BulkFailureOut(content_id=content_id, reason=exc.detail))
             continue
         succeeded.append(content_id)
-    return BulkResultOut(succeeded=succeeded, failed=failed)
+    if payload.dry_run:
+        db.rollback()
+        return BulkResultOut.of(succeeded, failed, dry_run=True)
+    return BulkResultOut.of(succeeded, failed)
 
 
 @router.post(
@@ -699,6 +744,10 @@ def bulk_retry_content(
     where "Retry all" over a mixed selection is the button this serves: a
     caller told 200-and-succeeded for a piece whose only publication is live
     has been told its retry happened.
+
+    ``dry_run`` answers the same verdicts and re-arms nothing — including the
+    dispatch, which is the part that cannot be taken back: a retry that has
+    reached a worker is a request already on its way to a platform.
     """
     succeeded: list[int] = []
     failed: list[BulkFailureOut] = []
@@ -728,17 +777,23 @@ def bulk_retry_content(
                 BulkFailureOut(content_id=content_id, reason="Nothing to retry")
             )
             continue
+        succeeded.append(content_id)
+        if payload.dry_run:
+            continue
         for publication in retryable:
             if _rearm(content, publication):
                 to_dispatch.append(publication.id)
-        succeeded.append(content_id)
+
+    if payload.dry_run:
+        db.rollback()
+        return BulkResultOut.of(succeeded, failed, dry_run=True)
 
     # One commit for the batch, then one dispatch. Committing per piece would
     # leave a half-retried batch behind if a later row raised, and dispatching
     # before the commit would hand a worker rows this request has not written.
     db.commit()
     _dispatch(to_dispatch)
-    return BulkResultOut(succeeded=succeeded, failed=failed)
+    return BulkResultOut.of(succeeded, failed)
 
 
 @router.post(
@@ -1856,20 +1911,29 @@ class _PublishError(Exception):
         self.status_code = status_code
 
 
-def _queue_publish(
-    content: Content, payload: PublishRequestIn, db: Session, owner: User
-) -> list[Publication]:
-    """Validate and queue a piece for one or more platforms.
+def _assert_publishable(
+    content: Content, payload: PublishRequestIn, owner: User
+) -> datetime | None:
+    """Every reason this piece cannot be queued, or the normalised publish time.
 
-    Shared by the single-item and bulk publish endpoints so both apply the
-    exact same adapter/connection/link checks. Queuing is synchronous and
-    cheap; the publishing itself is a worker's job (or runs inline when
-    ``CELERY_ENABLED`` is off).
+    Split out of :func:`_queue_publish` so that "would this work?" and "do it"
+    are the same question asked twice rather than two questions that can drift.
+    The dry-run arm of the bulk endpoints calls this and nothing else; the real
+    arm reaches it through ``_queue_publish``, which writes only after it has
+    returned. That is what makes a dry run *honest* — a preview built from a
+    re-implementation of these checks would eventually disagree with them, and
+    the moment it does is the moment somebody trusts it.
 
-    *owner* is the authenticated user, passed rather than walked to via
-    ``content.project.user``: both callers have already established that this
-    piece belongs to them, and the walk is two lazy hops per piece that the
-    bulk endpoint pays again after every commit in its loop.
+    Deliberately free of writes and of ``db``: nothing here needs a session, and
+    a validator that cannot touch one cannot leave half a batch behind when the
+    caller only asked what would happen. It does reach the *network*, in the
+    link check — kept in rather than fenced behind a "this is only a preview"
+    flag, because the pieces a dry run exists to warn about are exactly the ones
+    with a dead link in them, and a preview that skips the slow check is a
+    preview of a different call.
+
+    Returns the time from :func:`app.services.scheduling.normalize` — the same
+    value the caller must go on to store, so the conversion happens once.
     """
     # Archiving means "not going out", and
     # :func:`app.services.publishing_service.execute` enforces that at the last
@@ -1886,10 +1950,13 @@ def _queue_publish(
         )
 
     try:
-        when = scheduling.normalize(payload.scheduled_for)
+        when = scheduling.normalize(payload.scheduled_for, tz=payload.timezone)
     except scheduling.ScheduleError as exc:
         # A time in the past would otherwise be picked up by the very next
-        # sweep — "publish now" wearing the costume of a schedule.
+        # sweep — "publish now" wearing the costume of a schedule. An
+        # unresolvable ``timezone`` arrives as the same exception and takes the
+        # same exit: both are the caller having named a moment Herald cannot act
+        # on, and neither is a bug on this side of the request.
         raise _PublishError(str(exc), status.HTTP_422_UNPROCESSABLE_CONTENT) from exc
 
     unimplemented = [
@@ -1921,6 +1988,30 @@ def _queue_publish(
                 + ". Fix them, or publish anyway with allow_broken_links.",
                 status_code=status.HTTP_409_CONFLICT,
             )
+
+    return when
+
+
+def _queue_publish(
+    content: Content, payload: PublishRequestIn, db: Session, owner: User
+) -> list[Publication]:
+    """Validate and queue a piece for one or more platforms.
+
+    Shared by the single-item and bulk publish endpoints so both apply the
+    exact same adapter/connection/link checks. Queuing is synchronous and
+    cheap; the publishing itself is a worker's job (or runs inline when
+    ``CELERY_ENABLED`` is off).
+
+    *owner* is the authenticated user, passed rather than walked to via
+    ``content.project.user``: both callers have already established that this
+    piece belongs to them, and the walk is two lazy hops per piece that the
+    bulk endpoint pays again after every commit in its loop.
+
+    Every refusal lives in :func:`_assert_publishable`, above, which is called
+    here and nowhere in between: nothing in this function writes until that call
+    has returned.
+    """
+    when = _assert_publishable(content, payload, owner)
 
     publications = publishing_service.queue(
         db,

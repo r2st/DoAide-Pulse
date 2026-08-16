@@ -27,6 +27,7 @@ from typing import Annotated
 from pydantic import StringConstraints
 
 from app.models.content import TAG_MAX_LENGTH
+from app.services.scheduling import TIMEZONE_MAX_LENGTH
 from app.services.seo import KEYWORD_MAX_LENGTH
 
 #: One entry in a ``tags`` list.
@@ -49,6 +50,16 @@ Keyword = Annotated[str, StringConstraints(max_length=KEYWORD_MAX_LENGTH)]
 #: verbatim, so "twenty-five entries" was a description of the count and not of
 #: the size.
 TechStackEntry = Annotated[str, StringConstraints(max_length=TAG_MAX_LENGTH)]
+
+#: An IANA timezone name on a scheduling request.
+#:
+#: Bounded at the schema edge as well as inside
+#: :func:`app.services.scheduling.resolve_zone` because the two refusals happen
+#: at different moments and only one of them is free. Pydantic rejects an
+#: over-long string before any route body runs; the service check is what covers
+#: the callers that reach it without a request behind them. The value itself is
+#: still resolved by the service — a length is not a spelling.
+Timezone = Annotated[str, StringConstraints(max_length=TIMEZONE_MAX_LENGTH)]
 
 #: The most credential fields one platform connection may carry.
 #:
@@ -96,4 +107,5 @@ __all__ = [
     "Keyword",
     "Tag",
     "TechStackEntry",
+    "Timezone",
 ]
