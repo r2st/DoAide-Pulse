@@ -73,15 +73,40 @@ class PlatformPublishOut(BaseModel):
             "nothing has settled yet, which is not the same as a rate of zero."
         ),
     )
+    timed: int = Field(
+        default=0,
+        description=(
+            "Attempts that actually reached the platform and were timed — the "
+            "denominator of avg_duration_ms, reported so a mean over two "
+            "attempts is not mistaken for a measurement of the platform."
+        ),
+    )
+    avg_duration_ms: int | None = Field(
+        default=None,
+        description=(
+            "Mean wall-clock of this platform's API call, failed attempts "
+            "included. Null when nothing has been timed — a row still pending "
+            "or scheduled has no duration, and neither has one written before "
+            "Herald recorded them."
+        ),
+    )
 
 
 class PublishRatesOut(BaseModel):
-    """Publication outcomes for the account, overall and per platform."""
+    """Publication outcomes and platform latency for the account."""
 
     published: int
     failed: int
     in_flight: int
     success_rate: float | None = Field(default=None)
+    timed: int = 0
+    avg_duration_ms: int | None = Field(
+        default=None,
+        description=(
+            "Mean platform latency across every timed attempt, weighted by "
+            "each platform's share of them rather than a mean of the means."
+        ),
+    )
     by_platform: list[PlatformPublishOut]
 
 

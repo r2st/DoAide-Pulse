@@ -48,12 +48,30 @@ def dispatched(_no_dispatch):
     return _no_dispatch
 
 
+#: A body, because a piece without one cannot be submitted for review.
+#:
+#: These rows used to be created with the empty default, which was fine while
+#: every transition in this file was a column assignment. ``draft`` → ``review``
+#: is not one any more: it runs the quality floor (see
+#: ``app.routers.content._assert_review_ready``), and an empty body scores zero
+#: — deliberately, because the two components that would otherwise carry it are
+#: both asking "is there too much of the wrong thing" and neither can see that
+#: there is nothing at all. One paragraph is all the gate wants, and the pieces
+#: in this file are stand-ins for real ones, so giving them one costs nothing
+#: and stops the fixture from being the only thing under test.
+_BODY = (
+    "Herald writes a post from a repository's commits and puts it in front of "
+    "a human before it goes out. This piece is a stand-in for one of those."
+)
+
+
 def _content(db, project, *, status=ContentStatus.DRAFT, title="A piece", age_days=0):
     row = Content(
         project_id=project.id,
         content_type=ContentType.FEATURE_SPOTLIGHT,
         title=title,
         slug=f"{title.lower().replace(' ', '-')}-{utcnow().timestamp()}",
+        body_markdown=_BODY,
         status=status,
     )
     db.add(row)

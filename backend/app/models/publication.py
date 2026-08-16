@@ -155,6 +155,28 @@ class Publication(Base, TimestampMixin):
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
 
+    #: How long the last attempt's call to the platform took, in milliseconds.
+    #:
+    #: The *platform call* specifically — not the row's lifetime and not the
+    #: task's. A publication can sit scheduled for a week and a worker can spend
+    #: a second on credentials and canonical URLs either side of the request;
+    #: none of that is the platform's latency, and mixing it in would make the
+    #: number unusable for the one question it answers: which destination is
+    #: slow, and is it getting slower. See
+    #: ``app.services.publishing_service.execute``, which starts the clock after
+    #: the credentials are decrypted and stops it in a ``finally``.
+    #:
+    #: Written for a *failed* attempt as well as a successful one, which is the
+    #: half that matters most — a platform taking forty seconds to refuse a post
+    #: is the reason a worker hits its soft time limit, and the successful rows
+    #: alone would show that platform's latency as its best days only.
+    #:
+    #: Nullable, and NULL is not zero: it means no attempt has reached a
+    #: platform yet — a pending row, a scheduled one, or one the circuit breaker
+    #: parked before anything was sent. The metrics endpoint counts the timed
+    #: rows separately for exactly that reason.
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+
     content: Mapped[Content] = relationship(back_populates="publications")
     metrics: Mapped[list[ContentMetric]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"

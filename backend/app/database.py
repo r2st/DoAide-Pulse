@@ -5,14 +5,18 @@ override it with an in-memory SQLite database.
 """
 from __future__ import annotations
 
+import logging
 import math
+import time
 from collections.abc import Generator, Iterable
-from typing import TypeVar
+from typing import Any, TypeVar
 
-from sqlalchemy import Engine, create_engine, inspect, select
+from sqlalchemy import Engine, create_engine, event, inspect, select
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -173,8 +177,105 @@ def _make_engine(url: str) -> Engine:
     )
 
 
+#: How much of a statement goes in the log line. Long enough to identify the
+#: query — the tables, the joins, the shape of the WHERE — and short enough that
+#: one slow ORM insert does not push the rest of the log off the screen.
+SLOW_QUERY_STATEMENT_CHARS = 400
+
+#: Where the timer for the statement in flight is parked. On ``connection.info``
+#: rather than in a module-level variable because a connection is the thing that
+#: runs one statement at a time: two Celery workers, or an endpoint and the
+#: session it opened, are separate connections and must not share a stopwatch.
+#: A list rather than a scalar because SQLAlchemy nests these events — a
+#: ``before`` can arrive before the matching ``after`` when a cursor is executed
+#: inside an event handler — and a scalar would have the inner statement's start
+#: time attributed to the outer one.
+_TIMER_KEY = "herald_query_started"
+
+
+def _condensed(statement: str) -> str:
+    """One line of SQL, truncated. Never the parameters — see the caller."""
+    flattened = " ".join(str(statement).split())
+    if len(flattened) <= SLOW_QUERY_STATEMENT_CHARS:
+        return flattened
+    return flattened[:SLOW_QUERY_STATEMENT_CHARS] + " …"
+
+
+def install_slow_query_logging(target: Engine, threshold_ms: int) -> bool:
+    """Log every statement that takes at least *threshold_ms*. Returns whether armed.
+
+    The three database timeouts in :mod:`app.config` are ceilings: they say what
+    Herald refuses to wait for, and by the time one fires the request it was
+    protecting is already lost. This is the complement — the query that takes
+    four seconds, *succeeds*, and is therefore invisible to all of them. It is
+    also the only instrument here that survives the process: an N+1 shows up in
+    the tests as a query count (``tests/conftest.py::sql_log``), and a query
+    that is slow because production has a hundred thousand rows shows up
+    nowhere else at all.
+
+    **The parameters are never logged.** SQLAlchemy hands them to this hook
+    alongside the statement and they are the whole reason a naive version of
+    this is a security bug rather than an aid: the bound values of the writes
+    this schema does include password hashes, session tokens, encrypted
+    platform credentials and the ciphertext's own key material in
+    ``platform_connections``, plus every user's email. The statement text is
+    the *shape* of the query — which is what identifies the query that needs an
+    index — and the shape is all that is needed to act on it. Logging the
+    values would put credentials in a file that ships to wherever logs ship to,
+    to answer a question they are no help with.
+
+    Idempotent per engine, because the test suite rebuilds settings and could
+    otherwise install a second copy of the same listener and log twice.
+    """
+    if threshold_ms <= 0:
+        return False
+    if getattr(target, "_herald_slow_query_logging", False):
+        return False
+
+    @event.listens_for(target, "before_cursor_execute")
+    def _before(
+        conn: Any,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any,
+        executemany: bool,
+    ) -> None:
+        conn.info.setdefault(_TIMER_KEY, []).append(time.monotonic())
+
+    @event.listens_for(target, "after_cursor_execute")
+    def _after(
+        conn: Any,
+        cursor: Any,
+        statement: str,
+        parameters: Any,
+        context: Any,
+        executemany: bool,
+    ) -> None:
+        started = conn.info.get(_TIMER_KEY)
+        if not started:
+            # The listener was installed between a statement's `before` and its
+            # `after`. Nothing to measure, and nothing worth saying about it.
+            return
+        elapsed = (time.monotonic() - started.pop()) * 1000.0
+        if elapsed < threshold_ms:
+            return
+        logger.warning(
+            "slow query: %dms (threshold %dms)%s %s",
+            round(elapsed),
+            threshold_ms,
+            " [executemany]" if executemany else "",
+            _condensed(statement),
+        )
+
+    target._herald_slow_query_logging = True  # type: ignore[attr-defined]
+    return True
+
+
 engine = _make_engine(settings.database_url)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+
+install_slow_query_logging(engine, settings.db_slow_query_ms)
 
 
 def get_db() -> Generator[Session, None, None]:

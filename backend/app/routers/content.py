@@ -58,6 +58,7 @@ from app.schemas.content import (
     PublicationOut,
     PublicPreviewOut,
     PublishRequestIn,
+    QualityOut,
     RepurposeOut,
     RetryResultOut,
     ScheduleContentIn,
@@ -77,6 +78,7 @@ from app.services import (
     preview_links,
     publishers,
     publishing_service,
+    quality,
     repurpose,
     scheduling,
     seo,
@@ -210,6 +212,65 @@ def _is_live(content: Content) -> bool:
     )
 
 
+def _assert_review_ready(
+    db: Session, content: Content, previous_status: ContentStatus
+) -> None:
+    """Refuse a DRAFT→REVIEW move for a piece nobody should have to read.
+
+    The review queue is a request for somebody's attention. Everything else in
+    Herald that puts a piece there has already earned it — the autopilot writes
+    a piece, runs it through five gates, and routes it to review *because* one
+    of them fired, so the reviewer opens it knowing why. A draft promoted by
+    hand carried no such claim, and the two things a thin generation produces —
+    a body that is four fenced blocks and a sentence, or one that reads like a
+    standards document — both went into the same queue looking exactly like a
+    piece worth reading.
+
+    So the floor is applied here and nowhere else. Not on approve: approving is
+    a human saying yes, and a gate that overrules that is a gate that has
+    decided it knows better than the reviewer. Not on archive, which is somebody
+    saying the piece is not going out — refusing *that* for low quality would
+    trap the worst pieces in the queue. And not on the autopilot's own route to
+    review, which has nowhere left to send a piece it refuses.
+
+    Scored from the piece as it *will be*, which is why this runs after the
+    PATCH has applied its fields: a request that fixes the body and submits it
+    in one call is a request that should pass. Nothing is committed on the way
+    out — the rollback is explicit rather than left to the session closing,
+    because a half-applied edit surviving this refusal would be the one outcome
+    worse than either answer.
+    """
+    if not settings.content_quality_gate_enabled:
+        return
+    if previous_status != ContentStatus.DRAFT or content.status != ContentStatus.REVIEW:
+        return
+
+    report = quality.report_for(content)
+    floor = settings.content_quality_min_score
+    if report.score >= floor:
+        return
+
+    db.rollback()
+    # Every component, not just the verdict. "48, and the floor is 50" tells a
+    # writer they have been refused; "93% of the body is code" tells them what
+    # to do about it, and the numbers are the same ones the editor is already
+    # showing in the `quality` block of this piece.
+    detail = (
+        f"This piece scores {report.score} out of 100 and the review queue "
+        f"asks for at least {floor}. SEO {report.seo_score}"
+    )
+    if report.readability.reading_ease is not None:
+        detail += (
+            f", reading ease {report.readability.reading_ease} "
+            f"(grade {report.readability.grade_level})"
+        )
+    detail += (
+        f", {round(report.code_ratio * 100)}% of the body is code. "
+        "Edit it and submit again."
+    )
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 def _owned_content_map(
     content_ids: Sequence[int], db: Session, user: User
 ) -> dict[int, Content]:
@@ -282,6 +343,10 @@ def _to_detail(content: Content) -> ContentDetail:
             SeoIssueOut(level=i.level, field=i.field, message=i.message) for i in issues
         ],
         format_issues=formats.problems(content.body_markdown, content.content_type),
+        # The same report the review gate applies, from the same call. A score
+        # the editor cannot see until it refuses a transition is a rule the
+        # writer has to discover by hitting it.
+        quality=QualityOut(**quality.report_for(content).as_dict()),
     )
 
 
@@ -1459,7 +1524,10 @@ def update_content(
 
     Setting ``status`` to ``approved`` releases the piece exactly as the
     Approve button does, so a scripted caller does not need to know about a
-    second endpoint.
+    second endpoint. Setting it to ``review`` from ``draft`` is the one
+    transition with a quality floor on it — see :func:`_assert_review_ready`,
+    which scores the piece *after* this call's edits, so fixing a body and
+    submitting it in the same request is one request.
 
     ``scheduled_for`` means here what it means everywhere else: a time in the
     past or beyond the horizon is refused with a 422, and the piece's publications
@@ -1520,6 +1588,10 @@ def update_content(
             "from Herald, or unpublish it there first.",
         )
 
+    # Read before anything is written, because the gate below asks what the
+    # piece is moving *from* and the assignment loop is about to overwrite it.
+    previous_status = content.status
+
     if "title" in data and data["title"] != content.title:
         content.slug = unique_content_slug(db, content.project_id, data["title"])
     if "keywords" in data and data["keywords"] is not None:
@@ -1530,6 +1602,11 @@ def update_content(
 
     for key, value in data.items():
         setattr(content, key, value)
+
+    # After the fields are applied and before anything is committed: a request
+    # that rewrites the body and submits it for review in one call is judged on
+    # the body it is sending, not on the one it is replacing.
+    _assert_review_ready(db, content, previous_status)
 
     if "scheduled_for" in data:
         # And the piece's date has to reach the rows that act on it. Every other
@@ -2198,10 +2275,12 @@ def set_content_status(
     It is deliberately not a second rulebook. The settable set is
     ``ContentUpdate``'s own validator, so ``published`` and ``failed`` are
     refused here exactly as they are there; the freeze on a live piece is the
-    same check; and the release and the cancel are the same two calls. What is
-    missing on purpose is ``If-Match``: this endpoint writes one column that
-    the caller has stated in full, so there is no edit underneath it to lose —
-    unlike the PATCH, where a blind save lands on top of somebody's paragraph.
+    same check; the quality floor on ``draft`` → ``review`` is the same
+    :func:`_assert_review_ready`; and the release and the cancel are the same
+    two calls. What is missing on purpose is ``If-Match``: this endpoint writes
+    one column that the caller has stated in full, so there is no edit
+    underneath it to lose — unlike the PATCH, where a blind save lands on top of
+    somebody's paragraph.
     """
     content = _owned_content(content_id, db, user)
     new_status = payload.status
@@ -2219,7 +2298,12 @@ def set_content_status(
             "from Herald, or unpublish it there first.",
         )
 
+    previous_status = content.status
     content.status = new_status
+    # The same floor the PATCH applies, from the same call: this endpoint and
+    # that one are two doors to the same column, and a transition refused
+    # through one and accepted through the other is not a rule.
+    _assert_review_ready(db, content, previous_status)
     if new_status == ContentStatus.ARCHIVED:
         publishing_service.cancel_armed(db, content)
     db.commit()

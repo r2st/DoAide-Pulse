@@ -138,7 +138,7 @@ def _age_days(created_at: Any) -> float:
 
 
 def publish_rates(db: Session, user_id: int) -> dict[str, Any]:
-    """Publication outcomes for this account, overall and per platform.
+    """Publication outcomes and platform latency for this account.
 
     Counted over every publication row the account has, not a window: a
     success rate is a property of the whole history, and a rate over "today"
@@ -151,6 +151,16 @@ def publish_rates(db: Session, user_id: int) -> dict[str, Any]:
     was queued and recover when it landed, which is motion with no information
     in it. ``in_flight`` is reported beside the rate so the rows left out are
     visible rather than merely absent.
+
+    ``avg_duration_ms`` is the other half of "how is this platform behaving",
+    and it is the half that moves first. A destination that is about to start
+    failing gets slow before it starts refusing, and a success rate cannot show
+    that: it is 1.0 right up until the moment it is not. The mean is over the
+    rows that have a duration — see
+    :attr:`app.models.publication.Publication.duration_ms`, which is NULL for a
+    row no attempt has reached a platform for, including every row written
+    before the column existed — and ``timed`` is reported beside it so a mean
+    over two attempts is not read as a measurement of the platform.
     """
     rows = db.execute(
         select(
@@ -162,6 +172,12 @@ def publish_rates(db: Session, user_id: int) -> dict[str, Any]:
                 case((Publication.status == PublicationStatus.FAILED, 1), else_=0)
             ),
             func.count(Publication.id),
+            # ``count`` of a nullable column counts the non-NULLs, which is
+            # exactly the denominator ``avg`` used — so the two always agree,
+            # and a platform with no timed attempt reports ``timed: 0`` beside a
+            # null mean rather than a zero that reads as instant.
+            func.count(Publication.duration_ms),
+            func.avg(Publication.duration_ms),
         )
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
@@ -177,8 +193,12 @@ def publish_rates(db: Session, user_id: int) -> dict[str, Any]:
             "failed": int(failed or 0),
             "in_flight": int(total or 0) - int(published or 0) - int(failed or 0),
             "success_rate": _rate(int(published or 0), int(failed or 0)),
+            "timed": int(timed or 0),
+            "avg_duration_ms": (
+                int(round(float(avg_ms))) if timed and avg_ms is not None else None
+            ),
         }
-        for platform, published, failed, total in rows
+        for platform, published, failed, total, timed, avg_ms in rows
     ]
 
     published = sum(p["published"] for p in by_platform)
@@ -188,8 +208,28 @@ def publish_rates(db: Session, user_id: int) -> dict[str, Any]:
         "failed": failed,
         "in_flight": sum(p["in_flight"] for p in by_platform),
         "success_rate": _rate(published, failed),
+        "timed": sum(p["timed"] for p in by_platform),
+        # Weighted by each platform's timed attempts rather than a mean of the
+        # means: one Bluesky post and four hundred Dev.to posts are not two
+        # equal opinions about how long a publish takes.
+        "avg_duration_ms": _weighted_mean(by_platform),
         "by_platform": by_platform,
     }
+
+
+def _weighted_mean(by_platform: list[dict[str, Any]]) -> int | None:
+    """Mean platform latency across every timed attempt, or ``None`` if none.
+
+    ``None`` rather than ``0`` for the same reason :func:`_rate` returns it: an
+    install that has never timed a publish has not got an average latency of
+    zero milliseconds, and zero is the one value that would look like the
+    fastest possible install on a dashboard.
+    """
+    timed = sum(p["timed"] for p in by_platform)
+    if not timed:
+        return None
+    total = sum(p["avg_duration_ms"] * p["timed"] for p in by_platform if p["timed"])
+    return int(round(total / timed))
 
 
 def _rate(published: int, failed: int) -> float | None:

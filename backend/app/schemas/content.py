@@ -196,6 +196,16 @@ class PublicationOut(BaseModel):
     as_draft: bool = False
     attempts: int = 0
     error: str | None = None
+    duration_ms: int | None = Field(
+        default=None,
+        description=(
+            "How long the last attempt's call to this platform took, in "
+            "milliseconds. Null until an attempt has actually reached the "
+            "platform — a pending or scheduled row has one, and so does a row "
+            "the circuit breaker parked before anything was sent — which is "
+            "not the same as a call that took no time."
+        ),
+    )
 
     model_config = {"from_attributes": True}
 
@@ -204,6 +214,53 @@ class SeoIssueOut(BaseModel):
     level: str
     field: str
     message: str
+
+
+class QualityOut(BaseModel):
+    """What :mod:`app.services.quality` measured, and what it added up to.
+
+    Every component is reported beside the total on purpose. ``score`` is the
+    only number the DRAFT→REVIEW gate reads, and a caller told nothing but "48,
+    too low" has been given a verdict with no way to act on it — whereas
+    ``code_ratio: 0.93`` says which paragraph to write.
+    """
+
+    score: int = Field(
+        description=(
+            "0–100, combining the SEO score with readability and code density. "
+            "The floor the review gate applies is "
+            "`CONTENT_QUALITY_MIN_SCORE`."
+        )
+    )
+    seo_score: int
+    reading_ease: float | None = Field(
+        default=None,
+        description=(
+            "Flesch Reading Ease over the prose, clamped to 0–100. Null for a "
+            "body too short to measure — a social post, typically — where the "
+            "formula's answer would be noise rather than a low score."
+        ),
+    )
+    grade_level: float | None = Field(
+        default=None, description="Flesch-Kincaid Grade Level. Null with reading_ease."
+    )
+    readability_points: int | None = Field(
+        default=None,
+        description=(
+            "The reading ease as a 0–100 component of `score`. Null when there "
+            "is no reading ease, in which case the component is dropped from "
+            "the total rather than scored zero."
+        ),
+    )
+    code_ratio: float = Field(
+        description=(
+            "Share of the body, by non-whitespace characters, inside fenced or "
+            "inline code. 0–1."
+        )
+    )
+    code_points: int
+    words: int
+    sentences: int
 
 
 class LinkStatusOut(BaseModel):
@@ -274,6 +331,10 @@ class ContentDetail(ContentOut):
     #: character limit, a changelog section that is not one of the six. Empty
     #: for an article, which has only SEO issues.
     format_issues: list[str] = []
+    #: Readability, code density, and the combined score the review gate reads.
+    #: Computed from the same fields the SEO audit above is, so what the editor
+    #: shows is what the gate will apply.
+    quality: QualityOut | None = None
 
 
 class PublishRequestIn(BaseModel):

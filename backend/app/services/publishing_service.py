@@ -12,6 +12,7 @@ failing makes the content itself a failure.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Any
@@ -24,7 +25,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import settings
 from app.models.content import CANONICAL_URL_MAX_LENGTH, Content, ContentStatus
 from app.models.metrics import ContentMetric
-from app.models.mixins import as_aware, utcnow
+from app.models.mixins import as_aware, elapsed_ms, utcnow
 from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.publication import (
     EXTERNAL_ID_MAX_LENGTH,
@@ -636,6 +637,13 @@ def execute(db: Session, publication: Publication) -> Publication:
 
     try:
         credentials = _credentials_for(db, user_id, publication.platform)
+        # The clock starts *here*, after the credentials are read and decrypted,
+        # and stops in the ``finally`` below. What is being measured is the
+        # platform's latency and nothing else: a row can sit scheduled for a
+        # week, and this worker spends time either side of the request on
+        # database reads, canonical URLs and a webhook. Folding any of that in
+        # would make the number useless for the question it exists to answer.
+        started = time.monotonic()
         try:
             result = adapter.publish(
                 build_request(
@@ -655,6 +663,17 @@ def execute(db: Session, publication: Publication) -> Publication:
             # database beside the encrypted copy of itself.
             _redact_credentials(exc, adapter, credentials)
             raise
+        finally:
+            # In a ``finally`` so it is recorded whichever way the call ended,
+            # and a failed attempt is the half that matters most: a platform
+            # taking forty seconds to refuse a post is what puts a worker on its
+            # soft time limit, and timing only the successes would report that
+            # platform's latency as its good days.
+            #
+            # Assigned before ``_fail`` and ``_defer`` run — both commit — so
+            # the duration lands in the same transaction as the outcome rather
+            # than needing a second write.
+            publication.duration_ms = elapsed_ms(started)
     except (NotConnected, NotImplementedAdapter, UnsupportedOption) as exc:
         # None of these is transient: no amount of retrying connects an account,
         # finishes an adapter, or gives a platform a feature it does not have.

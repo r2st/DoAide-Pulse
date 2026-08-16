@@ -242,6 +242,18 @@ class Settings(BaseSettings):
     # well inside the 30s interval Caddy re-probes on. libpq's floor is 2; 0
     # disables the bound and restores the multi-minute kernel default.
     db_connect_timeout_seconds: float = 5.0
+    # Log any statement that takes at least this long, with its duration. The
+    # three timeouts above are all ceilings — they say what Herald refuses to
+    # wait for, and by the time one fires the request is already lost. This is
+    # the other half: the query that takes four seconds every time, succeeds,
+    # and is therefore invisible to every one of them.
+    #
+    # Half a second is far above anything this schema should cost — the slowest
+    # legitimate query here is the analytics roll-up, and it is indexed for —
+    # so a healthy install logs nothing at all and the log stays worth reading.
+    # See `app.database.install_slow_query_logging`, which explains why the
+    # parameters are never logged with it. Set to 0 to disable.
+    db_slow_query_ms: int = 500
 
     # ---- Redis / Celery ----
     redis_url: str = "redis://localhost:6379/0"
@@ -518,6 +530,27 @@ class Settings(BaseSettings):
     # GitHub token (or a repo the token cannot see) gets nothing for it.
     factcheck_readme_enabled: bool = True
 
+    # ---- Content quality ----
+    # Refuse to move a draft into review when it scores below the floor — see
+    # app.services.quality for what the score is made of. The review queue is a
+    # request for somebody's attention, and a piece that is unreadable, or that
+    # is four fenced blocks and a sentence, is a request that should be turned
+    # down at the point it is made rather than after a human has read it.
+    #
+    # Only that transition. A piece the autopilot routes *straight* to review
+    # has already been through five gates and is in front of a human precisely
+    # because one of them fired; failing it again here would leave nowhere for
+    # it to go but the bin. Approve and archive are untouched for the same
+    # reason — this is a floor on what may be asked for, not on what may exist.
+    content_quality_gate_enabled: bool = True
+    # Deliberately low. The score is arithmetic over syllables, fence widths and
+    # the SEO envelope, not a judgement about writing, so it is set where it
+    # separates "nobody should have to read this" from "this could be better" —
+    # a code dump with a sentence on top scores under 50, an ordinary post
+    # scores around 80. A stricter floor would start refusing pieces whose only
+    # fault is being terse, which is a style a reviewer is allowed to hold.
+    content_quality_min_score: int = 50
+
     # ---- Weekly digest ----
     # The window each digest reports on, and the comparison window is the one
     # immediately before it.
@@ -670,6 +703,25 @@ class Settings(BaseSettings):
             raise ValueError("must be an hour of the day, 0-23")
         return v
 
+    @field_validator("content_quality_min_score")
+    @classmethod
+    def _quality_floor(cls, v: int) -> int:
+        """A floor on a 0–100 score has to be on the same scale as the score.
+
+        Both ends matter. Below zero is not a lenient gate, it is a gate that
+        can never fire — which is what ``content_quality_gate_enabled`` is for,
+        and a disabled gate spelled as a number nobody would recognise. Above
+        100 is worse: no piece can reach it, so every draft in the install
+        stops being submittable at once, and the error names a score the
+        reviewer can see on screen and cannot act on.
+        """
+        if not 0 <= v <= 100:
+            raise ValueError(
+                "must be a score between 0 and 100 — set "
+                "CONTENT_QUALITY_GATE_ENABLED=false to turn the gate off"
+            )
+        return v
+
     @field_validator("digest_window_days", "schedule_max_horizon_days")
     @classmethod
     def _at_least_a_day(cls, v: int) -> int:
@@ -693,6 +745,9 @@ class Settings(BaseSettings):
         "publish_breaker_cooldown_seconds",
         "publish_breaker_max_cooldown_seconds",
         "schedule_past_grace_seconds",
+        # Zero disables the slow-query log, which is the spelling every other
+        # threshold here uses for "off".
+        "db_slow_query_ms",
     )
     @classmethod
     def _non_negative(cls, v: int) -> int:
