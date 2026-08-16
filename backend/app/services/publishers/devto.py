@@ -14,10 +14,13 @@ from typing import Any
 from app.models.publication import Platform
 from app.services.publishers import formatting
 from app.services.publishers.base import (
+    PREFLIGHT_ERROR,
+    PREFLIGHT_WARNING,
     Adapter,
     CredentialError,
     CredentialField,
     MetricsSnapshot,
+    PreflightFinding,
     PublishError,
     PublishRequest,
     PublishResult,
@@ -60,6 +63,50 @@ class DevToAdapter(Adapter):
         if not username:
             raise CredentialError("Dev.to accepted the key but returned no account")
         return f"@{username}"
+
+    def preflight(self, request: PublishRequest) -> list[PreflightFinding]:
+        """What Forem will refuse, and what it will quietly drop.
+
+        Dev.to takes the whole article, so there is no truncation to warn
+        about — the two things that go wrong here are a missing title, which
+        Forem 422s on, and the fifth tag, which it accepts and ignores. The
+        second is the one worth reporting: a piece tagged
+        ``python, fastapi, testing, ci, docker`` publishes successfully and is
+        not tagged ``docker``, and nothing anywhere says so.
+        """
+        findings: list[PreflightFinding] = []
+
+        if not request.title.strip():
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_ERROR, "Dev.to requires a title and this piece has none."
+                )
+            )
+        if not request.body_markdown.strip():
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_ERROR,
+                    "Dev.to publishes the article body, and this piece has none.",
+                )
+            )
+
+        # Counted after normalisation, not before: `normalize_tags` drops the
+        # ones Forem would reject outright, so the tags that are *over the
+        # limit* are the ones that survived that and still will not fit.
+        kept = formatting.normalize_tags(request.tags, limit=_TAG_LIMIT)
+        usable = formatting.normalize_tags(request.tags, limit=len(request.tags) or 1)
+        if len(usable) > len(kept):
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_WARNING,
+                    f"Dev.to takes {_TAG_LIMIT} tags and this piece has "
+                    f"{len(usable)}; {', '.join(usable[_TAG_LIMIT:])} will be "
+                    "dropped without an error.",
+                    limit=_TAG_LIMIT,
+                    actual=len(usable),
+                )
+            )
+        return findings
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
         """Create an article, published or as a draft.

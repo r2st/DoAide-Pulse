@@ -364,6 +364,35 @@ def compose_social(
     return truncate_with_link(text, url=url, limit=limit, url_cost=url_cost)
 
 
+def social_budget(
+    *,
+    text: str,
+    url: str | None,
+    tags: list[str],
+    url_cost: int | None = None,
+    tag_limit: int = 3,
+) -> int:
+    """How long :func:`compose_social` would be *if nothing were cut*.
+
+    The composer always returns something inside the limit, so its output
+    cannot tell you whether it had to trim. This assembles the same post from
+    the same parts and measures it by the same ruler, without the trimming —
+    so ``social_budget(...) > limit`` is exactly "this piece will be shortened
+    to fit", and the difference is by how much.
+
+    For preflight only. Nothing publishes this string; it is measured and
+    thrown away. It mirrors :func:`compose_social`'s assembly (hook, then the
+    link a space later, then the hashtags after a blank line) rather than
+    calling it, because what is wanted here is the length the composer *could
+    not* have.
+    """
+    hashtags = hashtagify(tags, limit=tag_limit)
+    post = f"{text} {url}" if url else text
+    if hashtags:
+        post = f"{post}\n\n{hashtags}"
+    return billed_length(post, url=url, url_cost=url_cost)
+
+
 def truncate_for_linkedin(text: str, *, url: str | None = None) -> str:
     """Trim to LinkedIn's hard limit, keeping the link on its own line.
 
@@ -434,6 +463,7 @@ __all__ = [
     "lead_image_html",
     "normalize_tags",
     "sanitize_html",
+    "social_budget",
     "to_html",
     "to_plain_text",
     "truncate_for_linkedin",

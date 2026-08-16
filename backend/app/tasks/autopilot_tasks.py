@@ -45,7 +45,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.content import Content, ContentIdea, ContentType
 from app.models.mixins import elapsed_ms, utcnow
-from app.models.project import AutopilotMode, Project
+from app.models.project import AutopilotMode, Project, scan_due
 from app.models.trigger import Trigger, TriggerKind
 from app.models.user import User
 from app.services import content_generator, content_pipeline, dedup, github_client
@@ -336,18 +336,34 @@ def scan_all_projects() -> dict:
         trigger_owned = select(Trigger.project_id).where(
             Trigger.kind == TriggerKind.GITHUB, Trigger.is_active.is_(True)
         )
-        ids = list(
-            db.scalars(
-                select(Project.id)
-                .join(User, User.id == Project.user_id)
-                .where(
-                    Project.is_active.is_(True),
-                    User.is_active.is_(True),
-                    Project.repo_url.is_not(None),
-                    Project.id.not_in(trigger_owned),
-                )
+        # The interval is filtered in Python rather than in the WHERE clause.
+        # The comparison is ``last_scanned_at <= now - N hours`` where N is a
+        # *column*, and column-driven interval arithmetic is spelled differently
+        # in every dialect this runs on — Postgres in production, SQLite under
+        # the tests. Three rows per project on a fleet of tens is not the read
+        # worth spending a dialect branch on, and `Project.scan_due` is then one
+        # testable answer both this and the projects page can quote.
+        now = utcnow()
+        candidates = db.execute(
+            select(
+                Project.id,
+                Project.last_scanned_at,
+                Project.autopilot_min_interval_hours,
             )
-        )
+            .join(User, User.id == Project.user_id)
+            .where(
+                Project.is_active.is_(True),
+                User.is_active.is_(True),
+                Project.repo_url.is_not(None),
+                Project.id.not_in(trigger_owned),
+            )
+        ).all()
+        ids = [
+            project_id
+            for project_id, last_scanned_at, interval_hours in candidates
+            if scan_due(last_scanned_at, interval_hours, now)
+        ]
+        held = len(candidates) - len(ids)
         # A project set to draft or auto but with no repo is silently outside
         # the query above — it will never scan, and until this line the only
         # evidence was that it never produced anything. Named here so the fact
@@ -368,6 +384,15 @@ def scan_all_projects() -> dict:
         )
     finally:
         db.close()
+
+    if held:
+        # At info, not warning: this is the interval doing exactly what it was
+        # set to do. It is logged at all because "the autopilot has gone quiet"
+        # and "the autopilot is on a two-day interval" look identical from
+        # outside, and the first is a bug report.
+        logger.info(
+            "%d project(s) held back by their own scan interval this sweep", held
+        )
 
     if stranded:
         logger.warning(

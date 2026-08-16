@@ -11,7 +11,7 @@ import re
 
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
-from datetime import datetime  # noqa: TC003
+from datetime import datetime, timedelta  # noqa: TC003
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -29,7 +29,7 @@ from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.mixins import TimestampMixin, utcnow
+from app.models.mixins import TimestampMixin, as_aware, utcnow
 
 # Imported at runtime for the same reason as ``datetime`` above: it appears in a
 # ``Mapped[...]`` annotation. Safe despite the apparent cycle — ``publication``
@@ -93,6 +93,45 @@ def slugify(value: str) -> str:
     """URL-safe slug from a project or content title."""
     slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
     return slug or "untitled"
+
+
+def scan_due(
+    last_scanned_at: datetime | None,
+    min_interval_hours: int | None,
+    now: datetime | None = None,
+) -> bool:
+    """Whether a project on this interval may be scanned again yet.
+
+    ``True`` unless *min_interval_hours* is set and the last completed scan is
+    more recent than that. A project that has never scanned is always due — the
+    interval is a gap between scans, and there is no first scan to measure a gap
+    from.
+
+    A free function over two values rather than only a method on
+    :class:`Project`, because the beat sweep tests the whole fleet and selects
+    three columns rather than whole rows to do it — see
+    :func:`app.tasks.autopilot_tasks.scan_all_projects`. Building a throwaway
+    ``Project`` per row to reach a method would put transient instances in an
+    open session for no reason, and widening the select to whole entities to
+    avoid that would pull every project's description on every tick.
+    :meth:`Project.scan_due` delegates here so the two cannot drift.
+
+    Takes *now* rather than reading the clock, because the sweep tests one
+    clock against every project: a pass that read the time per project would
+    let a slow pass drift over the boundary halfway through and scan the back
+    half of the fleet a tick early.
+
+    Measures from ``last_scanned_at`` — when the repo was last *looked at*, not
+    when a piece was last written. A scan that finds nothing new still counts,
+    which is the intended reading: the interval bounds how often Herald goes
+    and asks, and asking is what spends the GitHub quota. What comes back is
+    what ``autopilot_commit_threshold`` and ``autopilot_daily_content_limit``
+    are for.
+    """
+    hours = min_interval_hours or 0
+    if hours <= 0 or last_scanned_at is None:
+        return True
+    return as_aware(last_scanned_at) <= (now or utcnow()) - timedelta(hours=hours)
 
 
 #: ``owner/repo`` out of any of the GitHub URL shapes people actually paste.
@@ -171,6 +210,29 @@ class Project(Base, TimestampMixin):
     #: Platforms an autopilot piece is queued for. Empty means "draft only".
     autopilot_platforms: Mapped[list[str]] = mapped_column(
         JSON, default=list, nullable=False
+    )
+    #: Hours this project must go between autopilot scans. ``0`` means "every
+    #: sweep", which is what every project did before this column existed.
+    #:
+    #: The scan interval was a single deployment-wide number
+    #: (``autopilot_scan_interval_seconds``), so "write about this repo at most
+    #: twice a week" could only be expressed by slowing every project on the
+    #: box down to that rate. The two knobs beside this one do not cover it
+    #: either: ``autopilot_commit_threshold`` gates on *how much* has shipped
+    #: rather than how long it has been, and ``autopilot_daily_content_limit``
+    #: is a ceiling on a day, so a repo that clears the threshold every hour
+    #: still writes every day it possibly can. This is the one that says how
+    #: often, and it is per project because a documentation repo and a product
+    #: repo want different answers on the same install.
+    #:
+    #: Read only by the beat sweep — see
+    #: :func:`app.tasks.autopilot_tasks.scan_all_projects`. A human pressing
+    #: ``POST /projects/{id}/scan`` is deliberately not held: they are asking
+    #: for this repo to be looked at now, and they know something the interval
+    #: does not. Same reasoning as :func:`app.services.publishing_service.retry_hold`
+    #: exempting nothing but the automated path.
+    autopilot_min_interval_hours: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
     )
     #: Watermarks: what the monitor had already seen last time it looked. A
     #: change against these is the trigger, so a first scan of an old repo
@@ -259,6 +321,10 @@ class Project(Base, TimestampMixin):
         if not match:
             return None
         return f"{match['owner']}/{match['repo']}"
+
+    def scan_due(self, now: datetime | None = None) -> bool:
+        """Whether the beat sweep may scan this project yet. See :func:`scan_due`."""
+        return scan_due(self.last_scanned_at, self.autopilot_min_interval_hours, now)
 
     @property
     def autopilot_blocked_reason(self) -> str | None:

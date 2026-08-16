@@ -59,7 +59,8 @@ def _project_fields(project: Project) -> dict:
         for key in (
             "id", "name", "slug", "description", "repo_url", "live_url",
             "tech_stack", "target_audience", "keywords", "tone", "is_active",
-            "autopilot_mode", "autopilot_platforms", "auto_canonical",
+            "autopilot_mode", "autopilot_platforms",
+            "autopilot_min_interval_hours", "auto_canonical",
             "canonical_platform", "auto_headline_winner",
             "utm_enabled", "utm_campaign",
             "last_seen_commit_sha",

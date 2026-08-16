@@ -103,8 +103,8 @@ def test_the_two_sweeps_are_the_size_they_should_be():
     file green while checking nothing — the standing failure mode of a test
     that generates its own cases. The only defence is knowing the number.
     """
-    assert len(AUTHENTICATED) == 90
-    assert len(BY_ID) == 51
+    assert len(AUTHENTICATED) == 92
+    assert len(BY_ID) == 53
 
 
 def _assert_error_shape(resp, url: str) -> None:

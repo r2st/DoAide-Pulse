@@ -550,6 +550,24 @@ class Settings(BaseSettings):
     # scores around 80. A stricter floor would start refusing pieces whose only
     # fault is being terse, which is a style a reviewer is allowed to hold.
     content_quality_min_score: int = 50
+    # The same score, read at the other end of the pipeline: the floor a piece
+    # must clear to publish itself with nobody in the loop.
+    #
+    # Separate from the floor above, and higher, because the two gates are
+    # asking different questions. That one asks "is this worth a reviewer's
+    # attention" and is set where it refuses a code dump. This asks "is this
+    # worth publishing under the user's name unread", and the answer to that
+    # should be stricter than the answer to the first — the piece it lets
+    # through has nobody after it.
+    #
+    # The auto-publish path had no quality gate at all before this. It read
+    # confidence, the SEO envelope, dead links, stray scripts, invented product
+    # names and near-duplicates — six gates, none of which reads the prose. A
+    # piece of fluent, well-structured, correctly-tagged, 40-reading-ease
+    # subordinate-clause soup cleared every one of them.
+    #
+    # Set to 0 to turn this gate off while leaving the review floor alone.
+    autopilot_auto_publish_min_quality: int = 60
 
     # ---- Weekly digest ----
     # The window each digest reports on, and the comparison window is the one
@@ -703,22 +721,28 @@ class Settings(BaseSettings):
             raise ValueError("must be an hour of the day, 0-23")
         return v
 
-    @field_validator("content_quality_min_score")
+    @field_validator("content_quality_min_score", "autopilot_auto_publish_min_quality")
     @classmethod
     def _quality_floor(cls, v: int) -> int:
         """A floor on a 0–100 score has to be on the same scale as the score.
 
         Both ends matter. Below zero is not a lenient gate, it is a gate that
-        can never fire — which is what ``content_quality_gate_enabled`` is for,
-        and a disabled gate spelled as a number nobody would recognise. Above
-        100 is worse: no piece can reach it, so every draft in the install
-        stops being submittable at once, and the error names a score the
-        reviewer can see on screen and cannot act on.
+        can never fire — which ``content_quality_gate_enabled`` and a floor of
+        ``0`` already spell properly, and this would be the same thing written
+        as a number nobody would recognise. Above 100 is worse: no piece can
+        reach it, so every draft in the install stops being submittable at
+        once, and the error names a score the reviewer can see on screen and
+        cannot act on.
+
+        Guards ``autopilot_auto_publish_min_quality`` too — the same 0–100
+        score read at the other end of the pipeline, and out of range in
+        exactly the same two ways.
         """
         if not 0 <= v <= 100:
             raise ValueError(
-                "must be a score between 0 and 100 — set "
-                "CONTENT_QUALITY_GATE_ENABLED=false to turn the gate off"
+                "must be a score between 0 and 100 — set it to 0 (or "
+                "CONTENT_QUALITY_GATE_ENABLED=false, for the review floor) to "
+                "turn the gate off"
             )
         return v
 

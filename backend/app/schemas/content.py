@@ -400,6 +400,99 @@ class SocialCardsOut(BaseModel):
     recommended_image: dict[str, int] = {}
 
 
+class PlatformEngagementOut(BaseModel):
+    """One platform's newest reading for a piece.
+
+    Every counter is optional and ``None`` means "this platform does not report
+    it", which must stay distinct from zero — see
+    ``app.services.content_engagement``.
+    """
+
+    publication_id: int
+    platform: Platform
+    external_url: str | None = None
+    published_at: datetime | None = None
+    #: ``None`` when the platform has never been polled, which is different from
+    #: polled and reporting nothing.
+    captured_at: datetime | None = None
+    snapshots: int = 0
+    engagement: int = 0
+    views: int | None = None
+    reads: int | None = None
+    clicks: int | None = None
+    reactions: int | None = None
+    comments: int | None = None
+    shares: int | None = None
+
+
+class EngagementTotalsOut(BaseModel):
+    """The piece's numbers added up, with the provenance of each one."""
+
+    engagement: int = 0
+    views: int | None = None
+    reads: int | None = None
+    clicks: int | None = None
+    reactions: int | None = None
+    comments: int | None = None
+    shares: int | None = None
+    #: Which platforms contributed to each field. A total without this reads as
+    #: though the platforms that report nothing reported zero.
+    reported_by: dict[str, list[str]] = {}
+
+
+class EngagementPointOut(BaseModel):
+    """One reading on the piece's trend line."""
+
+    #: Hours since publication, so a syndicated copy lines up with the original
+    #: rather than sitting to the right of it.
+    hours: float
+    views: int = 0
+    engagement: int = 0
+
+
+class ContentEngagementOut(BaseModel):
+    """How one piece performed, everywhere it went."""
+
+    content_id: int
+    title: str
+    platforms: list[PlatformEngagementOut] = []
+    totals: EngagementTotalsOut = EngagementTotalsOut()
+    trend: list[EngagementPointOut] = []
+
+
+class PreflightFindingOut(BaseModel):
+    """One thing wrong — or worth knowing — about a piece on one platform."""
+
+    #: ``error`` means the attempt is wasted; ``warning`` means it publishes but
+    #: not intact. See ``app.services.publishers.base.PreflightFinding``.
+    level: str
+    message: str
+    #: Present when the finding is about a limit, so the UI can render "412/300"
+    #: rather than only the sentence.
+    limit: int | None = None
+    actual: int | None = None
+
+
+class PlatformCheckOut(BaseModel):
+    """One platform's verdict on one piece."""
+
+    platform: Platform
+    #: False only when something *stops* the publish. A piece that will be
+    #: shortened is publishable — that is what the short-form destinations are.
+    publishable: bool
+    findings: list[PreflightFindingOut] = []
+
+
+class PlatformChecksOut(BaseModel):
+    """Every destination this piece is bound for, checked."""
+
+    content_id: int
+    #: True when nothing anywhere is an error. The publish button reads this;
+    #: it does not *have* to obey it — see ``app.services.platform_check``.
+    publishable: bool
+    platforms: list[PlatformCheckOut] = []
+
+
 class RepurposeOut(BaseModel):
     """Social snippets derived from a long-form piece — nothing persisted."""
 

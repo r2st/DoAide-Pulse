@@ -32,10 +32,13 @@ from typing import Any
 from app.models.publication import Platform
 from app.services.publishers import formatting
 from app.services.publishers.base import (
+    PREFLIGHT_ERROR,
+    PREFLIGHT_WARNING,
     Adapter,
     CredentialError,
     CredentialField,
     MetricsSnapshot,
+    PreflightFinding,
     PublishError,
     PublishRequest,
     PublishResult,
@@ -144,6 +147,57 @@ class BlueskyAdapter(Adapter):
             limit=formatting.BLUESKY_LIMIT,
             # No url_cost override: Bluesky does not shorten links.
         )
+
+    def preflight(self, request: PublishRequest) -> list[PreflightFinding]:
+        """What 300 graphemes will do to this piece, before it goes.
+
+        Bluesky is the destination where the gap between what is on screen and
+        what arrives is widest: an eight-hundred-word article becomes a hook
+        and a link, and the link is charged at its real length because nothing
+        here shortens it. The post always fits — ``compose_social`` sees to
+        that — so the only useful thing to say is *how much* was cut, and to
+        say it while the piece can still be edited.
+        """
+        findings: list[PreflightFinding] = []
+
+        if request.as_draft:
+            # The same refusal `publish` raises, made before an attempt is spent
+            # on it. A row that fails on this is a row nobody had to queue.
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_ERROR,
+                    "Bluesky has no draft state — a post is either live or it "
+                    "does not exist.",
+                )
+            )
+
+        text = request.excerpt or request.title
+        if not text.strip():
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_ERROR,
+                    "Nothing to post: this piece has neither an excerpt nor a "
+                    "title, and Bluesky posts the one or the other.",
+                )
+            )
+            return findings
+
+        wanted = formatting.social_budget(
+            text=text, url=request.link, tags=request.tags
+        )
+        if wanted > formatting.BLUESKY_LIMIT:
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_WARNING,
+                    f"{wanted - formatting.BLUESKY_LIMIT} characters over "
+                    f"Bluesky's {formatting.BLUESKY_LIMIT}, so the post will be "
+                    "shortened to fit. The link is kept and the hashtags go "
+                    "first; edit the excerpt to choose what survives.",
+                    limit=formatting.BLUESKY_LIMIT,
+                    actual=wanted,
+                )
+            )
+        return findings
 
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
         """Create a post record. Refuses ``as_draft`` — Bluesky has no draft state."""

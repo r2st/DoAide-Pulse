@@ -49,6 +49,7 @@ from app.services import (
     link_check,
     publishers,
     publishing_service,
+    quality,
     seo,
     webhook_payloads,
     webhooks,
@@ -89,6 +90,10 @@ class RoutedContent:
     status: str
     confidence: float
     seo_score: int
+    #: The prose score — readability and code density folded in with the SEO
+    #: envelope. ``None`` only for callers built before the gate existed; the
+    #: pipeline always sets it. See :mod:`app.services.quality`.
+    quality_score: int | None = None
     dead_links: list[str] = field(default_factory=list)
     #: ``error``-level SEO issues, which hold a piece back on their own however
     #: it scored — see :func:`app.services.seo.blocking_issues`.
@@ -118,6 +123,8 @@ class RoutedContent:
             "confidence": self.confidence,
             "seo_score": self.seo_score,
         }
+        if self.quality_score is not None:
+            body["quality_score"] = self.quality_score
         if self.dead_links:
             body["dead_links"] = self.dead_links
         if self.seo_errors:
@@ -398,6 +405,47 @@ def generate_and_route(
             duplicate_of,
         )
 
+    # A sixth gate, on the one thing none of the five above reads: the prose.
+    #
+    # Every gate so far measures the piece as an artefact or as a claim. The SEO
+    # score reads the envelope, `blocking_issues` reads it for completeness, the
+    # garble check reads the characters, the factcheck reads the names, and the
+    # dedup check reads it against its siblings. A piece can pass all five and
+    # still be four hundred words of subordinate clauses at a reading ease a
+    # standards document would be embarrassed by, or six fenced blocks with a
+    # sentence of transition between them — the two things a model writes when
+    # the brief is thin. See :mod:`app.services.quality`.
+    #
+    # Herald already measures exactly this, and already refuses on it: it is the
+    # DRAFT→REVIEW floor a human hits when they submit a piece by hand. So the
+    # gate a *person* has to clear to ask for a reviewer was stricter than the
+    # one Herald cleared to publish under that person's name unread. This closes
+    # that, at its own threshold — see
+    # ``settings.autopilot_auto_publish_min_quality`` for why the two numbers
+    # are separate and why this one is higher.
+    #
+    # Scored from `seo_fields`, which is the same dict `seo.seo_score` and
+    # `seo.blocking_issues` were handed above, so the piece cannot score one
+    # envelope here and another there. `quality.report` takes those keyword
+    # arguments precisely so there is one spelling of "what a piece is".
+    #
+    # Banked on the row whether or not it holds the piece back, like the four
+    # gates before it: a reviewer looking at a held piece should see every
+    # reason it was held, and this is the one that says *read it again*.
+    quality_report = quality.report(**seo_fields)
+    quality_floor = settings.autopilot_auto_publish_min_quality
+    if auto and quality_floor > 0 and quality_report.score < quality_floor:
+        auto = False
+        logger.info(
+            "held %r back from auto-publish: quality score %d < %d "
+            "(reading ease %s, code ratio %.2f)",
+            generated.title,
+            quality_report.score,
+            quality_floor,
+            quality_report.readability.reading_ease,
+            quality_report.code_ratio,
+        )
+
     content = content_generator.content_from_generated(
         db,
         project_id=project.id,
@@ -411,6 +459,13 @@ def generate_and_route(
             "seo_score": score,
             "seo_errors": seo_errors,
             "garbled_runs": garbled,
+            # The score and the two components behind it, not just the score. A
+            # reviewer told "quality 54" can do nothing with it; told the
+            # reading ease is 21 they know to shorten the sentences, and told
+            # the code ratio is 0.7 they know to write the glue.
+            "quality_score": quality_report.score,
+            "reading_ease": quality_report.readability.reading_ease,
+            "code_ratio": round(quality_report.code_ratio, 3),
             # Banked whether or not it held the piece back, like the gate
             # results above: "this restates #41" is the single most useful
             # sentence a reviewer can be handed about a piece that looks
@@ -457,6 +512,7 @@ def generate_and_route(
             status=QUEUED_FOR_REVIEW,
             confidence=generated.confidence,
             seo_score=score,
+            quality_score=quality_report.score,
             dead_links=dead_links,
             seo_errors=seo_errors,
             garbled_runs=garbled,
@@ -479,6 +535,7 @@ def generate_and_route(
         status=AUTO_PUBLISHED,
         confidence=generated.confidence,
         seo_score=score,
+        quality_score=quality_report.score,
         platforms=[p.platform.value for p in publications],
         is_fallback=generated.is_fallback,
     )

@@ -41,9 +41,12 @@ from app.models.publication import Platform
 from app.services import github_client, seo, social_cards
 from app.services.publishers import formatting
 from app.services.publishers.base import (
+    PREFLIGHT_ERROR,
+    PREFLIGHT_WARNING,
     Adapter,
     CredentialError,
     CredentialField,
+    PreflightFinding,
     PublishError,
     PublishRequest,
     PublishResult,
@@ -286,6 +289,52 @@ class GitAdapter(Adapter):
         if path.endswith("/"):
             raise CredentialError(f"'{template}' resolves to a directory, not a file")
         return path.removeprefix("./")
+
+    def preflight(self, request: PublishRequest) -> list[PreflightFinding]:
+        """Whether this piece can become a file in somebody's repo.
+
+        The Git destination writes Markdown with YAML front matter to a path
+        built from the slug, so the two things that fail here are a piece with
+        no slug — there is no filename to write — and a body that is not
+        Markdown so much as nothing at all.
+
+        The path itself is *not* checked, deliberately: it comes from the
+        connection's ``path_template``, and this method has no credentials by
+        contract. ``path_for`` validates it at publish time, where the template
+        actually exists.
+        """
+        findings: list[PreflightFinding] = []
+
+        if not (request.slug or "").strip():
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_ERROR,
+                    "A Git post is a file named after the slug, and this piece "
+                    "has no slug.",
+                )
+            )
+        if not request.body_markdown.strip():
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_ERROR,
+                    "A Git post is its Markdown body, and this piece has none.",
+                )
+            )
+        if not (request.meta_description or request.excerpt or "").strip():
+            # Not an error: the file commits fine without one. But `description`
+            # is the front-matter key every static-site generator reads for the
+            # page's meta description and its card, so an empty one publishes a
+            # post that looks broken in a search result and unfurls as a grey
+            # rectangle.
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_WARNING,
+                    "No meta description or excerpt, so the front matter's "
+                    "`description` will be empty — most themes use it for the "
+                    "page description and the social card.",
+                )
+            )
+        return findings
 
     def build_file(self, request: PublishRequest) -> str:
         """Front matter plus the Markdown body, as it will land on disk.

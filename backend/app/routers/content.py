@@ -40,6 +40,7 @@ from app.schemas.content import (
     BulkResultOut,
     ContentCreate,
     ContentDetail,
+    ContentEngagementOut,
     ContentOut,
     ContentStatusIn,
     ContentUpdate,
@@ -53,6 +54,9 @@ from app.schemas.content import (
     InternalLinkSuggestionOut,
     LinkCheckOut,
     LinkStatusOut,
+    PlatformCheckOut,
+    PlatformChecksOut,
+    PreflightFindingOut,
     PreviewLinkCreate,
     PreviewLinkOut,
     PublicationOut,
@@ -68,6 +72,7 @@ from app.schemas.content import (
 )
 from app.schemas.errors import AUTHENTICATED, OWNED, ErrorOut, errors
 from app.services import (
+    content_engagement,
     content_generator,
     content_pipeline,
     formats,
@@ -75,6 +80,7 @@ from app.services import (
     headlines,
     inline_edit,
     link_check,
+    platform_check,
     preview_links,
     publishers,
     publishing_service,
@@ -908,6 +914,111 @@ def internal_link_suggestions(
         limit=limit,
     )
     return [InternalLinkSuggestionOut(**s) for s in suggestions]
+
+
+@router.get(
+    "/{content_id}/metrics",
+    response_model=ContentEngagementOut,
+    summary="How this piece performed, everywhere it went",
+    responses=errors(*OWNED),
+)
+def content_engagement_metrics(
+    content_id: RowId,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ContentEngagementOut:
+    """The newest reading per platform, the totals, and the trend behind them.
+
+    The read Herald was missing: every other metrics endpoint is organised by
+    *publication*, and "how did this post do" is a question about a piece —
+    which is three publications on three platforms reporting three different
+    sets of fields. See :mod:`app.services.content_engagement`, including why a
+    total carries the list of platforms that reported it and why a counter
+    nobody reported stays ``null`` rather than becoming zero.
+
+    Reads what the poller has already stored; it does not go and ask the
+    platforms. Collection is :mod:`app.tasks.metrics_tasks`' job and runs on its
+    own schedule — a page load that fanned out to Dev.to and Bluesky would be
+    slow, rate-limited, and different on every refresh.
+    """
+    content = _owned_content(content_id, db, user)
+    return ContentEngagementOut(
+        **content_engagement.for_content(db, content, user_id=user.id).as_dict()
+    )
+
+
+@router.get(
+    "/{content_id}/platform-check",
+    response_model=PlatformChecksOut,
+    summary="Whether this piece fits everywhere it is going",
+    responses=errors(*OWNED, status.HTTP_422_UNPROCESSABLE_CONTENT),
+)
+def platform_checks(
+    content_id: RowId,
+    platforms: str = Query(
+        default="",
+        description=(
+            "Comma-separated platforms to check. Defaults to where this piece "
+            "is actually going: the publications it already has, then the "
+            "project's autopilot destinations."
+        ),
+    ),
+    as_draft: bool = Query(
+        default=False,
+        description=(
+            "Check the draft-publish path instead. Changes the answer where a "
+            "platform has no draft state — Bluesky refuses one outright."
+        ),
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PlatformChecksOut:
+    """What each destination will make of this piece, without contacting any of them.
+
+    Answers the two questions the publish path could only answer by trying:
+    will this be refused, and will it arrive intact. See
+    :mod:`app.services.platform_check` — including why this reports rather than
+    refuses, and why the "no live connection" sentence here is the same string
+    the failed row would have carried.
+
+    GET and free. Every check reads the piece, the adapters' own constants and
+    the connections' *status*; nothing here decrypts a credential or touches a
+    platform, so it is safe on a draft and cheap enough for a preview panel.
+    """
+    content = _owned_content(content_id, db, user)
+
+    if platforms.strip():
+        try:
+            wanted = [
+                Platform(name.strip().lower())
+                for name in platforms.split(",")
+                if name.strip()
+            ]
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Unknown platform: {exc}",
+            ) from exc
+    else:
+        wanted = platform_check.destinations_for(content)
+
+    verdicts = platform_check.check(
+        db, content, wanted, user_id=user.id, as_draft=as_draft
+    )
+    return PlatformChecksOut(
+        content_id=content.id,
+        # A piece with nowhere to go is not publishable, and answering True for
+        # it would put a green tick on the one case that most needs a red one.
+        publishable=bool(verdicts) and all(v.publishable for v in verdicts),
+        platforms=[
+            PlatformCheckOut(
+                platform=v.platform,
+                publishable=v.publishable,
+                findings=[PreflightFindingOut(**f.as_dict()) for f in v.findings],
+            )
+            for v in verdicts
+        ],
+    )
 
 
 @router.get(

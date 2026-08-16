@@ -71,6 +71,14 @@ def confident(monkeypatch):
     monkeypatch.setattr(llm_router, "complete", fake_complete)
     monkeypatch.setattr(content_pipeline.seo, "SEO_SCORE_THRESHOLD", 0)
     monkeypatch.setattr(content_pipeline.settings, "link_check_enabled", False)
+    # Held open for the same reason as the SEO threshold above: this fixture is
+    # "good enough to clear every other gate", and the body it generates is 300
+    # repetitions of the word "word" in a single unpunctuated sentence — which
+    # is a fine stand-in for an article everywhere except in the one gate that
+    # reads the prose. See `app.services.quality`.
+    monkeypatch.setattr(
+        content_pipeline.settings, "autopilot_auto_publish_min_quality", 0
+    )
 
 
 def _route(db, project):

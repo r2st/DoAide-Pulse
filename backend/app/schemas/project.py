@@ -54,6 +54,11 @@ class ProjectBase(BaseModel):
     is_active: bool = True
     autopilot_mode: AutopilotMode = AutopilotMode.OFF
     autopilot_platforms: list[Platform] = []
+    #: Hours between automated scans of this project. ``0`` = every sweep, which
+    #: is the deployment-wide rate and the behaviour every project had before
+    #: this field existed. Capped at 30 days: past that the interval is really
+    #: "off", and ``autopilot_mode`` says that without a number to misread.
+    autopilot_min_interval_hours: int = Field(default=0, ge=0, le=720)
     #: Set ``content.canonical_url`` from the first public URL a piece gets.
     auto_canonical: bool = True
     #: Which destination counts as the original. ``None`` = first to publish wins.
@@ -129,6 +134,7 @@ class ProjectUpdate(BaseModel):
     is_active: bool | None = None
     autopilot_mode: AutopilotMode | None = None
     autopilot_platforms: list[Platform] | None = None
+    autopilot_min_interval_hours: int | None = Field(default=None, ge=0, le=720)
     auto_canonical: bool | None = None
     canonical_platform: Platform | None = None
     auto_headline_winner: bool | None = None

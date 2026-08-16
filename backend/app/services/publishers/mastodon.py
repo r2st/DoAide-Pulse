@@ -29,10 +29,13 @@ from urllib.parse import urlsplit
 from app.models.publication import Platform
 from app.services.publishers import formatting
 from app.services.publishers.base import (
+    PREFLIGHT_ERROR,
+    PREFLIGHT_WARNING,
     Adapter,
     CredentialError,
     CredentialField,
     MetricsSnapshot,
+    PreflightFinding,
     PublishError,
     PublishRequest,
     PublishResult,
@@ -128,6 +131,45 @@ class MastodonAdapter(Adapter):
         host = urlsplit(self._api(instance_url)).netloc
         acct = data["acct"]
         return f"@{acct}" if "@" in acct else f"@{acct}@{host}"
+
+    def preflight(self, request: PublishRequest) -> list[PreflightFinding]:
+        """The same reading as Bluesky's, against a longer limit and a cheaper link.
+
+        500 characters rather than 300, and a link is charged a flat 23 however
+        long it is — so a piece that overflows Bluesky by a hundred characters
+        routinely fits here, and saying so is the point of measuring both.
+        """
+        findings: list[PreflightFinding] = []
+
+        text = request.excerpt or request.title
+        if not text.strip():
+            return [
+                PreflightFinding(
+                    PREFLIGHT_ERROR,
+                    "Nothing to post: this piece has neither an excerpt nor a "
+                    "title, and a toot is the one or the other.",
+                )
+            ]
+
+        wanted = formatting.social_budget(
+            text=text,
+            url=request.link,
+            tags=request.tags,
+            url_cost=formatting.MASTODON_LINK_COST,
+        )
+        if wanted > formatting.MASTODON_LIMIT:
+            findings.append(
+                PreflightFinding(
+                    PREFLIGHT_WARNING,
+                    f"{wanted - formatting.MASTODON_LIMIT} characters over the "
+                    f"{formatting.MASTODON_LIMIT}-character default, so the "
+                    "toot will be shortened. Instances can raise this limit; "
+                    "Herald composes to the default either way.",
+                    limit=formatting.MASTODON_LIMIT,
+                    actual=wanted,
+                )
+            )
+        return findings
 
     def build_status(self, request: PublishRequest) -> str:
         """The text of the toot.

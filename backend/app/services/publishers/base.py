@@ -248,6 +248,58 @@ class MetricsSnapshot:
     shares: int | None = None
 
 
+#: A preflight finding that stops the piece going to this platform at all.
+PREFLIGHT_ERROR = "error"
+#: A preflight finding the piece survives — it will publish, but not intact.
+#: Truncation is the whole of this category today: a 900-word excerpt reaching
+#: Bluesky is not a failure, it is 300 characters of it and a link.
+PREFLIGHT_WARNING = "warning"
+
+
+@dataclass(frozen=True)
+class PreflightFinding:
+    """One thing wrong — or worth knowing — about this piece on this platform.
+
+    The distinction between the two levels is what a caller can do about it.
+    :data:`PREFLIGHT_ERROR` means the platform will refuse the post or the
+    adapter will raise before it is sent, so publishing is a wasted attempt and
+    a ``failed`` row. :data:`PREFLIGHT_WARNING` means it will publish and be
+    different from what is on screen — which is a thing to be told *before*
+    pressing the button, because on the short-form destinations it is not
+    recoverable afterwards.
+
+    Carries the numbers as well as the sentence, because the sentence alone
+    ("this will be shortened") cannot be acted on and "this is 412 characters
+    over" can.
+    """
+
+    level: str
+    message: str
+    #: What the platform allows, when the finding is about a limit.
+    limit: int | None = None
+    #: What this piece actually measures against that limit.
+    actual: int | None = None
+
+    @property
+    def is_error(self) -> bool:
+        """Whether this finding stops the publish rather than merely shaping it."""
+        return self.level == PREFLIGHT_ERROR
+
+    def as_dict(self) -> dict[str, Any]:
+        """The finding as JSON, omitting the numbers when it is not about a limit.
+
+        ``limit`` and ``actual`` are dropped rather than sent as ``null`` so a
+        UI can treat their presence as "this is a measurement" and render the
+        pair, without a second flag saying which findings carry one.
+        """
+        body: dict[str, Any] = {"level": self.level, "message": self.message}
+        if self.limit is not None:
+            body["limit"] = self.limit
+        if self.actual is not None:
+            body["actual"] = self.actual
+        return body
+
+
 class Adapter(ABC):
     """Base class for platform adapters."""
 
@@ -309,6 +361,30 @@ class Adapter(ABC):
         raise NotImplementedAdapter(
             f"{self.display_name} cannot verify credentials yet"
         )
+
+    def preflight(self, request: PublishRequest) -> list[PreflightFinding]:
+        """What this platform will make of *request*, without contacting it.
+
+        Answers the question the publish path could only answer by trying: does
+        this piece fit here, and will it arrive intact. The default is "nothing
+        to say", which is the right answer for the article destinations — a
+        blog post going to somewhere that hosts blog posts has no format to
+        fail.
+
+        **No credentials, no network.** Every check here reads the request and
+        the adapter's own constants, so this can run on a draft, on a piece
+        whose platform is not connected yet, and on every destination at once
+        for a preview panel. Anything that needs the platform's opinion
+        (whether a tag exists, whether a slug collides) belongs in
+        :meth:`publish`, which is where the answer can be trusted.
+
+        **Deliberately not a gate.** Nothing refuses to publish on the strength
+        of this. The adapters already handle their own limits — Bluesky
+        composes to 300 characters whatever it is handed — and a preflight that
+        blocked a publish would be a second implementation of those rules, free
+        to disagree with the first. This reports; the caller decides.
+        """
+        return []
 
     def fetch_metrics(
         self, external_id: str, credentials: dict[str, Any]

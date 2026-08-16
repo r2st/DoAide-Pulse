@@ -149,6 +149,11 @@ def test_a_genuine_high_confidence_still_auto_publishes(db, auto_project, answer
     # what is under test here is the confidence gate alone.
     monkeypatch.setattr(content_pipeline.seo, "SEO_SCORE_THRESHOLD", 0)
     monkeypatch.setattr(content_pipeline.settings, "link_check_enabled", False)
+    # And the prose gate, for the same reason — what is under test here is the
+    # confidence gate alone, and the stub body is not real prose.
+    monkeypatch.setattr(
+        content_pipeline.settings, "autopilot_auto_publish_min_quality", 0
+    )
     # The worker opens its own session against the production engine — see
     # test_autopilot for the same stub.
     monkeypatch.setattr(content_pipeline, "publish_now", lambda publication_id: None)
