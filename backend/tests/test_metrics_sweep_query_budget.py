@@ -144,7 +144,7 @@ def test_the_sweep_still_polls_every_published_publication(
     result = metrics_tasks.collect_all_metrics()
 
     assert sorted(polled) == ["ext-0", "ext-1", "ext-2", "ext-3"]
-    assert result == {"polled": 4, "recorded": 0}
+    assert result == {"polled": 4, "recorded": 0, "crossings": 0}
 
 
 def test_a_publication_with_no_external_id_is_not_polled(db, project, monkeypatch):
@@ -181,7 +181,7 @@ def test_a_publication_with_no_external_id_is_not_polled(db, project, monkeypatc
     )
     monkeypatch.setattr(metrics_tasks, "SessionLocal", _no_close(db))
 
-    assert metrics_tasks.collect_all_metrics() == {"polled": 0, "recorded": 0}
+    assert metrics_tasks.collect_all_metrics() == {"polled": 0, "recorded": 0, "crossings": 0}
 
 
 def test_the_sweep_survives_its_own_commits(
@@ -199,11 +199,20 @@ def test_the_sweep_survives_its_own_commits(
 
     Two assertions, because the count and the width are separate failures:
 
-    * ``content`` and ``projects`` are not read at all — the sweep joins them to
-      get the owner and never touches the relationship.
+    * ``content`` and ``projects`` are read **at most once**, whatever the row
+      count — the sweep joins them to get the owner and never touches the
+      relationship per row.
     * No statement carries a body. Matched on the bare column name: a
       ``joinedload`` renders the entity it loads under an alias, so a qualified
       match would miss precisely the read this is about.
+
+    The one permitted read of each is the engagement-threshold candidate query
+    at the tail of the sweep (:func:`app.services.engagement_alerts.evaluate`),
+    which joins ``content`` to ``projects`` for three scalar columns. It is one
+    statement for the whole sweep rather than one per row, and it is narrow by
+    construction: ``select(Content.id, ...)``, never ``select(Content)``. The
+    body assertion below is what holds it to that — swap in the entity and this
+    test says so, which is the whole reason the two assertions are separate.
     """
     db.add(
         PlatformConnection(
@@ -222,9 +231,10 @@ def test_the_sweep_survives_its_own_commits(
     monkeypatch.setattr(metrics_tasks, "SessionLocal", _no_close(db))
 
     sql_log.clear()
-    assert metrics_tasks.collect_all_metrics() == {"polled": 4, "recorded": 4}
+    assert metrics_tasks.collect_all_metrics() == {"polled": 4, "recorded": 4, "crossings": 0}
 
-    assert _selects_from(sql_log, "content") == []
+    content_selects = _selects_from(sql_log, "content")
+    assert len(content_selects) <= 1, "\n".join(s[:200] for s in content_selects)
     assert _selects_from(sql_log, "projects") == []
     bodies = [s for s in sql_log if "body_markdown" in s]
     assert bodies == [], "\n".join(s[:200] for s in bodies)

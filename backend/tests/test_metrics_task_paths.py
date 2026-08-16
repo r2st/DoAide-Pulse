@@ -94,7 +94,7 @@ def test_no_platform_reports_metrics_so_the_sweep_never_opens_a_session(
         ],
     )
 
-    assert metrics_tasks.collect_all_metrics() == {"polled": 0, "recorded": 0}
+    assert metrics_tasks.collect_all_metrics() == {"polled": 0, "recorded": 0, "crossings": 0}
     assert _task_session.closed == 0, "no session should have been opened at all"
 
 
@@ -143,7 +143,7 @@ def test_a_sweep_that_runs_out_of_time_returns_what_it_managed(
     result = metrics_tasks.collect_all_metrics()
 
     assert len(seen) == 3, "the sweep must stop at the timeout, not carry on"
-    assert result == {"polled": 4, "recorded": 2}
+    assert result == {"polled": 4, "recorded": 2, "crossings": 0}
 
 
 def test_one_broken_platform_does_not_stop_the_sweep(db, project, monkeypatch):
@@ -165,7 +165,7 @@ def test_one_broken_platform_does_not_stop_the_sweep(db, project, monkeypatch):
     result = metrics_tasks.collect_all_metrics()
 
     assert len(seen) == 3
-    assert result == {"polled": 3, "recorded": 2}
+    assert result == {"polled": 3, "recorded": 2, "crossings": 0}
 
 
 # --------------------------------------------------------------------------- #

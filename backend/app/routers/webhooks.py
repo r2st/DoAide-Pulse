@@ -48,6 +48,11 @@ EVENT_DESCRIPTIONS: dict[WebhookEvent, str] = {
     WebhookEvent.REVIEW_PENDING: (
         "The autopilot wrote something and parked it for a human to look at."
     ),
+    WebhookEvent.ENGAGEMENT_THRESHOLD: (
+        "A published piece passed the engagement number its project set as "
+        "interesting. Fired once per piece. Set the number on the project; "
+        "zero — the default — means never."
+    ),
 }
 
 #: Ceiling on endpoints per user. Not a licensing decision — every event fans

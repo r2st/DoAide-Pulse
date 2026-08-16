@@ -122,7 +122,7 @@ def test_metrics_sweep_polls_the_rest_after_one_row_fails_to_commit(
     result = metrics_tasks.collect_all_metrics()
 
     assert seen == [first.id, second.id], "the sweep stopped at the failing row"
-    assert result == {"polled": 2, "recorded": 1}
+    assert result == {"polled": 2, "recorded": 1, "crossings": 0}
     recorded = db.scalars(
         select(ContentMetric).where(ContentMetric.publication_id == second.id)
     ).all()

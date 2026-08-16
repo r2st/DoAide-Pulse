@@ -66,6 +66,11 @@ class ProjectBase(BaseModel):
     #: Let Herald swap in the best-performing past headline unattended. Off by
     #: default — see ``Project.auto_headline_winner`` for why.
     auto_headline_winner: bool = False
+    #: Webhook once a published piece passes this many total interactions.
+    #: ``0`` = never. Capped well above any plausible real number so that a
+    #: threshold nobody will reach is at least an honest one — see
+    #: ``Project.engagement_threshold``.
+    engagement_threshold: int = Field(default=0, ge=0, le=10_000_000)
     #: Tag outbound links so the project's analytics can attribute the visit.
     utm_enabled: bool = True
     #: ``utm_campaign``. Blank falls back to the project slug.
@@ -138,6 +143,7 @@ class ProjectUpdate(BaseModel):
     auto_canonical: bool | None = None
     canonical_platform: Platform | None = None
     auto_headline_winner: bool | None = None
+    engagement_threshold: int | None = Field(default=None, ge=0, le=10_000_000)
     utm_enabled: bool | None = None
     utm_campaign: str | None = Field(default=None, max_length=120)
 

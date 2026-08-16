@@ -32,8 +32,20 @@ HEALTH = "/api/v1/health"
 EVENTS = "/api/v1/webhooks/events"
 KINDS = "/api/v1/triggers/kinds"
 
-#: Dependencies that mean "a valid token got you here".
-_AUTH_DEPENDENCIES = {"get_current_user"}
+#: Dependencies that mean "a valid credential got you here".
+#:
+#: Two of them, because Herald has two kinds of caller. ``get_current_user``
+#: resolves a person's bearer token; ``require_api_key`` — the closure
+#: :func:`app.deps.require_scope` returns — resolves a machine's ``X-API-Key``
+#: against the ``api_keys`` table and its scopes. A route behind either one is
+#: not part of the anonymous surface, and the sweeps below and in
+#: ``test_there_are_no_ambient_credentials`` both read this set.
+#:
+#: The ``/machine`` routes still carry limiter decorators. That is not
+#: redundancy: they are limited on *cost* rather than audience — a build server
+#: polls in a loop where a person clicks — and are bucketed per key by
+#: :func:`app.ratelimit.api_key_key` rather than per address.
+_AUTH_DEPENDENCIES = {"get_current_user", "require_api_key"}
 
 #: The one anonymous route with no limit, and why that is allowed: it is a
 #: two-key dict built from settings, with no database, no I/O and no user input.

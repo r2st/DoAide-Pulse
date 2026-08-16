@@ -206,6 +206,13 @@ class Settings(BaseSettings):
     # the two: on a GitHub trigger it spends the install's single GITHUB_TOKEN,
     # so leaving it unlimited was a way around `rate_limit_repo_scan`.
     rate_limit_outbound_probe: str = "60/hour;500/day"
+    # The `/machine` surface, bucketed per API key — see `ratelimit.api_key_key`.
+    # A machine polls, so the budget is shaped for polling rather than for
+    # clicking: a status badge refreshing every 30 seconds is 120/hour and fits
+    # comfortably, while a build stuck in a retry loop is caught within minutes.
+    # Reads and the one write share it; filing an idea is not more expensive
+    # than listing content, and two budgets would be two things to tune.
+    rate_limit_machine_api: str = "300/hour;3000/day"
 
     # ---- Database ----
     database_url: str = "postgresql+psycopg://herald:herald@localhost:5432/herald"

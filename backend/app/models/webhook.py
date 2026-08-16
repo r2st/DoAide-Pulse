@@ -67,6 +67,14 @@ class WebhookEvent(str, Enum):
     #: review queue only exists if somebody opens the app; this is how they
     #: find out without doing that.
     REVIEW_PENDING = "review.pending"
+    #: A published piece passed the engagement number its project set as
+    #: interesting. Fired once per piece, ever — see
+    #: :attr:`app.models.content.Content.engagement_notified_at`. The one event
+    #: here that is about something going *right*, and the reason it earns a
+    #: place beside three failures: knowing which piece took off is what tells
+    #: somebody to go and put more behind it, and nothing else in Herald
+    #: volunteers that without being opened.
+    ENGAGEMENT_THRESHOLD = "content.engagement_threshold"
     #: Sent by the "send a test" button, and never by anything else. Present in
     #: the enum so a delivery row can name its event honestly.
     PING = "webhook.ping"
@@ -78,6 +86,7 @@ SUBSCRIBABLE_EVENTS: tuple[WebhookEvent, ...] = (
     WebhookEvent.CONTENT_PUBLISHED,
     WebhookEvent.PUBLICATION_FAILED,
     WebhookEvent.REVIEW_PENDING,
+    WebhookEvent.ENGAGEMENT_THRESHOLD,
 )
 
 

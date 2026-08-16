@@ -1,18 +1,21 @@
 """Shared FastAPI dependencies (current-user resolution, ownership guards)."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Path, Query, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import APIKeyHeader, OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.models.api_key import ApiKey, ApiKeyScope
 from app.models.mixins import as_aware
 from app.models.project import Project
 from app.models.user import User
 from app.security import decode_access_token_claims, issued_at
+from app.services import api_keys
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.api_v1_prefix}/auth/login")
 
@@ -106,3 +109,64 @@ def owned_project(project_id: int, db: Session, user: User) -> Project:
             status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
     return project
+
+
+#: The header a machine credential arrives in.
+#:
+#: A dedicated header rather than ``Authorization: Bearer``. The two credential
+#: types have different lifetimes, different revocation stories and different
+#: scope vocabularies, and sharing a header would mean every 401 in the tree had
+#: to say which of the two it meant — or, worse, would not. Separate headers
+#: make "is this request a machine or a person?" answerable before anything is
+#: parsed. ``auto_error=False`` so a missing header reaches the dependency and
+#: gets Herald's own message rather than FastAPI's.
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+_api_key_exc = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Invalid or expired API key",
+)
+
+
+def require_scope(*scopes: ApiKeyScope) -> Callable[..., ApiKey]:
+    """A dependency resolving ``X-API-Key`` to a key carrying every *scope*.
+
+    Returns the :class:`app.models.api_key.ApiKey`, which the route reads
+    ``project_id`` off — a machine endpoint never takes a project id from the
+    caller, because the credential already names exactly one project and
+    accepting a second opinion about it is how a scoped key ends up serving
+    somebody else's rows.
+
+    Called with no scopes for the endpoints any live key may reach.
+
+    The two failures are deliberately different statuses. A bad key is 401 —
+    the credential is the problem, retry with a better one. A good key missing
+    a scope is 403 — the credential is fine and retrying changes nothing, which
+    is the distinction a client needs to decide between refreshing and paging
+    somebody.
+    """
+
+    # Named rather than a bare closure: ``test_public_endpoint_limits`` decides
+    # whether a route is anonymous by looking for known dependency *names*, so
+    # this one has to be recognisable there. A ``dependency`` in every stack
+    # frame would also make a traceback from a machine route unreadable.
+    def require_api_key(
+        token: str | None = Depends(api_key_header),
+        db: Session = Depends(get_db),
+    ) -> ApiKey:
+        key = api_keys.authenticate(db, token or "")
+        if key is None:
+            raise _api_key_exc
+        missing = [s.value for s in scopes if not key.has_scope(s)]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"This key is missing the {', '.join(missing)} scope.",
+            )
+        # After the scope check, not before: a key that is refused has not been
+        # "used", and stamping it would make an audit of last_used_at read as
+        # though a rejected credential were working.
+        api_keys.touch(db, key)
+        return key
+
+    return require_api_key

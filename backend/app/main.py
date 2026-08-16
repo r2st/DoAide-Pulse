@@ -21,9 +21,11 @@ from app.logging_config import configure_logging, request_id_var
 from app.ratelimit import limiter, rate_limit_exceeded_handler
 from app.routers import (
     analytics,
+    api_keys,
     auth,
     calendar,
     content,
+    machine,
     metrics,
     misc,
     projects,
@@ -535,6 +537,11 @@ def create_app() -> FastAPI:
     app.include_router(webhooks.router, prefix=prefix)
     app.include_router(triggers.router, prefix=prefix)
     app.include_router(templates.router, prefix=prefix)
+    app.include_router(api_keys.router, prefix=prefix)
+    # Last, and deliberately apart from the rest: everything above authenticates
+    # a person with a bearer token, and this one authenticates a machine with a
+    # scoped credential. See app.routers.machine.
+    app.include_router(machine.router, prefix=prefix)
 
     @app.get(
         "/",

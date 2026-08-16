@@ -109,6 +109,46 @@ def account_key(request: Request) -> str:
     return client_key(request)
 
 
+def api_key_key(request: Request) -> str:
+    """The bucket a ``/machine`` request counts against: the credential itself.
+
+    The ``/machine`` surface is reached with an ``X-API-Key`` header rather than
+    a bearer token, so neither of the two buckets above fits it. Address is
+    wrong for the reason :func:`account_key` gives — the CI runners of one
+    account share a NAT and would share a budget — and the account is wrong in
+    the other direction, since the whole point of a per-project key is that the
+    project's automation is metered separately from the person's browser.
+
+    The bucket is the key's **prefix**, taken from the header without a database
+    lookup: slowapi asks for a key before any dependency runs, and a limiter
+    that opens a session is a limiter that falls over exactly when the thing it
+    is limiting is happening.
+
+    Unverified, and safe for the same reason ``account_key``'s token read is:
+    the prefix is *inside* the credential, so a caller who wants to be
+    authenticated has no choice about which bucket they land in. A caller who
+    sprays invented prefixes does get a fresh bucket each time — and buys
+    nothing but 401s, since the secret half still has to match a stored digest.
+    That path is one indexed SELECT and a SHA-256, which is the cheapest thing
+    on this router.
+
+    Anything without a parseable token falls through to the address bucket, so
+    a machine endpoint is never wholly unlimited.
+    """
+    header = request.headers.get("x-api-key", "").strip()
+    if header:
+        # Imported here rather than at module scope: app.services.api_keys
+        # imports the models, and the models import nothing from this module —
+        # a top-level import would make ratelimit part of that cycle for the
+        # sake of one string split.
+        from app.services.api_keys import split
+
+        prefix = split(header)
+        if prefix:
+            return f"apikey:{prefix}"
+    return client_key(request)
+
+
 limiter = Limiter(
     key_func=client_key,
     storage_uri=settings.rate_limit_storage_uri or "memory://",
@@ -144,6 +184,7 @@ def reset() -> None:
 
 __all__ = [
     "account_key",
+    "api_key_key",
     "client_key",
     "limiter",
     "rate_limit_exceeded_handler",

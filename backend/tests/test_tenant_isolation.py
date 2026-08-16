@@ -27,6 +27,7 @@ from fastapi.routing import APIRoute
 
 from app.deps import get_current_user
 from app.main import create_app
+from app.models.api_key import ApiKey, ApiKeyScope
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType
 from app.models.mixins import utcnow
 from app.models.project import Project, Tone
@@ -36,6 +37,7 @@ from app.models.trigger import Trigger, TriggerEvent, TriggerKind
 from app.models.user import User
 from app.models.webhook import DeliveryStatus, Webhook, WebhookDelivery, WebhookEvent
 from app.security import hash_password
+from app.services import api_keys as api_key_service
 from app.services import preview_links
 from app.services import webhooks as webhook_service
 
@@ -138,6 +140,15 @@ def theirs(db, user, project):
     db.add_all([delivery, idea, event])
     db.flush()
     link, _raw = preview_links.issue(db, content, ttl_hours=24)
+    # A live machine credential on their project. The token is thrown away —
+    # this file is about the *management* routes, where a stranger addresses
+    # somebody else's key by id with their own session token.
+    key, _token = api_key_service.mint(
+        db,
+        project=project,
+        name="Their CI",
+        scopes=[ApiKeyScope.CONTENT_READ],
+    )
     db.commit()
 
     return {
@@ -151,6 +162,7 @@ def theirs(db, user, project):
         "delivery_id": delivery.id,
         "idea_id": idea.id,
         "link_id": link.id,
+        "key_id": key.id,
     }
 
 
@@ -370,6 +382,7 @@ def test_every_id_the_sweep_uses_names_a_row_that_exists(db, theirs):
         "delivery_id": WebhookDelivery,
         "idea_id": ContentIdea,
         "link_id": PreviewLink,
+        "key_id": ApiKey,
     }
     # Every id the sweep fills in is accounted for here, so a new one cannot be
     # added to the fixture without also being shown to exist.

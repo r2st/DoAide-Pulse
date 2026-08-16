@@ -51,4 +51,28 @@ def publication_payload(publication: Publication) -> dict:
     }
 
 
-__all__ = ["content_payload", "publication_payload"]
+def engagement_payload(
+    content: Content, *, threshold: int, engagement: int, views: int, platforms: list[str]
+) -> dict:
+    """A piece that passed its project's engagement threshold.
+
+    Carries the threshold as well as the number that crossed it. A receiver
+    reading ``engagement: 214`` alone cannot tell whether that is remarkable;
+    with ``threshold: 200`` beside it, the message writes itself — and a
+    receiver that has several projects pointed at one endpoint can tell which
+    bar was cleared without keeping its own copy of the settings.
+
+    ``views`` is included but is not what the threshold is measured against —
+    see :attr:`app.models.project.Project.engagement_threshold` for why. It is
+    here because it is the number a human wants in the same sentence.
+    """
+    return {
+        "content": content_payload(content),
+        "threshold": threshold,
+        "engagement": engagement,
+        "views": views,
+        "platforms": platforms,
+    }
+
+
+__all__ = ["content_payload", "engagement_payload", "publication_payload"]

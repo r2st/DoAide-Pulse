@@ -12,7 +12,7 @@ from app.models.content import Content
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
-from app.services import publishers, publishing_service
+from app.services import engagement_alerts, publishers, publishing_service
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def collect_all_metrics() -> dict:
         if adapter.implemented and adapter.supports_metrics
     ]
     if not metric_platforms:
-        return {"polled": 0, "recorded": 0}
+        return {"polled": 0, "recorded": 0, "crossings": 0}
 
     db = SessionLocal()
     try:
@@ -93,6 +93,12 @@ def collect_all_metrics() -> dict:
             )
         ).all()
         recorded = 0
+        # The pieces this sweep wrote a fresh snapshot for. Collected so the
+        # threshold check at the end looks only at what actually moved: a piece
+        # nobody polled cannot have crossed anything, and evaluating the whole
+        # install every few hours would be a full scan for an answer that is
+        # ``no`` for all but a handful of rows in its lifetime.
+        touched_content: set[int] = set()
         # Shared across the whole sweep: once a platform rate-limits one
         # account, the rest of that account's posts there are skipped without a
         # request. See ``publishing_service.collect_metrics``.
@@ -107,6 +113,11 @@ def collect_all_metrics() -> dict:
             # write would not land ended the whole sweep, and the rows after it were
             # never polled.
             publication_id = publication.id
+            # Read alongside the id, and for the same reason: after
+            # ``collect_metrics`` commits, the publication is expired and
+            # touching any attribute is another SELECT — inside an ``except``
+            # arm, potentially against a session that cannot emit SQL.
+            content_id = publication.content_id
             try:
                 if (
                     publishing_service.collect_metrics(
@@ -115,6 +126,7 @@ def collect_all_metrics() -> dict:
                     is not None
                 ):
                     recorded += 1
+                    touched_content.add(content_id)
             except SoftTimeLimitExceeded:
                 logger.warning(
                     "metrics collection timed out after %d of %d publications",
@@ -134,11 +146,30 @@ def collect_all_metrics() -> dict:
                 logger.exception(
                     "metrics collection failed for publication %s", publication_id
                 )
+
+        # After the loop, not inside it. A piece publishes to several platforms
+        # and each one is a separate row here; checking per row would evaluate
+        # the same piece four times in one sweep and — before the latch was
+        # written — announce it on whichever platform happened to be polled
+        # first, with only that platform's share of the number.
+        #
+        # Outside the per-row try/except, and with its own: this is the tail of
+        # the sweep, and a notification that cannot be assembled must not turn
+        # a successful poll of every platform into a failed task.
+        try:
+            crossings = engagement_alerts.evaluate(db, sorted(touched_content))
+        except Exception:
+            db.rollback()
+            crossings = []
+            logger.exception("engagement threshold check failed")
     finally:
         db.close()
 
-    logger.info("metrics: polled %d, recorded %d", len(rows), recorded)
-    return {"polled": len(rows), "recorded": recorded}
+    logger.info(
+        "metrics: polled %d, recorded %d, thresholds crossed %d",
+        len(rows), recorded, len(crossings),
+    )
+    return {"polled": len(rows), "recorded": recorded, "crossings": len(crossings)}
 
 
 @task(

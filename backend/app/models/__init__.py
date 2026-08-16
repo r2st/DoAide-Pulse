@@ -3,6 +3,7 @@
 Importing this package registers every model on the shared ``Base.metadata`` so
 that ``Base.metadata.create_all`` and Alembic autogenerate see them all.
 """
+from app.models.api_key import ALL_SCOPES, ApiKey, ApiKeyScope
 from app.models.content import (
     TARGET_WORDS,
     Content,
@@ -29,8 +30,11 @@ from app.models.webhook import (
 )
 
 __all__ = [
+    "ALL_SCOPES",
     "SUBSCRIBABLE_EVENTS",
     "TARGET_WORDS",
+    "ApiKey",
+    "ApiKeyScope",
     "AutopilotMode",
     "ConnectionStatus",
     "Content",

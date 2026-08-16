@@ -79,7 +79,7 @@ def test_the_surface_is_the_size_this_file_thinks_it_is():
     routers, as the first version of it did — would turn this file green
     rather than red. That is the failure mode of a test generating its own
     cases, and the only defence is knowing the number."""
-    assert len(ROUTES) == 102
+    assert len(ROUTES) == 111
 
 
 @pytest.mark.parametrize("route", ROUTES)

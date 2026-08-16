@@ -742,7 +742,12 @@ def test_the_event_catalogue_lists_what_can_be_subscribed_to(client, auth):
     resp = client.get("/api/v1/webhooks/events", headers=auth)
     assert resp.status_code == 200
     events = {row["event"] for row in resp.json()}
-    assert events == {"content.published", "publication.failed", "review.pending"}
+    assert events == {
+        "content.published",
+        "publication.failed",
+        "review.pending",
+        "content.engagement_threshold",
+    }
     assert all(row["description"] for row in resp.json())
 
 

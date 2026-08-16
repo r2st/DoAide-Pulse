@@ -13,6 +13,7 @@ from app.database import Base
 from app.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.api_key import ApiKey
     from app.models.platform_connection import PlatformConnection
     from app.models.project import Project
     from app.models.template import ContentTemplate
@@ -59,6 +60,13 @@ class User(Base, TimestampMixin):
     #: Reusable content shapes. Owned by the user rather than the project so one
     #: template can serve every project — see ``app.models.template``.
     templates: Mapped[list[ContentTemplate]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    #: Machine credentials. Owned by the user *and* narrowed to one project —
+    #: see ``app.models.api_key``. The relationship is here so deleting an
+    #: account takes its keys with it rather than leaving rows that
+    #: authenticate as nobody.
+    api_keys: Mapped[list[ApiKey]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
 

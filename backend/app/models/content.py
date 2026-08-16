@@ -372,6 +372,21 @@ class Content(Base, TimestampMixin):
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    #: When this piece's engagement first crossed its project's threshold and a
+    #: ``content.engagement_threshold`` webhook went out. ``NULL`` means it has
+    #: not — and is what makes the event fire *once* rather than on every
+    #: metrics sweep for the rest of the piece's life, which is what an
+    #: unguarded "engagement > N" check does the moment it becomes true.
+    #:
+    #: A timestamp rather than a boolean because the answer to "when did this
+    #: take off?" is worth keeping and costs the same column. Lowering the
+    #: threshold afterwards does not re-arm it: the piece has already been
+    #: announced, and announcing it again because a setting moved is noise. See
+    #: :mod:`app.services.engagement_alerts`.
+    engagement_notified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+
     # ---- Headline testing ----
     #: Past titles and the [started_at, ended_at) window each was live —
     #: {"title": ..., "started_at": iso, "ended_at": iso}. The *current*

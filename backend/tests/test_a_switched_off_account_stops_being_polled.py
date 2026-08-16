@@ -215,7 +215,7 @@ def test_a_deactivated_account_is_not_polled(db, polled, user):
         "a deactivated account's posts were polled — with that account's own "
         "stored platform credentials, which is the part that matters"
     )
-    assert result == {"polled": 0, "recorded": 0}
+    assert result == {"polled": 0, "recorded": 0, "crossings": 0}
 
 
 def test_a_paused_project_is_still_polled(db, polled, project):

@@ -62,6 +62,7 @@ def _project_fields(project: Project) -> dict:
             "autopilot_mode", "autopilot_platforms",
             "autopilot_min_interval_hours", "auto_canonical",
             "canonical_platform", "auto_headline_winner",
+            "engagement_threshold",
             "utm_enabled", "utm_campaign",
             "last_seen_commit_sha",
             "last_seen_release_tag", "last_scanned_at", "created_at",

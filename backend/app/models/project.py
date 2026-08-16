@@ -37,6 +37,7 @@ from app.models.mixins import TimestampMixin, as_aware, utcnow
 from app.models.publication import Platform
 
 if TYPE_CHECKING:
+    from app.models.api_key import ApiKey
     from app.models.content import Content
     from app.models.trigger import Trigger
     from app.models.user import User
@@ -192,6 +193,24 @@ class Project(Base, TimestampMixin):
         Boolean, default=False, nullable=False
     )
 
+    #: Fire ``content.engagement_threshold`` once a piece from this project
+    #: passes this many total interactions. ``0`` is off, and is the default:
+    #: an alert nobody chose a number for is an alert that fires at the wrong
+    #: time and gets muted, taking the ones that mattered with it.
+    #:
+    #: Per project rather than per account because the number that means
+    #: "this one is doing unusually well" is a property of the audience, and a
+    #: side project's fifty is a flagship's five hundred.
+    #:
+    #: Counts interactions, not views — the four counters
+    #: :attr:`app.models.metrics.ContentMetric.engagement` adds. Views are the
+    #: number platforms disagree about most (some count an impression, some a
+    #: scroll), so a threshold on them would mean something different per
+    #: platform and nothing across them.
+    engagement_threshold: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False
+    )
+
     # ---- Attribution ----
     #: Append UTM parameters to the links published posts point at, so the
     #: project's own analytics can tell which platform sent the visit. Never
@@ -274,6 +293,11 @@ class Project(Base, TimestampMixin):
     #: these; a ``github`` trigger keeps its own watermark in ``Trigger.state``
     #: and takes the project out of the legacy scan.
     triggers: Mapped[list[Trigger]] = relationship(
+        back_populates="project", cascade="all, delete-orphan"
+    )
+    #: Machine credentials scoped to this project. Cascaded so deleting a
+    #: project cannot leave a live key naming a row that is gone.
+    api_keys: Mapped[list[ApiKey]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
 
