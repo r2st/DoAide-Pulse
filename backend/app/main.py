@@ -29,7 +29,9 @@ from app.routers import (
     metrics,
     misc,
     projects,
+    revisions,
     templates,
+    translations,
     triggers,
     webhooks,
 )
@@ -530,6 +532,14 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix=prefix)
     app.include_router(projects.router, prefix=prefix)
     app.include_router(content.router, prefix=prefix)
+    # After the content router, and it has to be: both mount paths under
+    # ``/content/{content_id}``, and FastAPI matches in registration order. The
+    # static paths these add sit one segment deeper than anything content.py
+    # declares, so nothing here shadows it and nothing there shadows these —
+    # but ``GET /languages`` is top-level for exactly that reason, since
+    # ``/content/languages`` would be swallowed by ``/content/{content_id}``.
+    app.include_router(revisions.router, prefix=prefix)
+    app.include_router(translations.router, prefix=prefix)
     app.include_router(calendar.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
     app.include_router(metrics.router, prefix=prefix)

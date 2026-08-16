@@ -128,8 +128,15 @@ _SYSTEM_PROMPT = (
 
 #: Wrappers for the one part of the prompt Herald does not write. See
 #: :func:`_quote_source_material`.
-_FENCE_OPEN = "----- BEGIN SOURCE-MATERIAL -----"
-_FENCE_CLOSE = "----- END SOURCE-MATERIAL -----"
+#:
+#: The strings themselves moved to :mod:`app.services.ai` when
+#: :mod:`app.services.translation` became a second module that quotes
+#: third-party text into a prompt. Re-exported under the old names because they
+#: are what this module's prompt and its tests are written in terms of, and
+#: because a marker is only a fence while both halves agree — one definition,
+#: aliased, is the only arrangement where they cannot drift apart.
+_FENCE_OPEN = ai.FENCE_OPEN
+_FENCE_CLOSE = ai.FENCE_CLOSE
 
 
 def _quote_source_material(text: str) -> str:
@@ -157,12 +164,12 @@ def _quote_source_material(text: str) -> str:
     reads as though Herald wrote it, which is the part that was missing. The
     closing marker is stripped from the quoted text so it cannot be ended
     early.
+
+    The body is :func:`app.services.ai.quote_source_material`; this stays as the
+    name the rest of the module calls, and as the place the argument above is
+    written down.
     """
-    return (
-        f"{_FENCE_OPEN}\n"
-        f"{text.replace(_FENCE_CLOSE, '')}\n"
-        f"{_FENCE_CLOSE}"
-    )
+    return ai.quote_source_material(text)
 
 
 #: How much of a source label is worth naming in the prompt. A label is "GitHub

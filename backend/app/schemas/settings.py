@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.platform_connection import ConnectionStatus
 from app.models.publication import Platform
@@ -16,6 +16,7 @@ from app.schemas.limits import (
     CredentialKey,
     CredentialValue,
 )
+from app.services import languages
 
 
 class ConnectionCreate(BaseModel):
@@ -31,6 +32,27 @@ class ConnectionCreate(BaseModel):
     credentials: dict[CredentialKey, CredentialValue] = Field(
         min_length=1, max_length=MAX_CREDENTIAL_FIELDS
     )
+    #: What language this destination publishes in. Defaults to English, which
+    #: is what every connection made before translations existed means.
+    language: str = Field(default=languages.SOURCE_LANGUAGE, max_length=16)
+
+    @field_validator("language")
+    @classmethod
+    def _supported(cls, value: str) -> str:
+        """Refuse a language the translator cannot produce.
+
+        Accepting one would set a destination to a language no translation can
+        ever satisfy, so every publish falls back to English and reports a
+        reason nobody reads. The failure belongs at the moment the user picks
+        it. Normalised on the way in, so the column holds a base tag and the
+        publish-path comparison is an equality rather than a parse.
+        """
+        code = languages.normalize(value)
+        if code is None:
+            raise ValueError(
+                f"{value!r} is not a supported language. See GET /languages."
+            )
+        return code
 
 
 class ConnectionOut(BaseModel):
@@ -40,6 +62,9 @@ class ConnectionOut(BaseModel):
     display_name: str | None = None
     last_verified_at: datetime | None = None
     last_error: str | None = None
+    #: The language this destination publishes in. Always present and never
+    #: null: a connection that has never been told publishes English.
+    language: str = languages.SOURCE_LANGUAGE
 
     model_config = {"from_attributes": True}
 

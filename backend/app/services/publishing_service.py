@@ -34,8 +34,9 @@ from app.models.publication import (
     Publication,
     PublicationStatus,
 )
+from app.models.translation import ContentTranslation
 from app.models.webhook import WebhookEvent
-from app.services import publishers, utm, webhook_payloads, webhooks
+from app.services import languages, publishers, translation, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
 from app.services.errors import clip_error, redact
 from app.services.publishers import breaker, formatting
@@ -405,6 +406,42 @@ def _redact_credentials(
     )
 
 
+def _translation_for(
+    db: Session, user_id: int, platform: Platform, content: Content
+) -> translation.PublishChoice:
+    """Which text this destination should receive, and why.
+
+    Reads the language off the connection, which is the only place that fact
+    lives. A destination with no connection row cannot be published to at all —
+    ``_credentials_for`` has already raised by the time this runs in ``execute``
+    — so the ``None`` branch here is for the callers that build a request
+    without one, and it answers with the original, which is what every caller
+    got before languages existed.
+
+    The reason is logged rather than only returned. A fallback to English is the
+    outcome a user is least likely to notice and most likely to care about, and
+    the place they will look when they do notice is the worker log for the
+    publication that surprised them.
+    """
+    connection = db.scalar(
+        select(PlatformConnection).where(
+            PlatformConnection.user_id == user_id,
+            PlatformConnection.platform == platform,
+        )
+    )
+    wanted = connection.language if connection is not None else None
+    choice = translation.for_publishing(db, content, wanted)
+    if wanted and languages.normalize(wanted) not in (None, languages.SOURCE_LANGUAGE):
+        logger.info(
+            "publishing content %s to %s in %s: %s",
+            content.id,
+            platform.value,
+            choice.language,
+            choice.reason,
+        )
+    return choice
+
+
 def _mark_connection_invalid(
     db: Session, user_id: int, platform: Platform, error: str
 ) -> None:
@@ -420,7 +457,11 @@ def _mark_connection_invalid(
 
 
 def build_request(
-    content: Content, *, platform: Platform | None = None, as_draft: bool = False
+    content: Content,
+    *,
+    platform: Platform | None = None,
+    as_draft: bool = False,
+    translation: ContentTranslation | None = None,
 ) -> PublishRequest:
     """The flat value object adapters take, built from a content row.
 
@@ -431,13 +472,29 @@ def build_request(
     adapters stateful: it supplies the campaign source for the outbound links
     and the idempotency key. It is optional so that callers who only want to
     preview the shared parts — the SEO panel, tests — need not name one.
+
+    *translation* swaps the four fields that have words in them for their
+    other-language versions, and nothing else. Not the slug, which is the
+    filename a Git destination writes and the ``utm_content`` on the share link
+    — changing it per language would publish the same piece to two paths and
+    split its analytics in half. Not the tags or keywords, which are a taxonomy
+    the destination indexes on rather than prose. Not the canonical, which must
+    keep pointing at the one original. The rule is the one
+    :mod:`app.models.translation` opens with: there is one piece, and a
+    language is an adaptation of it, exactly like a platform.
+
+    Resolving *which* translation is not this function's job — see
+    :func:`app.services.translation.for_publishing`, which is the only caller
+    allowed to decide, because deciding wrongly means publishing fluent prose
+    that describes a version of the piece that no longer exists.
     """
     project = content.project
     tagged = _Campaign(content, platform)
+    text = translation if translation is not None else content
 
     return PublishRequest(
-        title=content.title,
-        body_markdown=tagged.markdown(content.body_markdown),
+        title=text.title,
+        body_markdown=tagged.markdown(text.body_markdown),
         # Flattened, because for four of the ten destinations this *is* the post.
         #
         # Mastodon, Bluesky, Twitter and LinkedIn all compose from
@@ -454,8 +511,8 @@ def build_request(
         # bug this is: one term short in the component nobody demos. A
         # destination added next year gets a plain-text excerpt without having
         # to know why.
-        excerpt=formatting.to_plain_text(content.excerpt or ""),
-        meta_description=content.meta_description,
+        excerpt=formatting.to_plain_text(text.excerpt or ""),
+        meta_description=text.meta_description,
         tags=list(content.tags or []),
         keywords=list(content.keywords or []),
         focus_keyword=getattr(content, "focus_keyword", "") or "",
@@ -471,6 +528,7 @@ def build_request(
         idempotency_key=(
             f"herald-{content.id}-{platform.value}" if platform and content.id else None
         ),
+        language=translation.language if translation is not None else languages.SOURCE_LANGUAGE,
     )
 
 
@@ -637,6 +695,13 @@ def execute(db: Session, publication: Publication) -> Publication:
 
     try:
         credentials = _credentials_for(db, user_id, publication.platform)
+        # Which language this destination wants, and whether there is a
+        # translation fit to go out in it. Resolved here rather than when the
+        # row was queued, because both halves of the answer move in between: a
+        # translation queued as ready can be made stale by an edit, and one
+        # queued as pending can have finished. The queue decides *that* a piece
+        # publishes; this decides what text.
+        choice = _translation_for(db, user_id, publication.platform, content)
         # The clock starts *here*, after the credentials are read and decrypted,
         # and stops in the ``finally`` below. What is being measured is the
         # platform's latency and nothing else: a row can sit scheduled for a
@@ -650,6 +715,7 @@ def execute(db: Session, publication: Publication) -> Publication:
                     content,
                     platform=publication.platform,
                     as_draft=publication.as_draft,
+                    translation=choice.translation,
                 ),
                 credentials,
             )

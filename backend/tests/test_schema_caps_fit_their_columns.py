@@ -29,6 +29,7 @@ from app.models.content import Content, ContentIdea
 from app.models.platform_connection import PlatformConnection
 from app.models.project import Project
 from app.models.template import ContentTemplate
+from app.models.translation import ContentTranslation
 from app.models.trigger import Trigger
 from app.models.user import User
 from app.models.webhook import Webhook
@@ -38,6 +39,7 @@ from app.schemas.content import ContentCreate, ContentUpdate, HeadlineApplyIn
 from app.schemas.project import ProjectBase, ProjectCreate, ProjectUpdate
 from app.schemas.settings import ConnectionCreate
 from app.schemas.template import TemplateBase, TemplateCreate, TemplateUpdate
+from app.schemas.translation import TranslationRequestIn
 from app.schemas.trigger import TriggerCreate, TriggerUpdate
 from app.schemas.webhook import WebhookCreate, WebhookUpdate
 
@@ -64,6 +66,12 @@ WRITE_PAIRS: list[tuple[type[BaseModel], type]] = [
     (ConnectionCreate, PlatformConnection),
     (ApiKeyCreate, ApiKey),
     (MachineIdeaCreate, ContentIdea),
+    # `language` is the one field, and it is exactly the column width. Worth
+    # pairing rather than exempting: the code is normalised to a base tag on the
+    # way in, so the stored value is always shorter than the cap — which is
+    # precisely the reasoning that stops being true the day somebody widens the
+    # schema field and forgets the column.
+    (TranslationRequestIn, ContentTranslation),
 ]
 
 

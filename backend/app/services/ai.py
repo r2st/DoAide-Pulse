@@ -30,7 +30,7 @@ import unicodedata
 from collections.abc import Iterator
 from typing import Any
 
-from app.services import llm_router
+from app.services import languages, llm_router
 
 
 class AIError(RuntimeError):
@@ -206,7 +206,9 @@ _LATIN_LETTER = re.compile(r"[A-Za-z]")
 _MULTILINGUAL_SHARE = 0.10
 
 
-def stray_script_runs(text: str, *, limit: int = 10) -> list[str]:
+def stray_script_runs(
+    text: str, *, limit: int = 10, language: str = languages.SOURCE_LANGUAGE
+) -> list[str]:
     """Runs of foreign-script characters spliced into otherwise-English *text*.
 
     Free-tier models occasionally emit a token from another script in the middle
@@ -230,21 +232,57 @@ def stray_script_runs(text: str, *, limit: int = 10) -> list[str]:
     thirty percent Devanagari is a translation, not a glitch, and this is the
     wrong gate to fail it at.
 
+    *language* says which translation, when the caller knows. That share-based
+    escape hatch is a guess made in the absence of one, and it is all-or-nothing
+    across scripts: a Russian body is *already* over the threshold on Cyrillic,
+    so the CJK token wedged into paragraph three — the exact failure this gate
+    exists for — came back clean. Naming the language narrows the question to
+    "characters from a script this language is not written in", which is the one
+    worth asking. The share rule still runs behind it for everything that is
+    genuinely unexpected, so an undeclared body behaves exactly as before.
+
     *limit* caps the returned list; the count is what a reviewer acts on, not the
     hundredth run.
     """
     if not text:
         return []
 
-    runs = _FOREIGN_RUN.findall(text)
-    if not runs:
+    if not _FOREIGN_RUN.search(text):
         return []
 
+    declared = languages.get(language)
+    script = declared.script if declared else "latin"
+
+    if script != "latin":
+        # The declared language's own script is not foreign to it, so it is
+        # masked out and the *remainder* is re-grouped into runs. Masking has to
+        # happen before anything is counted: a Russian body is already past
+        # `_MULTILINGUAL_SHARE` on Cyrillic alone, so the share test below —
+        # asked of the raw text — exempted the CJK token in paragraph three
+        # along with everything else. Splitting on the mask rather than deleting
+        # the expected characters is what keeps two separated splices two runs.
+        masked = "".join(
+            " " if languages.in_script(char, script) else char for char in text
+        )
+        runs = _FOREIGN_RUN.findall(masked)
+        # No share test on this branch. Its job is to guess whether the text is
+        # *written* in a foreign script, and the declaration already answered
+        # that; re-asking it here would exempt a stray run for being a large
+        # fraction of the little that is left, which in a body with no Latin
+        # letters in it at all is every stray run.
+        return _first_distinct(runs, limit)
+
+    runs = _FOREIGN_RUN.findall(text)
     foreign = sum(len(run) for run in runs)
     latin = len(_LATIN_LETTER.findall(text))
     if foreign >= (foreign + latin) * _MULTILINGUAL_SHARE:
         return []
 
+    return _first_distinct(runs, limit)
+
+
+def _first_distinct(runs: list[str], limit: int) -> list[str]:
+    """The first *limit* distinct entries of *runs*, in the order they appear."""
     seen: list[str] = []
     for run in runs:
         if run not in seen:
@@ -284,8 +322,10 @@ _WORD = re.compile(r"[^\W\d_]+(?:[-‐‑'’][^\W\d_]+)*")
 _NON_ASCII_LETTER = re.compile(r"[^\x00-\x7f]")
 
 
-def stray_letter_splices(text: str, *, limit: int = 10) -> list[str]:
-    """English words carrying a letter that does not belong to them.
+def stray_letter_splices(
+    text: str, *, limit: int = 10, language: str = languages.SOURCE_LANGUAGE
+) -> list[str]:
+    """Words carrying a letter that does not belong to them.
 
     The companion to :func:`stray_script_runs`, for the half of the same failure
     that one cannot see. That gate looks for *scripts* Herald never writes in,
@@ -318,20 +358,45 @@ def stray_letter_splices(text: str, *, limit: int = 10) -> list[str]:
     and "λ-calculus" are both held for a human glance. That is one click, against
     a corrupted post going out under the user's byline — which is what the
     unbiased version of this did six times, then twice more.
+
+    *language* replaces the loanword list when the text is not English, and it is
+    the difference between this gate working on a translation and refusing to
+    let one out of the queue. The share-based escape hatch borrowed from the
+    script gate does not fire for a language written in the Latin alphabet:
+    correct French runs about three percent accented letters, well under
+    :data:`_MULTILINGUAL_SHARE`, so a clean French body came back with ten
+    splices in it — ``génère``, ``dépôts``, ``première`` — one for every word
+    that carried an accent, and a translation could never pass a gate that
+    reads its own alphabet as corruption. With the language named, the question
+    becomes the one the docstring above already describes: is this letter one
+    the word's own language spells with. ``démontrated`` is still a splice in
+    French, because ``démontrated`` is not a French word — but that is a
+    spellchecker's job, and this gate deliberately stops at the alphabet.
     """
     if not text:
         return []
     if not _NON_ASCII_LETTER.search(text):
         return []
 
-    # Same escape hatch as the script gate: text genuinely written in another
-    # language is not this gate's business either.
-    letters = [ch for ch in text if ch.isalpha()]
-    if not letters:
-        return []
-    foreign = sum(1 for ch in letters if ord(ch) > 127)
-    if foreign >= len(letters) * _MULTILINGUAL_SHARE:
-        return []
+    declared = languages.get(language)
+    # A named language brings its own alphabet; an unnamed one — or English —
+    # gets the loanword list, which is what every existing caller relies on.
+    allowed = languages.expected_letters(language) if declared else frozenset()
+    is_source = declared is None or declared.is_source
+
+    if is_source:
+        # Same escape hatch as the script gate: text genuinely written in another
+        # language is not this gate's business either. Kept only for the
+        # undeclared case, where a guess is still better than nothing. A declared
+        # language does not need it and is actively harmed by it — for a
+        # non-Latin script every accented Latin word would be exempted along with
+        # the script that tripped the threshold.
+        letters = [ch for ch in text if ch.isalpha()]
+        if not letters:
+            return []
+        foreign = sum(1 for ch in letters if ord(ch) > 127)
+        if foreign >= len(letters) * _MULTILINGUAL_SHARE:
+            return []
 
     seen: list[str] = []
     for word in _WORD.findall(text):
@@ -342,7 +407,15 @@ def stray_letter_splices(text: str, *, limit: int = 10) -> list[str]:
         # would make one bad word look like two problems.
         if _FOREIGN_RUN.search(word):
             continue
-        if unicodedata.normalize("NFC", word).casefold() in _LOANWORDS:
+        if is_source:
+            if unicodedata.normalize("NFC", word).casefold() in _LOANWORDS:
+                continue
+        # Every odd letter is one this language spells with, so the word is
+        # ordinary. Compared under NFC because a decomposed `é` is two
+        # codepoints, neither of which is the one the registry lists.
+        elif all(
+            char in allowed for char in unicodedata.normalize("NFC", word) if ord(char) > 127
+        ):
             continue
         # A symbol, not a word: "the λ folds over σ".
         if len(odd) == 1 and len(word) == 1 and _GREEK.match(word):
@@ -352,6 +425,38 @@ def stray_letter_splices(text: str, *, limit: int = 10) -> list[str]:
         if len(seen) >= limit:
             break
     return seen
+
+
+#: Wrappers for the parts of a prompt Herald does not write. See
+#: :func:`quote_source_material`.
+#:
+#: Defined here rather than in :mod:`app.services.content_generator`, which is
+#: where they were written and is still their loudest caller, because a second
+#: module now quotes third-party text into a prompt —
+#: :mod:`app.services.translation`, whose entire input is a body that may itself
+#: have been assembled from a stranger's feed. Two modules holding their own copy
+#: of a marker string is one edit away from a fence whose halves do not match,
+#: and a fence that does not match is not a fence.
+FENCE_OPEN = "----- BEGIN SOURCE-MATERIAL -----"
+FENCE_CLOSE = "----- END SOURCE-MATERIAL -----"
+
+
+def quote_source_material(text: str) -> str:
+    """Fence third-party text so the model reads it as subject, not instruction.
+
+    The prose case for this lives on
+    :func:`app.services.content_generator._quote_source_material`, which is now
+    a thin alias of this function; the argument there is about an activity
+    digest, and it applies unchanged to any text Herald did not write. The
+    closing marker is stripped from the quoted text so it cannot be ended early,
+    and the opening one so a second quote cannot be started.
+
+    Not a security boundary — nothing built out of a prompt is. It is the
+    difference between text that is obviously quoted and text that reads as
+    though Herald wrote it.
+    """
+    inner = text.replace(FENCE_CLOSE, "").replace(FENCE_OPEN, "")
+    return f"{FENCE_OPEN}\n{inner}\n{FENCE_CLOSE}"
 
 
 def chat_completion_detailed(

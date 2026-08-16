@@ -206,6 +206,15 @@ class PublishRequest:
     #: out on the way back is indistinguishable from one that failed, and without
     #: a key the retry posts a second copy.
     idempotency_key: str | None = None
+    #: The language the four text fields above are actually in.
+    #:
+    #: Defaulted to English, which every request was implicitly until
+    #: translations existed. Carried rather than inferred because an adapter
+    #: cannot tell by looking — the destination that needs it most is the Git
+    #: publisher, whose front matter has a ``lang`` field that drives the
+    #: ``<html lang>`` of the generated page, and a page of French served as
+    #: ``lang="en"`` is read aloud by a screen reader in an English accent.
+    language: str = "en"
 
     @property
     def link(self) -> str | None:

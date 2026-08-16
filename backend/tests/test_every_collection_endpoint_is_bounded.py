@@ -32,6 +32,7 @@ FINITE_BY_CONSTRUCTION = {
     ("GET", "/webhooks/events"): "one row per WebhookEvent, a closed enum",
     ("GET", "/api-keys/scopes"): "one row per ApiKeyScope, a closed enum",
     ("GET", "/templates/builtins"): "one row per BUILTINS entry, a module constant",
+    ("GET", "/languages"): "one row per languages.LANGUAGES entry, a module constant",
     ("GET", "/calendar/cadence"): "one row per Platform, narrowed by ?platform",
     ("GET", "/analytics/engagement-trend"): "one point per day, bounded by ?days",
     ("GET", "/analytics/published"): (

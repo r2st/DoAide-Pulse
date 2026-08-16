@@ -86,6 +86,7 @@ from app.services import (
     publishing_service,
     quality,
     repurpose,
+    revisions,
     scheduling,
     seo,
     social_cards,
@@ -1702,6 +1703,22 @@ def update_content(
     # Read before anything is written, because the gate below asks what the
     # piece is moving *from* and the assignment loop is about to overwrite it.
     previous_status = content.status
+
+    # Bank the text that is about to be replaced, before the assignment loop
+    # replaces it. Here rather than after, because a snapshot taken afterwards
+    # captures the new text under the old version number — the one arrangement
+    # that makes a history actively misleading.
+    #
+    # Only when something actually changes: the editor autosaves on a timer, so
+    # most PATCHes re-send a body identical to the stored one, and a history
+    # where nine entries in ten say "no changes" is a log with the useful rows
+    # hidden in it. `snapshot_if_changing` also decides *what* changed and
+    # writes the field names into the note, which is what the sidebar shows.
+    #
+    # Not committed here. The snapshot joins this request's transaction, so a
+    # request that then fails `_assert_review_ready` leaves no history entry for
+    # an edit that never happened.
+    revisions.snapshot_if_changing(db, content, data, author_user_id=user.id)
 
     if "title" in data and data["title"] != content.title:
         content.slug = unique_content_slug(db, content.project_id, data["title"])

@@ -18,7 +18,9 @@ from app.models.platform_connection import ConnectionStatus, PlatformConnection
 from app.models.preview_link import PreviewLink
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.publication import Platform, Publication, PublicationStatus
+from app.models.revision import ContentRevision, RevisionSource
 from app.models.template import ContentTemplate, TemplateMode
+from app.models.translation import ContentTranslation, TranslationStatus
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.models.webhook import (
@@ -40,8 +42,10 @@ __all__ = [
     "Content",
     "ContentIdea",
     "ContentMetric",
+    "ContentRevision",
     "ContentStatus",
     "ContentTemplate",
+    "ContentTranslation",
     "ContentType",
     "DeliveryStatus",
     "LLMUsage",
@@ -52,8 +56,10 @@ __all__ = [
     "Project",
     "Publication",
     "PublicationStatus",
+    "RevisionSource",
     "TemplateMode",
     "Tone",
+    "TranslationStatus",
     "Trigger",
     "TriggerEvent",
     "TriggerEventStatus",

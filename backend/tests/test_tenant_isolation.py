@@ -24,6 +24,7 @@ from datetime import timedelta
 
 import pytest
 from fastapi.routing import APIRoute
+from sqlalchemy import select
 
 from app.deps import get_current_user
 from app.main import create_app
@@ -32,7 +33,9 @@ from app.models.content import Content, ContentIdea, ContentStatus, ContentType
 from app.models.mixins import utcnow
 from app.models.project import Project, Tone
 from app.models.publication import Platform, Publication, PublicationStatus
+from app.models.revision import ContentRevision, RevisionSource
 from app.models.template import ContentTemplate, TemplateMode
+from app.models.translation import ContentTranslation, TranslationStatus
 from app.models.trigger import Trigger, TriggerEvent, TriggerKind
 from app.models.user import User
 from app.models.webhook import DeliveryStatus, Webhook, WebhookDelivery, WebhookEvent
@@ -137,7 +140,32 @@ def theirs(db, user, project):
         headline="Their deploy went out",
         payload={"raw": {"authorization": "a header they sent us"}},
     )
-    db.add_all([delivery, idea, event])
+    # A past version of their piece, and a translation of it. Both are inner
+    # rows addressed under an outer id the caller may legitimately own, which is
+    # the second shape in this file's docstring — and both carry the *body*, so
+    # a missing guard here leaks the whole text rather than a row id.
+    revision = ContentRevision(
+        content_id=content.id,
+        revision=content.version,
+        title="Their older headline",
+        body_markdown="Their earlier draft, which a stranger must not read.",
+        excerpt="",
+        meta_description="",
+        keywords=[],
+        tags=[],
+        focus_keyword="",
+        word_count=9,
+        source=RevisionSource.EDIT,
+    )
+    translation_row = ContentTranslation(
+        content_id=content.id,
+        language="fr",
+        status=TranslationStatus.READY,
+        title="Leur titre",
+        body_markdown="Leur brouillon en français, que personne d'autre ne doit lire.",
+        source_version=content.version,
+    )
+    db.add_all([delivery, idea, event, revision, translation_row])
     db.flush()
     link, _raw = preview_links.issue(db, content, ttl_hours=24)
     # A live machine credential on their project. The token is thrown away —
@@ -163,6 +191,14 @@ def theirs(db, user, project):
         "idea_id": idea.id,
         "link_id": link.id,
         "key_id": key.id,
+        # Not row ids: a revision is addressed by the piece's version number and
+        # a translation by its language code, both scoped to the outer piece.
+        # That is what makes them worth sweeping — the lookup is `WHERE
+        # content_id = ? AND ...`, and a guard written only for `content_id`
+        # would still answer for a stranger asking about their own piece's
+        # version 1.
+        "revision": revision.revision,
+        "language": translation_row.language,
     }
 
 
@@ -384,12 +420,30 @@ def test_every_id_the_sweep_uses_names_a_row_that_exists(db, theirs):
         "link_id": PreviewLink,
         "key_id": ApiKey,
     }
+    #: The parameters that are *not* primary keys: a revision is addressed by
+    #: the piece's version number and a translation by its language code, both
+    #: only meaningful under the content id beside them. ``db.get`` cannot check
+    #: these — it takes a primary key — and using it anyway would look up
+    #: ``ContentRevision`` id 1, find some row, and pass while proving nothing
+    #: about the row the sweep actually requests.
+    scoped = {
+        "revision": (ContentRevision, ContentRevision.revision),
+        "language": (ContentTranslation, ContentTranslation.language),
+    }
     # Every id the sweep fills in is accounted for here, so a new one cannot be
     # added to the fixture without also being shown to exist.
-    assert set(rows) == set(theirs)
+    assert set(rows) | set(scoped) == set(theirs)
 
     missing = sorted(key for key, model in rows.items() if db.get(model, theirs[key]) is None)
-    assert not missing, f"the sweep addresses {missing}, which name no row"
+    for key, (model, column) in scoped.items():
+        found = db.scalar(
+            select(model).where(
+                model.content_id == theirs["content_id"], column == theirs[key]
+            )
+        )
+        if found is None:
+            missing.append(key)
+    assert not missing, f"the sweep addresses {sorted(missing)}, which name no row"
 
 
 # --------------------------------------------------------------------------- #

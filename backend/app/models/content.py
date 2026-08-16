@@ -36,6 +36,8 @@ if TYPE_CHECKING:
     from app.models.preview_link import PreviewLink
     from app.models.project import Project
     from app.models.publication import Publication
+    from app.models.revision import ContentRevision
+    from app.models.translation import ContentTranslation
 
 
 #: Column widths that something outside this module has to agree with.
@@ -402,6 +404,22 @@ class Content(Base, TimestampMixin):
     )
     preview_links: Mapped[list[PreviewLink]] = relationship(
         back_populates="content", cascade="all, delete-orphan"
+    )
+    #: Past versions, newest first. Not eagerly loaded: a history is read on the
+    #: one screen that asks for it, and every other reader of a piece — the
+    #: list, the queue, the publish path — would otherwise pay for up to
+    #: :data:`app.services.revisions.RETENTION` bodies it never looks at.
+    revisions: Mapped[list[ContentRevision]] = relationship(
+        back_populates="content",
+        cascade="all, delete-orphan",
+        order_by="desc(ContentRevision.revision)",
+        lazy="select",
+    )
+    #: Other-language renderings of this same piece. See
+    #: :mod:`app.models.translation` for why they hang off the piece rather
+    #: than being pieces themselves.
+    translations: Mapped[list[ContentTranslation]] = relationship(
+        back_populates="content", cascade="all, delete-orphan", lazy="select"
     )
 
     @validates("body_markdown")

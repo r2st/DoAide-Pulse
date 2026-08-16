@@ -29,6 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.mixins import TimestampMixin
 from app.models.publication import Platform
+from app.models.translation import LANGUAGE_MAX_LENGTH
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -67,6 +68,21 @@ class PlatformConnection(Base, TimestampMixin):
     #: The public handle/account the credentials belong to, e.g. "@r2st" or a
     #: blog URL. Safe to display.
     display_name: Mapped[str | None] = mapped_column(String(200))
+    #: The language this destination publishes in.
+    #:
+    #: On the connection rather than on the project or the piece, because it is
+    #: a property of the audience on the other end: the same release note goes
+    #: to an English Dev.to and a Japanese company blog, and neither the piece
+    #: nor the project can express that. ``"en"`` with a server default, so every
+    #: existing row means exactly what it has always meant and nothing changes
+    #: behaviour until somebody sets it.
+    #:
+    #: A destination set to a language the piece has no usable translation for
+    #: publishes the English and says so rather than failing — see
+    #: :func:`app.services.translation.for_publishing`.
+    language: Mapped[str] = mapped_column(
+        String(LANGUAGE_MAX_LENGTH), default="en", server_default="en", nullable=False
+    )
 
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
