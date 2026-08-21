@@ -181,6 +181,13 @@ def sync_headline(content_id: int) -> dict:
     showing the title is an ``unchanged`` outcome and no request.
     """
     db = SessionLocal()
+    # ``sync_title`` commits after each destination it reaches, and a commit
+    # expires everything loaded — so the second destination's ``build_request``
+    # re-read the whole ``Content`` row, body and all, to send a title. Four
+    # destinations meant three wide reads nobody needed. Safe here because the
+    # publications are queried once up front and nothing re-reads a row a commit
+    # changed; the only writer is this task, one row at a time.
+    db.expire_on_commit = False
     try:
         content = db.get(Content, content_id)
         if content is None:

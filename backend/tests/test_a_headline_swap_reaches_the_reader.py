@@ -746,3 +746,33 @@ def test_the_sync_task_shrugs_at_a_piece_that_was_deleted(db, monkeypatch):
     monkeypatch.setattr("app.tasks.headline_tasks.SessionLocal", _no_close(db))
 
     assert sync_headline(999_999) == {"content_id": 999_999, "outcomes": []}
+
+
+def test_the_body_is_not_re_read_once_per_destination(
+    db, piece, connect, monkeypatch, sql_log
+):
+    """A commit expires everything loaded, and ``Content`` is the widest row here.
+
+    ``sync_title`` commits after each destination it reaches, so without
+    ``expire_on_commit = False`` the second destination's ``build_request``
+    re-read the whole piece — body included — to send a title.
+    """
+    connect(Platform.DEVTO, Platform.WORDPRESS, Platform.HASHNODE)
+    for index, platform in enumerate(
+        (Platform.DEVTO, Platform.WORDPRESS, Platform.HASHNODE)
+    ):
+        _publication(db, piece, platform, external_id=f"ext-{index}")
+    headlines.apply_headline(piece, "The headline that won")
+    db.commit()
+    for adapter in (DevToAdapter, WordPressAdapter, HashnodeAdapter):
+        monkeypatch.setattr(
+            adapter, "update_title", lambda self, request, credentials, external_id: None
+        )
+    monkeypatch.setattr("app.tasks.headline_tasks.SessionLocal", _no_close(db))
+
+    sql_log.clear()
+    result = sync_headline(piece.id)
+
+    assert [o["status"] for o in result["outcomes"]] == [headline_sync.UPDATED] * 3
+    content_reads = [s for s in sql_log if "FROM content" in s and s.startswith("SELECT")]
+    assert len(content_reads) == 1, "\n".join(content_reads)
