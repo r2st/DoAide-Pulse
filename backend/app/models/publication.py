@@ -152,6 +152,28 @@ class Publication(Base, TimestampMixin):
     external_id: Mapped[str | None] = mapped_column(String(EXTERNAL_ID_MAX_LENGTH))
     external_url: Mapped[str | None] = mapped_column(String(EXTERNAL_URL_MAX_LENGTH))
 
+    #: The headline this destination is actually showing.
+    #:
+    #: Not the same thing as ``content.title``, and the gap between them is the
+    #: point. ``app.services.headlines.apply_headline`` swaps Herald's copy of
+    #: the title on a piece that is already live; half the destinations cannot
+    #: be told (a Bluesky post has no title, a sent newsletter is in inboxes)
+    #: and the ones that can may be down at that moment. Without this column
+    #: there was nothing to distinguish "the reader sees the new headline" from
+    #: "the reader sees the old one and Herald is crediting the new one with
+    #: their clicks".
+    #:
+    #: Written from the *request* and so from the translation where there is
+    #: one, which is why a translated publication never matches the source
+    #: title and is correctly excluded from headline attribution: its readers
+    #: saw neither English headline.
+    #:
+    #: NULL on rows published before this column existed. Attribution treats
+    #: NULL as "assume it tracks", which is what those rows were already being
+    #: counted as — the guard that matters for them is the adapter capability,
+    #: which is a property of the platform and needs no backfill.
+    live_title: Mapped[str | None] = mapped_column(String(300))
+
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error: Mapped[str | None] = mapped_column(Text)
 

@@ -54,6 +54,14 @@ mutation CreateDraft($input: CreateDraftInput!) {
 }
 """
 
+_UPDATE_POST = """
+mutation UpdatePost($input: UpdatePostInput!) {
+  updatePost(input: $input) {
+    post { id title }
+  }
+}
+"""
+
 _ME = """
 query Me {
   me {
@@ -82,6 +90,9 @@ class HashnodeAdapter(Adapter):
         "Needs the publication ID of the blog to post to. Connect the account "
         "and Herald lists the ones your token can see."
     )
+    #: Hashnode's ``updatePost`` mutation takes the post id and only the
+    #: fields being changed.
+    supports_title_update = True
     credential_fields = (
         CredentialField(
             key="api_key",
@@ -230,6 +241,29 @@ class HashnodeAdapter(Adapter):
             external_url=post.get("url", ""),
             extra={"slug": post.get("slug")},
         )
+
+    def update_title(
+        self, request: PublishRequest, credentials: dict[str, Any], external_id: str
+    ) -> None:
+        """Retitle a live post.
+
+        ``updatePost`` merges: the input carries the post id and the title and
+        nothing else, so the Markdown, tags and canonical stay as published.
+
+        A *draft* is not retitled here. Its ``external_id`` is a draft id,
+        which ``updatePost`` does not accept, and a draft has no readers whose
+        engagement a headline could be credited with — the caller only reaches
+        this for a publication in the published state.
+        """
+        token, _publication_id = self._require(credentials, "api_key", "publication_id")
+        if not request.title.strip():
+            raise PublishError("Hashnode requires a title and this piece has none.")
+        data = self._gql(
+            token, _UPDATE_POST, {"input": {"id": external_id, "title": request.title}}
+        )
+        post = ((data.get("updatePost") or {}).get("post")) or {}
+        if not post.get("id"):
+            raise PublishError(f"Hashnode did not confirm the retitle: {data}")
 
 
 __all__ = ["HashnodeAdapter"]

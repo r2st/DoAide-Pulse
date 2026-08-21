@@ -46,6 +46,8 @@ from app.schemas.content import (
     ContentUpdate,
     GenerateRequest,
     HeadlineApplyIn,
+    HeadlineReachOut,
+    HeadlineUnreachableOut,
     HeadlineVariantsOut,
     HeadlineWindowOut,
     HeadlineWinnerOut,
@@ -1275,6 +1277,7 @@ def apply_content_headline(
     headlines.apply_headline(content, payload.title)
     db.commit()
     db.refresh(content)
+    _dispatch_headline_sync(content.id)
     return _to_out(content)
 
 
@@ -1294,6 +1297,62 @@ def content_headline_performance(
     return [
         HeadlineWindowOut(**w.as_dict()) for w in headlines.performance(content, db)
     ]
+
+
+def _dispatch_headline_sync(content_id: int) -> None:
+    """Tell the live destinations the headline changed.
+
+    Off the request thread when there is a broker, because it is up to four
+    platform calls and the swap it follows is already committed and already
+    true. Inline when there is not — a single-process install must not silently
+    leave every live post showing the old headline, which is a divergence
+    nothing later reconciles. Mirrors ``_dispatch_publications`` and
+    ``webhooks.dispatch``.
+    """
+    from app.tasks import headline_tasks
+
+    if settings.celery_enabled:
+        try:
+            headline_tasks.sync_headline.delay(content_id)
+            return
+        except Exception as exc:
+            logger.warning("headline sync dispatch failed, running inline: %s", exc)
+    try:
+        headline_tasks.sync_headline(content_id)
+    except Exception:
+        # ``sync_title`` records every failure as an outcome and is documented
+        # not to raise, so reaching here is something outside it. The headline
+        # is swapped either way; ``GET /headlines/reach`` is where the user
+        # finds out a destination did not get it.
+        logger.exception("headline sync failed inline for content %s", content_id)
+
+
+@router.get(
+    "/{content_id}/headlines/reach",
+    response_model=HeadlineReachOut,
+    summary="Which destinations show the current headline",
+    responses=errors(*OWNED),
+)
+def content_headline_reach(
+    content_id: RowId,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> HeadlineReachOut:
+    """Which live destinations are showing this piece's current headline.
+
+    Read this beside ``/headlines/winner``. A contest that reports "not enough
+    data" while the piece is doing well everywhere is usually not a shortage of
+    engagement — it is that none of the destinations carrying the piece can be
+    retitled, so none of their engagement is evidence about the headline.
+    """
+    content = _owned_content(content_id, db, user)
+    unreachable = headlines.unreachable(content, db)
+    tracking = len(headlines.tracking_publications(content, db))
+    return HeadlineReachOut(
+        tracking=tracking,
+        live=tracking + len(unreachable),
+        unreachable=[HeadlineUnreachableOut(**row) for row in unreachable],
+    )
 
 
 def _winner_out(verdict: headlines.Winner, *, applied: bool = False) -> HeadlineWinnerOut:
@@ -1351,6 +1410,7 @@ def apply_headline_winner(
     if applied:
         db.commit()
         db.refresh(content)
+        _dispatch_headline_sync(content.id)
     return _winner_out(verdict, applied=applied)
 
 

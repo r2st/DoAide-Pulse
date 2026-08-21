@@ -165,6 +165,9 @@ class GitAdapter(Adapter):
     # the original when no canonical platform is named. See
     # `Adapter.owns_domain`.
     owns_domain = True
+    #: A commit can rewrite the file, so a headline change reaches the built
+    #: site the same way a correction does.
+    supports_title_update = True
     caveat = (
         "Commits Markdown to a branch. Leave the token blank to use Herald's "
         "GITHUB_TOKEN, which needs write access to the repo — the one used for "
@@ -711,6 +714,101 @@ class GitAdapter(Adapter):
         if site and not request.as_draft and request.slug:
             return f"{site}/{request.slug}"
         return (data.get("content") or {}).get("html_url") or commit.get("html_url", "")
+
+    #: Front-matter keys that hold the headline. ``title`` is the one the theme
+    #: renders; the two ``og``/``twitter`` keys are what a link unfurls as, and
+    #: leaving those saying the old headline is the same divergence in a place
+    #: nobody looks until a link is shared.
+    _TITLE_KEYS = ("title", "ogTitle", "twitterTitle")
+
+    def update_title(
+        self, request: PublishRequest, credentials: dict[str, Any], external_id: str
+    ) -> None:
+        """Rewrite the headline in the committed file, and nothing else.
+
+        A repo has no partial update — a commit replaces the whole blob — so
+        this reads the file back and edits the front-matter lines rather than
+        re-rendering from *request*. Re-rendering would be far less code and
+        would also push whatever the body has become in Herald since, plus a
+        fresh ``date``, under a commit message that says the title changed.
+
+        *external_id* is the sha of the commit that published the piece, not a
+        blob id, so the file is located by path exactly as ``publish`` locates
+        it: the path is derived from the slug, and a headline swap deliberately
+        leaves the slug alone.
+        """
+        if not request.title.strip():
+            raise PublishError("A Git post needs a title and this piece has none.")
+
+        repo = self._repo(credentials)
+        token = self._token(credentials)
+        branch = str(credentials.get("branch") or "").strip()
+        path = self.path_for(request, credentials)
+
+        params = {"ref": branch} if branch else None
+        resp = self._request(
+            "GET",
+            f"{_API}/repos/{repo}/contents/{path}",
+            headers=self._headers(token),
+            params=params,
+        )
+        data = self._json_object(resp)
+        sha = data.get("sha")
+        encoded = data.get("content")
+        if not sha or not isinstance(encoded, str):
+            raise PublishError(
+                f"GitHub returned no file to retitle at {path} in {repo}"
+            )
+        try:
+            existing = base64.b64decode(encoded).decode("utf-8")
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise PublishError(f"{path} in {repo} is not UTF-8 Markdown: {exc}") from exc
+
+        rewritten = self._retitle_front_matter(existing, request.title)
+        if rewritten == existing:
+            return
+
+        payload: dict[str, Any] = {
+            "message": f"content: retitle to {request.title}",
+            "content": base64.b64encode(rewritten.encode("utf-8")).decode("ascii"),
+            "sha": sha,
+        }
+        if branch:
+            payload["branch"] = branch
+        self._request(
+            "PUT",
+            f"{_API}/repos/{repo}/contents/{path}",
+            headers=self._headers(token),
+            json_body=payload,
+        )
+
+    @classmethod
+    def _retitle_front_matter(cls, contents: str, title: str) -> str:
+        """Replace the headline keys in *contents*' front matter.
+
+        Only inside the leading ``---`` block, and only keys that are already
+        there — a body line reading ``title: something`` is prose, and adding a
+        key that the published file never had would be a content change wearing
+        a retitle's commit message. A file with no front matter is returned
+        unchanged rather than gaining a block it was not built with.
+        """
+        if not contents.startswith("---\n"):
+            return contents
+        end = contents.find("\n---", 3)
+        if end == -1:
+            return contents
+
+        head = contents[4:end]
+        rest = contents[end:]
+        quoted = formatting.front_matter({"title": title}).splitlines()[1]
+        value = quoted.split(": ", 1)[1]
+
+        lines = head.split("\n")
+        for index, line in enumerate(lines):
+            key = line.split(":", 1)[0]
+            if key in cls._TITLE_KEYS and line.startswith(f"{key}: "):
+                lines[index] = f"{key}: {value}"
+        return "---\n" + "\n".join(lines) + rest
 
 
 __all__ = ["GitAdapter"]

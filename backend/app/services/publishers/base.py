@@ -356,6 +356,18 @@ class Adapter(ABC):
     #: article destination: the copy on the user's own domain is the original,
     #: and the one on Dev.to is the syndicated copy, never the other way round.
     owns_domain: bool = False
+    #: Whether the platform's API can change the headline of a post that is
+    #: already live.
+    #:
+    #: This is the capability :mod:`app.services.headlines` depends on and the
+    #: reason it cannot be assumed. A headline swap changes Herald's copy of the
+    #: title; unless the destination is told, readers keep seeing the old one
+    #: while the engagement they generate is credited to the new one. Half the
+    #: destinations here genuinely cannot be told — a Bluesky post has no title
+    #: and a sent Buttondown issue is in inboxes — so the honest answer is to
+    #: declare the capability and let the attribution exclude what it cannot
+    #: reach, rather than to quietly measure the wrong thing.
+    supports_title_update: bool = False
 
     @abstractmethod
     def publish(self, request: PublishRequest, credentials: dict[str, Any]) -> PublishResult:
@@ -394,6 +406,26 @@ class Adapter(ABC):
         to disagree with the first. This reports; the caller decides.
         """
         return []
+
+    def update_title(
+        self, request: PublishRequest, credentials: dict[str, Any], external_id: str
+    ) -> None:
+        """Change the headline of the post already live at *external_id*.
+
+        Only the title. The body, tags and canonical are left exactly as
+        published — a headline test changes one variable, and re-sending a body
+        that has since been edited in Herald would smuggle an unreviewed
+        revision onto a live post under cover of a title swap.
+
+        Raises :class:`NotImplementedAdapter` by default. Adapters that
+        override this must also set :attr:`supports_title_update`, and the two
+        are checked against each other in the test suite: an adapter that
+        claims the capability without implementing it would have its
+        publications counted as evidence for a headline they never carried.
+        """
+        raise NotImplementedAdapter(
+            f"{self.display_name} cannot change the title of a post that is already live"
+        )
 
     def fetch_metrics(
         self, external_id: str, credentials: dict[str, Any]

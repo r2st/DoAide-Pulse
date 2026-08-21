@@ -43,6 +43,9 @@ class WordPressAdapter(Adapter):
     # The REST API reports no view counts — those live in Jetpack Stats or
     # whatever analytics the site runs, neither of which is core.
     supports_metrics = False
+    #: ``POST /wp/v2/posts/{id}`` is a partial update; a title can be changed
+    #: on its own.
+    supports_title_update = True
     # `site_url` is typed into the settings form, so every request this adapter
     # makes is one an account holder chose the address of. See `Adapter._send`.
     user_supplied_host = True
@@ -173,6 +176,28 @@ class WordPressAdapter(Adapter):
             external_id=str(post_id),
             external_url=url,
             extra={"status": data.get("status"), "slug": data.get("slug")},
+        )
+
+    def update_title(
+        self, request: PublishRequest, credentials: dict[str, Any], external_id: str
+    ) -> None:
+        """Retitle a live post.
+
+        ``POST /wp/v2/posts/{id}`` is WordPress's partial update: fields left
+        out are left alone, so the body and taxonomy survive a headline swap
+        untouched. The slug is deliberately not resent — the post is already
+        live at a URL, and moving it would break every link to it.
+        """
+        site_url, username, password = self._require(
+            credentials, "site_url", "username", "application_password"
+        )
+        if not request.title.strip():
+            raise PublishError("WordPress requires a title and this piece has none.")
+        self._request(
+            "POST",
+            f"{self.api_root(site_url)}/posts/{external_id}",
+            headers=self._headers(username, password),
+            json_body={"title": request.title},
         )
 
 

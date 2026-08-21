@@ -39,6 +39,9 @@ class DevToAdapter(Adapter):
     implemented = True
     utm_medium = "syndication"
     supports_metrics = True
+    #: Forem's ``PUT /articles/{id}`` takes a partial article, so a title can be
+    #: changed without resending the body.
+    supports_title_update = True
     credential_fields = (
         CredentialField(
             key="api_key",
@@ -150,6 +153,26 @@ class DevToAdapter(Adapter):
             # A draft has no public URL yet; the edit link is the useful one.
             external_url=data.get("url") or f"https://dev.to/dashboard/{article_id}",
             extra={"slug": data.get("slug"), "published": data.get("published")},
+        )
+
+    def update_title(
+        self, request: PublishRequest, credentials: dict[str, Any], external_id: str
+    ) -> None:
+        """Retitle a live article.
+
+        Forem merges the ``article`` object it is given, so sending only the
+        title leaves the body, tags and canonical exactly as published — which
+        is what a headline swap is supposed to change and all it is supposed to
+        change.
+        """
+        (api_key,) = self._require(credentials, "api_key")
+        if not request.title.strip():
+            raise PublishError("Dev.to requires a title and this piece has none.")
+        self._request(
+            "PUT",
+            f"{_API}/articles/{external_id}",
+            headers=self._headers(api_key),
+            json_body={"article": {"title": request.title}},
         )
 
     def fetch_metrics(

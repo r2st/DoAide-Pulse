@@ -702,6 +702,15 @@ def execute(db: Session, publication: Publication) -> Publication:
         # queued as pending can have finished. The queue decides *that* a piece
         # publishes; this decides what text.
         choice = _translation_for(db, user_id, publication.platform, content)
+        # Bound to a name rather than built inline because the success path
+        # below records ``request.title`` as the headline this destination now
+        # shows — see ``publication.live_title``.
+        request = build_request(
+            content,
+            platform=publication.platform,
+            as_draft=publication.as_draft,
+            translation=choice.translation,
+        )
         # The clock starts *here*, after the credentials are read and decrypted,
         # and stops in the ``finally`` below. What is being measured is the
         # platform's latency and nothing else: a row can sit scheduled for a
@@ -710,15 +719,7 @@ def execute(db: Session, publication: Publication) -> Publication:
         # would make the number useless for the question it exists to answer.
         started = time.monotonic()
         try:
-            result = adapter.publish(
-                build_request(
-                    content,
-                    platform=publication.platform,
-                    as_draft=publication.as_draft,
-                    translation=choice.translation,
-                ),
-                credentials,
-            )
+            result = adapter.publish(request, credentials)
         except PublishError as exc:
             # The last point the credential values are known, and the last point
             # before this message becomes a row. Everything below writes it to
@@ -833,6 +834,11 @@ def execute(db: Session, publication: Publication) -> Publication:
         publication=publication,
         field="external_url",
     )
+    # The headline the reader will actually see, which is the request's and not
+    # necessarily the piece's: a translated publication carries the translated
+    # title. Recorded here so a later headline swap can tell which destinations
+    # it has reached — see app.services.headline_sync.
+    publication.live_title = request.title[:300]
     publication.error = None
 
     _adopt_canonical(content, publication, result)

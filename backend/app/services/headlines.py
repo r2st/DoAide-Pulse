@@ -8,6 +8,15 @@ engagement snapshots in ``app.models.metrics.ContentMetric`` are already an
 append-only time series, so once the swap times are recorded, attributing a
 metric to whichever headline was live when it was captured is just a
 timestamp comparison — no new tracking infrastructure needed.
+
+One thing it *does* need, and did not have: the destination has to know. A
+swap here changes Herald's copy of the title, and until
+:mod:`app.services.headline_sync` existed nothing told Dev.to, Hashnode,
+WordPress or the repo the blog is built from — so the reader went on seeing
+the old headline while every click they made was credited to the new one. The
+sync closes that for the four destinations whose APIs allow it; for the six
+that do not, :func:`performance` excludes them rather than counting engagement
+earned under a headline that is still up.
 """
 from __future__ import annotations
 
@@ -23,8 +32,8 @@ from app.models.content import Content
 from app.models.metrics import ContentMetric
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
-from app.models.publication import Publication
-from app.services import ai
+from app.models.publication import Publication, PublicationStatus
+from app.services import ai, headline_sync
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +241,20 @@ def performance(content: Content, db: Session) -> list[HeadlineWindow]:
     goes backwards (a purge, a rescrape) contributes zero rather than a
     negative, since no headline made views disappear.
 
+    **Only destinations that are actually showing the piece's current headline
+    count.** This is the guard the whole feature rests on, and for a long time
+    it was missing. A headline swap changes Herald's copy of the title; a
+    Bluesky post has no title, a sent newsletter is in inboxes, and a Dev.to
+    retitle can fail. Counting those publications would credit the new headline
+    with clicks earned by the old one — and worse, it would keep crediting a
+    *closed* window with gains arriving long after it closed, which inflates
+    that window's views-per-day without moving its hours and hands it the
+    contest permanently. So a publication that is not tracking the title
+    contributes nothing here and is reported separately by
+    :func:`unreachable`, for a UI that has to explain why a piece with plenty
+    of engagement has no headline verdict. See
+    :func:`app.services.headline_sync.is_tracking`.
+
     The running baseline is clamped to the *high-water mark*, not to the last
     reading, which is the same rule :mod:`app.services.velocity` applies to the
     same series. Storing the dip instead would credit the recovery as fresh
@@ -258,10 +281,17 @@ def performance(content: Content, db: Session) -> list[HeadlineWindow]:
         HeadlineWindow(title=content.title, started_at=current_start, ended_at=None, current=True)
     )
 
+    tracking = {p.id for p in tracking_publications(content, db)}
+    if not tracking:
+        return windows
+
     metrics = db.scalars(
         select(ContentMetric)
         .join(Publication, Publication.id == ContentMetric.publication_id)
-        .where(Publication.content_id == content.id)
+        .where(
+            Publication.content_id == content.id,
+            ContentMetric.publication_id.in_(tracking),
+        )
         # Per publication, then in time order: the deltas below are only
         # meaningful against the same platform's previous reading.
         .order_by(ContentMetric.publication_id, ContentMetric.captured_at)
@@ -285,6 +315,53 @@ def performance(content: Content, db: Session) -> list[HeadlineWindow]:
         window.snapshots += 1
 
     return windows
+
+
+def _published(content: Content, db: Session) -> list[Publication]:
+    return list(
+        db.scalars(
+            select(Publication)
+            .where(
+                Publication.content_id == content.id,
+                Publication.status == PublicationStatus.PUBLISHED,
+            )
+            .order_by(Publication.id)
+        )
+    )
+
+
+def tracking_publications(content: Content, db: Session) -> list[Publication]:
+    """The publications whose engagement is evidence about this piece's headline."""
+    return [p for p in _published(content, db) if headline_sync.is_tracking(p, content.title)]
+
+
+def unreachable(content: Content, db: Session) -> list[dict]:
+    """Live destinations whose readers are not seeing the current headline.
+
+    What a UI needs to say out loud beside a headline verdict: "Bluesky and
+    LinkedIn cannot be retitled, so their engagement is not counted here".
+    Without it, a piece doing well everywhere and reporting "not enough data"
+    looks like a broken feature rather than an honest one.
+
+    ``reason`` distinguishes the two ways a destination ends up here, because
+    they call for different actions: a platform that *cannot* carry a headline
+    change is a permanent fact to be explained once, while one that *should* be
+    showing it and is not is a failed sync worth retrying.
+    """
+    out: list[dict] = []
+    for publication in _published(content, db):
+        if headline_sync.is_tracking(publication, content.title):
+            continue
+        carries = headline_sync.carries_title_changes(publication.platform)
+        out.append(
+            {
+                "publication_id": publication.id,
+                "platform": publication.platform.value,
+                "live_title": publication.live_title,
+                "reason": "stale" if carries else "unsupported",
+            }
+        )
+    return out
 
 
 def _window_for(
@@ -454,4 +531,6 @@ __all__ = [
     "generate_variants",
     "performance",
     "pick_winner",
+    "tracking_publications",
+    "unreachable",
 ]

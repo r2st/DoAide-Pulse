@@ -595,6 +595,40 @@ class HeadlineWindowOut(BaseModel):
     views_per_day: float | None = None
 
 
+class HeadlineUnreachableOut(BaseModel):
+    """One destination not showing the piece's current headline."""
+
+    publication_id: int
+    platform: str
+    #: The headline this destination is actually showing. ``None`` for a row
+    #: published before Herald recorded it.
+    live_title: str | None = None
+    reason: str
+
+
+class HeadlineReachOut(BaseModel):
+    """Which live destinations are showing the piece's current headline.
+
+    The companion to ``/headlines/performance``: that endpoint reports what
+    each headline earned, and this one reports how much of the audience was
+    ever shown it. A piece published to Bluesky, LinkedIn and Buttondown has a
+    reach of nothing — none of the three can retitle a live post — and its
+    headline contest will never reach a verdict however much engagement it
+    collects. Saying so is the difference between an honest answer and a
+    broken-looking one.
+    """
+
+    #: Publications showing the current title, whose engagement counts as
+    #: evidence in ``/headlines/performance``.
+    tracking: int = 0
+    #: Live publications in total.
+    live: int = 0
+    #: One entry per destination that is *not* showing it. ``reason`` is
+    #: ``"unsupported"`` (the platform's API cannot retitle a live post) or
+    #: ``"stale"`` (it can, and the last attempt did not land).
+    unreachable: list[HeadlineUnreachableOut] = []
+
+
 class HeadlineWinnerOut(BaseModel):
     """Which headline is winning, and whether that is worth acting on."""
 

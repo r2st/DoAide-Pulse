@@ -1,9 +1,15 @@
-"""Re-judging headlines, and swapping in the winner where that is allowed.
+"""Re-judging headlines, swapping in the winner, and telling the destinations.
 
 Opt-in per project (``Project.auto_headline_winner``). The sweep runs daily
 because engagement moves slower than that, and a title that changes under the
 author more often than they look at it is a nuisance rather than an
 optimisation.
+
+Every swap is followed by a push to the destinations that can carry it. That
+ordering is deliberate and it is the only one that is safe: the swap is a local
+write that always succeeds, the push is a network call to up to four platforms
+that may not. Doing the push first would mean retitling live posts and then
+failing to record which headline they now show.
 """
 from __future__ import annotations
 
@@ -18,7 +24,7 @@ from app.database import SessionLocal
 from app.models.content import Content, ContentStatus
 from app.models.project import Project
 from app.models.user import User
-from app.services import headlines
+from app.services import headline_sync, headlines
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -98,6 +104,10 @@ def auto_select_headlines() -> dict:
                 if applied:
                     db.commit()
                     swapped += 1
+                    # Inline rather than dispatched: this is already a worker,
+                    # and a separate task would race the next beat's read of
+                    # ``live_title``. Never raises — see ``sync_title``.
+                    _log_sync(content.id, headline_sync.sync_title(db, content))
                 else:
                     logger.debug(
                         "content %s headline unchanged: %s", content.id, verdict.reason
@@ -126,3 +136,61 @@ def auto_select_headlines() -> dict:
     if swapped:
         logger.info("headline sweep swapped %d of %d", swapped, considered)
     return {"considered": considered, "swapped": swapped}
+
+
+def _log_sync(content_id: int, outcomes: list[headline_sync.SyncOutcome]) -> None:
+    """One line per swap saying how far the new headline actually got.
+
+    Worth a log line even when everything worked: "retitled 1 of 4 destinations,
+    3 cannot carry a title change" is the sentence that explains a headline
+    contest which never reaches a verdict, and the alternative is working it out
+    from the platform list by hand.
+    """
+    if not outcomes:
+        return
+    reached = sum(1 for outcome in outcomes if outcome.reached)
+    failed = [o for o in outcomes if o.status == headline_sync.FAILED]
+    logger.info(
+        "content %s headline reached %d of %d destinations%s",
+        content_id,
+        reached,
+        len(outcomes),
+        "" if not failed else f"; failed on {', '.join(o.platform.value for o in failed)}",
+    )
+
+
+@task(
+    name="app.tasks.headline_tasks.sync_headline",
+    soft_time_limit=120,
+    time_limit=150,
+    autoretry_for=(OperationalError, ConnectionError, OSError),
+    retry_backoff=True,
+    retry_backoff_max=120,
+    retry_jitter=True,
+    max_retries=2,
+)
+def sync_headline(content_id: int) -> dict:
+    """Push one piece's current headline to every destination that can take it.
+
+    Dispatched by ``POST /content/{id}/headlines/apply``, which has already
+    changed the title by the time this runs: a human swapped the headline and
+    the live posts have to be told. Kept off the request thread because it is up
+    to four platform calls, and the swap itself is complete without them.
+
+    Idempotent, and cheap when there is nothing to do — a destination already
+    showing the title is an ``unchanged`` outcome and no request.
+    """
+    db = SessionLocal()
+    try:
+        content = db.get(Content, content_id)
+        if content is None:
+            logger.info("headline sync skipped: content %s is gone", content_id)
+            return {"content_id": content_id, "outcomes": []}
+        outcomes = headline_sync.sync_title(db, content)
+        _log_sync(content_id, outcomes)
+        return {
+            "content_id": content_id,
+            "outcomes": [outcome.as_dict() for outcome in outcomes],
+        }
+    finally:
+        db.close()

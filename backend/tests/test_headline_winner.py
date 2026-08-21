@@ -203,10 +203,15 @@ def test_a_dip_does_not_leak_gain_into_the_next_headline(db, piece, publication)
 
 
 def test_two_platforms_are_differenced_separately(db, piece, publication):
-    """A delta only means something against the same platform's last reading."""
+    """A delta only means something against the same platform's last reading.
+
+    Both destinations are ones a headline change can reach — WordPress rather
+    than Medium, which has no update API and is therefore excluded from
+    attribution entirely. See ``test_a_headline_swap_reaches_the_reader``.
+    """
     other = Publication(
         content_id=piece.id,
-        platform=Platform.MEDIUM,
+        platform=Platform.WORDPRESS,
         status=PublicationStatus.PUBLISHED,
     )
     db.add(other)
@@ -219,7 +224,7 @@ def test_two_platforms_are_differenced_separately(db, piece, publication):
     _snapshot(db, other, at=start + timedelta(days=2, hours=1), views=90)
 
     window = headlines.performance(piece, db)[0]
-    # 150 from Dev.to and 90 from Medium, not a running total of both.
+    # 150 from Dev.to and 90 from WordPress, not a running total of both.
     assert window.views == 240
 
 

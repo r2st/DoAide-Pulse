@@ -110,6 +110,10 @@ def capabilities() -> list[dict]:
             "display_name": adapter.display_name,
             "implemented": adapter.implemented,
             "supports_metrics": adapter.supports_metrics,
+            # What the headline-testing UI needs to explain itself: a piece
+            # published only to platforms that answer False here can never
+            # produce a headline verdict, however much engagement it earns.
+            "supports_title_update": adapter.supports_title_update,
             "caveat": adapter.caveat,
             "credential_fields": [
                 {

@@ -84,6 +84,10 @@ class PlatformCapability(BaseModel):
     display_name: str
     implemented: bool
     supports_metrics: bool
+    #: Whether a live post here can be retitled. False for the platforms whose
+    #: engagement is therefore not evidence about a headline — see
+    #: ``app.services.headlines.performance``.
+    supports_title_update: bool = False
     caveat: str = ""
     credential_fields: list[CredentialFieldOut] = []
     #: Filled in per-user by the settings endpoint.
