@@ -141,6 +141,30 @@ _REPO_RE = re.compile(
 )
 
 
+def repo_full_name(repo_url: str | None) -> str | None:
+    """``owner/repo`` for the GitHub API, or ``None`` if *repo_url* is not one.
+
+    A free function over the one column rather than only a method on
+    :class:`Project`, for the same reason as :func:`scan_due` above: the beat
+    sweep in :func:`app.tasks.autopilot_tasks.scan_all_projects` tests the whole
+    fleet from a few selected columns, and it needs this answer per row. Before
+    it could ask, the sweep's only filter was ``repo_url IS NOT NULL`` — which a
+    GitLab URL passes. Such a project was dispatched, turned away by
+    ``scan_project`` with ``no_repo`` before it recorded a scan, and so came back
+    ``last_scanned_at IS NULL`` and due again on the very next tick, forever,
+    with its own ``autopilot_min_interval_hours`` never once applying because an
+    interval is measured from a scan that never happened.
+
+    :attr:`Project.repo_full_name` delegates here so the two cannot drift.
+    """
+    if not repo_url:
+        return None
+    match = _REPO_RE.search(repo_url.strip())
+    if not match:
+        return None
+    return f"{match['owner']}/{match['repo']}"
+
+
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"
     __table_args__ = (
@@ -338,13 +362,11 @@ class Project(Base, TimestampMixin):
 
     @property
     def repo_full_name(self) -> str | None:
-        """``owner/repo`` for the GitHub API, or ``None`` if not a GitHub repo."""
-        if not self.repo_url:
-            return None
-        match = _REPO_RE.search(self.repo_url.strip())
-        if not match:
-            return None
-        return f"{match['owner']}/{match['repo']}"
+        """``owner/repo`` for the GitHub API, or ``None`` if not a GitHub repo.
+
+        See :func:`repo_full_name`, which this delegates to.
+        """
+        return repo_full_name(self.repo_url)
 
     def scan_due(self, now: datetime | None = None) -> bool:
         """Whether the beat sweep may scan this project yet. See :func:`scan_due`."""

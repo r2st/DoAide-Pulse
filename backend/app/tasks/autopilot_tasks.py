@@ -45,7 +45,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.content import Content, ContentIdea, ContentType
 from app.models.mixins import elapsed_ms, utcnow
-from app.models.project import AutopilotMode, Project, scan_due
+from app.models.project import AutopilotMode, Project, repo_full_name, scan_due
 from app.models.trigger import Trigger, TriggerKind
 from app.models.user import User
 from app.services import content_generator, content_pipeline, dedup, github_client
@@ -349,6 +349,7 @@ def scan_all_projects() -> dict:
                 Project.id,
                 Project.last_scanned_at,
                 Project.autopilot_min_interval_hours,
+                Project.repo_url,
             )
             .join(User, User.id == Project.user_id)
             .where(
@@ -358,30 +359,60 @@ def scan_all_projects() -> dict:
                 Project.id.not_in(trigger_owned),
             )
         ).all()
+        # ``repo_url IS NOT NULL`` is not the same question as "can this be
+        # scanned", and the gap between them was a project dispatched on every
+        # sweep for as long as it existed. A GitLab URL — or a typo, or the
+        # repo's *web* page rather than its clone URL — passes the filter above,
+        # is handed to a worker, and is turned away by ``scan_project`` at
+        # ``repo_full_name``. That return is ``no_repo``, and it deliberately
+        # does not call ``record_scan``: nothing looked at GitHub, so timing it
+        # would mix a sub-millisecond no-op into an average that exists to show
+        # when the network half got slow. The cost of that correctness is that
+        # ``last_scanned_at`` stays NULL, and a project that has never scanned is
+        # always due — so the interval never bit and the next tick did it again.
+        #
+        # Filtered here rather than made scannable, because there is no URL to
+        # invent: the project needs its config fixed, and the warning below is
+        # what says so.
+        scannable = [
+            (project_id, last_scanned_at, interval_hours)
+            for project_id, last_scanned_at, interval_hours, repo_url in candidates
+            if repo_full_name(repo_url) is not None
+        ]
         ids = [
             project_id
-            for project_id, last_scanned_at, interval_hours in candidates
+            for project_id, last_scanned_at, interval_hours in scannable
             if scan_due(last_scanned_at, interval_hours, now)
         ]
-        held = len(candidates) - len(ids)
-        # A project set to draft or auto but with no repo is silently outside
-        # the query above — it will never scan, and until this line the only
-        # evidence was that it never produced anything. Named here so the fact
-        # is discoverable from the logs as well as the projects page.
+        held = len(scannable) - len(ids)
+        # A project set to draft or auto that nothing can ever scan. It will
+        # never produce anything, and until this line the only evidence was that
+        # absence. Named here so the fact is discoverable from the logs as well
+        # as the projects page.
+        #
+        # Two ways to be in that state, and this used to report only the first.
+        # A NULL ``repo_url`` never reaches the candidate query; a ``repo_url``
+        # that is not a GitHub URL sails through it and is filtered out above.
+        # The second is the worse of the two to leave unnamed, because it is the
+        # one that *looks* configured — there is a URL in the box — and it was
+        # also the one quietly costing a dispatch an hour. Both are the same
+        # fault, ``Project._cannot_start`` already states it as one, and asking
+        # ``repo_full_name`` here is the sweep's side of that single rule.
         any_trigger = select(Trigger.project_id).where(Trigger.is_active.is_(True))
-        stranded = list(
-            db.scalars(
-                select(Project.name)
+        stranded = [
+            name
+            for name, repo_url in db.execute(
+                select(Project.name, Project.repo_url)
                 .join(User, User.id == Project.user_id)
                 .where(
                     Project.is_active.is_(True),
                     User.is_active.is_(True),
-                    Project.repo_url.is_(None),
                     Project.autopilot_mode != AutopilotMode.OFF,
                     Project.id.not_in(any_trigger),
                 )
-            )
-        )
+            ).all()
+            if repo_full_name(repo_url) is None
+        ]
     finally:
         db.close()
 

@@ -6,6 +6,7 @@ link the user receives is the one the API will accept.
 """
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
 
@@ -13,7 +14,7 @@ import pytest
 from sqlalchemy import select
 
 from app.config import settings
-from app.models.mixins import utcnow
+from app.models.mixins import as_aware, utcnow
 from app.models.password_reset import PasswordResetToken
 from app.security import verify_password
 from app.services import mailer, password_reset
@@ -362,6 +363,57 @@ def test_a_token_with_no_iat_is_refused_once_a_reset_has_happened(client, user, 
     assert resp.status_code == 401
 
 
+@pytest.fixture(params=["Asia/Kolkata", "Pacific/Midway", "Pacific/Kiritimati"])
+def local_timezone(request, monkeypatch):
+    """Run the body on a box whose local clock is not UTC.
+
+    Three offsets, two of them not whole hours away from each other and one on
+    each side of the line, because the failure this guards is arithmetic: it
+    shows up as the machine's own offset and vanishes on a UTC box.
+    """
+    monkeypatch.setenv("TZ", request.param)
+    time.tzset()
+    yield request.param
+    monkeypatch.undo()
+    time.tzset()
+
+
+def test_the_cutoff_is_read_as_utc_on_a_box_that_is_not(
+    client, user, auth, outbox, local_timezone
+):
+    """The reset must revoke old sessions wherever the server happens to sit.
+
+    ``tokens_valid_from`` is ``DateTime(timezone=True)``, but SQLite hands the
+    offset back stripped, so what ``get_current_user`` loads is a *naive* UTC
+    instant. ``datetime.timestamp()`` reads a naive value as **local** time. So
+    a comparison written without :func:`app.models.mixins.as_aware` moves the
+    cutoff by the machine's own offset — and east of Greenwich it moves it
+    *backwards*, leaving every token minted in the last five and a half hours
+    working after the reset that was supposed to kill them. That is the exact
+    token this check exists to refuse, and on a UTC CI box every other test in
+    this file passes while it is broken.
+
+    The two assertions are the two halves that a wrong offset trades against
+    each other: shift the cutoff one way and the attacker's token survives,
+    shift it the other and the person who just reset their password is locked
+    out of the session they opened afterwards.
+    """
+    assert client.get("/api/v1/auth/me", headers=auth).status_code == 200
+
+    _request_reset(client, user.email)
+    assert client.post(
+        CONFIRM,
+        json={"token": _token_from(outbox[0]), "new_password": NEW_PASSWORD},
+    ).status_code == 200
+
+    assert client.get("/api/v1/auth/me", headers=auth).status_code == 401
+
+    fresh = client.post(LOGIN, data={"username": user.email, "password": NEW_PASSWORD})
+    assert fresh.status_code == 200
+    after = {"Authorization": f"Bearer {fresh.json()['access_token']}"}
+    assert client.get("/api/v1/auth/me", headers=after).status_code == 200
+
+
 def test_consume_stamps_the_cutoff(db, user):
     """The service records it, not just the endpoint — the trigger is the
     password changing, wherever that is driven from."""
@@ -370,4 +422,13 @@ def test_consume_stamps_the_cutoff(db, user):
     assert password_reset.consume(db, raw, NEW_PASSWORD) is not None
     db.refresh(user)
     assert user.tokens_valid_from is not None
-    assert user.tokens_valid_from.timestamp() >= before.timestamp() - 1
+    # ``as_aware``, not a bare ``.timestamp()``. The column is
+    # ``DateTime(timezone=True)`` and SQLite hands the offset back stripped, so
+    # the value that comes out of ``db.refresh`` here is a *naive* UTC instant.
+    # ``datetime.timestamp()`` reads a naive value as **local** time, so this
+    # assertion silently measured a different moment than the one that was
+    # written — passing on a UTC box and failing by exactly the machine's offset
+    # anywhere else. ``app.deps.get_current_user`` compares the same column the
+    # same way for the same reason; this is the test saying it in the test's
+    # voice rather than a second spelling of "what a cutoff is".
+    assert as_aware(user.tokens_valid_from).timestamp() >= before.timestamp() - 1
