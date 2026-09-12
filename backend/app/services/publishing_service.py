@@ -1574,8 +1574,22 @@ def collect_metrics(
 
     try:
         credentials = _credentials_for(db, owner_id, publication.platform)
+    except PublishError as exc:
+        # ``NotConnected`` or a ``CredentialError`` from decryption — nothing
+        # was shown to a platform yet, so there is nothing to redact.
+        logger.info("metrics poll for publication %s skipped: %s", publication.id, exc)
+        return None
+
+    try:
         snapshot = adapter.fetch_metrics(publication.external_id, credentials)
     except RateLimited as exc:
+        # The same backstop :func:`execute` applies before *its* failure is
+        # written or logged. A platform that echoes the token it was shown
+        # (``test_a_platform_that_echoes_the_token_does_not_get_it_stored``)
+        # echoes it on a metrics call as readily as on a publish, and this
+        # line is the one place in the poll where what it said reaches a log
+        # that is shipped off the box.
+        _redact_credentials(exc, adapter, credentials)
         if rate_limited is not None:
             rate_limited.add(key)
         logger.info(
@@ -1586,7 +1600,8 @@ def collect_metrics(
             exc,
         )
         return None
-    except (PublishError, NotConnected) as exc:
+    except PublishError as exc:
+        _redact_credentials(exc, adapter, credentials)
         logger.info("metrics poll for publication %s skipped: %s", publication.id, exc)
         return None
 

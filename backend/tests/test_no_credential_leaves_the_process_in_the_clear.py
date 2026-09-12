@@ -457,6 +457,55 @@ def test_a_platform_that_echoes_the_token_does_not_get_it_stored(
     assert "401" in publication.error
 
 
+@pytest.mark.parametrize(
+    "raised",
+    [
+        pytest.param(lambda s: PublishError(f'Dev.to said 400: {{"key": "{s}"}}'), id="error"),
+        pytest.param(
+            lambda s: RateLimited(f"Dev.to throttled key {s}", retry_after=30),
+            id="rate-limited",
+        ),
+    ],
+)
+def test_a_platform_that_echoes_the_token_on_a_metrics_poll_is_not_logged_in_the_clear(
+    db, content, connected, monkeypatch, caplog, raised
+):
+    """The poll is the third caller that shows a platform the credential.
+
+    ``execute`` and the headline sync both strip the connection's secrets out
+    of a platform's answer before it is written or logged. ``collect_metrics``
+    logged the answer as it came — and the metrics sweep is the path that runs
+    most often, unattended, for every live post, so a platform that echoes
+    its token would have put it in the shipped log once per poll.
+    """
+    secret = "devto-secret-8f21ac"
+    connected.encrypted_credentials = encrypt_credentials({"api_key": secret})
+    db.commit()
+    from app.models.publication import Publication, PublicationStatus
+
+    publication = Publication(
+        content_id=content.id,
+        platform=Platform.DEVTO,
+        status=PublicationStatus.PUBLISHED,
+        external_id="12345",
+    )
+    db.add(publication)
+    db.commit()
+
+    def echoes(self, external_id, credentials):
+        raise raised(secret)
+
+    monkeypatch.setattr(type(get_adapter(Platform.DEVTO)), "fetch_metrics", echoes)
+
+    with caplog.at_level(logging.DEBUG):
+        metric = publishing_service.collect_metrics(db, publication)
+
+    assert metric is None
+    assert "Dev.to" in caplog.text  # still says what happened
+    assert secret not in caplog.text
+    assert REDACTED in caplog.text
+
+
 def test_a_credential_too_short_to_be_one_is_left_alone():
     """Redaction must not turn an ordinary message into holes.
 
