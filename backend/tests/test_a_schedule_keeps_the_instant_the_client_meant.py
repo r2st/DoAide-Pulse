@@ -214,7 +214,11 @@ def test_the_two_halves_of_a_repeated_hour_survive_a_round_trip(db, piece):
 
 
 #: A time comfortably inside the horizon, expressed at ``+05:30`` — 03:30 UTC.
-OFFSET_TIME = "2026-09-01T09:00:00+05:30"
+#: A month out rather than a literal date: the literal rotted into the past and
+#: the three tests below started failing on the calendar, not on a change.
+_OFFSET_DAY = (datetime.now(UTC) + timedelta(days=30)).strftime("%Y-%m-%d")
+OFFSET_TIME = f"{_OFFSET_DAY}T09:00:00+05:30"
+OFFSET_TIME_UTC = f"{_OFFSET_DAY}T03:30:00"
 
 
 def test_patching_a_schedule_answers_in_utc(client, auth, piece):
@@ -224,7 +228,7 @@ def test_patching_a_schedule_answers_in_utc(client, auth, piece):
         headers=auth,
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()["scheduled_for"].startswith("2026-09-01T03:30:00")
+    assert resp.json()["scheduled_for"].startswith(OFFSET_TIME_UTC)
 
 
 def test_rescheduling_from_the_calendar_answers_in_utc(
@@ -246,7 +250,7 @@ def test_rescheduling_from_the_calendar_answers_in_utc(
         headers=auth,
     )
     assert resp.status_code == 200, resp.text
-    assert resp.json()[0]["scheduled_for"].startswith("2026-09-01T03:30:00")
+    assert resp.json()[0]["scheduled_for"].startswith(OFFSET_TIME_UTC)
 
 
 def test_the_piece_and_its_publication_agree_after_a_patch(client, auth, db, piece, connect):
@@ -269,6 +273,6 @@ def test_the_piece_and_its_publication_agree_after_a_patch(client, auth, db, pie
     assert resp.status_code == 200, resp.text
     db.expire_all()
 
-    expected = datetime(2026, 9, 1, 3, 30, tzinfo=UTC)
+    expected = datetime.fromisoformat(OFFSET_TIME_UTC).replace(tzinfo=UTC)
     assert as_aware(db.get(Content, piece.id).scheduled_for) == expected
     assert as_aware(db.get(Publication, publication.id).scheduled_for) == expected

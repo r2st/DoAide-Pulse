@@ -29,6 +29,60 @@ from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import scheduling
 from app.services.crypto import encrypt_credentials
 
+#: Dates chosen from the clock rather than written down, because the ones that
+#: were written down rotted: a literal September went into the past and the
+#: reschedule tests started failing on the calendar alone. Every candidate has
+#: to sit inside ``scheduling``'s window — in the future, and no more than 365
+#: days out — so each helper picks the nearest instance of the date it needs
+#: that is at least two days ahead.
+_TODAY = datetime.now(UTC).date()
+
+
+def _upcoming(*candidates: tuple[int, int]) -> datetime:
+    """The nearest of *candidates* (month, day) at least two days ahead."""
+    options = [
+        datetime(_TODAY.year + years, month, day)
+        for years in (0, 1)
+        for month, day in candidates
+    ]
+    ahead = [d for d in options if (d.date() - _TODAY).days >= 2]
+    return min(ahead)
+
+
+def _second_sunday_of_march(year: int) -> datetime:
+    first = datetime(year, 3, 1)
+    return first + timedelta(days=(6 - first.weekday()) % 7 + 7)
+
+
+def _last_sunday_of_march(year: int) -> datetime:
+    last = datetime(year, 3, 31)
+    return last - timedelta(days=(last.weekday() + 1) % 7)
+
+
+#: A morning a few weeks out, with a UTC offset of exactly one hour in Berlin:
+#: mid-January or mid-February is standard time whatever the year, and one of
+#: the two is always inside the window.
+_WINTER = _upcoming((1, 15), (2, 15))
+WINTER_MORNING = _WINTER.strftime("%Y-%m-%dT09:00:00")
+WINTER_MORNING_UTC = _WINTER.strftime("%Y-%m-%dT08:00")
+WINTER_INSTANT = _WINTER.replace(hour=8, tzinfo=UTC)
+#: Any instant inside the window, for a schedule the test then moves.
+SEPTEMBER_MORNING_Z = (datetime.now(UTC) + timedelta(days=20)).strftime(
+    "%Y-%m-%dT09:00:00Z"
+)
+#: The hour that does not exist: 02:30 on the morning a zone springs forward.
+#: America/New_York's is the second Sunday of March; from the two days before
+#: it the next one is a year out, past the horizon, so Berlin's — the last
+#: Sunday, two weeks later — stands in.
+_gaps = [
+    (_second_sunday_of_march(_TODAY.year + years), "America/New_York")
+    for years in (0, 1)
+] + [(_last_sunday_of_march(_TODAY.year + years), "Europe/Berlin") for years in (0, 1)]
+_GAP, GAP_ZONE = min(
+    (g for g in _gaps if 2 <= (g[0].date() - _TODAY).days <= 360), key=lambda g: g[0]
+)
+SPRING_FORWARD_GAP = _GAP.strftime("%Y-%m-%dT02:30:00")
+
 
 @pytest.fixture
 def piece(db, project) -> Content:
@@ -262,7 +316,7 @@ def test_the_publish_endpoint_reads_a_wall_clock_in_the_zone_it_is_given(
         f"/api/v1/content/{piece.id}/publish",
         json={
             "platforms": ["devto"],
-            "scheduled_for": "2026-11-05T09:00:00",
+            "scheduled_for": WINTER_MORNING,
             "timezone": "Europe/Berlin",
         },
         headers=auth,
@@ -271,11 +325,9 @@ def test_the_publish_endpoint_reads_a_wall_clock_in_the_zone_it_is_given(
     db.expire_all()
     row = db.query(Publication).filter_by(content_id=piece.id).one()
     assert row.status == PublicationStatus.SCHEDULED
-    assert row.scheduled_for.replace(tzinfo=UTC) == datetime(
-        2026, 11, 5, 8, 0, tzinfo=UTC
-    )
+    assert row.scheduled_for.replace(tzinfo=UTC) == WINTER_INSTANT
     # And the response says the same thing, so a client need not re-read.
-    assert resp.json()[0]["scheduled_for"].startswith("2026-11-05T08:00")
+    assert resp.json()[0]["scheduled_for"].startswith(WINTER_MORNING_UTC)
 
 
 def test_the_publish_endpoint_refuses_a_zone_it_cannot_resolve(
@@ -287,7 +339,7 @@ def test_the_publish_endpoint_refuses_a_zone_it_cannot_resolve(
         f"/api/v1/content/{piece.id}/publish",
         json={
             "platforms": ["devto"],
-            "scheduled_for": "2026-11-05T09:00:00",
+            "scheduled_for": WINTER_MORNING,
             "timezone": "Europe/Berlyn",
         },
         headers=auth,
@@ -305,7 +357,7 @@ def test_an_over_long_zone_is_refused_by_the_schema_before_the_route_runs(
         f"/api/v1/content/{piece.id}/publish",
         json={
             "platforms": ["devto"],
-            "scheduled_for": "2026-11-05T09:00:00",
+            "scheduled_for": WINTER_MORNING,
             "timezone": "A" * 500,
         },
         headers=auth,
@@ -318,20 +370,18 @@ def test_the_calendar_reschedule_takes_a_zone(client, auth, db, piece, devto):
     so a card dropped on "Tuesday 09:00" means 09:00 in the user's own week."""
     client.post(
         f"/api/v1/content/{piece.id}/publish",
-        json={"platforms": ["devto"], "scheduled_for": "2026-09-01T09:00:00Z"},
+        json={"platforms": ["devto"], "scheduled_for": SEPTEMBER_MORNING_Z},
         headers=auth,
     )
     resp = client.patch(
         f"/api/v1/calendar/content/{piece.id}",
-        json={"scheduled_for": "2026-11-05T09:00:00", "timezone": "Europe/Berlin"},
+        json={"scheduled_for": WINTER_MORNING, "timezone": "Europe/Berlin"},
         headers=auth,
     )
     assert resp.status_code == 200, resp.text
     db.expire_all()
     row = db.query(Publication).filter_by(content_id=piece.id).one()
-    assert row.scheduled_for.replace(tzinfo=UTC) == datetime(
-        2026, 11, 5, 8, 0, tzinfo=UTC
-    )
+    assert row.scheduled_for.replace(tzinfo=UTC) == WINTER_INSTANT
 
 
 def test_the_calendar_reschedule_refuses_an_impossible_local_time(
@@ -341,12 +391,12 @@ def test_the_calendar_reschedule_refuses_an_impossible_local_time(
     hour of drift."""
     client.post(
         f"/api/v1/content/{piece.id}/publish",
-        json={"platforms": ["devto"], "scheduled_for": "2026-09-01T09:00:00Z"},
+        json={"platforms": ["devto"], "scheduled_for": SEPTEMBER_MORNING_Z},
         headers=auth,
     )
     resp = client.patch(
         f"/api/v1/calendar/content/{piece.id}",
-        json={"scheduled_for": "2026-03-08T02:30:00", "timezone": "America/New_York"},
+        json={"scheduled_for": SPRING_FORWARD_GAP, "timezone": GAP_ZONE},
         headers=auth,
     )
     assert resp.status_code == 422
@@ -381,7 +431,7 @@ def test_a_bulk_publish_applies_one_zone_to_the_whole_batch(
         json={
             "content_ids": ids,
             "platforms": ["devto"],
-            "scheduled_for": "2026-11-05T09:00:00",
+            "scheduled_for": WINTER_MORNING,
             "timezone": "Europe/Berlin",
         },
         headers=auth,
@@ -390,6 +440,4 @@ def test_a_bulk_publish_applies_one_zone_to_the_whole_batch(
     assert sorted(resp.json()["succeeded"]) == sorted(ids)
     for content_id in ids:
         row = db.query(Publication).filter_by(content_id=content_id).one()
-        assert row.scheduled_for.replace(tzinfo=UTC) == datetime(
-            2026, 11, 5, 8, 0, tzinfo=UTC
-        )
+        assert row.scheduled_for.replace(tzinfo=UTC) == WINTER_INSTANT
