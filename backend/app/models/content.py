@@ -447,6 +447,24 @@ class Content(Base, TimestampMixin):
         """Reading time at ~220wpm, floored at one minute."""
         return read_minutes_for(self.word_count)
 
+    @property
+    def went_out(self) -> bool:
+        """Whether any of this piece is live on a platform.
+
+        The question every freeze on editing asks, and the one ``status`` alone
+        cannot answer: archiving moves the column and leaves the post up, so a
+        guard that read ``status == PUBLISHED`` lasted exactly until the piece
+        was archived. The rows are the record of what went out; the column is
+        what Herald is showing. ``publications`` is ``lazy="selectin"``, so on a
+        loaded piece this costs no query of its own.
+        """
+        from app.models.publication import PublicationStatus
+
+        return self.status == ContentStatus.PUBLISHED or any(
+            publication.status == PublicationStatus.PUBLISHED
+            for publication in self.publications
+        )
+
     def __repr__(self) -> str:  # pragma: no cover - debug aid
         return f"<Content id={self.id} title={self.title!r} status={self.status}>"
 

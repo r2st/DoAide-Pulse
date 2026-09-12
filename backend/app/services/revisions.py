@@ -41,7 +41,7 @@ from typing import Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.models.content import Content, ContentStatus, unique_content_slug
+from app.models.content import Content, unique_content_slug
 from app.models.revision import ContentRevision, RevisionSource
 
 logger = logging.getLogger(__name__)
@@ -374,16 +374,21 @@ def restore(
     Returns the snapshot of what was there before, so the caller can tell the
     user which version to click to undo this.
 
-    Refuses on a published piece, in the same words and for the same reason the
-    PATCH route refuses to edit one: the text is live on the platforms, and
-    changing it here would make Herald disagree with what a reader can see
-    without changing anything a reader can see. Archived is allowed — archiving
+    Refuses on a piece that went out, in the same words and for the same
+    reason the PATCH route refuses to edit one: the text is live on the
+    platforms, and changing it here would make Herald disagree with what a
+    reader can see without changing anything a reader can see. Asked of the
+    rows rather than the column (:attr:`Content.went_out`), because archiving
+    moves the column and leaves the post up — and a restore on an archived
+    piece that had been published rewrote the body, the title and the slug of
+    a live post, which is the two-call edit the PATCH's freeze was closed
+    against. An archived piece that never went out still restores: archiving
     means "stop showing me this", not "this went out".
 
     Not committed, again: the caller commits, so a restore and the response it
     builds succeed or fail together.
     """
-    if content.status == ContentStatus.PUBLISHED:
+    if content.went_out:
         raise RevisionError(
             "This piece is already published. Restoring an earlier version here "
             "would not change what is live on the platforms."

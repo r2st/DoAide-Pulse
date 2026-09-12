@@ -425,6 +425,36 @@ def test_a_published_piece_refuses_a_restore(client, auth, db, piece):
     assert "already published" in response.json()["detail"].lower()
 
 
+def test_an_archived_piece_that_went_out_refuses_a_restore_too(
+    client, auth, db, piece
+):
+    """The freeze follows the rows, not the column. Archiving a published
+    piece and restoring an old version of it would rewrite Herald's copy of a
+    post that is still up — the two-call edit the PATCH's freeze is closed
+    against, reached through the history sidebar instead."""
+    version = piece.version
+    _patch(client, auth, piece, title="Rewritten")
+    piece.status = ContentStatus.ARCHIVED
+    db.add(
+        Publication(
+            content_id=piece.id,
+            platform=Platform.DEVTO,
+            status=PublicationStatus.PUBLISHED,
+            external_url="https://dev.to/x/still-up",
+        )
+    )
+    db.commit()
+
+    response = client.post(
+        f"{V1}/content/{piece.id}/revisions/{version}/restore", headers=auth
+    )
+
+    assert response.status_code == 409
+    assert "already published" in response.json()["detail"].lower()
+    db.refresh(piece)
+    assert piece.title == "Rewritten"
+
+
 def test_an_archived_piece_still_restores(client, auth, db, piece):
     """Archiving means "stop showing me this", not "this went out"."""
     version = piece.version

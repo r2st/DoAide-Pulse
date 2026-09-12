@@ -215,10 +215,7 @@ def _is_live(content: Content) -> bool:
     ``publications`` is ``lazy="selectin"`` and ``_owned_content`` has already
     loaded the piece, so this costs no query of its own.
     """
-    return content.status == ContentStatus.PUBLISHED or any(
-        publication.status == PublicationStatus.PUBLISHED
-        for publication in content.publications
-    )
+    return content.went_out
 
 
 #: The statuses nothing is queued from. A piece in any of these has no armed
@@ -269,7 +266,7 @@ def _settle_status(db: Session, content: Content, previous: ContentStatus) -> No
     if (
         previous == ContentStatus.ARCHIVED
         and content.status != ContentStatus.ARCHIVED
-        and any(p.status == PublicationStatus.PUBLISHED for p in content.publications)
+        and content.went_out
     ):
         # The derivation's own first arm: ``published``, and ``published_at``
         # stamped if the piece somehow never was.
