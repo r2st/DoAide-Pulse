@@ -462,10 +462,19 @@ def contradictions(db) -> list[str]:
                 f"content {content.id} has a published_at with nothing published"
             )
 
-        if content.status == ContentStatus.ARCHIVED:
+        # Archived, and the two statuses before approval: nothing is queued
+        # from any of them. A draft with a scheduled row is a draft the sweep
+        # will publish — see ``routers.content._settle_status``.
+        if content.status in (
+            ContentStatus.DRAFT,
+            ContentStatus.REVIEW,
+            ContentStatus.ARCHIVED,
+        ):
             if armed:
-                found.append(f"content {content.id} is archived but armed on {armed}")
-            if content.scheduled_for is not None:
+                found.append(
+                    f"content {content.id} is {content.status.value} but armed on {armed}"
+                )
+            if content.status == ContentStatus.ARCHIVED and content.scheduled_for is not None:
                 found.append(f"content {content.id} is archived but still dated")
 
         if content.status == ContentStatus.FAILED and (

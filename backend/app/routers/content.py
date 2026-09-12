@@ -221,6 +221,65 @@ def _is_live(content: Content) -> bool:
     )
 
 
+#: The statuses nothing is queued from. A piece in any of these has no armed
+#: publication and no date — see :func:`_settle_status`, which keeps that true.
+_NOT_GOING_OUT = (ContentStatus.DRAFT, ContentStatus.REVIEW, ContentStatus.ARCHIVED)
+
+
+def _settle_status(db: Session, content: Content, previous: ContentStatus) -> None:
+    """Make the queue and the rows that went out agree with a hand-set status.
+
+    Called by every door that lets a caller *name* a status — the PATCH, the
+    ``/status`` endpoint, the approve button and its bulk form — after the
+    column is written and before the commit. Two rules, each of which one of
+    those doors used to apply and the others did not:
+
+    **A piece that is not going out has nothing armed.** Archiving cancelled
+    the queue (:func:`app.services.publishing_service.cancel_armed`) because
+    the review queue's Reject once published the thing it had just rejected.
+    Moving a piece back to ``draft`` or ``review`` is the same statement made
+    more gently — "not this, not yet" — and it left the queue exactly as it
+    was. ``due_publications`` selects on the row's status and time alone, and
+    ``execute``'s last gate asks only whether the piece is archived, so a piece
+    pulled back to draft on Monday to be reworked went out on Tuesday, with
+    whatever the body said by then. The status column read ``draft`` right up
+    until the worker's ``sync_content_status`` flipped it to ``published``.
+
+    **A piece that went out is published or archived, and nothing else.**
+    ``PATCH {"status": "draft"}`` on a published piece is a 409 — it is still
+    live everywhere it went. But the check read the column, and archiving
+    moves the column, so the refusal lasted one call:
+
+        PATCH {"status": "archived"}   200 — the allowed move
+        PATCH {"status": "draft"}      200 — and the piece is off the RSS feed,
+                                       out of the published count, invisible
+                                       to the headline sweep, while its post
+                                       is up on Dev.to
+
+    The same shape as the edit freeze that :func:`_is_live` fixed, and the
+    same answer: ask the rows. Un-archiving a piece with a live publication
+    puts it back where the rows say it is, which is ``published`` — the one
+    status a caller cannot name by hand (see ``_settable_status``), so it is
+    restored here rather than requested. The caller asked for the piece back
+    in circulation, and this is the circulation it is in.
+
+    Does not commit. Idempotent: running it twice over the same piece changes
+    nothing the first run did not.
+    """
+    if (
+        previous == ContentStatus.ARCHIVED
+        and content.status != ContentStatus.ARCHIVED
+        and any(p.status == PublicationStatus.PUBLISHED for p in content.publications)
+    ):
+        # The derivation's own first arm: ``published``, and ``published_at``
+        # stamped if the piece somehow never was.
+        publishing_service.sync_content_status(content)
+    if content.status in _NOT_GOING_OUT:
+        # Whether this call moved the piece there or it was there already: in
+        # both cases the queue must agree with the column.
+        publishing_service.cancel_armed(db, content)
+
+
 def _assert_review_ready(
     db: Session, content: Content, previous_status: ContentStatus
 ) -> None:
@@ -581,7 +640,9 @@ def bulk_approve_content(
         succeeded.append(content_id)
         if payload.dry_run:
             continue
+        previous_status = content.status
         content.status = ContentStatus.APPROVED
+        _settle_status(db, content, previous_status)
         approved.append(content_id)
     if payload.dry_run:
         # Nothing above wrote, but the loop still loaded rows and something
@@ -1879,11 +1940,11 @@ def update_content(
                 else PublicationStatus.PENDING
             )
 
-    if content.status == ContentStatus.ARCHIVED:
-        # Whether this call archived the piece or it was already archived: in
-        # both cases the queue must agree with the column. See
-        # :func:`app.services.publishing_service.cancel_armed`.
-        publishing_service.cancel_armed(db, content)
+    # The queue agrees with the column, and the column with the rows that went
+    # out — see :func:`_settle_status`. After the ``scheduled_for`` pass above,
+    # so a date and a demotion in the same call end with the date cleared
+    # rather than a row re-armed at it.
+    _settle_status(db, content, previous_status)
 
     db.commit()
     # Approving through here means the same thing as approving through the
@@ -1949,7 +2010,12 @@ def approve_content(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Already published"
         )
+    previous_status = content.status
     content.status = ContentStatus.APPROVED
+    # An archived piece that went out comes back ``published``, not approved —
+    # see :func:`_settle_status`. ``release_approved`` then declines it, as it
+    # declines anything that is not approved.
+    _settle_status(db, content, previous_status)
     db.commit()
     content_pipeline.release_approved(db, content)
     db.refresh(content)
@@ -2081,8 +2147,7 @@ def _queue_publish(
         as_draft=payload.as_draft,
     )
 
-    if content.status in (ContentStatus.DRAFT, ContentStatus.REVIEW):
-        content.status = ContentStatus.APPROVED
+    publishing_service.arming_approves(content)
     content.scheduled_for = when
     # Queueing a platform on a piece that had run out of them makes ``failed``
     # untrue again; this is the arm of the derivation that takes it back.
@@ -2344,6 +2409,10 @@ def _rearm(content: Content, publication: Publication) -> bool:
     publication.attempts = 0
     publication.error = None
     publication.scheduled_for = hold
+    # A retry is a human saying "send it", which on a draft is an approval —
+    # a draft with an armed row is the contradiction ``_settle_status`` exists
+    # to prevent, and this path used to create it.
+    publishing_service.arming_approves(content)
     # The piece is no longer out of platforms to try. Without this it went on
     # reading ``failed`` while a worker was publishing it — see
     # :func:`app.services.publishing_service.sync_content_status`.
@@ -2583,8 +2652,7 @@ def set_content_status(
     # that one are two doors to the same column, and a transition refused
     # through one and accepted through the other is not a rule.
     _assert_review_ready(db, content, previous_status)
-    if new_status == ContentStatus.ARCHIVED:
-        publishing_service.cancel_armed(db, content)
+    _settle_status(db, content, previous_status)
     db.commit()
     # After the commit, as in the PATCH and the bulk approve: a release that
     # dispatches a worker must not hand it a row this request has not written.

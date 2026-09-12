@@ -182,6 +182,24 @@ def test_an_archived_piece_is_not_dragged_back_out(db, project, connect):
     assert publication.status == PublicationStatus.FAILED
 
 
+@pytest.mark.parametrize("status", [ContentStatus.DRAFT, ContentStatus.REVIEW])
+def test_a_piece_taken_back_to_draft_is_not_dragged_back_out(
+    db, project, connect, status
+):
+    """Demoting cancels the queue (``routers.content._settle_status``); a row
+    this sweep armed on a draft would put it straight back, with nobody having
+    said yes."""
+    content = _content(db, project, status=status)
+    row = _failed(db, content, Platform.DEVTO)
+    connect(Platform.DEVTO)
+
+    assert publish_recovery.recover(db) == []
+    db.refresh(row)
+    assert row.status == PublicationStatus.FAILED
+    db.refresh(content)
+    assert content.status == status
+
+
 def test_a_deactivated_account_recovers_nothing(db, project, user, connect):
     """The gate ``execute`` keeps for armed rows, kept here before arming."""
     content = _content(db, project)

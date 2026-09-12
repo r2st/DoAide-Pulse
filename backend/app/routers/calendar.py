@@ -17,7 +17,7 @@ from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
 from app.schemas.content import CalendarEntry, CalendarOut, PublicationOut, ScheduleUpdate
 from app.schemas.errors import AUTHENTICATED, OWNED, errors
-from app.services import cadence, learned_cadence, scheduling, velocity
+from app.services import cadence, learned_cadence, publishing_service, scheduling, velocity
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -305,6 +305,13 @@ def reschedule(
 
     if payload.publication_id is None:
         content.scheduled_for = when
+
+    # Dragging a piece onto a date arms it, and arming a draft approves it —
+    # see :func:`app.services.publishing_service.arming_approves`. Without this
+    # a draft whose demotion had just cancelled its rows could be dragged back
+    # onto the calendar and go out while the column still said ``draft``.
+    if targets:
+        publishing_service.arming_approves(content)
 
     db.commit()
     refresh_all(db, targets)

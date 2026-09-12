@@ -94,7 +94,16 @@ def recoverable(db: Session, *, limit: int = DEFAULT_LIMIT) -> list[Publication]
         .where(
             Publication.status == PublicationStatus.FAILED,
             PlatformConnection.status == ConnectionStatus.CONNECTED,
-            Content.status != ContentStatus.ARCHIVED,
+            # Not archived, and not taken back to draft or review either. A
+            # person who moved a failed piece back to draft is reworking it,
+            # and this sweep re-arming a row on it — with no human saying yes
+            # — would publish the rework in whatever state it was in when the
+            # connection came back. Those are the statuses nothing is queued
+            # from (``routers.content._settle_status``); a hand retry on such a
+            # piece approves it, and a sweep has no standing to.
+            Content.status.not_in(
+                (ContentStatus.ARCHIVED, ContentStatus.DRAFT, ContentStatus.REVIEW)
+            ),
             Project.is_active.is_(True),
             User.is_active.is_(True),
         )

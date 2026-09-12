@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -21,6 +21,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.config import settings
 from app.models.content import CANONICAL_URL_MAX_LENGTH, Content, ContentStatus
@@ -310,6 +311,26 @@ def cancel_armed(db: Session, content: Content) -> list[Publication]:
     content.scheduled_for = None
     db.flush()
     return cancelled
+
+
+def arming_approves(content: Content) -> None:
+    """Arming a row on a draft is approving the draft. Make the column say so.
+
+    ``draft`` and ``review`` are the statuses nothing is queued from — a piece in
+    either has no armed publication, and ``routers.content._settle_status``
+    cancels the queue when a piece is moved back to one. So any path that arms a
+    row has to move the piece *out* of them, or it leaves a draft with a
+    scheduled publication behind it: a contradiction the sweep resolves by
+    publishing the draft. ``_queue_publish`` always did this; the retry
+    endpoints and the calendar's reschedule, which re-arm a cancelled or failed
+    row, did not.
+
+    Only those two. ``failed`` is taken back by :func:`sync_content_status`
+    once a row is armed, ``published`` stays published, and an archived piece
+    is refused by every arming path before this is reached.
+    """
+    if content.status in (ContentStatus.DRAFT, ContentStatus.REVIEW):
+        content.status = ContentStatus.APPROVED
 
 
 def retry_hold(content: Content, publication: Publication) -> datetime | None:
@@ -820,35 +841,40 @@ def execute(db: Session, publication: Publication) -> Publication:
     # otherwise trip the breaker early on the next unrelated blip.
     breaker.record_success(publication.platform, user_id)
 
-    publication.status = PublicationStatus.PUBLISHED
-    publication.published_at = utcnow()
-    publication.external_id = _recorded(
-        result.external_id,
-        EXTERNAL_ID_MAX_LENGTH,
-        publication=publication,
-        field="external_id",
-    )
-    publication.external_url = _recorded(
-        result.external_url,
-        EXTERNAL_URL_MAX_LENGTH,
-        publication=publication,
-        field="external_url",
-    )
-    # The headline the reader will actually see, which is the request's and not
-    # necessarily the piece's: a translated publication carries the translated
-    # title. Recorded here so a later headline swap can tell which destinations
-    # it has reached — see app.services.headline_sync.
-    publication.live_title = request.title[:300]
-    publication.error = None
-
-    _adopt_canonical(content, publication, result)
     # Captured before the sync, because the interesting moment is the
     # *transition* — a piece already live on Dev.to going out on Mastodon is
     # not news, and firing "published" per platform would make the event mean
     # something different from its name.
     was_published = content.status == ContentStatus.PUBLISHED
-    sync_content_status(content)
-    db.commit()
+    published_at = utcnow()
+    # The headline the reader will actually see, which is the request's and not
+    # necessarily the piece's: a translated publication carries the translated
+    # title. Recorded so a later headline swap can tell which destinations it
+    # has reached — see app.services.headline_sync.
+    live_title = request.title[:300]
+
+    def _record(publication: Publication) -> None:
+        publication.status = PublicationStatus.PUBLISHED
+        publication.published_at = published_at
+        publication.external_id = _recorded(
+            result.external_id,
+            EXTERNAL_ID_MAX_LENGTH,
+            publication=publication,
+            field="external_id",
+        )
+        publication.external_url = _recorded(
+            result.external_url,
+            EXTERNAL_URL_MAX_LENGTH,
+            publication=publication,
+            field="external_url",
+        )
+        publication.live_title = live_title
+        publication.error = None
+        _adopt_canonical(publication.content, publication, result)
+        sync_content_status(publication.content)
+
+    _commit_outcome(db, publication, _record)
+    content = publication.content
     if not was_published and content.status == ContentStatus.PUBLISHED:
         _notify_published(db, content, publication)
     logger.info(
@@ -1170,6 +1196,61 @@ def retry_defer_seconds(attempts: int) -> float:
     return float(min(window, settings.publish_retry_max_defer_seconds))
 
 
+def _commit_outcome(
+    db: Session, publication: Publication, record: Callable[[Publication], None]
+) -> None:
+    """Write a publication's outcome, even if the piece moved under the worker.
+
+    ``Content`` carries a ``version_id_col``, so the UPDATE that
+    :func:`sync_content_status` and :func:`_adopt_canonical` put on the piece
+    says ``AND version = <the one this worker loaded>``. The worker loaded it
+    before the platform call and commits after — and the platform call is the
+    one place in Herald that holds a row across a network round trip. Anything
+    that writes the content row in that window makes the commit raise
+    ``StaleDataError``: the editor's two-second autosave on a piece that is
+    approved but not yet out, a headline sweep, a translation landing.
+
+    What that lost was the *outcome*. The post was live on the platform, and
+    the transaction that would have said so — ``published``, the URL, the
+    external id — rolled back with the version check. ``publish_one`` does not
+    catch ORM errors, so the task died with the row still ``publishing`` from
+    its committed claim; ``reclaim_stuck`` later found a claim with no worker
+    behind it and armed the row again, and the next worker posted the piece a
+    second time. Herald had no record of the first copy to know it was one.
+
+    So the outcome is applied by a callback that can be run more than once.
+    On a stale commit, the session is rolled back — which expires both
+    instances, so the next read of either is the row as it stands now, version
+    included — and the callback is applied to the current row. *record* has to
+    set every field the outcome consists of, because the rollback also discards
+    the ``attempts`` and ``duration_ms`` this attempt flushed before the call;
+    those are re-applied here from the values the instance carried in.
+
+    Three tries. A second collision needs a second writer to land in the
+    milliseconds between the reload and the commit; a third means something
+    is writing the row in a tight loop and the exception is the right answer.
+    """
+    attempts = publication.attempts
+    duration_ms = publication.duration_ms
+    for remaining in range(2, -1, -1):
+        record(publication)
+        publication.attempts = attempts
+        publication.duration_ms = duration_ms
+        try:
+            db.commit()
+            return
+        except StaleDataError:
+            db.rollback()
+            if not remaining:
+                raise
+            logger.warning(
+                "publication %s: content %s changed while the platform call was "
+                "in flight; recording the outcome against the current row",
+                publication.id,
+                publication.content_id,
+            )
+
+
 def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) -> None:
     """Record a failed attempt, and decide when — if ever — to try again.
 
@@ -1189,22 +1270,33 @@ def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) 
     its time. Leaving it ``pending`` with a future time would work today and be
     a trap for the next reader.
     """
-    publication.error = clip_error(error)
-    if terminal:
-        publication.status = PublicationStatus.FAILED
-        # Cleared, because it is now a lie. A row that failed on its last
-        # attempt is carrying the ``scheduled_for`` from the retry before it —
-        # a time in the future, on a row nothing will ever come back for, which
-        # the calendar and the publications list both read as "still to come".
-        publication.scheduled_for = None
-        sync_content_status(publication.content)
-    else:
-        wait = retry_defer_seconds(publication.attempts)
-        publication.status = PublicationStatus.SCHEDULED
-        publication.scheduled_for = utcnow() + timedelta(seconds=wait)
-        if wait:
-            publication.error = clip_error(f"{error} — retrying in {round(wait)}s")
-    db.commit()
+    def _record(publication: Publication) -> None:
+        publication.error = clip_error(error)
+        if terminal:
+            publication.status = PublicationStatus.FAILED
+            # Cleared, because it is now a lie. A row that failed on its last
+            # attempt is carrying the ``scheduled_for`` from the retry before
+            # it — a time in the future, on a row nothing will ever come back
+            # for, which the calendar and the publications list both read as
+            # "still to come".
+            publication.scheduled_for = None
+            sync_content_status(publication.content)
+        else:
+            publication.status = PublicationStatus.SCHEDULED
+            publication.scheduled_for = utcnow() + timedelta(seconds=wait)
+            if wait:
+                publication.error = clip_error(f"{error} — retrying in {round(wait)}s")
+
+    # Computed once, outside the callback: a re-applied outcome after a stale
+    # commit (see :func:`_commit_outcome`) must park the row at the same time
+    # the first application chose, not at a fresh ``utcnow()``.
+    wait = 0.0 if terminal else retry_defer_seconds(publication.attempts)
+    # Through the same door as a success, and for the same reason: a terminal
+    # failure writes the content row (``sync_content_status``), and a version
+    # that moved during the platform call would otherwise unwind the record of
+    # the attempt — leaving the row ``publishing`` with nothing behind it, to
+    # be reclaimed and charged a second time for the same failure.
+    _commit_outcome(db, publication, _record)
     logger.warning(
         "publication %s to %s failed (%s): %s",
         publication.id,
