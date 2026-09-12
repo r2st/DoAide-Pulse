@@ -24,7 +24,7 @@ public plus its own project's titles.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -45,6 +45,7 @@ from app.schemas.api_key import (
     MachineIdentityOut,
 )
 from app.schemas.errors import errors
+from app.services import content_generator
 
 router = APIRouter(prefix="/machine", tags=["machine"])
 
@@ -163,11 +164,30 @@ def machine_content(
     response_model=MachineIdeaOut,
     status_code=status.HTTP_201_CREATED,
     summary="File an idea",
-    responses=errors(
-        *MACHINE_ERRORS,
-        status.HTTP_403_FORBIDDEN,
-        status.HTTP_422_UNPROCESSABLE_CONTENT,
-    ),
+    responses={
+        **errors(
+            *MACHINE_ERRORS,
+            status.HTTP_403_FORBIDDEN,
+            status.HTTP_409_CONFLICT,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ),
+        # Two success codes, both spelled out — the same shape as
+        # ``POST /content/ideas/{id}/write``, and for the same reason: a reader
+        # shown a described 200 beside a bare 201 is left to guess which is the
+        # replay.
+        status.HTTP_201_CREATED: {
+            "model": MachineIdeaOut,
+            "description": "The idea was filed and is waiting in the project's queue.",
+        },
+        status.HTTP_200_OK: {
+            "model": MachineIdeaOut,
+            "description": (
+                "An open idea in this project already says this. It is "
+                "returned instead of a duplicate — a job that retries, or "
+                "fires once per pipeline run, sees the same id each time."
+            ),
+        },
+    },
 )
 @limiter.limit(settings.rate_limit_machine_api, key_func=api_key_key)
 def machine_idea(
@@ -185,17 +205,50 @@ def machine_idea(
 
     ``source`` records that this arrived over the API and which key filed it, so
     a suggestion the autopilot later acts on can be traced back to its origin.
+
+    Filed through the same door the autopilot uses —
+    :func:`app.services.content_generator.bank_ideas` and
+    :func:`app.services.content_generator.prune_ideas` — rather than inserted
+    directly. The two rules those apply were written for a producer that
+    repeats itself, and a build job is the producer that repeats *most*: a
+    retried pipeline files its "v2.1 went out" a second time, and a pipeline
+    that fires per commit files one an hour all day. A repeat answers 200 with
+    the idea already open rather than adding a copy; the queue is held to the
+    same cap the scan keeps it under, evicting the oldest unused idea past it.
     """
-    idea = ContentIdea(
-        project_id=key.project_id,
-        content_type=payload.content_type,
-        headline=payload.headline.strip(),
-        rationale=payload.rationale.strip(),
+    headline = payload.headline.strip()
+    existing = content_generator.restated_idea(db, key.project_id, headline)
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        return _idea_out(existing)
+
+    banked = content_generator.bank_ideas(
+        db,
+        key.project_id,
+        [
+            content_generator.Idea(
+                content_type=payload.content_type,
+                headline=headline,
+                rationale=payload.rationale.strip(),
+            )
+        ],
         source={"kind": "api_key", "key_id": key.id, "prefix": key.prefix},
     )
-    db.add(idea)
+    content_generator.prune_ideas(db, key.project_id)
     db.commit()
-    db.refresh(idea)
+    # ``bank_ideas`` was handed one idea it had just been told was new, so it
+    # inserted one row — but the prune runs on ``created_at`` and a cap of zero
+    # can take back the row this request added. Re-read rather than assume.
+    idea = db.get(ContentIdea, banked[0].id) if banked else None
+    if idea is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The project's idea queue is full and nothing older could go.",
+        )
+    return _idea_out(idea)
+
+
+def _idea_out(idea: ContentIdea) -> MachineIdeaOut:
     return MachineIdeaOut(
         id=idea.id,
         headline=idea.headline,

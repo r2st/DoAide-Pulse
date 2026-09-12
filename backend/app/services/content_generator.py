@@ -36,7 +36,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -865,6 +865,75 @@ _idea_tokens = dedup.tokens
 _is_restatement = dedup.is_restatement
 
 
+def restated_idea(db: Session, project_id: int, headline: str) -> ContentIdea | None:
+    """The open idea *headline* restates, if there is one.
+
+    The same comparison :func:`bank_ideas` makes before inserting, offered on
+    its own for a producer that wants the row it would have duplicated rather
+    than a silent drop: the machine API answers a repeat with the idea already
+    filed, so a build job that retries sees the same id twice and can tell.
+
+    Against *unused* ideas only, for the reason ``bank_ideas`` gives.
+    """
+    tokens = _idea_tokens(headline)
+    for candidate in db.scalars(
+        select(ContentIdea)
+        .where(
+            ContentIdea.project_id == project_id,
+            ContentIdea.used_content_id.is_(None),
+        )
+        .order_by(ContentIdea.created_at, ContentIdea.id)
+    ):
+        if _is_restatement(candidate.headline, tokens):
+            return candidate
+    return None
+
+
+def prune_ideas(db: Session, project_id: int) -> int:
+    """Delete the oldest unused ideas beyond the per-project cap.
+
+    Returns the number of rows pruned (zero when within budget). Lived in the
+    autopilot's scan until the machine API became a producer too: a cap that
+    only one of two writers applies is a cap on that writer, not on the
+    table, and a build job filing an idea per commit at 300 an hour would have
+    grown a project's queue without limit while the scan next door kept its
+    own contributions to fifty.
+    """
+    # Same reason :func:`bank_ideas` flushes: sessions here are
+    # ``autoflush=False``, so a row a caller has just added and not committed
+    # is invisible to the COUNT below, and "pruned to the cap" would be true
+    # only of what happened to be flushed already.
+    db.flush()
+    cap = settings.autopilot_ideas_cap
+    unused_count = db.scalar(
+        select(func.count(ContentIdea.id)).where(
+            ContentIdea.project_id == project_id,
+            ContentIdea.used_content_id.is_(None),
+        )
+    ) or 0
+    if unused_count <= cap:
+        return 0
+
+    excess = unused_count - cap
+    oldest_ids = list(
+        db.scalars(
+            select(ContentIdea.id)
+            .where(
+                ContentIdea.project_id == project_id,
+                ContentIdea.used_content_id.is_(None),
+            )
+            .order_by(ContentIdea.created_at)
+            .limit(excess)
+        )
+    )
+    # No emptiness check: `autopilot_ideas_cap` cannot be negative (see
+    # `Settings._non_negative`), so reaching here means `unused_count > cap >= 0`
+    # and the LIMIT-ed select over the same predicate that counted them returns
+    # at least one row.
+    db.execute(ContentIdea.__table__.delete().where(ContentIdea.id.in_(oldest_ids)))
+    return len(oldest_ids)
+
+
 def bank_ideas(
     db: Session,
     project_id: int,
@@ -877,7 +946,7 @@ def bank_ideas(
     Returns the rows actually inserted, which is fewer than *ideas* whenever the
     producer repeated itself.
 
-    Nothing deduplicated these, and both producers repeat by construction. The
+    Nothing deduplicated these, and every producer repeats by construction. The
     autopilot scans on a schedule and asks a model at ``temperature=0.9`` about
     an overlapping window of commits, so consecutive scans of an active repo
     describe the same work twice. And when no provider answers,
@@ -885,7 +954,7 @@ def bank_ideas(
     outage banked another "What's new in ``<project>``", by the hour.
 
     That is worse than clutter because of what bounds the table.
-    ``_prune_ideas`` deletes the *oldest* unused rows over the cap, so a
+    :func:`prune_ideas` deletes the *oldest* unused rows over the cap, so a
     repeating producer does not fill the list up and stop: it evicts the varied
     ideas banked before it, one per repeat, until the project's suggestions are
     N copies of one headline. The failure runs in the direction of less choice
@@ -948,5 +1017,7 @@ __all__ = [
     "Idea",
     "bank_ideas",
     "generate",
+    "prune_ideas",
+    "restated_idea",
     "suggest_ideas",
 ]

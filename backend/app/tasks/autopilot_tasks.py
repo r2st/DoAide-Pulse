@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.content import Content, ContentIdea, ContentType
+from app.models.content import Content, ContentType
 from app.models.mixins import elapsed_ms, utcnow
 from app.models.project import AutopilotMode, Project, repo_full_name, scan_due
 from app.models.trigger import Trigger, TriggerKind
@@ -183,39 +183,9 @@ def scan_project(project_id: int) -> dict:
         db.close()
 
 
-def _prune_ideas(db: Session, project_id: int) -> int:
-    """Delete the oldest unused ideas beyond the per-project cap.
-
-    Returns the number of rows pruned (zero when within budget).
-    """
-    cap = settings.autopilot_ideas_cap
-    unused_count = db.scalar(
-        select(func.count(ContentIdea.id)).where(
-            ContentIdea.project_id == project_id,
-            ContentIdea.used_content_id.is_(None),
-        )
-    ) or 0
-    if unused_count <= cap:
-        return 0
-
-    excess = unused_count - cap
-    oldest_ids = list(
-        db.scalars(
-            select(ContentIdea.id)
-            .where(
-                ContentIdea.project_id == project_id,
-                ContentIdea.used_content_id.is_(None),
-            )
-            .order_by(ContentIdea.created_at)
-            .limit(excess)
-        )
-    )
-    # No emptiness check: `autopilot_ideas_cap` cannot be negative (see
-    # `Settings._non_negative`), so reaching here means `unused_count > cap >= 0`
-    # and the LIMIT-ed select over the same predicate that counted them returns
-    # at least one row.
-    db.execute(ContentIdea.__table__.delete().where(ContentIdea.id.in_(oldest_ids)))
-    return len(oldest_ids)
+#: Shared with the machine API, which files ideas into the same table and has
+#: to be held to the same cap — see :func:`app.services.content_generator.prune_ideas`.
+_prune_ideas = content_generator.prune_ideas
 
 
 def _act_on(

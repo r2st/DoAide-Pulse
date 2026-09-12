@@ -643,6 +643,89 @@ def test_an_idea_filed_by_a_machine_records_which_key_filed_it(client, db, key, 
     assert idea.source["prefix"] == _row.prefix
 
 
+def test_a_repeated_idea_is_answered_with_the_one_already_open(client, db, key, project):
+    """A build job files the same idea twice. The queue holds it once.
+
+    ``bank_ideas`` drops a restatement for the autopilot; the machine route
+    inserted straight into the table, so a retried pipeline — the producer
+    most likely to repeat — filed a copy per retry. Answered with the open
+    idea and a 200 rather than a silent drop, so the job can see it is a
+    replay.
+    """
+    _row, token = key
+    body = {"headline": "Release v2.1 went out to production", "rationale": "CI."}
+    first = client.post(f"{V1}/machine/ideas", headers=_headers(token), json=body)
+    assert first.status_code == 201, first.text
+
+    again = client.post(f"{V1}/machine/ideas", headers=_headers(token), json=body)
+    assert again.status_code == 200, again.text
+    assert again.json()["id"] == first.json()["id"]
+
+    open_ideas = db.query(ContentIdea).filter(ContentIdea.project_id == project.id).all()
+    assert len(open_ideas) == 1
+
+
+def test_a_used_idea_does_not_block_the_subject_being_filed_again(
+    client, db, key, project
+):
+    """Only *open* ideas count — the same rule ``bank_ideas`` applies.
+
+    A subject already written up is editorial repetition, not a duplicate row,
+    and that is not a question a headline comparison should answer.
+    """
+    _row, token = key
+    body = {"headline": "Release v2.1 went out to production"}
+    first = client.post(f"{V1}/machine/ideas", headers=_headers(token), json=body)
+    assert first.status_code == 201
+    idea = db.get(ContentIdea, first.json()["id"])
+    piece = Content(
+        project_id=project.id,
+        content_type=ContentType.CHANGELOG,
+        status=ContentStatus.DRAFT,
+        title="Shipped",
+        slug="shipped",
+        body_markdown="It went out.",
+    )
+    db.add(piece)
+    db.flush()
+    idea.used_content_id = piece.id
+    db.commit()
+
+    again = client.post(f"{V1}/machine/ideas", headers=_headers(token), json=body)
+    assert again.status_code == 201, again.text
+    assert again.json()["id"] != first.json()["id"]
+
+
+def test_a_machine_is_held_to_the_same_idea_cap_as_the_scan(
+    client, db, key, project, monkeypatch
+):
+    """The oldest unused idea goes when a machine files one past the cap.
+
+    The autopilot prunes after every scan; the machine route inserted with no
+    cap at all, so one producer was bounded and the table was not.
+    """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "autopilot_ideas_cap", 3)
+    _row, token = key
+    ids = []
+    for n in range(4):
+        resp = client.post(
+            f"{V1}/machine/ideas",
+            headers=_headers(token),
+            json={"headline": f"Distinct subject number {n} about {'xyz'[n % 3]}"},
+        )
+        assert resp.status_code == 201, resp.text
+        ids.append(resp.json()["id"])
+
+    remaining = {
+        row.id
+        for row in db.query(ContentIdea).filter(ContentIdea.project_id == project.id)
+    }
+    assert remaining == set(ids[1:])
+    assert ids[0] not in remaining
+
+
 def test_machine_analytics_counts_the_latest_snapshot_and_not_every_one(
     client, db, key, project
 ):
