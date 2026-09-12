@@ -462,6 +462,20 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
         )
         return delivery
 
+    # After the claim, so two workers cannot both settle the same row, and
+    # before anything is sent. ``emit`` only *creates* deliveries for active
+    # endpoints, but a delivery lives past the moment it was created: one
+    # sitting out a backoff when the user switched the endpoint off — or when
+    # ``_record_failure`` switched it off for them — was still POSTed by the
+    # next sweep, and kept being POSTed until its budget ran out. The account's
+    # own flag is the same door: every other worker in the tree checks
+    # ``User.is_active`` before acting for an account, and a signed POST to a
+    # third party is the one action a deactivated account still had.
+    switched_off = _switched_off(webhook)
+    if switched_off:
+        _record_skipped(db, delivery, switched_off)
+        return delivery
+
     body = _serialize(delivery)
 
     try:
@@ -587,6 +601,41 @@ def _record_success(db: Session, delivery: WebhookDelivery) -> None:
         webhook.id,
         delivery.event.value,
         delivery.id,
+    )
+
+
+def _switched_off(webhook: Webhook) -> str:
+    """Why nothing should be sent to *webhook* right now, or ``""``.
+
+    Two reasons, one wording each. The endpoint's own flag is the user's
+    (or the breaker's) decision about this URL; the owner's flag is the
+    account being closed, which has to close every door it opened.
+    """
+    if not webhook.is_active:
+        return "The endpoint is switched off."
+    owner = webhook.user
+    if owner is None or not owner.is_active:
+        return "The account this endpoint belongs to is deactivated."
+    return ""
+
+
+def _record_skipped(db: Session, delivery: WebhookDelivery, reason: str) -> None:
+    """Settle a delivery that was never sent, without blaming the endpoint.
+
+    Distinct from :func:`_record_failure` on purpose. That path is for an
+    attempt that happened, and a terminal one moves ``consecutive_failures``
+    and can trip the breaker — so routing a skip through it would count "we
+    chose not to send" as evidence that the endpoint is broken, and a user who
+    disabled an endpoint with four deliveries in backoff would find it disabled
+    a second time, by Herald, on re-enabling. Nothing on the endpoint moves
+    here; only the delivery is closed, with a reason the log shows.
+    """
+    delivery.status = DeliveryStatus.FAILED
+    delivery.error = reason
+    delivery.next_attempt_at = None
+    db.commit()
+    logger.info(
+        "webhook %s delivery %s skipped: %s", delivery.webhook_id, delivery.id, reason
     )
 
 

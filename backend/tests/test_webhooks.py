@@ -372,6 +372,81 @@ def test_an_endpoint_that_keeps_failing_is_deactivated(db, webhook, endpoint):
     assert webhook.is_active is False
 
 
+def test_a_switched_off_endpoint_is_not_posted_to(db, webhook, endpoint):
+    """A delivery in backoff outlives the decision to disable its endpoint.
+
+    ``emit`` never creates a delivery for an inactive endpoint, but the sweep
+    retries the ones that already exist — so switching an endpoint off used to
+    mean "no *new* events", while the four in backoff kept arriving.
+    """
+    delivery = _delivery(db, webhook)
+    webhook.is_active = False
+    db.commit()
+
+    webhooks.deliver(db, delivery)
+
+    assert endpoint.requests == []
+    assert delivery.status == DeliveryStatus.FAILED
+    assert delivery.next_attempt_at is None
+    assert "switched off" in (delivery.error or "")
+
+
+def test_a_skipped_delivery_does_not_count_against_the_endpoint(
+    db, webhook, endpoint
+):
+    """Choosing not to send is not evidence that the endpoint is broken.
+
+    Routed through ``_record_failure`` a skip would move
+    ``consecutive_failures``, and an endpoint the breaker had just tripped
+    would be tripped again by the deliveries the trip stranded.
+    """
+    webhook.is_active = False
+    webhook.consecutive_failures = 2
+    db.commit()
+
+    webhooks.deliver(db, _delivery(db, webhook))
+
+    assert webhook.consecutive_failures == 2
+    assert webhook.last_error is None
+
+
+def test_the_breaker_strands_nothing_that_still_posts(db, webhook, endpoint):
+    """The deliveries that tripped the breaker stop with it.
+
+    Each terminal failure counts once, so after ``webhook_disable_after_failures``
+    of them the endpoint is off. A fifth delivery that was already queued must
+    then go nowhere, rather than being the one POST the disable did not stop.
+    """
+    endpoint.status = 400
+    stranded = _delivery(db, webhook)
+    stranded.next_attempt_at = utcnow() + timedelta(hours=1)
+    db.commit()
+    for _ in range(settings.webhook_disable_after_failures):
+        webhooks.deliver(db, _delivery(db, webhook))
+    assert webhook.is_active is False
+    sent_before = len(endpoint.requests)
+
+    stranded.next_attempt_at = utcnow()
+    db.commit()
+    webhooks.deliver(db, stranded)
+
+    assert len(endpoint.requests) == sent_before
+    assert stranded.status == DeliveryStatus.FAILED
+
+
+def test_a_deactivated_account_sends_no_webhooks(db, user, webhook, endpoint):
+    """Closing the account closes this door too — like every other sweep."""
+    delivery = _delivery(db, webhook)
+    user.is_active = False
+    db.commit()
+
+    webhooks.deliver(db, delivery)
+
+    assert endpoint.requests == []
+    assert delivery.status == DeliveryStatus.FAILED
+    assert "deactivated" in (delivery.error or "")
+
+
 def test_a_success_clears_the_failure_run(db, webhook, endpoint):
     endpoint.status = 400
     webhooks.deliver(db, _delivery(db, webhook))
