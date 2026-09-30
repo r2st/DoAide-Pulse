@@ -448,108 +448,113 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
     Safe to call for a delivery that is already settled or already in flight:
     the claim below refuses it and nothing is sent.
     """
-    webhook = delivery.webhook
-    if webhook is None:  # pragma: no cover - FK cascade makes this unreachable
-        _record_failure(db, delivery, "The endpoint no longer exists.", terminal=True)
-        return delivery
-
-    if not claim(db, delivery):
-        logger.info(
-            "webhook delivery %s not claimed (status=%s) — another worker has it "
-            "or it is already settled",
-            delivery.id,
-            delivery.status.value,
-        )
-        return delivery
-
-    # After the claim, so two workers cannot both settle the same row, and
-    # before anything is sent. ``emit`` only *creates* deliveries for active
-    # endpoints, but a delivery lives past the moment it was created: one
-    # sitting out a backoff when the user switched the endpoint off — or when
-    # ``_record_failure`` switched it off for them — was still POSTed by the
-    # next sweep, and kept being POSTed until its budget ran out. The account's
-    # own flag is the same door: every other worker in the tree checks
-    # ``User.is_active`` before acting for an account, and a signed POST to a
-    # third party is the one action a deactivated account still had.
-    switched_off = _switched_off(webhook)
-    if switched_off:
-        _record_skipped(db, delivery, switched_off)
-        return delivery
-
-    body = _serialize(delivery)
-
     try:
-        url = validate_url(webhook.url)
-    except WebhookUrlError as exc:
-        # No retry will make a refused URL acceptable, and the user needs to see
-        # why rather than watching a counter tick.
-        _record_failure(db, delivery, str(exc), terminal=True)
-        return delivery
+        webhook = delivery.webhook
+        if webhook is None:  # pragma: no cover - FK cascade makes this unreachable
+            _record_failure(db, delivery, "The endpoint no longer exists.", terminal=True)
+            return delivery
 
-    secret = read_secret(webhook)
-    if not secret:
+        if not claim(db, delivery):
+            logger.info(
+                "webhook delivery %s not claimed (status=%s) — another worker has it "
+                "or it is already settled",
+                delivery.id,
+                delivery.status.value,
+            )
+            return delivery
+
+        # After the claim, so two workers cannot both settle the same row, and
+        # before anything is sent. ``emit`` only *creates* deliveries for active
+        # endpoints, but a delivery lives past the moment it was created: one
+        # sitting out a backoff when the user switched the endpoint off — or when
+        # ``_record_failure`` switched it off for them — was still POSTed by the
+        # next sweep, and kept being POSTed until its budget ran out. The account's
+        # own flag is the same door: every other worker in the tree checks
+        # ``User.is_active`` before acting for an account, and a signed POST to a
+        # third party is the one action a deactivated account still had.
+        switched_off = _switched_off(webhook)
+        if switched_off:
+            _record_skipped(db, delivery, switched_off)
+            return delivery
+
+        body = _serialize(delivery)
+
+        try:
+            url = validate_url(webhook.url)
+        except WebhookUrlError as exc:
+            # No retry will make a refused URL acceptable, and the user needs to see
+            # why rather than watching a counter tick.
+            _record_failure(db, delivery, str(exc), terminal=True)
+            return delivery
+
+        secret = read_secret(webhook)
+        if not secret:
+            _record_failure(
+                db,
+                delivery,
+                "The signing secret could not be read — rotate it in Settings.",
+                terminal=True,
+            )
+            return delivery
+
+        timestamp = int(utcnow().timestamp())
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": f"Herald/0.1 webhooks (+{settings.openrouter_app_url})",
+            EVENT_HEADER: delivery.event.value,
+            DELIVERY_HEADER: str(delivery.id),
+            CORRELATION_HEADER: request_id_var.get(),
+            SIGNATURE_HEADER: sign(secret, timestamp, body),
+        }
+
+        try:
+            with _http_client() as client:
+                response = client.post(url, content=body.encode("utf-8"), headers=headers)
+        except httpx.HTTPError as exc:
+            _record_failure(db, delivery, f"{type(exc).__name__}: {exc}")
+            return delivery
+        except Exception as exc:  # pragma: no cover - defensive
+            # "Never raises" has to be true even when the failure is not one httpx
+            # models: this runs inline inside a publish that has already succeeded,
+            # and an exception here would undo a post that is already live.
+            logger.exception("unexpected error delivering webhook %s", delivery.id)
+            _record_failure(db, delivery, f"Unexpected error: {exc}")
+            return delivery
+
+        delivery.response_status = response.status_code
+        if 200 <= response.status_code < 300:
+            _record_success(db, delivery)
+            return delivery
+
+        if response.is_redirect:
+            # See the module docstring: a redirect could be a move or could be a way
+            # back inside the network, and Herald cannot tell which.
+            _record_failure(
+                db,
+                delivery,
+                f"Returned {response.status_code} — Herald does not follow webhook "
+                "redirects. Point the webhook at the final URL.",
+                terminal=True,
+            )
+            return delivery
+
         _record_failure(
             db,
             delivery,
-            "The signing secret could not be read — rotate it in Settings.",
-            terminal=True,
+            f"Returned {response.status_code}: {_excerpt(response.text)}",
+            # 4xx that is not a rate limit is the endpoint saying "not this, ever".
+            # Retrying a 401 sixteen times is how a bad secret becomes a log full of
+            # noise. 408 and 429 are the two that mean "later", not "no".
+            terminal=(
+                400 <= response.status_code < 500
+                and response.status_code not in (408, 429)
+            ),
         )
         return delivery
-
-    timestamp = int(utcnow().timestamp())
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": f"Herald/0.1 webhooks (+{settings.openrouter_app_url})",
-        EVENT_HEADER: delivery.event.value,
-        DELIVERY_HEADER: str(delivery.id),
-        CORRELATION_HEADER: request_id_var.get(),
-        SIGNATURE_HEADER: sign(secret, timestamp, body),
-    }
-
-    try:
-        with _http_client() as client:
-            response = client.post(url, content=body.encode("utf-8"), headers=headers)
-    except httpx.HTTPError as exc:
-        _record_failure(db, delivery, f"{type(exc).__name__}: {exc}")
+    except Exception:
+        db.rollback()
+        logger.exception("webhook delivery %s crashed", delivery.id)
         return delivery
-    except Exception as exc:  # pragma: no cover - defensive
-        # "Never raises" has to be true even when the failure is not one httpx
-        # models: this runs inline inside a publish that has already succeeded,
-        # and an exception here would undo a post that is already live.
-        logger.exception("unexpected error delivering webhook %s", delivery.id)
-        _record_failure(db, delivery, f"Unexpected error: {exc}")
-        return delivery
-
-    delivery.response_status = response.status_code
-    if 200 <= response.status_code < 300:
-        _record_success(db, delivery)
-        return delivery
-
-    if response.is_redirect:
-        # See the module docstring: a redirect could be a move or could be a way
-        # back inside the network, and Herald cannot tell which.
-        _record_failure(
-            db,
-            delivery,
-            f"Returned {response.status_code} — Herald does not follow webhook "
-            "redirects. Point the webhook at the final URL.",
-            terminal=True,
-        )
-        return delivery
-
-    _record_failure(
-        db,
-        delivery,
-        f"Returned {response.status_code}: {_excerpt(response.text)}",
-        # 4xx that is not a rate limit is the endpoint saying "not this, ever".
-        # Retrying a 401 sixteen times is how a bad secret becomes a log full of
-        # noise. 408 and 429 are the two that mean "later", not "no".
-        terminal=(
-            400 <= response.status_code < 500
-            and response.status_code not in (408, 429)
-        ),
-    )
-    return delivery
 
 
 def _http_client() -> httpx.Client:
