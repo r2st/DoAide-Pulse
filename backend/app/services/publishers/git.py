@@ -660,8 +660,20 @@ class GitAdapter(Adapter):
                     return
                 existing_sha = data.get("sha")
                 entries = parsed
-        except PublishError:
-            pass  # 404 — sitemap does not exist yet.
+        except PublishError as exc:
+            # A 404 and only a 404 — the same distinction ``_existing_sha``
+            # makes, for the same reason and against the same API. The comment
+            # here used to *assert* 404 while the ``except`` took every
+            # ``PublishError``, so a rejected token, a throttle, a 5xx and a
+            # read timeout all read as "there is no sitemap yet". What followed
+            # was a create over a live path with no ``sha``, which the contents
+            # API refuses — so the only trace of a repo whose sitemap had
+            # stopped updating was the caller's "sitemap update skipped" line
+            # carrying a 409 conflict, and the 403 that actually caused it
+            # appeared nowhere. Re-raising puts the real status in that line.
+            if exc.status_code != 404:
+                raise
+            logger.debug("%s has no %s yet — creating it", repo, sitemap_path)
 
         # Re-publishing a piece is exactly when `lastmod` earns its keep, so an
         # entry that is already here gets its date moved rather than skipped.

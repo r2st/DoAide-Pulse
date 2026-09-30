@@ -23,6 +23,7 @@ show up end to end.
 from __future__ import annotations
 
 import base64
+import logging
 import xml.etree.ElementTree as ET
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -423,3 +424,73 @@ def test_the_post_is_committed_and_the_sitemap_failure_cannot_block_it(request_)
     committed = github.files["src/content/blog/automating.md"]
     assert 'title: "Automating developer marketing"' in committed
     assert "Herald writes the posts." in committed
+
+
+# -- the read failure that used to read as "there is no sitemap" ------------ #
+
+
+class _SitemapUnreadable(_FakeGitHub):
+    """The sitemap is there; GitHub will not let us look at it.
+
+    Every status except 404 goes through here in the tests below, because the
+    point is that the *status* decides and not the exception type — all of them
+    arrive as a bare ``PublishError`` from ``Adapter._translate``.
+    """
+
+    def __init__(self, status: int, files=None):
+        super().__init__(files or {_SITEMAP_PATH: _urlset(_url("https://blog.example.com/one"))})
+        self.status = status
+
+    def __call__(self, method, url, **kwargs):
+        if method == "GET" and _SITEMAP_PATH in url:
+            raise _github_error(self.status, f"GitHub returned {self.status}")
+        return super().__call__(method, url, **kwargs)
+
+
+@pytest.mark.parametrize("status", [401, 403, 409, 429, 500, 502])
+def test_a_sitemap_that_cannot_be_read_is_not_treated_as_absent(request_, status):
+    """"I was not allowed to look" is not "there is nothing there".
+
+    The same distinction ``_existing_sha`` makes, against the same API, missing
+    from the sitemap path: the ``except`` took every ``PublishError`` while the
+    comment beside it asserted 404. A rejected token, a throttle or a 5xx on the
+    read therefore produced a create over a live path with no blob sha — which
+    the contents API refuses — so the sitemap was never written *and* the only
+    record of why was a 409 conflict, with the 403 that caused it nowhere at all.
+    """
+    github = _SitemapUnreadable(status)
+
+    result = _publish(request_, github)
+
+    # The post still lands: the sitemap is best-effort and always was.
+    assert result.external_id == "c0ffee"
+    # But nothing was written over a file we could not read.
+    assert not github.sitemap_was_written
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 500])
+def test_the_real_status_reaches_the_log_rather_than_a_downstream_conflict(
+    request_, status, caplog
+):
+    """The caller's one line has to name the cause, not its consequence."""
+    github = _SitemapUnreadable(status)
+
+    with caplog.at_level(logging.INFO, logger="app.services.publishers.git"):
+        _publish(request_, github)
+
+    skipped = [
+        r for r in caplog.records
+        if r.name == "app.services.publishers.git" and "sitemap update skipped" in r.getMessage()
+    ]
+    assert len(skipped) == 1
+    assert str(status) in str(skipped[0].exc_info[1])
+
+
+def test_a_genuine_404_still_creates_the_file(request_):
+    """The narrow case stays narrow: absent is absent, and one entry is right."""
+    github = _FakeGitHub()
+
+    _publish(request_, github)
+
+    assert github.sitemap_was_written
+    assert _entries(github.sitemap)[0]["loc"] == "https://blog.example.com/automating"
