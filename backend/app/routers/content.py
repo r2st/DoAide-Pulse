@@ -1972,6 +1972,22 @@ def delete_content(
     to stop seeing it.
     """
     content = _owned_content(content_id, db, user)
+    # The live count, not the total: those are the rows whose posts outlive this
+    # call, and after the cascade Herald has no record that it ever published
+    # them. A piece deleted with nothing live is ordinary tidying and says so.
+    live = db.scalar(
+        select(func.count(Publication.id)).where(
+            Publication.content_id == content.id,
+            Publication.status == PublicationStatus.PUBLISHED,
+        )
+    )
+    logger.info(
+        "content %s (%s) deleted by user %s — %s publication(s) stay live",
+        content.id,
+        content.slug,
+        user.id,
+        live or 0,
+    )
     db.delete(content)
     db.commit()
 

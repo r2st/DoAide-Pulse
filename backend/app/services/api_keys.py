@@ -306,6 +306,11 @@ def revoke(db: Session, key: ApiKey, *, now: datetime | None = None) -> ApiKey:
         key.revoked_at = now or utcnow()
         db.commit()
         db.refresh(key)
+        # The other half of the refusal lines in :func:`authenticate`. Without
+        # it the journal can say a key was refused as revoked and not *when it
+        # became* revoked, which is the whole of "did my change break CI, or did
+        # somebody revoke this key an hour ago?".
+        logger.info("api key %s revoked (project %s)", key.prefix, key.project_id)
     return key
 
 

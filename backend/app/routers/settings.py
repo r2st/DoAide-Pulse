@@ -6,6 +6,8 @@ never from the stored blob.
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -28,6 +30,8 @@ from app.services.publishers.base import (
     NotImplementedAdapter,
     PublishError,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -285,5 +289,11 @@ def delete_connection(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Not connected"
         )
+    logger.warning(
+        "user %s disconnected %s — every queued publication for it now fails "
+        "as unconnected until it is reconnected",
+        user.id,
+        platform.value,
+    )
     db.delete(connection)
     db.commit()

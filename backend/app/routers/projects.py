@@ -1,6 +1,7 @@
 """Project registry: register what Herald should write about."""
 from __future__ import annotations
 
+import logging
 import secrets
 import time
 
@@ -15,6 +16,7 @@ from app.deps import ListOffset, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus
 from app.models.mixins import elapsed_ms
 from app.models.project import Project, slugify
+from app.models.publication import Publication
 from app.models.user import User
 from app.ratelimit import account_key, limiter
 from app.routers._patch import reject_nulls
@@ -27,6 +29,8 @@ from app.schemas.project import (
     RepoActivityOut,
 )
 from app.services import content_generator, github_client, rss
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -302,6 +306,29 @@ def delete_project(
     Herald cannot unpublish it, and this removes only Herald's record of it.
     """
     project = owned_project(project_id, db, user)
+    # Counted *before* the delete and logged before the commit: this is the one
+    # endpoint in Herald whose effect cannot be inspected afterwards. The cascade
+    # removes the content, the publication history and the triggers, so once it
+    # has run there is nothing left to ask what it took — and the posts it was
+    # the only record of are still live on the platforms. Two COUNTs against a
+    # statement that is about to delete those rows anyway.
+    pieces = db.scalar(
+        select(func.count(Content.id)).where(Content.project_id == project.id)
+    )
+    publications = db.scalar(
+        select(func.count(Publication.id))
+        .join(Content, Content.id == Publication.content_id)
+        .where(Content.project_id == project.id)
+    )
+    logger.warning(
+        "project %s (%s) deleted by user %s — %s piece(s) and %s publication(s) "
+        "went with it; anything already live stays live",
+        project.id,
+        project.slug,
+        user.id,
+        pieces or 0,
+        publications or 0,
+    )
     db.delete(project)
     db.commit()
 
