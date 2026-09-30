@@ -3,6 +3,15 @@
 Registration is closed by default — Herald is single-user and the account comes
 from ``python -m app.seed``. Every route here is rate limited: they are the only
 endpoints reachable without a bearer token. See :mod:`app.ratelimit`.
+
+**Every credential decision here is logged**, which the rest of the tree already
+did and this file did not. The reset flow records a replayed link, an expired one
+and a completed reset (:mod:`app.services.password_reset`); a machine credential
+records why it was refused (:mod:`app.services.api_keys`). Sign-in recorded
+nothing at all — ten wrong passwords, a deactivated account trying to get back
+in, and an account being created on an install that is supposed to have one were
+all indistinguishable from an idle server, and slowapi's "ratelimit exceeded"
+line was the *first* trace a password-guessing run left anywhere.
 """
 from __future__ import annotations
 
@@ -26,7 +35,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import client_key, limiter
 from app.schemas.auth import (
     MessageOut,
     PasswordResetConfirm,
@@ -44,6 +53,8 @@ from app.security import (
     verify_password,
 )
 from app.services import accounts, mailer, password_reset
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -120,7 +131,18 @@ def register(
     "your invite token is wrong" are the same answer to anyone who is not
     holding a valid token.
     """
-    _assert_registration_allowed(payload.invite_token)
+    try:
+        _assert_registration_allowed(payload.invite_token)
+    except HTTPException as exc:
+        # A refused signup is the only trace a probe of this endpoint leaves.
+        # The 403 is deliberately the same for "closed", "misconfigured" and
+        # "wrong token" — see the guard — so without this line an operator
+        # cannot tell a bot walking the API from somebody they invited fumbling
+        # a paste, and neither shows up anywhere else.
+        logger.warning(
+            "registration refused from %s: %s", client_key(request), exc.detail
+        )
+        raise
 
     # Case-insensitively, and stored lowercased: an address differing from an
     # existing one only in case is the same mailbox, so it is a duplicate here
@@ -148,6 +170,10 @@ def register(
             detail="Email already registered",
         ) from None
     db.refresh(user)
+    # An account appearing on a single-user install is worth a line whatever
+    # gate let it through: this is the one event here that changes who can reach
+    # the rest of the API, and nothing else records that it happened.
+    logger.info("account %s created from %s", user.id, client_key(request))
     return user
 
 
@@ -192,6 +218,10 @@ def login(
     # one, because a dummy that is cheaper (or dearer) than the real hashes
     # re-opens that difference from the other side — see :func:`dummy_hash`.
     if not verify_password(form.password, user.hashed_password if user else dummy_hash()):
+        _refused(
+            request,
+            "no such account" if user is None else f"wrong password for user {user.id}",
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -200,14 +230,40 @@ def login(
     if user is None:
         # Unreachable when verify_password returned True above with the dummy
         # hash (it can't), but keeps the type checker happy and is a safety net.
+        _refused(request, "no such account")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
+        _refused(request, f"user {user.id} is deactivated")
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+    logger.info("login ok for user %s from %s", user.id, client_key(request))
     return Token(access_token=create_access_token(user.id))
+
+
+def _refused(request: Request, reason: str) -> None:
+    """One WARNING per rejected sign-in, naming the bucket and the reason.
+
+    The bucket is :func:`app.ratelimit.client_key` rather than the address off
+    ``request.client`` — the same string slowapi puts in its own "ratelimit …
+    exceeded" line, so the ten refusals and the 429 that follows them are one
+    greppable run instead of two unrelated facts about the same caller.
+
+    The reason names the *account id*, never the address that was typed. An
+    operator looking at a run of these needs to know whether a real account is
+    being guessed at or somebody is spraying invented mailboxes, and the id
+    answers that without turning the journal into a list of who has an account
+    here — which is precisely what the endpoint's own 401 refuses to disclose.
+
+    One call in every arm, with one format, so the branches stay
+    indistinguishable in cost: the response time of this endpoint is load
+    bearing (see the docstring above) and a reason that was cheaper to log for
+    an unknown address than for a wrong password would be a new oracle behind
+    the one ``dummy_hash`` closes.
+    """
+    logger.warning("login refused from %s: %s", client_key(request), reason)
 
 
 # --------------------------------------------------------------------------- #
@@ -287,7 +343,7 @@ def _send_reset_email(to: str, subject: str, body: str) -> None:
     try:
         mailer.send(to=to, subject=subject, body=body)
     except Exception:
-        logging.getLogger(__name__).exception("password reset email failed")
+        logger.exception("password reset email failed")
 
 
 @router.post(
