@@ -507,3 +507,64 @@ def test_the_sweep_skips_triggers_on_a_paused_project(db, project):
     db.commit()
 
     assert triggers.due_triggers(db) == []
+
+
+# --------------------------------------------------------------------------- #
+# Never-raises contracts                                                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_check_absorbs_a_mark_checked_failure(db, writing_project, monkeypatch):
+    """``_mark_checked`` runs after the inner try/except. If its commit blows up
+    the exception escaped the function, violating the never-raises contract and
+    crashing the sweep for every trigger after this one."""
+    monkeypatch.setattr(feeds, "fetch", lambda url: feeds.parse(FEED_XML))
+    trigger = _trigger(
+        db, writing_project, TriggerKind.RSS, feed_url="https://example.com/feed.xml"
+    )
+    trigger.state = {"seen_ids": ["e1", "e2"]}
+    db.commit()
+
+    original = triggers._mark_checked
+
+    def exploding_mark(session, trig, error=None):
+        raise RuntimeError("commit failed")
+
+    monkeypatch.setattr(triggers, "_mark_checked", exploding_mark)
+
+    result = triggers.check(db, trigger)
+
+    assert result["status"] == "error"
+    assert "bookkeeping" in result["error"]
+
+
+def test_fire_absorbs_a_record_failure(db, writing_project, monkeypatch):
+    """``record`` is the first thing ``fire`` calls. If the insert raises
+    something other than IntegrityError the exception escaped into the sweep."""
+    trigger = _trigger(db, writing_project, TriggerKind.WEBHOOK)
+    signal = triggers.signal_from_webhook(trigger, {"title": "boom"})
+
+    monkeypatch.setattr(
+        triggers, "record", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("db gone"))
+    )
+
+    event = triggers.fire(db, trigger, signal)
+
+    assert event is None
+
+
+def test_fire_absorbs_a_skip_failure(db, project, monkeypatch):
+    """``_skip`` is called outside the inner try/except. If its commit fails
+    the exception escaped the function, violating the never-raises contract."""
+    project.is_active = False
+    db.commit()
+    trigger = _trigger(db, project, TriggerKind.WEBHOOK)
+    signal = triggers.signal_from_webhook(trigger, {"title": "boom"})
+
+    monkeypatch.setattr(
+        triggers, "_skip", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("commit gone"))
+    )
+
+    event = triggers.fire(db, trigger, signal)
+
+    assert event is None

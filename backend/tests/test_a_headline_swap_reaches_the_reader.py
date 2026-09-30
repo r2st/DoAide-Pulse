@@ -844,3 +844,48 @@ def test_the_body_is_not_re_read_once_per_destination(
     assert [o["status"] for o in result["outcomes"]] == [headline_sync.UPDATED] * 3
     content_reads = [s for s in sql_log if "FROM content" in s and s.startswith("SELECT")]
     assert len(content_reads) == 1, "\n".join(content_reads)
+
+
+# --------------------------------------------------------------------------- #
+# Never-raises contract                                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_sync_title_absorbs_a_database_failure(db, piece, monkeypatch):
+    """``sync_title`` claims never-raises but had no top-level guard. A failed
+    query in ``_syncable`` or a bad lazy load escaped into the caller."""
+    monkeypatch.setattr(
+        headline_sync,
+        "_syncable",
+        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("db connection lost")),
+    )
+
+    outcomes = headline_sync.sync_title(db, piece)
+
+    assert outcomes == []
+
+
+def test_sync_title_preserves_partial_outcomes_on_late_failure(db, piece, monkeypatch):
+    """If the third publication's sync crashes, the first two outcomes survive."""
+    from app.services.headline_sync import SyncOutcome
+
+    pubs = [
+        _publication(db, piece, Platform.DEVTO, external_id="ext-1"),
+        _publication(db, piece, Platform.WORDPRESS, external_id="ext-2"),
+        _publication(db, piece, Platform.HASHNODE, external_id="ext-3"),
+    ]
+
+    call_count = {"n": 0}
+    real_sync_one = headline_sync._sync_one
+
+    def explode_on_third(session, content, publication, user_id):
+        call_count["n"] += 1
+        if call_count["n"] == 3:
+            raise RuntimeError("adapter boom")
+        return SyncOutcome(publication.id, publication.platform, headline_sync.UNCHANGED)
+
+    monkeypatch.setattr(headline_sync, "_sync_one", explode_on_third)
+
+    outcomes = headline_sync.sync_title(db, piece)
+
+    assert len(outcomes) == 2

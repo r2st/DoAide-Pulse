@@ -142,13 +142,17 @@ def sync_title(db: Session, content: Content) -> list[SyncOutcome]:
     can undo that.
     """
     outcomes: list[SyncOutcome] = []
-    user_id = content.project.user_id
+    try:
+        user_id = content.project.user_id
 
-    for publication in _syncable(db, content):
-        outcome = _sync_one(db, content, publication, user_id)
-        outcomes.append(outcome)
-        if outcome.status == UPDATED:
-            db.commit()
+        for publication in _syncable(db, content):
+            outcome = _sync_one(db, content, publication, user_id)
+            outcomes.append(outcome)
+            if outcome.status == UPDATED:
+                db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("headline sync crashed for content %s", content.id)
 
     return outcomes
 

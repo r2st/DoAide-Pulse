@@ -410,103 +410,108 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
     must not stop the sweep for everyone else. The failure is on the event row,
     which is where a user looks for it.
     """
-    event = record(db, trigger, signal)
-    if event is None:
-        return None
-
-    trigger.last_fired_at = utcnow()
-    trigger.fire_count += 1
-    db.commit()
-
-    project = db.get(Project, trigger.project_id)
-    if project is None or not project.is_active:
-        return _skip(db, event, "The project is paused.")
-    # The inbound endpoint is unauthenticated — the token in the URL is the
-    # credential — so this is the only place a deactivated account's webhook
-    # trigger can be stopped. Same wording as the paused project: a caller
-    # holding the URL learns that nothing was written, not why.
-    if project.user is None or not project.user.is_active:
-        return _skip(db, event, "The project is paused.")
-
-    mode = (
-        project.autopilot_mode
-        if isinstance(project.autopilot_mode, AutopilotMode)
-        else AutopilotMode(project.autopilot_mode)
-    )
-    if mode == AutopilotMode.OFF:
-        return _skip(
-            db,
-            event,
-            "The project's autopilot is off, so the trigger was logged but "
-            "nothing was written.",
-        )
-    if _daily_count(db, project.id) >= settings.trigger_daily_content_limit:
-        return _skip(
-            db,
-            event,
-            f"Daily limit of {settings.trigger_daily_content_limit} "
-            "trigger-written pieces reached.",
-        )
-    if not signal.has_news:
-        return _skip(db, event, "The signal carried nothing to write about.")
-
     try:
-        routed = content_pipeline.generate_and_route(
-            db,
-            project,
-            content_type=signal.suggested_type,
-            signal=signal,
-            instructions=str(trigger.setting("instructions") or ""),
-            source={
-                "kind": "trigger",
-                # The link back to the firing, and the only one that exists in
-                # that direction: ``TriggerEvent.content_id`` is written two
-                # statements below this call, in a *later* transaction, so a
-                # worker that dies in between leaves a committed piece with
-                # nothing pointing at it and a firing that never names it.
-                # Written here, inside the transaction that stores the piece,
-                # it cannot come apart — which is what lets
-                # :func:`reclaim_stuck_events` tell a firing that was
-                # interrupted after the work from one interrupted before it.
-                "event_id": event.id,
-                "trigger_id": trigger.id,
-                "trigger_kind": signal.kind.value,
-                "trigger_name": trigger.name,
-                "headline": signal.headline,
-                "url": signal.url,
-            },
+        event = record(db, trigger, signal)
+        if event is None:
+            return None
+
+        trigger.last_fired_at = utcnow()
+        trigger.fire_count += 1
+        db.commit()
+
+        project = db.get(Project, trigger.project_id)
+        if project is None or not project.is_active:
+            return _skip(db, event, "The project is paused.")
+        # The inbound endpoint is unauthenticated — the token in the URL is the
+        # credential — so this is the only place a deactivated account's webhook
+        # trigger can be stopped. Same wording as the paused project: a caller
+        # holding the URL learns that nothing was written, not why.
+        if project.user is None or not project.user.is_active:
+            return _skip(db, event, "The project is paused.")
+
+        mode = (
+            project.autopilot_mode
+            if isinstance(project.autopilot_mode, AutopilotMode)
+            else AutopilotMode(project.autopilot_mode)
         )
-    except Exception as exc:
-        # Rollback before the log line, not after. ``generate_and_route`` commits,
-        # and a commit that fails leaves the session unable to emit SQL — so
-        # reading ``trigger.id`` to name the trigger raised ``PendingRollbackError``
-        # from inside this handler. That escaped the whole of ``_generate_for``,
-        # which meant the event stayed ``pending`` forever: the two lines below,
-        # the only thing that ever records a generation failure on it, were never
-        # reached.
-        db.rollback()
-        logger.exception("trigger %s failed while writing: %s", trigger.id, exc)
-        event.status = TriggerEventStatus.FAILED
-        event.detail = f"Generation failed: {exc}"
+        if mode == AutopilotMode.OFF:
+            return _skip(
+                db,
+                event,
+                "The project's autopilot is off, so the trigger was logged but "
+                "nothing was written.",
+            )
+        if _daily_count(db, project.id) >= settings.trigger_daily_content_limit:
+            return _skip(
+                db,
+                event,
+                f"Daily limit of {settings.trigger_daily_content_limit} "
+                "trigger-written pieces reached.",
+            )
+        if not signal.has_news:
+            return _skip(db, event, "The signal carried nothing to write about.")
+
+        try:
+            routed = content_pipeline.generate_and_route(
+                db,
+                project,
+                content_type=signal.suggested_type,
+                signal=signal,
+                instructions=str(trigger.setting("instructions") or ""),
+                source={
+                    "kind": "trigger",
+                    # The link back to the firing, and the only one that exists in
+                    # that direction: ``TriggerEvent.content_id`` is written two
+                    # statements below this call, in a *later* transaction, so a
+                    # worker that dies in between leaves a committed piece with
+                    # nothing pointing at it and a firing that never names it.
+                    # Written here, inside the transaction that stores the piece,
+                    # it cannot come apart — which is what lets
+                    # :func:`reclaim_stuck_events` tell a firing that was
+                    # interrupted after the work from one interrupted before it.
+                    "event_id": event.id,
+                    "trigger_id": trigger.id,
+                    "trigger_kind": signal.kind.value,
+                    "trigger_name": trigger.name,
+                    "headline": signal.headline,
+                    "url": signal.url,
+                },
+            )
+        except Exception as exc:
+            # Rollback before the log line, not after. ``generate_and_route`` commits,
+            # and a commit that fails leaves the session unable to emit SQL — so
+            # reading ``trigger.id`` to name the trigger raised ``PendingRollbackError``
+            # from inside this handler. That escaped the whole of ``_generate_for``,
+            # which meant the event stayed ``pending`` forever: the two lines below,
+            # the only thing that ever records a generation failure on it, were never
+            # reached.
+            db.rollback()
+            logger.exception("trigger %s failed while writing: %s", trigger.id, exc)
+            event.status = TriggerEventStatus.FAILED
+            event.detail = f"Generation failed: {exc}"
+            db.commit()
+            db.refresh(event)
+            return event
+
+        event.status = TriggerEventStatus.GENERATED
+        event.content_id = routed.content.id
+        event.detail = (
+            "Published automatically." if routed.auto_published else "Queued for review."
+        )
         db.commit()
         db.refresh(event)
+        logger.info(
+            "trigger %s (%s) wrote content %s: %s",
+            trigger.id,
+            signal.kind.value,
+            routed.content.id,
+            routed.status,
+        )
         return event
-
-    event.status = TriggerEventStatus.GENERATED
-    event.content_id = routed.content.id
-    event.detail = (
-        "Published automatically." if routed.auto_published else "Queued for review."
-    )
-    db.commit()
-    db.refresh(event)
-    logger.info(
-        "trigger %s (%s) wrote content %s: %s",
-        trigger.id,
-        signal.kind.value,
-        routed.content.id,
-        routed.status,
-    )
-    return event
+    except Exception:
+        db.rollback()
+        logger.exception("trigger %s: firing crashed", trigger.id)
+        return None
 
 
 # --------------------------------------------------------------------------- #
@@ -651,35 +656,40 @@ def _mark_checked(db: Session, trigger: Trigger, error: str | None = None) -> No
 
 def check(db: Session, trigger: Trigger) -> dict[str, Any]:
     """Poll one trigger now and act on whatever it finds. Never raises."""
-    kind = trigger.kind if isinstance(trigger.kind, TriggerKind) else TriggerKind(trigger.kind)
     try:
-        if kind == TriggerKind.RSS:
-            result = _check_rss(db, trigger)
-        elif kind == TriggerKind.GITHUB:
-            result = _check_github(db, trigger)
-        elif kind == TriggerKind.SCHEDULE:
-            result = _check_schedule(db, trigger)
-        else:
-            return {"trigger_id": trigger.id, "status": "not_polled"}
-    except TriggerError as exc:
-        _mark_checked(db, trigger, str(exc))
-        return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
-    except Exception as exc:
-        # The checks above write — an RSS or GitHub poll that finds news records
-        # a ``TriggerEvent`` and commits — so this handler can be entered with a
-        # session that has a failed flush behind it and will refuse to emit SQL.
-        # Without the rollback, ``_mark_checked``'s own commit raised
-        # ``PendingRollbackError`` on the way out, so the error this arm exists to
-        # record was never written to the row and never counted against
-        # ``consecutive_failures``: a trigger failing this way could not reach the
-        # threshold that deactivates it, and the sweep saw the raise instead.
-        db.rollback()
-        logger.exception("trigger %s crashed: %s", trigger.id, exc)
-        _mark_checked(db, trigger, f"Unexpected error: {exc}")
-        return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
+        kind = trigger.kind if isinstance(trigger.kind, TriggerKind) else TriggerKind(trigger.kind)
+        try:
+            if kind == TriggerKind.RSS:
+                result = _check_rss(db, trigger)
+            elif kind == TriggerKind.GITHUB:
+                result = _check_github(db, trigger)
+            elif kind == TriggerKind.SCHEDULE:
+                result = _check_schedule(db, trigger)
+            else:
+                return {"trigger_id": trigger.id, "status": "not_polled"}
+        except TriggerError as exc:
+            _mark_checked(db, trigger, str(exc))
+            return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
+        except Exception as exc:
+            # The checks above write — an RSS or GitHub poll that finds news records
+            # a ``TriggerEvent`` and commits — so this handler can be entered with a
+            # session that has a failed flush behind it and will refuse to emit SQL.
+            # Without the rollback, ``_mark_checked``'s own commit raised
+            # ``PendingRollbackError`` on the way out, so the error this arm exists to
+            # record was never written to the row and never counted against
+            # ``consecutive_failures``: a trigger failing this way could not reach the
+            # threshold that deactivates it, and the sweep saw the raise instead.
+            db.rollback()
+            logger.exception("trigger %s crashed: %s", trigger.id, exc)
+            _mark_checked(db, trigger, f"Unexpected error: {exc}")
+            return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
 
-    _mark_checked(db, trigger)
-    return {"trigger_id": trigger.id, **result}
+        _mark_checked(db, trigger)
+        return {"trigger_id": trigger.id, **result}
+    except Exception:
+        db.rollback()
+        logger.exception("trigger %s: post-check bookkeeping failed", trigger.id)
+        return {"trigger_id": trigger.id, "status": "error", "error": "bookkeeping failed"}
 
 
 def _check_rss(db: Session, trigger: Trigger) -> dict[str, Any]:
