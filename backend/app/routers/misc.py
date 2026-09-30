@@ -234,6 +234,19 @@ def health_detail(
     """
     healthy, db_out, redis_out = _health_core(response, db, public=False)
     workers = _check_workers()
+    if workers is not None and not workers.ok:
+        # Logged as well as reported, which every other probe in this file
+        # already was: ``_health_core`` writes a line whenever the database or
+        # Redis is down, and this was the one failure that existed only in a
+        # response body. It is also the failure with the least else to find it —
+        # the worker fleet being gone means no task writes a line either, so a
+        # journal covering the whole outage held nothing about it at all, and the
+        # one moment Herald *knew* went unrecorded.
+        #
+        # Not folded into ``healthy`` (see below), so this is deliberately not
+        # the 503 branch's line: an operator grepping for why publishing stopped
+        # needs the fact, not a status code it must not change.
+        logger.warning("worker probe failed: %s", workers.verbose or workers.detail)
     # Never folded into `healthy`: a dead worker is a real outage and not this
     # endpoint's kind of one — see `_check_workers`. It is reported so the
     # person asking "why has nothing published?" is told, rather than shown

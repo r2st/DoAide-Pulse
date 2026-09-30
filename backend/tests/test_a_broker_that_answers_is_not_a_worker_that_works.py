@@ -20,6 +20,8 @@ covers the one that deliberately does *not*, and why:
 """
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from app.config import settings
@@ -37,6 +39,14 @@ def redis_up(monkeypatch):
 def celery_on(monkeypatch):
     """Tests run with ``CELERY_ENABLED=false``; this is the deployed shape."""
     monkeypatch.setattr(settings, "celery_enabled", True)
+
+
+def _warnings(caplog) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "app.routers.misc" and r.levelno == logging.WARNING
+    ]
 
 
 def _ping(monkeypatch, result):
@@ -185,3 +195,86 @@ def test_a_real_outage_still_fails_the_check_with_a_dead_worker_beside_it(
 
     assert resp.status_code == 503
     assert resp.json()["status"] == "degraded"
+
+
+# --------------------------------------------------------------------------- #
+# What it must leave behind                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_silent_queue_is_written_to_the_log_and_not_only_to_the_body(
+    client, auth, redis_up, celery_on, monkeypatch, caplog
+):
+    """The one probe in this file whose failure existed only in a response.
+
+    ``_health_core`` writes a line whenever the database or Redis is down. This
+    one did not, and it is the failure with the least else to find it: the worker
+    fleet being gone means no task writes a line either, so a journal spanning
+    the whole outage contained nothing about it at all — and the single moment
+    Herald *knew* the fleet was missing went unrecorded.
+    """
+    _ping(monkeypatch, [])
+
+    with caplog.at_level(logging.WARNING, logger="app.routers.misc"):
+        assert client.get(f"{HEALTH}/detail", headers=auth).status_code == 200
+
+    lines = _warnings(caplog)
+    assert len(lines) == 1
+    assert "worker probe failed" in lines[0]
+    assert "no worker answered" in lines[0]
+
+
+def test_a_broker_that_refused_the_broadcast_names_the_error_in_the_log(
+    client, auth, redis_up, celery_on, monkeypatch, caplog
+):
+    """The authenticated view keeps the message; so does the line beside it."""
+    _ping(monkeypatch, ConnectionResetError("broker went away"))
+
+    with caplog.at_level(logging.WARNING, logger="app.routers.misc"):
+        client.get(f"{HEALTH}/detail", headers=auth)
+
+    line = _warnings(caplog)[0]
+    assert "ConnectionResetError" in line
+    assert "broker went away" in line
+
+
+def test_a_healthy_fleet_writes_nothing(
+    client, auth, redis_up, celery_on, monkeypatch, caplog
+):
+    """This endpoint is polled by whoever is watching; green must stay quiet."""
+    _ping(monkeypatch, [{"celery@box": {"ok": "pong"}}])
+
+    with caplog.at_level(logging.WARNING, logger="app.routers.misc"):
+        client.get(f"{HEALTH}/detail", headers=auth)
+
+    assert _warnings(caplog) == []
+
+
+def test_inline_mode_is_not_reported_as_a_missing_fleet(client, auth, redis_up, caplog):
+    """``celery_enabled`` off is the configuration, not a failure of it."""
+    with caplog.at_level(logging.WARNING, logger="app.routers.misc"):
+        client.get(f"{HEALTH}/detail", headers=auth)
+
+    assert _warnings(caplog) == []
+
+
+def test_the_worker_line_is_not_the_degraded_line(
+    client, auth, celery_on, monkeypatch, caplog
+):
+    """Two independent facts, two lines: the 503 must not absorb the worker one.
+
+    A required dependency down *and* a dead fleet is the shape of a box that has
+    just been rebooted, and an operator reading only "health check failed" would
+    restart Postgres and stop looking.
+    """
+    down = misc._Probe(False, "ConnectionError", "ConnectionError: refused")
+    monkeypatch.setattr(misc, "_check_redis", lambda: down)
+    _ping(monkeypatch, [])
+
+    with caplog.at_level(logging.WARNING, logger="app.routers.misc"):
+        assert client.get(f"{HEALTH}/detail", headers=auth).status_code == 503
+
+    lines = _warnings(caplog)
+    assert len(lines) == 2
+    assert any("health check failed" in m for m in lines)
+    assert any("worker probe failed" in m for m in lines)
