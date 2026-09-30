@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-DEFAULT_BASE_URL = "https://herald.aiknol.com/api/v1"
+DEFAULT_BASE_URL = "https://herald.doaide.com/api/v1"
 
 
 class HeraldError(RuntimeError):

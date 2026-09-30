@@ -84,7 +84,7 @@ Steps 1 through 4 are ordinary engineering. Step 5 is where the model goes.
 
 ---
 
-**[GSTBot](https://gstbot.aiknol.com)** implements this sequence for Indian SMBs: bulk invoice intake with AI extraction, deterministic GSTR-2B matching with tolerances, exception classification, Rule 37/42/43 tracking, and supplier health scoring built from filing history. It exists because the tools that do reconciliation properly are priced for enterprises, and the tools priced for small businesses mostly do filing.
+**[GSTBot](https://gstbot.doaide.com)** implements this sequence for Indian SMBs: bulk invoice intake with AI extraction, deterministic GSTR-2B matching with tolerances, exception classification, Rule 37/42/43 tracking, and supplier health scoring built from filing history. It exists because the tools that do reconciliation properly are priced for enterprises, and the tools priced for small businesses mostly do filing.
 
 Next in this series: **generating GSTR-1 and pre-filling GSTR-3B from matched data** — what can be derived safely, and what still needs a human before it goes to the portal.
 

@@ -1,5 +1,5 @@
 {
-  "base_url": "https://herald.aiknol.com/api/v1",
+  "base_url": "https://herald.doaide.com/api/v1",
   "_notes": [
     "canonical_platform is devto on every product project: Dev.to publishes",
     "first, Herald adopts its URL as the piece's canonical, and the Bluesky",
@@ -14,7 +14,7 @@
       "name": "GSTBot",
       "description": "GSTBot is an AI GST compliance assistant for Indian SMBs. It takes bulk invoice intake by PDF, photo or Excel with AI extraction of vendor, GSTIN, invoice number, amount, tax rate and HSN code; reconciles the purchase register against GSTR-2B with configurable tolerances rather than exact string matching; classifies every exception with a recommended action; tracks Rule 37, 42 and 43 reversals; scores supplier filing health from history; and prepares GSTR-1 and GSTR-3B data for the portal. It exists because reconciliation tools that work properly are priced for enterprises and the tools priced for small businesses mostly do filing.",
       "repo_url": null,
-      "live_url": "https://gstbot.aiknol.com",
+      "live_url": "https://gstbot.doaide.com",
       "tech_stack": [
         "FastAPI",
         "Python",
@@ -50,7 +50,7 @@
       "name": "CAFlow",
       "description": "CAFlow is AI practice management for Indian Chartered Accountants. It carries a pre-loaded statutory compliance calendar with per-client derived applicability and computed due dates across GST, TDS, income tax, ROC and audit; generates tasks from obligations with assignment and workload views; runs a passwordless client portal with AI-categorised document intake; sends escalating reminders keyed to what is actually blocking a filing; and bills service-wise off the same records. Built for firms currently running on spreadsheets, WhatsApp groups and the senior partner's memory.",
       "repo_url": null,
-      "live_url": "https://caflow.aiknol.com",
+      "live_url": "https://caflow.doaide.com",
       "tech_stack": [
         "FastAPI",
         "SQLAlchemy",
@@ -87,7 +87,7 @@
       "name": "N409",
       "description": "N409 is a production rebuild of the 409.ai AI-assisted valuation platform, covering IRC 409A, ASC 718/820, gifts, QSBS and EMI/CSOP. Uploaded company financials - cap tables, income statements, balance sheets, projections and decks - are extracted and normalized by an AI layer, public comparables are selected, and an R-based quant engine (Black-Scholes OPM, income/market/asset approaches) computes the valuation. Analysts review and override any computed value, with the original preserved for audit, and the deliverable report is drafted, edited, versioned and published as a PDF. A partner channel lets accounting firms and cap-table platforms resell under their own branding.",
       "repo_url": "https://github.com/r2st/N409",
-      "live_url": "https://n409.aiknol.com",
+      "live_url": "https://n409.doaide.com",
       "tech_stack": [
         "TypeScript",
         "Node.js",
@@ -122,7 +122,7 @@
       "name": "TalentPing",
       "description": "TalentPing is AI-powered job-application automation that skips the ATS spray-and-pray: it finds recruiter and hiring-manager contacts, writes personalised outreach, sends it from the user's own Gmail over OAuth so SPF, DKIM and DMARC align by construction, applies warm-up ramping and throttling with randomised timing, then classifies the replies and drafts responses.",
       "repo_url": "https://github.com/r2st/TalentPing",
-      "live_url": "https://talentping.aiknol.com",
+      "live_url": "https://talentping.doaide.com",
       "tech_stack": [
         "FastAPI",
         "SQLAlchemy",
@@ -157,7 +157,7 @@
       "name": "Herald",
       "description": "Herald is an AI-powered marketing automation tool for developers who ship more than they write about. It watches your project repos, drafts blog posts and social copy when something meaningful lands, runs them past you, and publishes to Dev.to, Medium and the rest on a schedule — then tracks which pieces actually got read.",
       "repo_url": "https://github.com/r2st/Herald",
-      "live_url": "https://herald.aiknol.com",
+      "live_url": "https://herald.doaide.com",
       "tech_stack": [
         "FastAPI",
         "SQLAlchemy",

@@ -63,7 +63,7 @@ A tool that does step four beautifully and leaves you typing invoices has automa
 
 ## Where GSTBot fits
 
-[GSTBot](https://gstbot.aiknol.com) is built around that ordering. Bulk intake by PDF, photo or Excel with AI extraction of vendor, GSTIN, invoice number, amount, tax rate and HSN code. Reconciliation against GSTR-2B with configurable tolerances rather than exact string matching. Every exception classified with a recommended action. Rule 37, 42 and 43 tracking. Supplier filing health scored from history. GSTR-1 and GSTR-3B data prepared for the portal.
+[GSTBot](https://gstbot.doaide.com) is built around that ordering. Bulk intake by PDF, photo or Excel with AI extraction of vendor, GSTIN, invoice number, amount, tax rate and HSN code. Reconciliation against GSTR-2B with configurable tolerances rather than exact string matching. Every exception classified with a recommended action. Rule 37, 42 and 43 tracking. Supplier filing health scored from history. GSTR-1 and GSTR-3B data prepared for the portal.
 
 It exists because reconciliation tools that work properly have historically been priced for enterprises, while the tools priced for small businesses mostly do filing — which, as above, is the part that was already easy.
 

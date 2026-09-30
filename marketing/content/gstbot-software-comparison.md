@@ -4,7 +4,7 @@ That question is: **do you have a reconciliation problem, or a bookkeeping probl
 
 This post is a buyer's framework rather than a scorecard, because the scorecard goes stale — pricing and feature lists in this market change every quarter, and a table of prices published today will be wrong by the time you read it. What does not go stale is the shape of the categories and the questions that separate them.
 
-*Disclosure up front: I build [GSTBot](https://gstbot.aiknol.com), which sits in the third category below. I have tried to describe the categories the way I would want them described if I were shopping, including where GSTBot is the wrong answer.*
+*Disclosure up front: I build [GSTBot](https://gstbot.doaide.com), which sits in the third category below. I have tried to describe the categories the way I would want them described if I were shopping, including where GSTBot is the wrong answer.*
 
 ## The four categories sold as "best GST software for Indian SMBs"
 
@@ -80,7 +80,7 @@ Most Indian SMBs I talk to are in the third bucket and shopping in the second, w
 
 ## Where GSTBot fits
 
-[GSTBot](https://gstbot.aiknol.com) is category three, deliberately. It does bulk invoice intake with AI extraction from PDFs and photos, deterministic GSTR-2B matching with configurable tolerances, exception classification with a recommended action per line, Rule 37/42/43 tracking, and supplier health scoring built from filing history.
+[GSTBot](https://gstbot.doaide.com) is category three, deliberately. It does bulk invoice intake with AI extraction from PDFs and photos, deterministic GSTR-2B matching with configurable tolerances, exception classification with a recommended action per line, Rule 37/42/43 tracking, and supplier health scoring built from filing history.
 
 It does not do your books, e-way bills, or direct filing to the portal. If you need those, one of the platforms in category two is a better purchase and I would rather say so than sell you the wrong thing.
 

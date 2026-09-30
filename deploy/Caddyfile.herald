@@ -4,14 +4,14 @@
 #
 # One origin, not two: the SPA calls the API at the relative path /api/v1
 # (frontend/src/lib/api.js), so the API must be same-origin. A separate
-# api.herald.aiknol.com would need CORS plus a rebuild to bake in the absolute
+# api.herald.doaide.com would need CORS plus a rebuild to bake in the absolute
 # URL — this way neither is required.
 #
 # 172.18.0.1 is the knol_knol bridge gateway, i.e. the host as seen from inside
 # the Caddy container. Herald's services bind that address only, so they are
 # unreachable from the public internet.
 
-herald.aiknol.com {
+herald.doaide.com {
 	@api path /api/*
 	handle @api {
 		reverse_proxy 172.18.0.1:3006 {

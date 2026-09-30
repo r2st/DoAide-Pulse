@@ -113,7 +113,7 @@ Things that are obvious in retrospect and expensive to learn:
 
 ---
 
-**[N409](https://n409.aiknol.com)** implements this stack: an R-based quant engine running Black-Scholes OPM, backsolve and the income, market and asset approaches, with AI-assisted extraction of cap tables and financials feeding it, analyst override with the computed original preserved for audit, and versioned reports published as PDFs.
+**[N409](https://n409.doaide.com)** implements this stack: an R-based quant engine running Black-Scholes OPM, backsolve and the income, market and asset approaches, with AI-assisted extraction of cap tables and financials feeding it, analyst override with the computed original preserved for audit, and versioned reports published as PDFs.
 
 Part one of this series covers what Section 409A requires, what safe harbor buys you, and why common stock is worth less than preferred.
 

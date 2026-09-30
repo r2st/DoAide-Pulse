@@ -120,6 +120,19 @@ export default function Login() {
             {isSignUp ? "Sign in" : "Create one"}
           </button>
         </p>
+
+        <p className="mt-8 text-center text-xs text-ink-400">
+          A{" "}
+          <a
+            href="https://doaide.com"
+            className="underline-offset-4 hover:text-ink-600 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            DoAide
+          </a>{" "}
+          product
+        </p>
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ shared Caddy container.
 | SSH | `ssh -i /Users/dev/projects/Products/GoSumo/keys/hetzner_deploy_ed25519 root@89.167.8.178` |
 | Code | `/opt/Herald` — a plain rsync copy, **no `.git`** |
 | Runs as | system user `herald` (not root) |
-| Public URL | `https://herald.aiknol.com` |
+| Public URL | `https://herald.doaide.com` |
 | Deploy | `./deploy/deploy.sh` |
 
 ## Ports
@@ -72,7 +72,7 @@ second explicit pass.
 
 The SPA calls the API at the **relative** path `/api/v1`
 (`frontend/src/lib/api.js`), which is why there is a single origin with Caddy
-splitting `/api/*` to the API rather than a separate `api.herald.aiknol.com`.
+splitting `/api/*` to the API rather than a separate `api.herald.doaide.com`.
 A split-origin setup would need CORS plus an absolute URL baked into the build.
 
 ## Caddy
@@ -104,7 +104,7 @@ To verify a vhost's routing without touching the live proxy, run a throwaway
 Caddy on the same network with just that block bound to a spare port:
 
 ```bash
-{ echo ":8099 {"; sed -n '/^herald.aiknol.com {/,/^}/p' /opt/knol/Caddyfile | tail -n +2; } > /tmp/ht/Caddyfile
+{ echo ":8099 {"; sed -n '/^herald.doaide.com {/,/^}/p' /opt/knol/Caddyfile | tail -n +2; } > /tmp/ht/Caddyfile
 docker run --rm -d --name herald-caddy-test --network knol_knol \
   -p 127.0.0.1:8099:8099 -v /tmp/ht/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2-alpine
 curl -s http://127.0.0.1:8099/api/v1/health
@@ -113,12 +113,12 @@ docker rm -f herald-caddy-test
 
 ## DNS
 
-`herald.aiknol.com` needs an **A record → 89.167.8.178, proxy disabled (grey
-cloud)** in the Cloudflare zone `aiknol.com`, matching how
-`documedic.aiknol.com` is set up. Caddy solves the ACME HTTP-01 challenge
+`herald.doaide.com` needs an **A record → 89.167.8.178, proxy disabled (grey
+cloud)** in the Cloudflare zone `doaide.com`, matching how
+`documedic.doaide.com` is set up. Caddy solves the ACME HTTP-01 challenge
 itself; an orange-cloud record would break issuance. Until the record exists,
 Caddy retries every 60 s and logs `NXDOMAIN looking up A for
-herald.aiknol.com` — it picks up the certificate on its own once DNS resolves,
+herald.doaide.com` — it picks up the certificate on its own once DNS resolves,
 with no restart needed.
 
 ## Environment
@@ -197,7 +197,7 @@ degrading every generated post.
 Verify what took effect:
 
 ```bash
-curl -s https://herald.aiknol.com/api/v1/health | python3 -m json.tool
+curl -s https://herald.doaide.com/api/v1/health | python3 -m json.tool
 # → "llm_providers": ["openrouter", "gemini", "groq"]
 ```
 
@@ -294,7 +294,7 @@ Two things this flow does **not** do:
   token has to be posted to the confirm endpoint by hand for now:
 
   ```bash
-  curl -X POST https://herald.aiknol.com/api/v1/auth/password-reset/confirm \
+  curl -X POST https://herald.doaide.com/api/v1/auth/password-reset/confirm \
     -H 'Content-Type: application/json' \
     -d '{"token":"…","new_password":"…"}'
   ```

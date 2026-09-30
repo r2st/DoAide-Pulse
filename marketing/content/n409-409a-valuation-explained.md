@@ -89,6 +89,6 @@ If you are building any of this, three things are worth knowing before you start
 
 ---
 
-**[N409](https://n409.aiknol.com)** is a valuation platform built on that structure: AI extraction and normalisation of uploaded cap tables, financials and projections; comparable selection; an R-based quant engine running OPM and the income, market and asset approaches; analyst override with the computed original preserved; and versioned report drafting through to published PDF. It covers 409A alongside ASC 718/820, gift and estate, QSBS and EMI/CSOP.
+**[N409](https://n409.doaide.com)** is a valuation platform built on that structure: AI extraction and normalisation of uploaded cap tables, financials and projections; comparable selection; an R-based quant engine running OPM and the income, market and asset approaches; analyst override with the computed original preserved; and versioned report drafting through to published PDF. It covers 409A alongside ASC 718/820, gift and estate, QSBS and EMI/CSOP.
 
 *This is a technical explanation, not tax or valuation advice. 409A compliance depends on your specific facts — work with a qualified appraiser and your counsel.*

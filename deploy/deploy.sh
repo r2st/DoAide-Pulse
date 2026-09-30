@@ -116,4 +116,4 @@ echo "health check never came up — journalctl -u herald-api -n 50" >&2
 exit 1
 REMOTE_SCRIPT
 
-echo "==> done: https://herald.aiknol.com"
+echo "==> done: https://herald.doaide.com"

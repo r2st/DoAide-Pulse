@@ -24,7 +24,7 @@
 | Host | Hetzner `89.167.8.178` (Ubuntu 24.04, 4 GB) — shared with GoSumo, Documedic, HomeNex, Knol |
 | Code | `/opt/Herald` — plain rsync copy, **no `.git` on the server** |
 | Runs as | system user `herald` |
-| Public URL | https://herald.aiknol.com |
+| Public URL | https://herald.doaide.com |
 | Process model | **systemd, not Docker.** The repo's `docker-compose.yml` is local-dev only. |
 | Ports | `3006` `herald-api` (uvicorn, 2 workers) · `3007` `herald-web` (static SPA) |
 | Bind address | `172.18.0.1` (the `knol_knol` Docker bridge gateway) so only the shared Caddy container can reach it — deliberately not `0.0.0.0` |
@@ -78,7 +78,7 @@ systemctl restart herald-api herald-web herald-worker herald-beat
 journalctl -u herald-api -f
 
 # Health
-curl https://herald.aiknol.com/api/v1/health   # also lists configured LLM providers
+curl https://herald.doaide.com/api/v1/health   # also lists configured LLM providers
 ```
 
 ## Related projects
@@ -86,5 +86,5 @@ curl https://herald.aiknol.com/api/v1/health   # also lists configured LLM provi
 - [`../TalentPing`](../TalentPing) — same Hetzner box, same LLM fallback pattern, shares the Groq key
 - [`../GoSumo`](../GoSumo) — same box; **owns the SSH deploy key Herald uses**
 - [`../Documedic`](../Documedic), [`../HomeNex`](../HomeNex) — same box
-- `knol/memorylayer` — backs the `*.aiknol.com` estate and the shared Caddy container
+- `knol/memorylayer` — backs the `*.doaide.com` estate and the shared Caddy container
 - `~/projects/PROJECT-INDEX.md`, `~/projects/keys/KEYS_INDEX.md` — estate-wide index

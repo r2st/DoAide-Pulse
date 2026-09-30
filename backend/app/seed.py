@@ -136,7 +136,7 @@ GSTBOT = ProjectSpec(
         "reminders so a quarter never closes by surprise."
     ),
     repo_url="https://github.com/r2st/GSTBot",
-    live_url="https://gstbot.aiknol.com",
+    live_url="https://gstbot.doaide.com",
     tech_stack=[
         "FastAPI",
         "SQLAlchemy",
@@ -196,7 +196,7 @@ CAFLOW = ProjectSpec(
         "filing status and send documents in."
     ),
     repo_url="https://github.com/r2st/CAFlow",
-    live_url="https://caflow.aiknol.com",
+    live_url="https://caflow.doaide.com",
     tech_stack=[
         "FastAPI",
         "SQLAlchemy",

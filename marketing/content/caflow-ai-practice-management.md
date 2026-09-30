@@ -58,7 +58,7 @@ Filings-on-time is the number everyone reports and the least useful of the three
 
 ## Where CAFlow fits
 
-[CAFlow](https://caflow.aiknol.com) is practice management built around this ordering. A pre-loaded statutory compliance calendar with per-client derived applicability and computed due dates across GST, TDS, income tax, ROC and audit. Tasks generated from obligations, with assignment and workload views. A passwordless client portal with AI-categorised document intake. Escalating reminders keyed to what is actually blocking a filing rather than to the date alone. Service-wise billing off the same records that tracked the work.
+[CAFlow](https://caflow.doaide.com) is practice management built around this ordering. A pre-loaded statutory compliance calendar with per-client derived applicability and computed due dates across GST, TDS, income tax, ROC and audit. Tasks generated from obligations, with assignment and workload views. A passwordless client portal with AI-categorised document intake. Escalating reminders keyed to what is actually blocking a filing rather than to the date alone. Service-wise billing off the same records that tracked the work.
 
 It is aimed at firms currently running on spreadsheets, WhatsApp groups and the senior partner's memory — which is most firms, and which works until it doesn't.
 

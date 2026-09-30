@@ -508,7 +508,7 @@ def test_currency_and_maths_signs_are_not_splices():
 
 def test_a_middle_dot_separating_links_is_not_a_splice():
     """The footer every published N409 and Telechat post carries."""
-    text = f"{_BODY} [n409.aiknol.com](https://n409.aiknol.com) · [GitHub](https://x.com)"
+    text = f"{_BODY} [n409.doaide.com](https://n409.doaide.com) · [GitHub](https://x.com)"
 
     assert ai.stray_letter_splices(text) == []
 

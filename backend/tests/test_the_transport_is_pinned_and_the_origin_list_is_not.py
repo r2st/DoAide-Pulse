@@ -173,12 +173,12 @@ def _origins(value: str, environment: str = "production") -> list[str]:
 
 
 def test_a_wildcard_is_dropped_in_production():
-    assert _origins("*,https://herald.aiknol.com") == ["https://herald.aiknol.com"]
+    assert _origins("*,https://herald.doaide.com") == ["https://herald.doaide.com"]
 
 
 def test_a_plaintext_origin_is_dropped_in_production():
-    assert _origins("http://staging.example.com,https://herald.aiknol.com") == [
-        "https://herald.aiknol.com"
+    assert _origins("http://staging.example.com,https://herald.doaide.com") == [
+        "https://herald.doaide.com"
     ]
 
 

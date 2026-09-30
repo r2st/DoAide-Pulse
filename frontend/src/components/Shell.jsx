@@ -136,6 +136,18 @@ export default function Shell({ children }) {
       <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-5 py-9">
         {children}
       </main>
+
+      <footer className="border-t border-line py-4 text-center text-xs text-ink-400">
+        Herald by{" "}
+        <a
+          href="https://doaide.com"
+          className="underline-offset-4 hover:text-ink-600 hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          DoAide
+        </a>
+      </footer>
     </div>
   );
 }

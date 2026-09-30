@@ -60,6 +60,6 @@ Review weekly on reply rate by segment rather than on total sent. Total sent is 
 
 ## Where TalentPing fits
 
-[TalentPing](https://talentping.aiknol.com) automates that pipeline: finding recruiter and hiring-manager contacts, drafting personalised outreach, sending from your own Gmail over OAuth so SPF, DKIM and DMARC align, applying warm-up ramping and throttled randomised timing, then classifying replies and drafting responses.
+[TalentPing](https://talentping.doaide.com) automates that pipeline: finding recruiter and hiring-manager contacts, drafting personalised outreach, sending from your own Gmail over OAuth so SPF, DKIM and DMARC align, applying warm-up ramping and throttled randomised timing, then classifying replies and drafting responses.
 
 The framing is deliberate. It handles the research, the mechanics and the follow-through — the parts that make a good strategy unsustainable by hand. It does not decide what you want, and it does not write your claim about yourself. If you were hoping for a system that runs your job search while you do something else, that product would mostly generate volume, and volume is the thing that stopped working.

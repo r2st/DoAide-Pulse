@@ -95,7 +95,7 @@ The measurable effects, in rough order of size:
 
 ---
 
-**[CAFlow](https://caflow.aiknol.com)** is built on exactly this model: a pre-loaded Indian statutory compliance calendar with per-client derived applicability and computed due dates, tasks generated from obligations with assignment and workload views, a passwordless client portal with AI-categorised document intake, escalating reminders keyed to what is actually blocking a filing, and service-wise billing off the same records.
+**[CAFlow](https://caflow.doaide.com)** is built on exactly this model: a pre-loaded Indian statutory compliance calendar with per-client derived applicability and computed due dates, tasks generated from obligations with assignment and workload views, a passwordless client portal with AI-categorised document intake, escalating reminders keyed to what is actually blocking a filing, and service-wise billing off the same records.
 
 It is FastAPI, PostgreSQL and Celery under a React front end, with the compliance-type seed applied at migration time so the calendar exists before anything else runs.
 

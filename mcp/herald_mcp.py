@@ -14,7 +14,7 @@ Run it::
 
     export HERALD_EMAIL=you@example.com
     export HERALD_PASSWORD=...
-    export HERALD_BASE_URL=https://herald.aiknol.com/api/v1   # optional
+    export HERALD_BASE_URL=https://herald.doaide.com/api/v1   # optional
     python mcp/herald_mcp.py
 
 Register it with Claude Code::

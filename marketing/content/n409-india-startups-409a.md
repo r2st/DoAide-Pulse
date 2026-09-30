@@ -61,7 +61,7 @@ Refresh every twelve months, and refresh early on a material event: a priced rou
 
 ## Where N409 fits
 
-[N409](https://n409.aiknol.com) is a valuation platform covering IRC 409A alongside ASC 718/820, gift, QSBS and EMI/CSOP work. Uploaded cap tables, financials and projections are extracted and normalised, comparables are selected, and an R-based quant engine runs the allocation — Black-Scholes OPM, income, market and asset approaches. Analysts review and override any computed figure, with the original preserved for audit, and the report is drafted, versioned and published as a PDF. Firms delivering valuations to startup clients can run it under their own branding.
+[N409](https://n409.doaide.com) is a valuation platform covering IRC 409A alongside ASC 718/820, gift, QSBS and EMI/CSOP work. Uploaded cap tables, financials and projections are extracted and normalised, comparables are selected, and an R-based quant engine runs the allocation — Black-Scholes OPM, income, market and asset approaches. Analysts review and override any computed figure, with the original preserved for audit, and the report is drafted, versioned and published as a PDF. Firms delivering valuations to startup clients can run it under their own branding.
 
 It is built for the people producing valuations. If you are a founder who needs one, what you need is a provider — this is what a good one runs on.
 
