@@ -194,6 +194,19 @@ def _sync_one(
     try:
         credentials = _credentials_for(db, user_id, platform)
     except Exception as exc:
+        # Logged like the two arms below it, and for a better reason than
+        # symmetry: this is the arm that fires when the platform was
+        # disconnected or ``TOKEN_ENCRYPTION_KEY`` no longer decrypts the stored
+        # secret, which is the same cause for *every* destination at once and is
+        # nothing the platform did. The outcome is returned to a beat sweep that
+        # counts it and moves on, so without a line the whole sweep failing this
+        # way looked exactly like a sweep that found nothing to retitle.
+        logger.warning(
+            "headline sync for publication %s on %s could not read credentials: %s",
+            publication.id,
+            platform.value,
+            exc,
+        )
         return SyncOutcome(publication.id, platform, FAILED, str(exc)[:300])
 
     try:

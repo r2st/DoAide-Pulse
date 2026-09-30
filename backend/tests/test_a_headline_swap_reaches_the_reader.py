@@ -21,6 +21,7 @@ Two halves to the fix, and both are tested here:
 from __future__ import annotations
 
 import base64
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -30,6 +31,7 @@ from app.models.content import Content, ContentStatus, ContentType
 from app.models.metrics import ContentMetric
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import headline_sync, headlines, publishers
+from app.services.crypto import CredentialEncryptionError
 from app.services.publishers.base import (
     Adapter,
     NotImplementedAdapter,
@@ -443,6 +445,72 @@ def test_a_missing_connection_is_a_failed_sync_not_a_crash(db, piece):
 
     assert outcome.status == headline_sync.FAILED
     assert not outcome.reached
+
+
+def test_a_sync_that_cannot_read_its_credentials_says_so_in_the_log(db, piece, caplog):
+    """The one failure arm here that used to return silently.
+
+    Every other way ``_sync_one`` can fail writes a line — a ``PublishError``
+    from the platform at INFO, an unexpected exception at ERROR. Reading the
+    credentials did not, and it is the arm with the *widest* cause: a
+    disconnected platform, or a ``TOKEN_ENCRYPTION_KEY`` that no longer decrypts
+    what is stored, which fails every destination for every piece at once and is
+    nothing any platform did. The outcome goes back to a beat sweep that counts
+    it and moves on, so a sweep failing this way was indistinguishable from a
+    sweep that found nothing to retitle.
+    """
+    publication = _publication(db, piece, Platform.DEVTO)
+    headlines.apply_headline(piece, "The headline that won")
+    db.commit()
+
+    with caplog.at_level(logging.WARNING, logger="app.services.headline_sync"):
+        (outcome,) = headline_sync.sync_title(db, piece)
+
+    assert outcome.status == headline_sync.FAILED
+    lines = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "app.services.headline_sync" and r.levelno == logging.WARNING
+    ]
+    assert len(lines) == 1
+    assert f"publication {publication.id}" in lines[0]
+    assert "devto" in lines[0]
+    assert "could not read credentials" in lines[0]
+
+
+def test_an_encryption_key_that_no_longer_fits_is_reported_per_destination(
+    db, piece, connect, monkeypatch, caplog
+):
+    """The cause is one key, and the sweep has to name every row it cost.
+
+    A line per publication rather than one per sweep: the sweep is a fan-out
+    over rows and the operator's question afterwards is which pieces are now
+    showing the wrong headline, which a single summary line cannot answer.
+    """
+    connect(Platform.DEVTO, Platform.WORDPRESS)
+    _publication(db, piece, Platform.DEVTO, external_id="ext-1")
+    _publication(db, piece, Platform.WORDPRESS, external_id="ext-2")
+    headlines.apply_headline(piece, "The headline that won")
+    db.commit()
+
+    def unreadable(_db, _user_id, _platform):
+        raise CredentialEncryptionError("no key in TOKEN_ENCRYPTION_KEY decrypts this")
+
+    monkeypatch.setattr(headline_sync, "_credentials_for", unreadable)
+
+    with caplog.at_level(logging.WARNING, logger="app.services.headline_sync"):
+        outcomes = headline_sync.sync_title(db, piece)
+
+    assert [o.status for o in outcomes] == [headline_sync.FAILED, headline_sync.FAILED]
+    lines = [
+        r.getMessage()
+        for r in caplog.records
+        if r.name == "app.services.headline_sync" and r.levelno == logging.WARNING
+    ]
+    assert len(lines) == 2
+    assert {"devto", "wordpress"} == {
+        platform for platform in ("devto", "wordpress") if any(platform in m for m in lines)
+    }
 
 
 def test_a_destination_already_showing_the_headline_is_not_asked_again(
