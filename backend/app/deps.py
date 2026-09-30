@@ -1,6 +1,7 @@
 """Shared FastAPI dependencies (current-user resolution, ownership guards)."""
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Annotated
 
@@ -16,6 +17,8 @@ from app.models.project import Project
 from app.models.user import User
 from app.security import decode_access_token_claims, issued_at
 from app.services import api_keys
+
+logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.api_v1_prefix}/auth/login")
 
@@ -159,6 +162,15 @@ def require_scope(*scopes: ApiKeyScope) -> Callable[..., ApiKey]:
             raise _api_key_exc
         missing = [s.value for s in scopes if not key.has_scope(s)]
         if missing:
+            # Logged as well as answered. The 403 reaches whatever queued the
+            # request, which for a machine credential is usually a build step
+            # that prints nothing and exits non-zero; ``api_keys.authenticate``
+            # records every *other* reason a machine call was turned away, and a
+            # scope that was never granted is the one that would otherwise be
+            # missing from that account of it.
+            logger.warning(
+                "api key %s refused: missing scope(s) %s", key.prefix, ", ".join(missing)
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"This key is missing the {', '.join(missing)} scope.",

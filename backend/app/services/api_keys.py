@@ -213,14 +213,32 @@ def authenticate(
     one message, because distinguishing "no such key" from "revoked key" tells
     somebody holding a stolen token which of their guesses was once real.
 
+    **The reason is written to the log even though it is withheld from the
+    caller**, and the two are not in tension: the 401 is uninformative because
+    the reader might be holding a stolen token, and the operator reading the
+    journal is not. Without it, "CI stopped publishing on Tuesday" had no
+    answer anywhere in the system — an expired key, a rotated one whose grace
+    window closed and a deactivated account are the same silent 401, none of
+    them touches ``last_used_at`` (see :func:`touch`, which stamps only keys
+    that were *accepted*), and the row that knows why is the one nobody thought
+    to look at.
+
+    What is logged is the **prefix**, which is the lookup handle and is stored
+    in the clear precisely so it can be quoted — see the module docstring. The
+    secret half never appears, and a caller who presented nothing resembling a
+    key is DEBUG rather than WARNING: an unauthenticated probe is not an
+    integration that has broken.
+
     The account's ``is_active`` is checked here for the same reason the metrics
     sweep checks it: switching an account off has to close the doors it opened,
     and a machine credential is a door that nothing else would have closed.
     """
     if not token:
+        logger.debug("api key refused: no X-API-Key header")
         return None
     prefix = split(token)
     if prefix is None:
+        logger.debug("api key refused: the header is not a Herald token")
         return None
 
     key = db.scalar(select(ApiKey).where(ApiKey.prefix == prefix))
@@ -229,15 +247,26 @@ def authenticate(
         # "no such key" answer measurably faster than the "wrong secret" one,
         # which turns the endpoint into an oracle for whether a prefix is real.
         fingerprint(token)
+        logger.debug("api key refused: no key with prefix %s", prefix)
         return None
 
     if not hmac.compare_digest(key.token_hash, fingerprint(token)):
+        # WARNING, unlike the arms above: the prefix half is real and only the
+        # secret is wrong, which is either a truncated deploy secret or somebody
+        # working on a credential they partly have. Neither is routine.
+        logger.warning("api key %s refused: wrong secret", prefix)
         return None
     if not key.is_usable(now=now):
+        logger.warning(
+            "api key %s refused: %s",
+            prefix,
+            "revoked" if key.revoked_at is not None else "expired",
+        )
         return None
 
     owner = db.get(User, key.user_id)
     if owner is None or not owner.is_active:
+        logger.warning("api key %s refused: its account is deactivated", prefix)
         return None
     return key
 
