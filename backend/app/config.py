@@ -104,8 +104,7 @@ class Settings(BaseSettings):
     # explicitly opened.
     registration_enabled: bool = False
     # When set, /auth/register additionally requires this exact token in the
-    # request body. Mandatory in production: registration that is enabled but
-    # tokenless is refused rather than served wide open.
+    # request body. Left blank, registration is open to anyone (when enabled).
     registration_invite_token: str = ""
 
     # ---- Password reset ----

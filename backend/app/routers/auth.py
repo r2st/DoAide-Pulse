@@ -64,15 +64,13 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _assert_registration_allowed(invite_token: str | None) -> None:
-    """Guard :func:`register`, failing closed on every ambiguous configuration.
+    """Guard :func:`register`, failing closed when disabled.
 
     Three states, in order:
 
     * disabled (the default) — nobody registers, whatever they send;
     * enabled with an invite token — the token must match exactly;
-    * enabled without one — allowed in development, refused in production,
-      because "enabled" there almost certainly means someone flipped the flag
-      and forgot the token, and the failure mode is an open signup endpoint.
+    * enabled without one — open registration for anyone.
     """
     if not settings.registration_enabled:
         raise HTTPException(
@@ -82,11 +80,6 @@ def _assert_registration_allowed(invite_token: str | None) -> None:
 
     required = settings.registration_invite_token
     if not required:
-        if settings.is_production:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Registration is closed: no invite token is configured.",
-            )
         return
 
     # compare_digest over ==: the comparison is against a secret, and a short
