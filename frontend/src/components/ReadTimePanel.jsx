@@ -134,7 +134,7 @@ export default function ReadTimePanel() {
                 className={`rounded-md px-2 py-1 font-mono text-[11px] transition-colors ${
                   days === window
                     ? "bg-brand-50 text-brand-600"
-                    : "text-ink-400 hover:bg-ink-900/[0.04] hover:text-ink-700"
+                    : "text-ink-400 hover:bg-ink-400/10 hover:text-ink-700"
                 }`}
               >
                 {window}d

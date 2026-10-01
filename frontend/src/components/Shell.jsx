@@ -4,28 +4,18 @@ import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 import Logo from "./ui/Logo";
 
-// The destinations, in the order the work happens: see where things stand,
-// register what to write about, decide what shape it takes, write it, place it
-// in time, ship it, find out whether it landed, configure.
 const TABS = [
-  { to: "/", label: "Dashboard", end: true },
-  { to: "/projects", label: "Projects" },
-  { to: "/triggers", label: "Triggers" },
-  { to: "/templates", label: "Templates" },
-  { to: "/content", label: "Content" },
-  { to: "/calendar", label: "Calendar" },
-  { to: "/publish", label: "Publish" },
-  { to: "/analytics", label: "Analytics" },
-  { to: "/settings", label: "Settings" },
+  { to: "/", label: "Dashboard", icon: DashboardIcon, end: true },
+  { to: "/projects", label: "Projects", icon: ProjectsIcon },
+  { to: "/triggers", label: "Triggers", icon: TriggersIcon },
+  { to: "/templates", label: "Templates", icon: TemplatesIcon },
+  { to: "/content", label: "Content", icon: ContentIcon },
+  { to: "/calendar", label: "Calendar", icon: CalendarIcon },
+  { to: "/publish", label: "Publish", icon: PublishIcon },
+  { to: "/analytics", label: "Analytics", icon: AnalyticsIcon },
+  { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
 
-/**
- * The only chrome in the app: wordmark, destinations, account.
- *
- * Two tabs carry counts of things waiting on the user — drafts in review, and
- * publications that failed. Both are things nothing else will resolve on its
- * own, which is the bar for earning a badge.
- */
 export default function Shell({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -38,125 +28,118 @@ export default function Shell({ children }) {
   }, [location.pathname]);
 
   return (
-    <div className="min-h-screen">
-      {/* First in the tab order, and the only way past nine destinations for
-          anyone arriving on a new page with a keyboard or a screen reader.
-          Visible only while focused — see `sr-only` / `focus:not-sr-only`. */}
+    <div className="flex min-h-screen bg-canvas">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-brand-500 focus:px-3 focus:py-1.5 focus:text-sm focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-brand-500 focus:px-3 focus:py-1.5 focus:text-sm focus:text-canvas"
       >
         Skip to content
       </a>
 
-      <header className="sticky top-0 z-20 border-b border-line bg-canvas/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-5">
-          <div className="flex min-w-0 items-center gap-5 sm:gap-8">
-            <Wordmark />
-            <nav
-              aria-label="Main"
-              className="hidden items-center gap-1 overflow-x-auto md:flex"
-            >
-              {TABS.map((tab) => (
-                <Tab key={tab.to} to={tab.to} end={tab.end} badge={badgeFor(tab, counts)}>
-                  {tab.label}
-                </Tab>
-              ))}
-            </nav>
-          </div>
-
-          <div className="flex shrink-0 items-center gap-3">
-            <span className="hidden font-mono text-xs text-ink-400 lg:block">
-              {user?.email}
-            </span>
-            <button
-              className="btn-quiet hidden md:inline-flex"
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
-            >
-              Sign out
-            </button>
-
-            {/* A disclosure, not a dialog: focus deliberately stays on the
-                button when the menu opens, because the revealed links are the
-                next thing in the tab order anyway and moving focus for the user
-                would cost them the ability to close it again with one key. */}
-            <button
-              className="btn-quiet -mr-1 inline-flex md:hidden"
-              onClick={() => setMenuOpen((v) => !v)}
-              aria-expanded={menuOpen}
-              aria-controls="mobile-nav"
-              aria-label="Toggle navigation menu"
-            >
-              <MenuGlyph open={menuOpen} />
-              {counts.review + counts.failed > 0 && !menuOpen && (
-                <span
-                  className="ml-1 h-1.5 w-1.5 rounded-full bg-brand-500"
-                  aria-hidden="true"
-                />
-              )}
-            </button>
-          </div>
+      {/* Desktop sidebar */}
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-line bg-canvas md:flex">
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          <Logo className="h-8 w-8 shrink-0" title="Herald" />
+          <span className="font-display text-xl text-ink-900">Herald</span>
         </div>
 
-        {menuOpen && (
-          <nav
-            id="mobile-nav"
-            aria-label="Main"
-            className="border-t border-line px-3 py-2 md:hidden"
+        <nav aria-label="Main" className="flex-1 space-y-0.5 px-3 py-2">
+          {TABS.map((tab) => (
+            <SidebarTab key={tab.to} tab={tab} badge={badgeFor(tab, counts)} />
+          ))}
+        </nav>
+
+        <div className="border-t border-line px-4 py-4">
+          <div className="mb-3 truncate font-mono text-[11px] text-ink-400">
+            {user?.email}
+          </div>
+          <button
+            className="w-full rounded-lg border border-line px-3 py-2 text-xs text-ink-500 transition-colors hover:border-line-strong hover:text-ink-900"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
           >
-            {TABS.map((tab) => (
-              <MobileTab
-                key={tab.to}
-                to={tab.to}
-                end={tab.end}
-                badge={badgeFor(tab, counts)}
-              >
-                {tab.label}
-              </MobileTab>
-            ))}
-            <button
-              className="mt-1 block w-full rounded-md px-3 py-2.5 text-left text-sm text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
-              onClick={() => {
-                logout();
-                navigate("/login");
-              }}
-            >
-              Sign out
-            </button>
-          </nav>
-        )}
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* Mobile header */}
+      <header className="fixed inset-x-0 top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-canvas/95 px-4 backdrop-blur-xl md:hidden">
+        <div className="flex items-center gap-2.5">
+          <Logo className="h-7 w-7 shrink-0" title="Herald" />
+          <span className="font-display text-lg text-ink-900">Herald</span>
+        </div>
+        <button
+          className="btn-quiet -mr-1"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-expanded={menuOpen}
+          aria-controls="mobile-nav"
+          aria-label="Toggle navigation menu"
+        >
+          <MenuGlyph open={menuOpen} />
+          {counts.review + counts.failed > 0 && !menuOpen && (
+            <span
+              className="ml-1 h-1.5 w-1.5 rounded-full bg-brand-500"
+              aria-hidden="true"
+            />
+          )}
+        </button>
       </header>
 
-      {/* `tabIndex={-1}` so the skip link moves focus here and not merely the
-          scroll position — without it the next Tab goes back to the top of the
-          nav the link was for skipping. */}
-      <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-5 py-9">
-        {children}
-      </main>
-
-      <footer className="border-t border-line py-4 text-center text-xs text-ink-400">
-        Herald by{" "}
-        <a
-          href="https://doaide.com"
-          className="underline-offset-4 hover:text-ink-600 hover:underline"
-          target="_blank"
-          rel="noopener noreferrer"
+      {menuOpen && (
+        <nav
+          id="mobile-nav"
+          aria-label="Main"
+          className="fixed inset-x-0 top-14 z-20 border-b border-line bg-canvas px-3 py-2 md:hidden"
         >
-          DoAide
-        </a>
-      </footer>
+          {TABS.map((tab) => (
+            <MobileTab
+              key={tab.to}
+              to={tab.to}
+              end={tab.end}
+              badge={badgeFor(tab, counts)}
+            >
+              {tab.label}
+            </MobileTab>
+          ))}
+          <button
+            className="mt-1 block w-full rounded-md px-3 py-2.5 text-left text-sm text-ink-500 hover:bg-ink-400/10 hover:text-ink-900"
+            onClick={() => {
+              logout();
+              navigate("/login");
+            }}
+          >
+            Sign out
+          </button>
+        </nav>
+      )}
+
+      {/* Main content area */}
+      <div className="flex min-w-0 flex-1 flex-col md:ml-56">
+        <main id="main" tabIndex={-1} className="flex-1 px-6 py-8 pt-20 md:px-8 md:pt-8">
+          <div className="mx-auto max-w-5xl">
+            {children}
+          </div>
+        </main>
+
+        <footer className="border-t border-line py-4 text-center text-xs text-ink-400">
+          Herald by{" "}
+          <a
+            href="https://doaide.com"
+            className="underline-offset-4 hover:text-ink-500 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            DoAide
+          </a>
+        </footer>
+      </div>
     </div>
   );
 }
 
-/**
- * Poll the two queues the badges show. Refreshed on navigation so approving a
- * draft updates the count on the way out, plus a slow timer for the case where
- * the autopilot writes something while the tab is open.
- */
 function useNavCounts(pathname) {
   const [counts, setCounts] = useState({ review: 0, failed: 0 });
 
@@ -195,37 +178,26 @@ function badgeFor(tab, counts) {
   return null;
 }
 
-function Wordmark() {
-  return (
-    <span className="flex shrink-0 items-center gap-2.5">
-      <Logo className="h-[26px] w-[26px] shrink-0 text-brand-500" title="Herald" />
-      <span className="font-display text-xl text-ink-900">Herald</span>
-    </span>
-  );
-}
-
-function Tab({ to, end, badge, children }) {
+function SidebarTab({ tab, badge }) {
+  const Icon = tab.icon;
   return (
     <NavLink
-      to={to}
-      end={end}
+      to={tab.to}
+      end={tab.end}
       className={({ isActive }) =>
         [
-          "relative shrink-0 whitespace-nowrap rounded-md py-1.5 text-sm transition-colors",
-          // A badged tab reserves space for its own count so it can't sit on
-          // top of the next label.
-          badge ? "pl-3 pr-7" : "px-3",
-          isActive ? "text-ink-900" : "text-ink-500 hover:text-ink-900",
+          "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+          isActive
+            ? "bg-brand-50 text-brand-500 font-medium"
+            : "text-ink-500 hover:bg-ink-400/10 hover:text-ink-900",
         ].join(" ")
       }
     >
       {({ isActive }) => (
         <>
-          {children}
+          <Icon active={isActive} />
+          <span className="flex-1">{tab.label}</span>
           {badge && <CountBadge {...badge} />}
-          {isActive && (
-            <span className="absolute inset-x-3 -bottom-[13px] h-0.5 rounded-full bg-brand-500" />
-          )}
         </>
       )}
     </NavLink>
@@ -241,8 +213,8 @@ function MobileTab({ to, end, badge, children }) {
         [
           "flex items-center justify-between rounded-md px-3 py-2.5 text-sm transition-colors",
           isActive
-            ? "bg-brand-50 text-ink-900"
-            : "text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900",
+            ? "bg-brand-50 text-brand-500"
+            : "text-ink-500 hover:bg-ink-400/10 hover:text-ink-900",
         ].join(" ")
       }
     >
@@ -256,9 +228,9 @@ function CountBadge({ value, label, inline = false }) {
   return (
     <span
       className={[
-        inline ? "" : "absolute right-1 top-1/2 -translate-y-1/2",
+        inline ? "" : "",
         "inline-flex min-w-[1.15rem] items-center justify-center rounded-full bg-brand-500 px-1",
-        "font-mono text-[10px] font-semibold leading-[1.15rem] text-white",
+        "font-mono text-[10px] font-semibold leading-[1.15rem] text-canvas",
       ].join(" ")}
       aria-label={`${value} ${label}`}
     >
@@ -290,6 +262,87 @@ function MenuGlyph({ open }) {
           <path d="M3 14h14" />
         </>
       )}
+    </svg>
+  );
+}
+
+function DashboardIcon({ active }) {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke={active ? "currentColor" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="6" height="6" rx="1" />
+      <rect x="11" y="3" width="6" height="6" rx="1" />
+      <rect x="3" y="11" width="6" height="6" rx="1" />
+      <rect x="11" y="11" width="6" height="6" rx="1" />
+    </svg>
+  );
+}
+
+function ProjectsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 5a2 2 0 012-2h4l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" />
+    </svg>
+  );
+}
+
+function TriggersIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M11 3L4 12h5l-1 5 7-9h-5l1-5z" />
+    </svg>
+  );
+}
+
+function TemplatesIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="14" height="14" rx="2" />
+      <path d="M3 8h14" />
+      <path d="M8 8v9" />
+    </svg>
+  );
+}
+
+function ContentIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 3h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+      <path d="M7 7h6M7 10h6M7 13h3" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="14" height="13" rx="2" />
+      <path d="M7 2v3M13 2v3M3 9h14" />
+    </svg>
+  );
+}
+
+function PublishIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M10 3v10M6 9l4-4 4 4" />
+      <path d="M3 14v2a1 1 0 001 1h12a1 1 0 001-1v-2" />
+    </svg>
+  );
+}
+
+function AnalyticsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 17V10M8 17V7M13 17V3M18 17v-7" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10" cy="10" r="3" />
+      <path d="M10 1v2M10 17v2M3.5 3.5l1.4 1.4M15.1 15.1l1.4 1.4M1 10h2M17 10h2M3.5 16.5l1.4-1.4M15.1 4.9l1.4-1.4" />
     </svg>
   );
 }

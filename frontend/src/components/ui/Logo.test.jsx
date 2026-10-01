@@ -46,6 +46,6 @@ describe("sizing", () => {
 
   it("has a default size, so a caller that forgets one still gets a mark", () => {
     const { container } = render(<Logo />);
-    expect(container.querySelector("svg")).toHaveClass("h-6", "w-6");
+    expect(container.querySelector("svg")).toHaveClass("h-8", "w-8");
   });
 });

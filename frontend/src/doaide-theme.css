@@ -1,6 +1,6 @@
 /*
- * DoAide Global Theme v1.0
- * Integrated into source — uniform dark theme across all DoAide products
+ * DoAide Global Theme v2.0
+ * Dark theme with gold accents — uniform across all DoAide products
  */
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Schibsted+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -52,71 +52,7 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--doaide-border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--doaide-border-light); }
 
-a { color: var(--doaide-gold) !important; }
-a:hover { color: var(--doaide-gold-light) !important; }
-
-button[class*="primary"], .btn-primary, [class*="bg-indigo"], [class*="bg-blue-6"], [class*="bg-purple"], [class*="bg-brand"] {
-  background-color: var(--doaide-gold) !important;
-  color: var(--doaide-text-on-gold) !important;
-  border-color: var(--doaide-gold) !important;
-}
-
-[class*="bg-white"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-slate-50"], [class*="bg-slate-100"] {
-  background-color: var(--doaide-surface) !important;
-}
-[class*="bg-gray-200"], [class*="bg-slate-200"] {
-  background-color: var(--doaide-surface-hover) !important;
-}
-[class*="border-gray"], [class*="border-slate"], [class*="divide-gray"], [class*="divide-slate"] {
-  border-color: var(--doaide-border) !important;
-}
-[class*="text-gray-900"], [class*="text-gray-800"], [class*="text-slate-900"], [class*="text-slate-800"], [class*="text-black"] {
-  color: var(--doaide-text) !important;
-}
-[class*="text-gray-700"], [class*="text-gray-600"], [class*="text-slate-700"], [class*="text-slate-600"] {
-  color: var(--doaide-text) !important;
-}
-[class*="text-gray-500"], [class*="text-gray-400"], [class*="text-slate-500"], [class*="text-slate-400"] {
-  color: var(--doaide-text-secondary) !important;
-}
-[class*="text-indigo"], [class*="text-blue-6"], [class*="text-purple"], [class*="text-brand"] {
-  color: var(--doaide-gold) !important;
-}
-[class*="ring-indigo"], [class*="ring-blue"], [class*="ring-purple"], [class*="focus:ring"] {
-  --tw-ring-color: var(--doaide-gold) !important;
-}
-input, textarea, select {
-  background-color: var(--doaide-bg-alt) !important;
-  border-color: var(--doaide-border) !important;
-  color: var(--doaide-text) !important;
-}
-input:focus, textarea:focus, select:focus {
-  border-color: var(--doaide-gold) !important;
-  box-shadow: 0 0 0 2px var(--doaide-gold-bg) !important;
-}
-input::placeholder, textarea::placeholder { color: var(--doaide-text-muted) !important; }
-
-table { border-color: var(--doaide-border) !important; }
-thead, th { background-color: var(--doaide-surface) !important; color: var(--doaide-text-secondary) !important; border-color: var(--doaide-border) !important; }
-td { border-color: var(--doaide-border) !important; }
-tbody tr:hover { background-color: var(--doaide-surface) !important; }
-
-[class*="dropdown"], [class*="popover"], [class*="menu"] > div, [role="menu"], [role="listbox"] {
-  background-color: var(--doaide-surface) !important;
-  border-color: var(--doaide-border) !important;
-}
-[class*="modal"], [class*="dialog"], [role="dialog"] {
-  background-color: var(--doaide-bg-alt) !important;
-  border-color: var(--doaide-border) !important;
-}
-nav, [class*="sidebar"], [class*="nav-"] {
-  background-color: var(--doaide-bg) !important;
-  border-color: var(--doaide-border) !important;
-}
-[class*="tooltip"] { background-color: var(--doaide-surface) !important; color: var(--doaide-text) !important; }
-[class*="badge"] { background-color: var(--doaide-gold-bg) !important; color: var(--doaide-gold) !important; }
 ::selection { background-color: var(--doaide-gold) !important; color: var(--doaide-text-on-gold) !important; }
-[class*="backdrop"], [class*="overlay"] { background-color: rgba(0, 0, 0, 0.7) !important; }
 
 .doaide-gold { color: var(--doaide-gold); }
 .doaide-gold-bg { background-color: var(--doaide-gold); color: var(--doaide-text-on-gold); }

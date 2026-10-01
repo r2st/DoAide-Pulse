@@ -4,17 +4,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
-  Herald UI — clean editorial.
-
-  Off-white paper, near-black ink, hairline rules instead of heavy cards, and
-  one blue accent reserved for the thing you should do next. Data is monospace
-  so a list of statuses lines up; prose is not.
-*/
-
 @layer base {
   html {
-    color-scheme: light;
+    color-scheme: dark;
   }
 
   body {
@@ -22,16 +14,18 @@
   }
 
   ::selection {
-    @apply bg-brand-100 text-ink-900;
+    @apply bg-brand-500 text-canvas;
   }
 
-  /* Slim scrollbars — the content tables are dense enough already. */
   ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-canvas;
   }
   ::-webkit-scrollbar-thumb {
-    @apply rounded-full border-4 border-transparent bg-ink-400/40 bg-clip-padding;
+    @apply rounded-full bg-ink-400/40;
   }
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-ink-400/70;
@@ -43,12 +37,10 @@
 }
 
 @layer components {
-  /* ---- Surfaces ---- */
   .panel {
     @apply rounded-xl border border-line bg-paper shadow-card;
   }
 
-  /* ---- Type ---- */
   .eyebrow {
     @apply font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400;
   }
@@ -60,28 +52,27 @@
     @apply font-display text-3xl leading-tight text-ink-900;
   }
 
-  /* ---- Controls ---- */
   .btn {
     @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-4
            py-2.5 text-sm font-medium transition-all duration-150
            disabled:pointer-events-none disabled:opacity-40;
   }
   .btn-primary {
-    @apply btn bg-brand-500 text-white hover:bg-brand-600 active:scale-[0.985];
+    @apply btn bg-brand-500 text-canvas hover:bg-brand-600 active:scale-[0.985];
   }
   .btn-ghost {
     @apply btn border border-line-strong bg-paper text-ink-700 hover:border-ink-400
            hover:bg-canvas active:scale-[0.985];
   }
   .btn-quiet {
-    @apply btn px-2.5 py-1.5 text-xs text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900;
+    @apply btn px-2.5 py-1.5 text-xs text-ink-500 hover:bg-ink-400/10 hover:text-ink-900;
   }
   .btn-danger {
     @apply btn bg-bad text-white hover:bg-bad/90 active:scale-[0.985];
   }
 
   .input {
-    @apply w-full rounded-lg border border-line-strong bg-paper px-3.5 py-2.5 text-sm
+    @apply w-full rounded-lg border border-line-strong bg-canvas px-3.5 py-2.5 text-sm
            text-ink-900 placeholder:text-ink-400 focus:border-brand-500
            focus:outline-none focus:ring-0;
   }
@@ -89,7 +80,6 @@
     @apply mb-2 block font-mono text-[10px] uppercase tracking-[0.16em] text-ink-400;
   }
 
-  /* ---- Data ---- */
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas
            px-2 py-1 font-mono text-[11px] text-ink-700;
@@ -102,8 +92,6 @@
     @apply px-4 py-3 align-middle;
   }
 
-  /* Rendered Markdown in the content preview. Deliberately narrow measure —
-     a full-width blog post is unreadable on a desktop monitor. */
   .prose-herald {
     @apply max-w-[68ch] text-[15px] leading-[1.7] text-ink-700;
   }

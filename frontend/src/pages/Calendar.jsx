@@ -319,7 +319,7 @@ export default function Calendar() {
                         className={[
                           "font-mono text-[11px]",
                           key === todayKey
-                            ? "rounded bg-brand-500 px-1.5 py-0.5 text-white"
+                            ? "rounded bg-brand-500 px-1.5 py-0.5 text-canvas"
                             : inMonth
                               ? "text-ink-500"
                               : "text-ink-400/60",
@@ -343,7 +343,7 @@ export default function Calendar() {
                       ))}
                       {hidden > 0 && (
                         <button
-                          className="block w-full rounded px-1.5 py-0.5 text-left text-[11px] text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
+                          className="block w-full rounded px-1.5 py-0.5 text-left text-[11px] text-ink-500 hover:bg-ink-400/10 hover:text-ink-900"
                           onClick={() => setExpandedDay(key)}
                         >
                           +{hidden} more
@@ -351,7 +351,7 @@ export default function Calendar() {
                       )}
                       {expandedDay === key && (
                         <button
-                          className="block w-full rounded px-1.5 py-0.5 text-left text-[11px] text-ink-500 hover:bg-ink-900/[0.04] hover:text-ink-900"
+                          className="block w-full rounded px-1.5 py-0.5 text-left text-[11px] text-ink-500 hover:bg-ink-400/10 hover:text-ink-900"
                           onClick={() => setExpandedDay(null)}
                         >
                           Show less
@@ -452,7 +452,7 @@ function FilterRow({ label, value, onChange, options }) {
               className={`rounded-md px-2 py-1 font-mono text-[11px] transition-colors ${
                 active
                   ? "bg-brand-50 text-brand-600"
-                  : "text-ink-400 hover:bg-ink-900/[0.04] hover:text-ink-700"
+                  : "text-ink-400 hover:bg-ink-400/10 hover:text-ink-700"
               }`}
             >
               {option.label}
