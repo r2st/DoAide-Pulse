@@ -346,7 +346,15 @@ def delete_template(
     user: User = Depends(get_current_user),
 ) -> None:
     """Delete a template. The pieces it produced are untouched."""
-    db.delete(_owned(template_id, db, user))
+    template = _owned(template_id, db, user)
+    logger.info(
+        "template %s (%s) deleted by user %s — had been used %s time(s)",
+        template.id,
+        template.name,
+        user.id,
+        template.use_count,
+    )
+    db.delete(template)
     db.commit()
 
 

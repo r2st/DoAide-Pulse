@@ -6,6 +6,8 @@ button on it.
 """
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -33,6 +35,8 @@ from app.schemas.webhook import (
 )
 from app.services import webhooks
 from app.services.crypto import CredentialEncryptionError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -148,8 +152,11 @@ def create_webhook(
     user: User = Depends(get_current_user),
 ) -> WebhookCreated:
     """Register an endpoint. The signing secret is in this response and nowhere else."""
-    count = len(
-        list(db.scalars(select(Webhook.id).where(Webhook.user_id == user.id)))
+    count = (
+        db.scalar(
+            select(func.count(Webhook.id)).where(Webhook.user_id == user.id)
+        )
+        or 0
     )
     if count >= MAX_WEBHOOKS_PER_USER:
         raise HTTPException(
@@ -201,8 +208,11 @@ def update_webhook(
         webhook.is_active = payload.is_active
         if payload.is_active:
             # Re-enabling is the user saying the endpoint is fixed. Leaving the
-            # counter where it was would disable it again on the next failure.
+            # counter where it was would disable it again on the next failure,
+            # and a stale error from the previous session would look current on
+            # a freshly re-enabled endpoint.
             webhook.consecutive_failures = 0
+            webhook.last_error = None
 
     db.commit()
     db.refresh(webhook)
@@ -227,6 +237,21 @@ def delete_webhook(
     for something nobody can act on.
     """
     webhook = _owned(webhook_id, db, user)
+    deliveries = (
+        db.scalar(
+            select(func.count(WebhookDelivery.id)).where(
+                WebhookDelivery.webhook_id == webhook.id
+            )
+        )
+        or 0
+    )
+    logger.info(
+        "webhook %s (%s) deleted by user %s — %s delivery(ies) went with it",
+        webhook.id,
+        webhook.url,
+        user.id,
+        deliveries,
+    )
     db.delete(webhook)
     db.commit()
 

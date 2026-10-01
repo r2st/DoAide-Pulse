@@ -310,6 +310,22 @@ def delete_trigger(
     fact about the trigger any more.
     """
     trigger = _owned(trigger_id, db, user)
+    events = (
+        db.scalar(
+            select(func.count(TriggerEvent.id)).where(
+                TriggerEvent.trigger_id == trigger.id
+            )
+        )
+        or 0
+    )
+    logger.info(
+        "trigger %s (%s/%s) deleted by user %s — %s event(s) went with it",
+        trigger.id,
+        trigger.kind.value if hasattr(trigger.kind, "value") else trigger.kind,
+        trigger.name,
+        user.id,
+        events,
+    )
     db.delete(trigger)
     db.commit()
 

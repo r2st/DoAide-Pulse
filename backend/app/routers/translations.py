@@ -259,5 +259,12 @@ def delete_translation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"This piece has no {language} translation.",
         )
+    logger.info(
+        "translation %s of content %s (%s) deleted by user %s",
+        row.language,
+        content.id,
+        content.slug,
+        user.id,
+    )
     db.delete(row)
     db.commit()
