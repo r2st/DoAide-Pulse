@@ -59,7 +59,7 @@ export default function ReadTimePanel() {
       <section>
         <SectionHeader
           title="Read time"
-          subtitle="How much reading Herald has published, and whether length pays off."
+          subtitle="Reading volume and length payoff."
         />
         <p className="panel px-5 py-6 text-sm text-ink-500">
           Nothing published yet. Reading time appears once a piece goes out.
@@ -72,7 +72,7 @@ export default function ReadTimePanel() {
     <section className="space-y-4">
       <SectionHeader
         title="Read time"
-        subtitle="How much reading Herald has published, and whether length pays off."
+        subtitle="Reading volume and length payoff."
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

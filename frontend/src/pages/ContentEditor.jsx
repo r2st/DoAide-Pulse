@@ -1066,8 +1066,7 @@ function PreviewLinksPanel({ contentId }) {
 
       {!loading && live.length === 0 && !justCreated && (
         <p className="text-xs text-ink-400">
-          A read-only link, no account required — for a reviewer who is not a
-          Herald user.
+          Read-only link for external reviewers.
         </p>
       )}
 
@@ -1093,7 +1092,7 @@ function PreviewLinksPanel({ contentId }) {
             </button>
           </div>
           <p className="mt-1 text-xs text-ink-400">
-            Shown once — Herald only keeps a hash of it after this.
+            Shown once — only a hash is stored after this.
           </p>
         </div>
       )}
@@ -1411,8 +1410,7 @@ function RecoveryBanner({ at, onRestore, onDiscard }) {
       className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warn/25 bg-warn-wash px-4 py-3 text-sm text-warn"
     >
       <span className="min-w-0">
-        Unsaved edits from {formatWhen(at)} are still in this browser. They were
-        never saved to Herald.
+        Unsaved edits from {formatWhen(at)} — browser-only, not saved to server.
       </span>
       <span className="flex shrink-0 items-center gap-2">
         <button className="btn-quiet text-warn" onClick={onDiscard}>

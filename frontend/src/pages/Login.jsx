@@ -74,7 +74,7 @@ export default function Login() {
               DoAide <span className="login-title-accent">Herald</span>
             </h1>
             <p className="login-subtitle">
-              AI-powered newsletters that write themselves
+              Your digital robot for newsletters.
             </p>
           </div>
 

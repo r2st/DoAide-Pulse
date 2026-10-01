@@ -1113,7 +1113,7 @@ describe("sharing a preview link", () => {
     await screen.findByDisplayValue("Saved title");
 
     expect(
-      await screen.findByText(/read-only link, no account required/),
+      await screen.findByText(/Read-only link for external reviewers/),
     ).toBeInTheDocument();
   });
 

@@ -383,8 +383,8 @@ describe("the add/edit dialog", () => {
     await user.click(screen.getByRole("button", { name: "Edit" }));
     await screen.findByLabelText("Primary destination");
 
-    expect(screen.getByText(/Only this destination can claim/)).toBeInTheDocument();
-    expect(screen.queryByText(/No destination is privileged/)).not.toBeInTheDocument();
+    expect(screen.getByText(/This destination owns the canonical URL/)).toBeInTheDocument();
+    expect(screen.queryByText(/First to publish owns the canonical URL/)).not.toBeInTheDocument();
   });
 
   it("turning off automatic canonicals disables choosing a destination for one", async () => {
@@ -396,7 +396,7 @@ describe("the add/edit dialog", () => {
     await screen.findByText("Herald");
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
-    const auto = screen.getByLabelText(/Set the canonical URL automatically/);
+    const auto = screen.getByLabelText(/Auto-set canonical URL/);
     expect(auto).toBeChecked();
     expect(await screen.findByLabelText("Primary destination")).toBeEnabled();
 
@@ -413,7 +413,7 @@ describe("the add/edit dialog", () => {
     await screen.findByText("Herald");
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
-    const utm = screen.getByLabelText(/Tag published links with UTM/);
+    const utm = screen.getByLabelText(/Tag links with UTM/);
     expect(utm).not.toBeChecked();
 
     await user.click(utm);

@@ -262,7 +262,7 @@ describe("the editor", () => {
     const names = screen.getAllByLabelText("Name");
     await user.type(names[names.length - 1], "project");
 
-    expect(await screen.findByText(/built-in Herald fills in/i)).toBeInTheDocument();
+    expect(await screen.findByText(/built-in the robot fills in/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /save template/i })).toBeDisabled();
   });
 
@@ -272,7 +272,7 @@ describe("the editor", () => {
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
-    await user.click(screen.getByRole("button", { name: /blanks herald fills in/i }));
+    await user.click(screen.getByRole("button", { name: /built-in blanks/i }));
     await user.click(screen.getByRole("button", { name: /\{\{date\.long\}\}/ }));
 
     expect(screen.getByLabelText("The piece")).toHaveValue("{{date.long}}");
@@ -834,7 +834,7 @@ describe("the built-in insert menu", () => {
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
-    const toggle = screen.getByRole("button", { name: /blanks herald fills in/i });
+    const toggle = screen.getByRole("button", { name: /built-in blanks/i });
 
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(within(toggle).getByText("Show")).toBeInTheDocument();
@@ -851,7 +851,7 @@ describe("the built-in insert menu", () => {
     renderPage();
 
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
-    await user.click(screen.getByRole("button", { name: /blanks herald fills in/i }));
+    await user.click(screen.getByRole("button", { name: /built-in blanks/i }));
 
     expect(screen.getByText("project")).toBeInTheDocument();
     expect(screen.getByText("date")).toBeInTheDocument();
@@ -868,7 +868,7 @@ describe("the built-in insert menu", () => {
     await user.click(await screen.findByRole("button", { name: /write your first/i }));
 
     expect(
-      screen.queryByRole("button", { name: /blanks herald fills in/i }),
+      screen.queryByRole("button", { name: /built-in blanks/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -884,7 +884,7 @@ describe("the built-in insert menu", () => {
     // Between the two spaces, which is where a writer stops to reach for the menu.
     body.setSelectionRange(8, 8);
 
-    await user.click(screen.getByRole("button", { name: /blanks herald fills in/i }));
+    await user.click(screen.getByRole("button", { name: /built-in blanks/i }));
     await user.click(screen.getByRole("button", { name: /\{\{project\.name\}\}/ }));
 
     expect(body).toHaveValue("Shipped {{project.name}} today");

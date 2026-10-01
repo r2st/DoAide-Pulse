@@ -58,7 +58,7 @@ export default function ContentList() {
         <div>
           <h1 className="page-title">Content</h1>
           <p className="mt-1 text-sm text-ink-500">
-            Everything Herald has written, and everything you have.
+            All drafts and published pieces.
           </p>
         </div>
         <button
@@ -307,7 +307,7 @@ function GenerateDialog({ projects, defaultProjectId, onClose, onDone, onError }
       </div>
       {busy && (
         <p className="text-xs text-ink-400">
-          Asking the model for a full draft. This usually takes 10–30 seconds.
+          Generating — usually 10–30 seconds.
         </p>
       )}
     </Dialog>

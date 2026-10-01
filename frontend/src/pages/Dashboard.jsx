@@ -79,7 +79,7 @@ export default function Dashboard() {
       {nothingYet ? (
         <Empty
           title="Nothing written yet"
-          hint="Register a project, then let Herald draft the first post about it."
+          hint="Register a project — the robot drafts the first post."
           action={
             <Link to="/projects" className="btn-primary mt-1">
               Register a project

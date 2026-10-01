@@ -42,7 +42,7 @@ const COMMON_FIELDS = [
     label: "Write a",
     type: "select",
     options: CONTENT_TYPES,
-    blank: "Let Herald choose",
+    blank: "Let the robot choose",
     hint: "What kind of piece this trigger produces.",
   },
   {
@@ -63,7 +63,7 @@ const EVERY_HOURS = {
   step: "0.5",
   min: "0.5",
   placeholder: "1",
-  hint: "How often Herald looks. Blank uses the default.",
+  hint: "Blank uses the default interval.",
 };
 
 export const KIND_FIELDS = {
@@ -75,7 +75,7 @@ export const KIND_FIELDS = {
       required: true,
       mono: true,
       placeholder: "https://example.com/changelog.rss",
-      hint: "An RSS or Atom feed. Herald writes when it gains an entry.",
+      hint: "RSS or Atom feed — the robot writes on new entries.",
     },
     EVERY_HOURS,
     ...COMMON_FIELDS,
@@ -129,7 +129,7 @@ export const KIND_FIELDS = {
       key: "require_signature",
       label: "Require a signature",
       type: "checkbox",
-      hint: "Refuse requests that are not HMAC-signed with this trigger's secret. Worth taking whenever the sender can do it — a URL leaks by being pasted into a chat window.",
+      hint: "Refuse unsigned requests. Recommended.",
     },
     {
       key: "headline_path",
@@ -137,7 +137,7 @@ export const KIND_FIELDS = {
       type: "text",
       mono: true,
       placeholder: "release.name",
-      hint: "Dotted path into the POSTed JSON. Blank lets Herald guess.",
+      hint: "Dotted path into the POSTed JSON. Blank auto-detects.",
     },
     {
       key: "summary_path",
@@ -159,7 +159,7 @@ export const KIND_FIELDS = {
       type: "text",
       mono: true,
       placeholder: "release.id",
-      hint: "Two deliveries carrying the same value here are one event. Blank means every delivery is new.",
+      hint: "Deduplicates deliveries. Blank treats every delivery as new.",
     },
     ...COMMON_FIELDS,
   ],
@@ -291,8 +291,8 @@ export function summarizeCheck(result) {
     // wants, so the first poll only takes the watermark.
     case "baselined":
       return result.entries !== undefined
-        ? `Connected. ${count(result.entries, "entry", "entries")} noted — Herald writes about what comes next.`
-        : "Connected. Herald writes about what happens next.";
+        ? `Connected. ${count(result.entries, "entry", "entries")} noted — the robot writes about what comes next.`
+        : "Connected. The robot writes about what happens next.";
     case "no_news":
     case "duplicate":
       return "Nothing new since the last check.";

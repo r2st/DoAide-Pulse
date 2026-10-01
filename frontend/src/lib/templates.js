@@ -78,7 +78,7 @@ export function nameProblem(name, builtins, others = []) {
     return "Letters, digits and underscores only, starting with a letter.";
   }
   if (reservedNamespaces(builtins).includes(trimmed)) {
-    return `${trimmed} is a built-in Herald fills in for you.`;
+    return `${trimmed} is a built-in the robot fills in for you.`;
   }
   if (others.includes(trimmed)) return "Already used by another variable.";
   return "";

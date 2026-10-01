@@ -525,7 +525,7 @@ describe("the signing secret", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Create trigger" }));
 
     expect(await screen.findByText("s3cr3t-value")).toBeInTheDocument();
-    expect(screen.getByText(/never again/)).toBeInTheDocument();
+    expect(screen.getByText(/shown once/i)).toBeInTheDocument();
   });
 
   it("is dismissable, and does not come back once dismissed", async () => {
@@ -558,7 +558,7 @@ describe("the signing secret", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Create trigger" }));
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Trigger saved"));
-    expect(screen.queryByText(/never again/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/shown once/i)).not.toBeInTheDocument();
   });
 });
 
@@ -685,8 +685,8 @@ describe("deleting a trigger", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
 
     const [message] = confirm.mock.calls[0];
-    expect(message).toMatch(/Herald stops watching/);
-    expect(message).toMatch(/already wrote is kept/);
+    expect(message).toMatch(/robot stops watching/);
+    expect(message).toMatch(/Existing content is kept/);
   });
 
   it("deletes and reloads once confirmed", async () => {
@@ -771,7 +771,7 @@ describe("rotating a webhook's secret", () => {
     expect(
       screen.getByText("https://herald.test/api/v1/triggers/inbound/new"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/never again/)).toBeInTheDocument();
+    expect(screen.getByText(/shown once/i)).toBeInTheDocument();
   });
 
   it("reports a failed rotation rather than showing a half-rotated dialog", async () => {
@@ -784,7 +784,7 @@ describe("rotating a webhook's secret", () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith("Encryption key unavailable"),
     );
-    expect(screen.queryByText(/never again/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/shown once/i)).not.toBeInTheDocument();
   });
 });
 
@@ -943,6 +943,6 @@ describe("editing an existing trigger", () => {
     await userEvent.click(dialog.getByRole("button", { name: /Save/ }));
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Trigger saved"));
-    expect(screen.queryByText(/never again/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/shown once/i)).not.toBeInTheDocument();
   });
 });

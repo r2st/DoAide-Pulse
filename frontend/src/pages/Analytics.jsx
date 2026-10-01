@@ -70,7 +70,7 @@ export default function Analytics() {
         <h1 className="page-title">Analytics</h1>
         <Empty
           title="Nothing has gone out yet"
-          hint="Numbers appear here once a piece is published and the platforms start reporting on it."
+          hint="Numbers appear once a piece is published."
           action={
             <Link to="/content" className="btn-primary mt-1">
               Go to your drafts
@@ -87,7 +87,7 @@ export default function Analytics() {
         <div>
           <h1 className="page-title">Analytics</h1>
           <p className="mt-1 text-sm text-ink-500">
-            What was published, who read it, and what it earned once they did.
+            Reach, engagement, and what performs.
           </p>
         </div>
       </div>
@@ -291,7 +291,7 @@ function NeedsAttention({ alerts }) {
     <section>
       <SectionHeader
         title="Needs attention"
-        subtitle="Posts doing measurably worse than your own normal."
+        subtitle="Posts underperforming your baseline."
       />
       <ul className="panel divide-y divide-line">
         {rows.map((alert) => (
@@ -416,8 +416,7 @@ function ContentTypePanel({ rows }) {
           </div>
         )}
         <p className="border-t border-line px-5 py-3 text-xs leading-relaxed text-ink-500">
-          Engagement per view, so a type does not score well merely for being the
-          one you publish most.
+          Engagement per view — volume-neutral.
         </p>
       </div>
     </section>
@@ -433,7 +432,7 @@ function PlatformShare({ rows }) {
     <section>
       <SectionHeader
         title="Effort against attention"
-        subtitle="What share of the posts each platform takes, and what share of the views it returns."
+        subtitle="Post share vs. view share per platform."
       />
       <div className="panel">
         <CompareBars
@@ -488,7 +487,7 @@ function VelocityPanel({ velocity }) {
     <section className="space-y-4">
       <SectionHeader
         title="How fast it travels"
-        subtitle={`Measured over the first ${early_window_hours} hours, from the snapshot series rather than a single cumulative counter.`}
+        subtitle={`First ${early_window_hours}h snapshot.`}
       />
 
       <div className="grid gap-4 lg:grid-cols-3">

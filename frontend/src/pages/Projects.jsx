@@ -46,7 +46,7 @@ export default function Projects() {
         <div>
           <h1 className="page-title">Projects</h1>
           <p className="mt-1 text-sm text-ink-500">
-            What Herald writes about, and how it should sound.
+            What the robot writes about.
           </p>
         </div>
         <button className="btn-primary" onClick={() => setEditing("new")}>
@@ -61,7 +61,7 @@ export default function Projects() {
       ) : projects?.length === 0 ? (
         <Empty
           title="No projects yet"
-          hint="Register the things you ship. Herald watches their repos and writes when something lands."
+          hint="Register what you ship — the robot watches and writes."
           action={
             <button className="btn-primary mt-1" onClick={() => setEditing("new")}>
               Add your first project
@@ -299,7 +299,7 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
           id="p-desc"
           rows={3}
           className="input resize-y"
-          placeholder="One paragraph. This is what every generated post is built from, so be specific."
+          placeholder="One paragraph — the robot builds every post from this."
           value={form.description}
           onChange={set("description")}
         />
@@ -420,11 +420,10 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
             }
           />
           <span>
-            Set the canonical URL automatically
+            Auto-set canonical URL
             <span className="mt-0.5 block text-xs text-ink-400">
-              The first public URL a piece gets becomes the original; every
-              platform published to afterwards is told about it, so the copies
-              don&rsquo;t compete with it in search.
+              First published URL becomes the original — copies won&rsquo;t
+              compete in search.
             </span>
           </span>
         </label>
@@ -451,8 +450,8 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
           </select>
           <p className="mt-1.5 text-xs text-ink-400">
             {form.canonical_platform
-              ? "Only this destination can claim the canonical URL. Copies queued alongside it wait until it has published."
-              : "No destination is privileged — the first one to publish owns the canonical URL."}
+              ? "This destination owns the canonical URL."
+              : "First to publish owns the canonical URL."}
           </p>
         </div>
       </fieldset>
@@ -470,12 +469,9 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
             }
           />
           <span>
-            Tag published links with UTM parameters
+            Tag links with UTM parameters
             <span className="mt-0.5 block text-xs text-ink-400">
-              Links pointing at this project&rsquo;s own site carry the
-              platform they were published on, so your analytics can tell you
-              which destination actually sent the visit. The canonical URL is
-              never tagged.
+              Links carry the platform name so analytics can attribute visits.
             </span>
           </span>
         </label>

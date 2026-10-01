@@ -276,7 +276,7 @@ describe("summarizeCheck", () => {
     // A feed whose response the server did not enumerate: still baselined, but
     // "0 entries noted" would read as a broken feed rather than a fresh one.
     expect(summarizeCheck({ status: "baselined" })).toBe(
-      "Connected. Herald writes about what happens next.",
+      "Connected. The robot writes about what happens next.",
     );
   });
 

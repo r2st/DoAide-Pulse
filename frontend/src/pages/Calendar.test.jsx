@@ -105,7 +105,7 @@ describe("the month summary", () => {
   it("says so plainly when the window is empty", async () => {
     draw();
     expect(
-      await screen.findByText(/Nothing on the calendar in this window/),
+      await screen.findByText(/Nothing scheduled/),
     ).toBeInTheDocument();
   });
 });
@@ -689,7 +689,7 @@ describe("the suggestions aside", () => {
     respond([]);
     draw();
     expect(
-      await screen.findByText(/Connect a platform in Settings/),
+      await screen.findByText(/Connect a platform to get slot suggestions/),
     ).toBeInTheDocument();
     expect(screen.getByText(/No platforms connected yet/)).toBeInTheDocument();
   });

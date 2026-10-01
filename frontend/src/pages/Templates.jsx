@@ -74,9 +74,7 @@ export default function Templates() {
         <div>
           <h1 className="page-title">Templates</h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-500">
-            A piece you write the shape of once. Fill in the blanks and Herald
-            either publishes it exactly as written or hands it to the model as
-            the brief — your choice, per template.
+            Reusable shapes — fill the blanks, publish or brief the robot.
           </p>
         </div>
         <button className="btn-primary" onClick={() => setEditing("new")}>
@@ -91,7 +89,7 @@ export default function Templates() {
       ) : templates?.length === 0 ? (
         <Empty
           title="No templates yet"
-          hint="A changelog, a release note, a conference post — anything whose shape you already know and would rather not have rewritten every time."
+          hint="Changelogs, release notes, recurring posts — write the shape once."
           action={
             <button className="btn-primary mt-1" onClick={() => setEditing("new")}>
               Write your first template
@@ -338,7 +336,7 @@ function TemplateDialog({ template, projects, builtins, onClose, onSaved, onErro
       </div>
 
       <fieldset>
-        <legend className="label mb-2">What Herald does with it</legend>
+        <legend className="label mb-2">What the robot does with it</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           {MODES.map((option) => (
             <label
@@ -475,8 +473,7 @@ function TemplateDialog({ template, projects, builtins, onClose, onSaved, onErro
         <legend className="label mb-2">Blanks to fill in</legend>
         {form.variables.length === 0 && (
           <p className="text-sm text-ink-400">
-            None yet. Type a {"{{blank}}"} above and Herald will offer to
-            declare it, or add one here.
+            None yet. Type a {"{{blank}}"} above to declare one, or add here.
           </p>
         )}
         {form.variables.map((variable, index) => (
@@ -581,7 +578,7 @@ function BuiltinMenu({ builtins, onInsert }) {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <span>Blanks Herald fills in for you</span>
+        <span>Built-in blanks</span>
         <span className="text-ink-400">{open ? "Hide" : "Show"}</span>
       </button>
       {open && (

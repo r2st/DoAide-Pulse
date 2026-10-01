@@ -36,7 +36,7 @@ export default function Settings() {
       <section>
         <SectionHeader
           title="Publishing platforms"
-          subtitle="Credentials are verified when you save them, encrypted at rest, and never sent back to this page."
+          subtitle="Credentials are encrypted at rest and never sent back."
         />
         {loading && !data ? (
           <Skeleton rows={4} />
@@ -76,8 +76,8 @@ export default function Settings() {
               ok={Boolean(health.data?.llm_providers?.length)}
               hint={
                 health.data?.llm_providers?.length
-                  ? "Tried in this order; a failing one is skipped for five minutes."
-                  : "Set OPENROUTER_API_KEY. Without it, generated content falls back to a template."
+                  ? "Tried in order; failing ones skipped for 5 min."
+                  : "Set OPENROUTER_API_KEY for AI generation."
               }
             />
             <HealthRow
@@ -86,8 +86,8 @@ export default function Settings() {
               ok={Boolean(health.data?.github_configured)}
               hint={
                 health.data?.github_configured
-                  ? "5000 requests/hour."
-                  : "60 requests/hour, public repos only. Set GITHUB_TOKEN to raise it."
+                  ? "5000 req/hr."
+                  : "60 req/hr, public only. Set GITHUB_TOKEN."
               }
             />
             <HealthRow
@@ -96,8 +96,8 @@ export default function Settings() {
               ok={Boolean(health.data?.credential_encryption)}
               hint={
                 health.data?.credential_encryption
-                  ? "Platform tokens are encrypted at rest."
-                  : "Set TOKEN_ENCRYPTION_KEY. Production refuses to store credentials without it."
+                  ? "Tokens encrypted at rest."
+                  : "Set TOKEN_ENCRYPTION_KEY for production."
               }
             />
             {Object.keys(health.data?.llm_breakers_open ?? {}).length > 0 && (
@@ -308,8 +308,7 @@ function ConnectDialog({ platform, onClose, onDone }) {
       ))}
 
       <p className="text-xs text-ink-400">
-        Herald checks these against {platform.display_name} before saving, so you
-        find out now rather than when a scheduled post fails.
+        Verified against {platform.display_name} before saving.
       </p>
 
       <div className="flex justify-end gap-2 pt-1">

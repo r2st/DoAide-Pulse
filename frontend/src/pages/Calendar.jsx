@@ -179,7 +179,7 @@ export default function Calendar() {
             {/* What the window holds, so "is anything going out?" does not mean
                 scanning 42 squares for a coloured chip. */}
             {counts.total === 0
-              ? "Nothing on the calendar in this window."
+              ? "Nothing scheduled."
               : [
                   `${counts.upcoming} going out`,
                   `${counts.published} published`,
@@ -187,8 +187,7 @@ export default function Calendar() {
                 ]
                   .filter(Boolean)
                   .join(" · ")}
-            . Drag a scheduled item to another day to move it, or focus it and
-            use the arrow keys.
+            . Drag or arrow-key to reschedule.
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -370,8 +369,7 @@ export default function Calendar() {
             <h2 className="mb-3 text-sm font-semibold text-ink-900">Suggested slots</h2>
             {(data?.suggested_slots ?? []).length === 0 ? (
               <p className="text-xs text-ink-400">
-                Connect a platform in Settings and Herald will suggest good times to
-                post.
+                Connect a platform to get slot suggestions.
               </p>
             ) : (
               <ul className="space-y-1.5">

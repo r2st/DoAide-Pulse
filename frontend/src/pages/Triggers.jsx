@@ -51,8 +51,7 @@ export default function Triggers() {
         <div>
           <h1 className="page-title">Triggers</h1>
           <p className="mt-1 max-w-2xl text-sm text-ink-500">
-            The reasons Herald writes something. A repo moved, a feed gained an
-            entry, something POSTed to a URL, or it is simply Friday.
+            What makes the robot write — repos, feeds, webhooks, schedules.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -89,7 +88,7 @@ export default function Triggers() {
       ) : !hasProjects ? (
         <Empty
           title="No projects yet"
-          hint="A trigger writes about a project, so there has to be one first."
+          hint="Add a project first — triggers write about one."
           action={
             <Link to="/projects" className="btn-primary mt-1">
               Add a project
@@ -99,7 +98,7 @@ export default function Triggers() {
       ) : triggers?.length === 0 ? (
         <Empty
           title={projectId ? "No triggers on this project" : "Nothing is watching yet"}
-          hint="Point Herald at a feed, a repo or a webhook URL — or put it on a schedule — and it will write when something happens."
+          hint="Point the robot at a feed, repo, webhook, or schedule."
           action={
             <button className="btn-primary mt-1" onClick={() => setEditing("new")}>
               Add your first trigger
@@ -201,8 +200,8 @@ function TriggerCard({ trigger, project, showProject, onEdit, onChanged, onSecre
   async function remove() {
     if (
       !window.confirm(
-        `Delete this trigger? Herald stops watching ${describeTrigger(trigger)}. ` +
-          "Content it already wrote is kept.",
+        `Delete this trigger? The robot stops watching ${describeTrigger(trigger)}. ` +
+          "Existing content is kept.",
       )
     ) {
       return;
@@ -340,7 +339,7 @@ function TriggerEvents({ triggerId }) {
     <div className="mt-4 border-t border-line pt-4">
       <SectionHeader
         title="Recent activity"
-        subtitle="Every firing, whether or not it wrote anything."
+        subtitle="Every firing and its result."
       />
       <ErrorBanner message={error} onRetry={reload} />
       {loading && !events ? (
@@ -506,8 +505,7 @@ function TriggerDialog({ trigger, projects, kinds, defaultProjectId, onClose, on
           onChange={(e) => setName(e.target.value)}
         />
         <p className="mt-1.5 text-xs text-ink-400">
-          What this one is for. Three RSS triggers on a project look identical
-          without it.
+          Distinguishes multiple triggers on the same project.
         </p>
       </div>
 
@@ -626,8 +624,7 @@ function SecretDialog({ trigger, onClose }) {
     >
       <h2 className="font-display text-2xl text-ink-900">Your trigger is ready</h2>
       <p className="text-sm text-ink-500">
-        Point anything that speaks HTTP at this URL. The secret is shown now
-        and never again — Herald keeps only an encrypted copy.
+        POST to this URL to fire the trigger. The secret is shown once — copy it now.
       </p>
 
       <div>
@@ -654,16 +651,13 @@ function SecretDialog({ trigger, onClose }) {
         </div>
         <div className="mt-1.5 space-y-1.5 text-xs text-ink-400">
           <p>
-            Send it as <code>X-Herald-Signature</code>, in the same format
-            Herald signs its own outbound webhooks with:
+            Send as <code>X-Herald-Signature</code>:
           </p>
           <pre className="overflow-x-auto rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-[11px] text-ink-700">
             t=&lt;unix seconds&gt;,v1=HMAC_SHA256(secret, &quot;&lt;t&gt;.&lt;raw body&gt;&quot;)
           </pre>
           <p>
-            Signatures older than five minutes are refused. Only required if
-            you turned signatures on — but a URL leaks by being pasted into a
-            chat window, and a signature makes a leaked URL useless on its own.
+            Signatures expire after five minutes.
           </p>
         </div>
       </div>

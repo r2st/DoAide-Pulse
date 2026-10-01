@@ -27,7 +27,7 @@ export default function Publish() {
       <div>
         <h1 className="page-title">Publish</h1>
         <p className="mt-1 text-sm text-ink-500">
-          What is queued, what went wrong, and where the reach is.
+          Queue, failures, and platform reach.
         </p>
       </div>
 
@@ -37,7 +37,7 @@ export default function Publish() {
         <section>
           <SectionHeader
             title="Failed"
-            subtitle="These will not retry on their own."
+            subtitle="Manual retry required."
           />
           <ul className="panel divide-y divide-line">
             {failed.map((item) => (
@@ -62,7 +62,7 @@ export default function Publish() {
         ) : waiting.length === 0 ? (
           <Empty
             title="Nothing queued"
-            hint="Approve a draft and send it to a platform from the content editor."
+            hint="Approve a draft and send it from the editor."
             action={
               <Link to="/content" className="btn-primary mt-1">
                 Go to content

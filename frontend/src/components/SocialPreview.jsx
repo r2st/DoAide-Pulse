@@ -152,8 +152,7 @@ function MetaTags({ contentId }) {
 
       {!tags && !error && (
         <p className="text-xs text-ink-400">
-          For a site Herald does not publish to. Git destinations get the
-          equivalent front matter automatically.
+          For external sites. Git destinations get front matter automatically.
         </p>
       )}
 
