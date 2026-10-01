@@ -383,3 +383,46 @@ def test_a_published_row_with_no_published_at_falls_back_to_its_slot(
     (entry,) = resp.json()["entries"]
     assert entry["title"] == "Live, timestamp pending"
     assert entry["movable"] is False
+
+
+def test_rescheduling_a_failed_publication_updates_content_status(
+    client, auth, db, project
+):
+    """A failed piece dragged to a new date must no longer read ``failed``.
+
+    Before the fix, the calendar reschedule re-armed the publication (FAILED →
+    SCHEDULED) but did not call ``sync_content_status``, so the content stayed
+    FAILED while having an active publication. The retry endpoints, which go
+    through ``_rearm``, always called it.
+    """
+    content = Content(
+        project_id=project.id,
+        content_type=ContentType.TUTORIAL,
+        title="Failed then rescheduled",
+        slug="failed-then-rescheduled",
+        status=ContentStatus.FAILED,
+    )
+    db.add(content)
+    db.flush()
+    pub = Publication(
+        content_id=content.id,
+        platform=Platform.DEVTO,
+        status=PublicationStatus.FAILED,
+        error="platform was down",
+    )
+    db.add(pub)
+    db.commit()
+
+    new_time = (_now() + timedelta(days=2)).isoformat()
+    resp = client.patch(
+        f"/api/v1/calendar/content/{content.id}",
+        headers=auth,
+        json={"scheduled_for": new_time},
+    )
+    assert resp.status_code == 200, resp.text
+
+    db.expire_all()
+    content = db.get(Content, content.id)
+    assert content.status == ContentStatus.APPROVED
+    pub = db.get(Publication, pub.id)
+    assert pub.status == PublicationStatus.SCHEDULED

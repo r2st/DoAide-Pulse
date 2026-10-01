@@ -2385,9 +2385,8 @@ def unschedule_content(
     would ever say so.
     """
     content = _owned_content(content_id, db, user)
-    targets = [
-        p for p in content.publications if p.status == PublicationStatus.SCHEDULED
-    ]
+    _UNSCHED = (PublicationStatus.PENDING, PublicationStatus.SCHEDULED)
+    targets = [p for p in content.publications if p.status in _UNSCHED]
 
     for publication in targets:
         publication.status = PublicationStatus.CANCELLED

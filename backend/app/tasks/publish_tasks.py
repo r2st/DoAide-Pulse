@@ -427,6 +427,7 @@ def cancel_publication(publication_id: int) -> dict:
         if publication is None or publication.is_terminal:
             return {"publication_id": publication_id, "cancelled": False}
         publication.status = PublicationStatus.CANCELLED
+        publication.scheduled_for = None
         publishing_service.sync_content_status(publication.content)
         db.commit()
         return {"publication_id": publication_id, "cancelled": True}

@@ -312,6 +312,7 @@ def reschedule(
     # onto the calendar and go out while the column still said ``draft``.
     if targets:
         publishing_service.arming_approves(content)
+        publishing_service.sync_content_status(content)
 
     db.commit()
     refresh_all(db, targets)

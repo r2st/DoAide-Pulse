@@ -259,6 +259,48 @@ def test_retrying_takes_a_piece_back_out_of_failed(db, client, auth, piece, conn
     assert db.get(Content, piece.id).status == ContentStatus.APPROVED
 
 
+def test_unscheduling_also_cancels_pending_publications(db, client, auth, piece):
+    """A PENDING publication goes out on the next sweep — unschedule must stop it.
+
+    Before the fix, ``unschedule_content`` only matched SCHEDULED rows. A
+    PENDING row (the canonical platform when copies are syndication-delayed, or
+    any row whose dispatch hasn't fired yet) was left armed and went out on the
+    next beat sweep despite the user asking to unschedule.
+    """
+    _pub(db, piece, Platform.DEVTO, PublicationStatus.PENDING)
+    _pub(db, piece, Platform.MEDIUM, PublicationStatus.SCHEDULED)
+
+    resp = client.delete(f"/api/v1/content/{piece.id}/schedule", headers=auth)
+    assert resp.status_code == 200, resp.text
+    cancelled = {r["platform"]: r["status"] for r in resp.json()}
+    assert cancelled == {"devto": "cancelled", "medium": "cancelled"}
+
+    db.expire_all()
+    for pub in db.get(Content, piece.id).publications:
+        assert pub.status == PublicationStatus.CANCELLED
+        assert pub.scheduled_for is None
+
+
+def test_cancel_task_clears_scheduled_for(db, worker, piece):
+    """A cancelled publication must not linger on the calendar.
+
+    Before the fix, ``cancel_publication`` set status to CANCELLED but left
+    ``scheduled_for`` set. Every other terminal path clears it; the omission
+    here left a ghost entry on the calendar and in "upcoming" listings.
+    """
+    future = utcnow() + timedelta(days=3)
+    row = _pub(db, piece, Platform.DEVTO, PublicationStatus.SCHEDULED)
+    row.scheduled_for = future
+    db.commit()
+
+    assert worker.cancel_publication(row.id)["cancelled"] is True
+
+    db.expire_all()
+    pub = db.get(Publication, row.id)
+    assert pub.status == PublicationStatus.CANCELLED
+    assert pub.scheduled_for is None
+
+
 def test_re_arming_does_not_promote_a_draft(db, piece):
     """``failed`` is the only status this arm takes back."""
     piece.status = ContentStatus.DRAFT
