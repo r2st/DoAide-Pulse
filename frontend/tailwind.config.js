@@ -6,7 +6,7 @@ export default {
       fontFamily: {
         // A grotesk for UI, mono for anything that is data (statuses, counts,
         // slugs, timestamps), and a serif for the wordmark and big numerals.
-        sans: ['"Inter"', "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ['"Schibsted Grotesk"', "system-ui", "-apple-system", "sans-serif"],
         mono: ['"IBM Plex Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
         display: ['"Instrument Serif"', "Georgia", "serif"],
       },

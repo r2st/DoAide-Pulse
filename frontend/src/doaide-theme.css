@@ -2,7 +2,7 @@
  * DoAide Global Theme v1.0
  * Integrated into source — uniform dark theme across all DoAide products
  */
-@import url('https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Schibsted+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
   --doaide-bg: #0A0A0B;
@@ -26,6 +26,8 @@
   --doaide-warning: #FBBF24;
   --doaide-info: #60A5FA;
   --doaide-font: 'Schibsted Grotesk', system-ui, -apple-system, sans-serif;
+  --doaide-font-display: 'Instrument Serif', Georgia, serif;
+  --doaide-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
   --doaide-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --doaide-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
   --doaide-shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
