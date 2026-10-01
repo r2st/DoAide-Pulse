@@ -54,3 +54,7 @@ docs/*.pdf
 docs/*.docx
 docs/page-*.jpg
 docs/herald-seo-features.js
+
+.cache/
+.claude/
+backend/celerybeat-schedule
