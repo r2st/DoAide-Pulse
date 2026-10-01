@@ -106,7 +106,7 @@ export default function SocialPreview({ draft, url, contentId }) {
  * boundary — you ask for them when you are ready to paste them.
  *
  * Git-published blogs need none of this; the publisher writes the equivalent
- * front matter itself. This is for a site Herald does not deploy.
+ * front matter itself. This is for a site Pulse does not deploy.
  */
 function MetaTags({ contentId }) {
   const [tags, setTags] = useState(null);

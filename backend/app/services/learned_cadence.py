@@ -1,7 +1,7 @@
 """Posting times derived from the user's own results, not from a table.
 
 :mod:`app.services.cadence` opens with a promise: the constants stand in until
-Herald has enough of the user's *own* metrics to beat them. This is that.
+Pulse has enough of the user's *own* metrics to beat them. This is that.
 
 The table is generic advice — "Tue–Thu, 13:00 UTC, because that is mid-morning
 US Eastern". It is a reasonable prior and a poor posterior. A user whose
@@ -139,7 +139,7 @@ def observations(
         # one number the feature exists to produce.
         #
         # ``timestamptz`` columns come back in the database session's zone, and
-        # Herald pins that to UTC at connect time
+        # Pulse pins that to UTC at connect time
         # (:func:`app.database._connect_options`) — which is the real fix, and
         # is also a single connection parameter one deploy away from being the
         # only thing standing between a correct schedule and a wrong one. This

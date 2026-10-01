@@ -36,11 +36,11 @@ def piece(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
-        title="Herald 2.0 is out",
+        title="Pulse 2.0 is out",
         slug="herald-2-0-is-out",
-        body_markdown="# Herald 2.0\n\nThe release is available today.\n",
+        body_markdown="# Pulse 2.0\n\nThe release is available today.\n",
         excerpt="The release is available today.",
-        meta_description="Herald 2.0, available today.",
+        meta_description="Pulse 2.0, available today.",
         canonical_url="https://herald.example.com/blog/herald-2-0",
         tags=["release", "herald"],
         keywords=["release"],
@@ -59,10 +59,10 @@ def french(db, piece) -> ContentTranslation:
         content_id=piece.id,
         language="fr",
         status=TranslationStatus.READY,
-        title="Herald 2.0 est disponible",
-        body_markdown="# Herald 2.0\n\nLa version est disponible dès aujourd'hui.\n",
+        title="Pulse 2.0 est disponible",
+        body_markdown="# Pulse 2.0\n\nLa version est disponible dès aujourd'hui.\n",
         excerpt="La version est disponible dès aujourd'hui.",
-        meta_description="Herald 2.0, disponible aujourd'hui.",
+        meta_description="Pulse 2.0, disponible aujourd'hui.",
         source_version=piece.version,
     )
     db.add(row)
@@ -126,7 +126,7 @@ def test_a_request_with_no_translation_is_exactly_what_it_always_was(piece):
     request = publishing_service.build_request(piece, platform=Platform.DEVTO)
 
     assert request.title == piece.title
-    assert request.body_markdown.startswith("# Herald 2.0")
+    assert request.body_markdown.startswith("# Pulse 2.0")
     assert request.language == "en"
 
 
@@ -187,7 +187,7 @@ def test_a_french_destination_falls_back_when_the_piece_was_edited_after_transla
     and fix, which makes it the better one.
     """
     _connection(db, user, language="fr")
-    piece.body_markdown = "# Herald 2.0\n\nThe release is available today, with fixes.\n"
+    piece.body_markdown = "# Pulse 2.0\n\nThe release is available today, with fixes.\n"
     db.commit()
     db.refresh(piece)
 
@@ -275,7 +275,7 @@ def test_the_text_that_reaches_the_adapter_is_the_translated_one(
 
     publishing_service.execute(db, publication)
 
-    assert seen["title"] == "Herald 2.0 est disponible"
+    assert seen["title"] == "Pulse 2.0 est disponible"
     assert seen["language"] == "fr"
 
 
@@ -288,7 +288,7 @@ def test_a_stale_translation_does_not_reach_the_adapter(
     from app.services.publishers.devto import DevToAdapter
 
     _connection(db, user, language="fr")
-    piece.title = "Herald 2.0.1 is out"
+    piece.title = "Pulse 2.0.1 is out"
     db.commit()
 
     publication = Publication(
@@ -311,5 +311,5 @@ def test_a_stale_translation_does_not_reach_the_adapter(
 
     publishing_service.execute(db, publication)
 
-    assert seen["title"] == "Herald 2.0.1 is out"
+    assert seen["title"] == "Pulse 2.0.1 is out"
     assert seen["language"] == "en"

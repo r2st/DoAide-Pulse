@@ -1,6 +1,6 @@
 """Content templates: the shape of a piece, written once and reused.
 
-Herald generates prose, which is the right default and the wrong answer for a
+Pulse generates prose, which is the right default and the wrong answer for a
 whole class of content. A weekly changelog, a release note, a "we're at the
 conference" post — these have a fixed shape the author already knows, and asking
 a model to reinvent it every Friday produces a piece that is subtly different

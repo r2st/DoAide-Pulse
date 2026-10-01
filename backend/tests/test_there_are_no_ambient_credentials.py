@@ -1,7 +1,7 @@
-"""Why Herald needs no CSRF token, pinned so it stays true.
+"""Why Pulse needs no CSRF token, pinned so it stays true.
 
 CSRF needs one precondition: the browser must attach the caller's credentials
-to a request the caller's page did not make. Herald has no such credential.
+to a request the caller's page did not make. Pulse has no such credential.
 The SPA holds a bearer token and puts it in an ``Authorization`` header it
 writes itself, so a form POST from ``evil.example`` arrives at
 ``/api/v1/content/{id}`` as an anonymous request and is refused by
@@ -58,7 +58,7 @@ _ANONYMOUS_WRITES = {
 
 
 # --------------------------------------------------------------------------- #
-# Nothing is ever stored in the browser on Herald's say-so                     #
+# Nothing is ever stored in the browser on Pulse's say-so                     #
 # --------------------------------------------------------------------------- #
 
 
@@ -110,7 +110,7 @@ def test_a_token_in_a_cookie_is_not_a_session(client, user):
     """A perfectly valid token, in the one place a browser would send by itself.
 
     This is the test that would fail first if ``get_current_user`` ever grew a
-    cookie fallback — and it uses a token Herald really signed, so it fails for
+    cookie fallback — and it uses a token Pulse really signed, so it fails for
     the fallback rather than for the token being bad.
     """
     client.cookies.set("access_token", create_access_token(user.id))

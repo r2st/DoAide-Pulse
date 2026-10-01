@@ -27,7 +27,7 @@ an outage is the platform's and one breaker would protect everybody. But the
 failures that trip a breaker are not all outages. A rate limit is charged
 against an API key, so it is one account's fact, and a global breaker would let
 one busy account park every other account's posts — a cross-tenant denial of
-service that Herald would be doing to itself. Keying per ``(platform, user)``
+service that Pulse would be doing to itself. Keying per ``(platform, user)``
 costs a real outage one threshold per account before it is noticed, which is a
 few wasted requests, and that is the cheaper of the two mistakes by a distance.
 

@@ -88,7 +88,7 @@ class HashnodeAdapter(Adapter):
     supports_metrics = False
     caveat = (
         "Needs the publication ID of the blog to post to. Connect the account "
-        "and Herald lists the ones your token can see."
+        "and Pulse lists the ones your token can see."
     )
     #: Hashnode's ``updatePost`` mutation takes the post id and only the
     #: fields being changed.

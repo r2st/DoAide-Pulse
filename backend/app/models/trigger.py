@@ -1,6 +1,6 @@
-"""Triggers: the things that make Herald write something.
+"""Triggers: the things that make Pulse write something.
 
-Herald started with one trigger — a GitHub repo moved — hard-coded into the
+Pulse started with one trigger — a GitHub repo moved — hard-coded into the
 autopilot. That was the right shape for a dev-blog generator and the wrong shape
 for anything else: a marketing team wants a changelog when a Linear cycle
 closes, a release announcement when their status page posts, a weekly roundup
@@ -85,7 +85,7 @@ class TriggerKind(str, Enum):
 
     @property
     def is_polled(self) -> bool:
-        """True when Herald has to go and look, rather than being told."""
+        """True when Pulse has to go and look, rather than being told."""
         return self in (TriggerKind.GITHUB, TriggerKind.RSS, TriggerKind.SCHEDULE)
 
 
@@ -167,7 +167,7 @@ class TriggerEvent(Base, TimestampMixin):
 
     __tablename__ = "trigger_events"
     __table_args__ = (
-        # The dedupe guard. NULL keys do not collide in any database Herald
+        # The dedupe guard. NULL keys do not collide in any database Pulse
         # runs on, which is what makes "this firing has nothing to dedupe on"
         # expressible: a schedule tick is always new.
         UniqueConstraint("trigger_id", "dedupe_key", name="uq_trigger_event_dedupe"),

@@ -1,7 +1,7 @@
 """The sitemap the Git adapter re-commits into the user's own repository.
 
 ``GitAdapter.publish`` appends the new post to ``public/sitemap.xml`` and
-commits it back. That makes this the one place Herald rewrites a file it did
+commits it back. That makes this the one place Pulse rewrites a file it did
 not write, in a repository somebody else owns, so the read has to be as careful
 as the write — and it was not:
 
@@ -48,10 +48,10 @@ def request_() -> PublishRequest:
     return PublishRequest(
         title="Automating developer marketing",
         slug="automating",
-        body_markdown="## Why\n\nHerald writes the posts.\n",
-        excerpt="Herald writes the posts.",
-        meta_description="Herald automates developer marketing end to end.",
-        project_name="Herald",
+        body_markdown="## Why\n\nPulse writes the posts.\n",
+        excerpt="Pulse writes the posts.",
+        meta_description="Pulse automates developer marketing end to end.",
+        project_name="Pulse",
     )
 
 
@@ -423,7 +423,7 @@ def test_the_post_is_committed_and_the_sitemap_failure_cannot_block_it(request_)
     assert result.extra["path"] == "src/content/blog/automating.md"
     committed = github.files["src/content/blog/automating.md"]
     assert 'title: "Automating developer marketing"' in committed
-    assert "Herald writes the posts." in committed
+    assert "Pulse writes the posts." in committed
 
 
 # -- the read failure that used to read as "there is no sitemap" ------------ #

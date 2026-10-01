@@ -308,7 +308,7 @@ export default function ContentEditor() {
     // A 2xx is not proof there is a piece in the reply. `lib/api` reads a body
     // it cannot parse as "no structured body" and answers `null` — which is the
     // right call there, because a gateway timeout page and a proxy's error HTML
-    // are not Herald talking. Here it was committed into state regardless, and
+    // are not Pulse talking. Here it was committed into state regardless, and
     // the next render read `draftFrom(null).title` and threw: the editor
     // disappeared into its error boundary, taking the author's unsaved text off
     // the screen at the exact moment the save had failed to store it.

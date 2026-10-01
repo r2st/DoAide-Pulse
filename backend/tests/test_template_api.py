@@ -227,7 +227,7 @@ def test_a_preview_renders_without_saving_anything(client, auth, db, project):
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["title"].startswith("Herald — week of")
+    assert body["title"].startswith("Pulse — week of")
     assert "Templates landed." in body["body"]
     assert "Read more: https://x.test" in body["body"]
     assert body["is_complete"] is True
@@ -299,7 +299,7 @@ def test_a_literal_template_produces_a_draft_with_no_model_call(
     assert body["body_markdown"] == (
         "## What shipped\n\nTemplates landed.\n\nRead more: https://x.test"
     )
-    assert body["title"].startswith("Herald — week of")
+    assert body["title"].startswith("Pulse — week of")
     # No model was involved, so there is nothing to be uncertain about.
     assert body["confidence"] == 1.0
 
@@ -408,7 +408,7 @@ def test_a_prompt_template_briefs_the_model_and_keeps_the_templated_headline(
 
     assert resp.status_code == 201, resp.text
     assert seen["instructions"] == (
-        "Write about the template engine for Herald."
+        "Write about the template engine for Pulse."
     )
     assert resp.json()["title"] == "Release notes: the template engine"
     assert db.query(Content).one().source["mode"] == "prompt"

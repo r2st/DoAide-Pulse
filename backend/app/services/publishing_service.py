@@ -288,7 +288,7 @@ def cancel_armed(db: Session, content: Content) -> list[Publication]:
     beat sweep published the piece days later — so the review queue's Reject
     button posted the thing that had just been rejected.
 
-    Terminal rows are left alone. Anything already live stays live: Herald
+    Terminal rows are left alone. Anything already live stays live: Pulse
     cannot unpublish, and rewriting a ``published`` row to ``cancelled`` would
     only lose the record of where the post is. Archiving a piece that is
     partly out cancels the copies that have not gone yet and nothing else.
@@ -657,7 +657,7 @@ def execute(db: Session, publication: Publication) -> Publication:
     # deactivated account, but a row armed while the account was live outlives
     # the switch-off: ``due_publications`` selects on status and time alone, so
     # a piece scheduled for next Tuesday went out on Tuesday, to a platform,
-    # under credentials belonging to an account Herald had been told to stop.
+    # under credentials belonging to an account Pulse had been told to stop.
     #
     # Deactivation means the whole account everywhere else — tokens
     # (:func:`app.deps.get_current_user`), preview links
@@ -988,7 +988,7 @@ def _adopt_canonical(
 ) -> None:
     """Adopt this publication's URL as the piece's canonical, when it should be.
 
-    Herald's syndication model has always depended on ``canonical_url`` — every
+    Pulse's syndication model has always depended on ``canonical_url`` — every
     adapter sends it — but nothing set it, so in practice each copy was published
     with no original and the search ranking was split between them. This closes
     that: publish somewhere, and everywhere afterwards is told where the real one
@@ -1032,7 +1032,7 @@ def _adopt_canonical(
     # already live, the request that published it is what raises, and on
     # PostgreSQL a StringDataRightTruncation here rolls back the same commit
     # that records the publication as PUBLISHED — so the piece is on the
-    # platform and Herald still believes it is not. Declining to adopt is the
+    # platform and Pulse still believes it is not. Declining to adopt is the
     # sixth case where leaving the field empty beats guessing; every adapter
     # already handles an empty canonical, and the author can still type one.
     if len(url) > CANONICAL_URL_MAX_LENGTH:
@@ -1206,7 +1206,7 @@ def _commit_outcome(
     :func:`sync_content_status` and :func:`_adopt_canonical` put on the piece
     says ``AND version = <the one this worker loaded>``. The worker loaded it
     before the platform call and commits after — and the platform call is the
-    one place in Herald that holds a row across a network round trip. Anything
+    one place in Pulse that holds a row across a network round trip. Anything
     that writes the content row in that window makes the commit raise
     ``StaleDataError``: the editor's two-second autosave on a piece that is
     approved but not yet out, a headline sweep, a translation landing.
@@ -1217,7 +1217,7 @@ def _commit_outcome(
     catch ORM errors, so the task died with the row still ``publishing`` from
     its committed claim; ``reclaim_stuck`` later found a claim with no worker
     behind it and armed the row again, and the next worker posted the piece a
-    second time. Herald had no record of the first copy to know it was one.
+    second time. Pulse had no record of the first copy to know it was one.
 
     So the outcome is applied by a callback that can be run more than once.
     On a stale commit, the session is rolled back — which expires both
@@ -1315,7 +1315,7 @@ def sync_content_status(content: Content) -> None:
     """Derive the content's status from its publications.
 
     One success is enough to call the piece published — see the module
-    docstring. It only becomes ``failed`` when every platform Herald was still
+    docstring. It only becomes ``failed`` when every platform Pulse was still
     going to try is terminal and none of them succeeded.
 
     **A cancelled row is not evidence of anything.** Cancelling is the user

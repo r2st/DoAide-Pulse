@@ -1,4 +1,4 @@
-// What the API client does with a response that is not Herald's.
+// What the API client does with a response that is not Pulse's.
 //
 // Every error the UI shows comes out of `request`, and the shape it reads —
 // `{detail: "..."}` — is FastAPI's. But not everything that answers a fetch is
@@ -190,13 +190,13 @@ describe("the outgoing request", () => {
   it("encodes a JSON body and declares it", async () => {
     const fetchMock = stubOk();
 
-    await api.createProject({ name: "Herald" });
+    await api.createProject({ name: "Pulse" });
 
     const { url, init } = sentBy(fetchMock);
     expect(url).toBe("/api/v1/projects");
     expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/json");
-    expect(init.body).toBe('{"name":"Herald"}');
+    expect(init.body).toBe('{"name":"Pulse"}');
   });
 
   it("hands a form through untouched, so the browser sets its own content type", async () => {

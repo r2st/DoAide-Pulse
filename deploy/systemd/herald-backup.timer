@@ -1,5 +1,5 @@
 [Unit]
-Description=Nightly Herald database backup
+Description=Nightly Pulse database backup
 Documentation=https://github.com/r2st/Herald
 
 [Timer]

@@ -1,4 +1,4 @@
-"""Herald had no scheduled backup, and a delete is a real ``DELETE``.
+"""Pulse had no scheduled backup, and a delete is a real ``DELETE``.
 
 ``routers.content.delete_content`` removes the row and its publications
 outright — there is no soft-delete column and no trash to restore from. The only
@@ -166,9 +166,9 @@ def test_the_dump_yields_to_everything_else_on_the_box():
 
 
 def test_the_dump_names_one_database_rather_than_dumping_the_cluster():
-    """``pg_dumpall`` would put five other products' data in Herald's file.
+    """``pg_dumpall`` would put five other products' data in Pulse's file.
 
-    Postgres on this box is shared. A cluster-wide dump owned by Herald's
+    Postgres on this box is shared. A cluster-wide dump owned by Pulse's
     service account is a data-protection problem, not a thorough backup.
     """
     code = _code(_SCRIPT.read_text())
@@ -196,7 +196,7 @@ def test_the_dump_is_read_back_before_it_counts_as_a_backup():
 def test_the_dumps_are_private_to_the_service_account():
     """``umask 077``. Six products share this box and a dump is the database.
 
-    Every password hash and every encrypted platform credential Herald holds is
+    Every password hash and every encrypted platform credential Pulse holds is
     in that file. It is also the reason the restore runbook has to stage a copy
     — see the test below, which is the other half of this one.
     """

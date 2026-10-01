@@ -70,11 +70,11 @@ def content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
-        title="Herald survives a dead broker",
+        title="Pulse survives a dead broker",
         slug="herald-survives-a-dead-broker",
         body_markdown="## It's out\n\n" + ("word " * 200),
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
     )
     db.add(row)
     db.commit()

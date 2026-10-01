@@ -3,7 +3,7 @@
 ``DEBUG=true`` is documented as the way to reopen /docs on a live box, and that
 is how an operator reads it. But Starlette's ``ServerErrorMiddleware`` checks
 the same flag *before* it consults an installed 500 handler, so setting it also
-takes Herald's catch-all out of circuit and serves the traceback — source lines,
+takes Pulse's catch-all out of circuit and serves the traceback — source lines,
 frame locals, whatever a DB error is carrying — to the caller.
 
 The two uses of the flag are separable. These tests pin that separation: the

@@ -34,7 +34,7 @@ const EMPTY_FORM = {
   utm_campaign: "",
 };
 
-/** The project registry: what Herald is allowed to write about. */
+/** The project registry: what Pulse is allowed to write about. */
 export default function Projects() {
   const toast = useToast();
   const { data: projects, error, loading, reload } = useApi(() => api.listProjects(), []);

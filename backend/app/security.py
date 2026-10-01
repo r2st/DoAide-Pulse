@@ -156,7 +156,7 @@ def issued_at(claims: dict[str, Any]) -> datetime | None:
     """The token's ``iat`` as an aware datetime, or ``None`` if it has none.
 
     A token with no ``iat`` cannot be placed in time, so it cannot be shown to
-    predate a password change. Every token Herald mints carries one — see
+    predate a password change. Every token Pulse mints carries one — see
     :func:`create_access_token` — so the only tokens this returns ``None`` for
     are ones minted by something else, and those are refused rather than
     trusted (see :func:`app.deps.get_current_user`).

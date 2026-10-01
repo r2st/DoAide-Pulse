@@ -9,7 +9,7 @@ from app.services import feeds
 RSS = """<?xml version="1.0"?>
 <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
-    <title>Herald Changelog</title>
+    <title>Pulse Changelog</title>
     <link>https://example.com</link>
     <item>
       <title>Shipped webhook triggers</title>
@@ -47,7 +47,7 @@ ATOM = """<?xml version="1.0" encoding="utf-8"?>
 def test_rss_is_parsed_with_content_encoded_preferred_over_description():
     feed = feeds.parse(RSS)
 
-    assert feed.title == "Herald Changelog"
+    assert feed.title == "Pulse Changelog"
     assert [e.entry_id for e in feed.entries] == ["post-2", "post-1"]
     assert feed.entries[0].summary == "The full post body."
     assert feed.entries[0].published_at is not None

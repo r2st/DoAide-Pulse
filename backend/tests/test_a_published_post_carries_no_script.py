@@ -1,4 +1,4 @@
-"""What Herald publishes must not be able to run in a reader's browser.
+"""What Pulse publishes must not be able to run in a reader's browser.
 
 Every post is authored once in Markdown and rendered to HTML for the platforms
 that want HTML — Medium and WordPress, via ``formatting.to_html``. The renderer
@@ -9,18 +9,18 @@ sanitised the result, a ``<script>`` tag in a body was a ``<script>`` tag in a
 published post.
 
 The reason that is worth a test rather than a shrug is where the Markdown comes
-from. Herald's bodies are not typed by a careful human into a box they own:
+from. Pulse's bodies are not typed by a careful human into a box they own:
 
 * the generator writes them with an LLM, and a model that has just read an
   attacker's README is a model that can be talked into emitting a tag;
 * an RSS or GitHub trigger assembles them from somebody else's text;
 * and the editor accepts a paste from anywhere.
 
-And the blast radius is not Herald's own UI — it is the author's audience, on
+And the blast radius is not Pulse's own UI — it is the author's audience, on
 the author's domain, with the author's name on it. Medium and WordPress both
 sanitise their own input, which is the argument for doing it here *as well as*
 rather than *instead of*: whichever of the two is relaxed first is the one
-nobody is watching, and Herald would learn about it from its readers.
+nobody is watching, and Pulse would learn about it from its readers.
 
 So: the vectors below must not survive rendering, and — the half that makes the
 fix a fix rather than a blunt instrument — everything a real post is made of

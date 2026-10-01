@@ -17,13 +17,13 @@ because they are not equally recoverable:
   it is the sentence the row would have carried, the one
   :mod:`app.services.publish_recovery` matches on, and having a fourth spelling
   of it in the tree is how those two come apart.
-* **The adapter.** A platform Herald has scaffolded but not finished cannot
+* **The adapter.** A platform Pulse has scaffolded but not finished cannot
   publish anything, and says so here rather than at the end of a queue.
 * **The format.** :meth:`app.services.publishers.base.Adapter.preflight` — what
   300 graphemes will do to an article, which tag Forem will drop, whether there
   is a slug to name a file after.
 
-**Reports, never refuses.** Nothing in Herald consults this before publishing,
+**Reports, never refuses.** Nothing in Pulse consults this before publishing,
 and that is the design rather than an omission. The adapters already enforce
 their own limits — Bluesky composes to 300 characters whatever it is handed —
 so a gate here would be a second implementation of those rules, free to
@@ -140,7 +140,7 @@ def check(
             verdict.findings.append(
                 PreflightFinding(
                     PREFLIGHT_ERROR,
-                    f"Herald cannot publish to {adapter.display_name} yet.",
+                    f"Pulse cannot publish to {adapter.display_name} yet.",
                 )
             )
         elif platform not in live:

@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 
 class Platform(str, Enum):
-    """Every destination Herald knows how to format for.
+    """Every destination Pulse knows how to format for.
 
     Membership here is not the same as being implemented — see
     ``app.services.publishers.registry`` for which adapters can actually
@@ -73,7 +73,7 @@ class Platform(str, Enum):
     #: built from. Usually the one that should own the canonical URL, since it
     #: is the only copy on a domain the user controls.
     GIT = "git"
-    #: Email. The only destination Herald publishes to that cannot be taken
+    #: Email. The only destination Pulse publishes to that cannot be taken
     #: back, which is why its adapter treats a send and a draft as genuinely
     #: different operations rather than one flag on the same call.
     BUTTONDOWN = "buttondown"
@@ -155,12 +155,12 @@ class Publication(Base, TimestampMixin):
     #: The headline this destination is actually showing.
     #:
     #: Not the same thing as ``content.title``, and the gap between them is the
-    #: point. ``app.services.headlines.apply_headline`` swaps Herald's copy of
+    #: point. ``app.services.headlines.apply_headline`` swaps Pulse's copy of
     #: the title on a piece that is already live; half the destinations cannot
     #: be told (a Bluesky post has no title, a sent newsletter is in inboxes)
     #: and the ones that can may be down at that moment. Without this column
     #: there was nothing to distinguish "the reader sees the new headline" from
-    #: "the reader sees the old one and Herald is crediting the new one with
+    #: "the reader sees the old one and Pulse is crediting the new one with
     #: their clicks".
     #:
     #: Written from the *request* and so from the translation where there is

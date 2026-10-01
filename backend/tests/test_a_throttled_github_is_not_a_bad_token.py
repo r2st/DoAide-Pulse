@@ -1,6 +1,6 @@
 """GitHub says "slow down" with the same status code it says "no" with.
 
-Every other destination Herald publishes to uses 403 for one thing: this
+Every other destination Pulse publishes to uses 403 for one thing: this
 credential is not allowed. GitHub uses it for two. Its *secondary* rate limit —
 the burst limit, the one a sweep publishing several pieces at once actually
 trips — comes back as a **403** with ``Retry-After``, while the hourly quota
@@ -132,7 +132,7 @@ def test_a_success_is_not_an_error(adapter):
 def test_the_message_does_not_send_the_user_after_the_wrong_token(adapter):
     """``github_client`` words this for the autopilot, where the advice differs.
 
-    There the token is Herald's own ``GITHUB_TOKEN`` and "set one to raise the
+    There the token is Pulse's own ``GITHUB_TOKEN`` and "set one to raise the
     ceiling from 60 to 5000" is the fix. Here it is the user's PAT, nothing
     they can set moves this limit, and the row is already parked — so repeating
     that advice would be telling them to go and change an unrelated setting.

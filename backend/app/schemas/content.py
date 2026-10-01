@@ -85,7 +85,7 @@ def _absolute_canonical_url(value: str | None) -> str | None:
     than none: a relative path resolves against the *syndicating* platform's own
     host, so "/blog/post" on Dev.to points the crawler at dev.to. Anything that
     is not http(s) — ``javascript:``, ``data:`` — has no business in a link tag
-    at all. The URL Herald adopts on its own already has to pass this check (see
+    at all. The URL Pulse adopts on its own already has to pass this check (see
     ``publishing_service._adopt_canonical``); a hand-typed one did not.
     """
     if value is None:
@@ -601,7 +601,7 @@ class HeadlineUnreachableOut(BaseModel):
     publication_id: int
     platform: str
     #: The headline this destination is actually showing. ``None`` for a row
-    #: published before Herald recorded it.
+    #: published before Pulse recorded it.
     live_title: str | None = None
     reason: str
 
@@ -812,7 +812,7 @@ class ScheduleContentIn(BaseModel):
     platforms: list[Platform] | None = Field(default=None, min_length=1)
     #: When. Required unless ``optimize`` is set, and refused if both are.
     scheduled_for: datetime | None = None
-    #: Let Herald pick the time per platform from the cadence table instead.
+    #: Let Pulse pick the time per platform from the cadence table instead.
     #: Each platform gets its own slot, so a cross-post staggers rather than
     #: firing five copies into five feeds in the same second.
     optimize: bool = False

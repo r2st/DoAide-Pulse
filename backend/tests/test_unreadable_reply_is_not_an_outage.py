@@ -1,4 +1,4 @@
-"""A reply Herald could not read is not the same as a provider that never came.
+"""A reply Pulse could not read is not the same as a provider that never came.
 
 ``ai.json_completion`` has two ways to fail and used to raise the same class for
 both: the chain gave up (every key spent, every circuit open), or a provider

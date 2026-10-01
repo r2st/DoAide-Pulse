@@ -6,7 +6,7 @@ none of those — the provider is up and answering correctly that the name it wa
 given no longer exists, and it will answer the same way on every sweep until
 somebody edits ``.env``.
 
-Herald had no way to say that. Its Gemini slot answered
+Pulse had no way to say that. Its Gemini slot answered
 ``404 … models/gemini-2.0-flash is no longer available`` on every generation
 from at least 2026-08-11, logged at ``WARNING`` among the free tiers' ordinary
 per-minute rate-limit chatter, and the circuit breaker dutifully cooled it down
@@ -267,7 +267,7 @@ def test_a_stood_down_provider_is_not_asked_again_on_the_next_call(
     """The point of the long cooldown: one request an hour, not one per sweep.
 
     This is what the old behaviour got wrong — a five-minute cooldown against a
-    fault that resolves in exactly zero of those five minutes meant Herald asked
+    fault that resolves in exactly zero of those five minutes meant Pulse asked
     a dead provider for a model it did not have on every single generation.
     """
     urls: list[str] = []

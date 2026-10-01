@@ -39,14 +39,14 @@ from app.services.publishers.wordpress import WordPressAdapter
 #: A piece with every optional field filled in.
 FULL = PublishRequest(
     title="Automating developer marketing",
-    body_markdown="## Why\n\nHerald watches your repos and writes the posts.",
-    excerpt="Herald watches your repos.",
-    meta_description="Herald automates developer marketing end to end.",
+    body_markdown="## Why\n\nPulse watches your repos and writes the posts.",
+    excerpt="Pulse watches your repos.",
+    meta_description="Pulse automates developer marketing end to end.",
     tags=["python", "automation"],
     canonical_url="https://herald.example.com/blog/automating",
     cover_image_url="https://herald.example.com/cover.png",
     project_url="https://herald.example.com",
-    project_name="Herald",
+    project_name="Pulse",
     focus_keyword="developer marketing",
 )
 

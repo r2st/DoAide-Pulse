@@ -58,7 +58,7 @@ def build_feed(project: Project, items: list[Content], *, self_url: str) -> str:
         # naive datetime and ``+0000`` for one that knows it is UTC, and RFC 5322
         # §3.3 gives those two spellings different meanings: ``+0000`` is "this
         # instant, in UTC", ``-0000`` is "we are not telling you the zone".
-        # Herald's timestamps are always UTC — ``utcnow`` writes every one of
+        # Pulse's timestamps are always UTC — ``utcnow`` writes every one of
         # them — so which spelling came out depended only on whether the driver
         # handed the column back with its offset attached. PostgreSQL does and
         # SQLite does not, which means the feed said one thing in production and

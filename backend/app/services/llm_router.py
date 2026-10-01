@@ -1,6 +1,6 @@
 """Multi-provider LLM chain — OpenRouter → Gemini → Groq → Cerebras → caller's template.
 
-Every AI feature in Herald (post drafting, headline generation, SEO metadata,
+Every AI feature in Pulse (post drafting, headline generation, SEO metadata,
 per-platform blurbs) funnels through :func:`complete`. The point is that one
 flaky upstream must never turn into a silent product failure: a draft either
 gets written by *some* model, or the caller falls back to a deterministic
@@ -28,7 +28,7 @@ Four things make that work:
   invent, and the chain's job is to say "you're on your own now".
 
 **Rate limits are the failure mode this module is really for.** The free tiers
-Herald runs on meter two different things, and the two want opposite responses:
+Pulse runs on meter two different things, and the two want opposite responses:
 
 * a *per-minute* limit clears in seconds, so the right answer is to wait the few
   seconds and ask again. Falling straight through to the next provider — and
@@ -95,7 +95,7 @@ _DEFAULT_RATE_LIMIT_PAUSE = 20.0
 #: tiers actually send.
 _RETRYABLE_STATUSES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 
-#: The most of a provider's answer Herald will take off the socket.
+#: The most of a provider's answer Pulse will take off the socket.
 #:
 #: Every caller bounds its own request with ``max_tokens``, and the largest
 #: budget in the tree is a long-form article's ~8,000 — call it 100 KB of JSON
@@ -107,7 +107,7 @@ _RETRYABLE_STATUSES = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
 #: entirely by the far end. The base URLs are settings
 #: (``OPENROUTER_BASE_URL`` and friends), the workers run two to a 4 GB box, and
 #: a provider having a bad day — a proxy that answers a completion with an HTML
-#: error page, a compat layer that loops — is not a thing Herald can fix from
+#: error page, a compat layer that loops — is not a thing Pulse can fix from
 #: here. What it can do is refuse to buffer it. Same reasoning, and same
 #: mechanism, as ``feeds.MAX_FEED_BYTES`` and the streamed reads in
 #: ``link_check``: the only place a body can be refused cheaply is on the way
@@ -154,7 +154,7 @@ class LLMModelUnavailable(LLMError):
     change, and until somebody changes it the provider is dead.
 
     It was worth separating because the two are indistinguishable in a log until
-    you read the body. Herald's Gemini slot answered
+    you read the body. Pulse's Gemini slot answered
     ``404 … models/gemini-2.0-flash is no longer available`` on every generation
     from at least 2026-08-11, at ``WARNING``, in the middle of the ordinary
     per-minute rate-limit chatter from the other free tiers — so a provider that
@@ -551,7 +551,7 @@ def _post(
                 raise OversizedResponse(
                     f"answered with more than "
                     f"{MAX_RESPONSE_BYTES // (1024 * 1024)} MB, which is far "
-                    f"more than any completion Herald asks for"
+                    f"more than any completion Pulse asks for"
                 )
             chunks.append(chunk)
         body = b"".join(chunks)
@@ -692,7 +692,7 @@ def _note_failure(provider: Provider, model: str, exc: LLMError) -> None:
     # answered this way.
     #
     # ERROR rather than WARNING because the failure of the old behaviour was
-    # visibility: Herald's Gemini slot answered "no longer available" on every
+    # visibility: Pulse's Gemini slot answered "no longer available" on every
     # generation for days, at WARNING, among the free tiers' ordinary per-minute
     # rate-limit chatter, and nothing about the line said it would never stop.
     if isinstance(exc, LLMModelUnavailable):

@@ -1,6 +1,6 @@
 """The shapes ``app.services.webhooks.emit`` hands to a receiver.
 
-These are a published contract with code Herald cannot see (see the module
+These are a published contract with code Pulse cannot see (see the module
 docstring), so a field silently dropped or renamed here is a breaking change
 nothing catches — every other caller of this module goes through
 ``content_pipeline`` or ``publishing_service``, which assert on their own
@@ -20,11 +20,11 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="## It's out\n\nword " * 30,
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
         canonical_url="https://herald.example.com/blog/herald-1-0",
     )
     db.add(row)
@@ -37,7 +37,7 @@ def test_content_payload_carries_the_project_it_belongs_to(content, project):
     payload = webhook_payloads.content_payload(content)
 
     assert payload["id"] == content.id
-    assert payload["title"] == "Herald 1.0"
+    assert payload["title"] == "Pulse 1.0"
     assert payload["content_type"] == ContentType.ANNOUNCEMENT.value
     assert payload["status"] == ContentStatus.DRAFT.value
     assert payload["canonical_url"] == content.canonical_url

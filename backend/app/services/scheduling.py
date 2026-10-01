@@ -1,6 +1,6 @@
 """Turning "publish this on Tuesday" into a timestamp a worker will act on.
 
-Herald already stored a ``scheduled_for`` on both content and publications; what
+Pulse already stored a ``scheduled_for`` on both content and publications; what
 was missing was everything around it. This module owns three jobs:
 
 * **Normalising** what the client sent. A naive datetime is read as UTC — the

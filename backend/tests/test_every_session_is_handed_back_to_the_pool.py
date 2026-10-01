@@ -1,6 +1,6 @@
 """A session that is not closed is a connection the pool never gets back.
 
-Herald runs four processes against one PostgreSQL — two uvicorn workers, a
+Pulse runs four processes against one PostgreSQL — two uvicorn workers, a
 Celery worker and beat — at ``db_pool_size`` 5 plus ``db_max_overflow`` 10 each.
 That is a ceiling of 60 connections against a ``max_connections`` of 100, and
 the arithmetic only holds while every checkout is returned. One task that takes

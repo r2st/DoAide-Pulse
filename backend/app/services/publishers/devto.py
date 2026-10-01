@@ -2,7 +2,7 @@
 
 Dev.to is the easiest of the six and the best-documented, so it is the adapter
 to read first. One API key, Markdown in and Markdown out, a real stats endpoint,
-and first-class canonical-URL support — which matters because Herald's whole
+and first-class canonical-URL support — which matters because Pulse's whole
 syndication model depends on the copies not competing with the original.
 
 API: https://developers.forem.com/api/v1

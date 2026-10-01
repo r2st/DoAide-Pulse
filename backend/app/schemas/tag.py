@@ -85,7 +85,7 @@ class TagRenameIn(BaseModel):
         default=False,
         description=(
             "Report which pieces would change and change nothing. This is the "
-            "one write in Herald that touches every piece carrying a string, "
+            "one write in Pulse that touches every piece carrying a string, "
             "named by that string rather than by id, so the preview is the "
             "point rather than a convenience."
         ),

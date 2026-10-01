@@ -1,11 +1,11 @@
 """What a task run leaves behind in the log.
 
-The API side of Herald is traceable: every request is given an id, the id is
+The API side of Pulse is traceable: every request is given an id, the id is
 returned in ``X-Request-ID``, and :class:`app.logging_config.RequestIDFilter`
 stamps it onto every line written while that request is being served — including
 lines from services that have no idea a request exists.
 
-The trail stops at ``.delay()``. Herald's product runs in the worker: a request
+The trail stops at ``.delay()``. Pulse's product runs in the worker: a request
 that queues a publish returns in milliseconds and the work happens somewhere
 else, minutes later, in a different process. Those lines were stamped ``-``,
 which is exactly true and operationally useless — the question being asked is
@@ -164,7 +164,7 @@ def _task_failed(
     attempt this was, and whether another one could plausibly work. Without the
     arguments the failure cannot be tied to a row; without the retry count a
     permanent failure is indistinguishable from the first of four attempts;
-    without the classification the reader has to know Herald's exception
+    without the classification the reader has to know Pulse's exception
     hierarchy to tell "come back in an hour" from "this will never succeed".
 
     ``exc_info`` carries the traceback, so this is one log *event* rather than a
@@ -192,7 +192,7 @@ def _task_retrying(
     """A retry is a warning, not an error — but a silent one is neither.
 
     Celery's own retry line is at INFO and says only that it is retrying. What
-    makes this worth a line of Herald's own is the classification: a task
+    makes this worth a line of Pulse's own is the classification: a task
     retrying a *permanent* failure is spending its whole budget on an outcome
     that cannot change, which is invisible in the individual attempts and
     obvious the moment the class is printed beside them.

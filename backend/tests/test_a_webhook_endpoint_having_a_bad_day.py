@@ -5,7 +5,7 @@ redirect, a rate limit. Each of those is a status code, and the decision follows
 from it. This file covers the failures where there is no status code at all,
 because the exchange never got far enough to have one — the certificate does not
 verify, the handshake stalls, the endpoint accepts the connection and then says
-nothing for longer than Herald is prepared to wait.
+nothing for longer than Pulse is prepared to wait.
 
 They matter for a different reason than a 500 does. Every one of them is
 ``httpx.HTTPError``, and ``deliver`` has a single arm for that whole family:
@@ -48,7 +48,7 @@ _URL = "https://hooks.example.test/herald"
 
 #: What httpx raises when the certificate does not verify. Built the way the
 #: real one is — an ``ssl`` error wrapped in a transport error — because the
-#: message Herald records is the wrapped one's, and a hand-written
+#: message Pulse records is the wrapped one's, and a hand-written
 #: ``ConnectError("bad cert")`` would not tell us what a user actually sees.
 def _tls_failure() -> httpx.ConnectError:
     underlying = ssl.SSLCertVerificationError(
@@ -265,7 +265,7 @@ def test_the_endpoints_own_words_cannot_be_unbounded(db, webhook, failing, failu
 
     ``test_webhook_sweep.py`` bounds what a *responding* endpoint says. The
     exception path builds its message the same way — by interpolating something
-    Herald did not write — and writes it to the same ``Text`` column.
+    Pulse did not write — and writes it to the same ``Text`` column.
     """
     from app.services.errors import MAX_ERROR_CHARS
 

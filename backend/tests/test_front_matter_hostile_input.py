@@ -6,7 +6,7 @@ title, the meta description, the keyword list. All of it is model-written or
 hand-edited free text, and all of it reaches ``formatting.front_matter``.
 
 A YAML block that does not parse is not a cosmetic problem there — it is the
-user's site build failing on a commit Herald made. So the assertions here are
+user's site build failing on a commit Pulse made. So the assertions here are
 mostly round-trips through a real YAML parser rather than string matches: what
 matters is that the value comes back out exactly as it went in, whatever it
 contained.
@@ -151,7 +151,7 @@ def test_the_committed_file_parses_when_every_field_is_hostile():
         keywords=['say "hi"', "path" + BACKSLASH, "plain"],
         focus_keyword='focus "word"',
         canonical_url="https://herald.example.com/blog/shipping",
-        project_name="Herald",
+        project_name="Pulse",
         slug="shipping",
     )
 

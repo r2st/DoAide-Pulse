@@ -6,7 +6,7 @@ nothing to resolve, and a server that keeps redirecting — plus :func:`check`
 itself, whose thread pool the single-URL tests step around entirely.
 
 The redirect budget matters for the same reason the per-hop SSRF check does: a
-hostile or merely broken server controls how many times Herald is willing to go
+hostile or merely broken server controls how many times Pulse is willing to go
 round, and "until something gives" is not an answer inside a publish request.
 """
 from __future__ import annotations
@@ -46,7 +46,7 @@ def test_the_same_answer_is_given_to_the_webhook_pre_flight():
 
 
 def test_a_redirect_loop_is_unknown_rather_than_an_endless_walk(monkeypatch):
-    """Ten hops and Herald stops. The verdict is ``unknown``, not ``broken``.
+    """Ten hops and Pulse stops. The verdict is ``unknown``, not ``broken``.
 
     A server that loops is misconfigured, which is not evidence that the page
     the author linked to is gone — and only ``broken`` is allowed to stop a

@@ -1,6 +1,6 @@
 """projects.auto_canonical, projects.canonical_platform
 
-Herald has always sent ``canonical_url`` from every adapter and never set it, so
+Pulse has always sent ``canonical_url`` from every adapter and never set it, so
 each syndicated copy was published as if it were the original and the search
 ranking was split between them. These two columns are what decides the field:
 whether to fill it automatically, and which destination counts as the original.

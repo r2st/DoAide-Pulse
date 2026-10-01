@@ -28,10 +28,10 @@ from app.services import ai, content_generator, content_pipeline, llm_router
 
 def _payload(confidence):
     return {
-        "title": "Herald ships marketing automation",
+        "title": "Pulse ships marketing automation",
         "body_markdown": "## Why\n\n" + ("word " * 300),
-        "excerpt": "Herald writes the posts about the projects you ship.",
-        "meta_description": "Herald automates developer marketing end to end, "
+        "excerpt": "Pulse writes the posts about the projects you ship.",
+        "meta_description": "Pulse automates developer marketing end to end, "
         "from repo watch to published post.",
         "keywords": ["marketing automation", "devtools"],
         "tags": ["python", "fastapi"],
@@ -101,7 +101,7 @@ def test_an_off_scale_confidence_generates_a_piece_but_not_a_confident_one(
     # The post itself is fine — this is not a failed generation, just an
     # unreadable self-assessment.
     assert result.is_fallback is False
-    assert result.title == "Herald ships marketing automation"
+    assert result.title == "Pulse ships marketing automation"
     assert result.confidence == 0.5
     assert result.confidence < settings.autopilot_auto_publish_confidence
 

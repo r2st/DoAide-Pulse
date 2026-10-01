@@ -1,6 +1,6 @@
 """The error half of the API contract.
 
-Every failure Herald returns is ``{"detail": "..."}`` — ``HTTPException`` renders
+Every failure Pulse returns is ``{"detail": "..."}`` — ``HTTPException`` renders
 that shape, the unhandled-exception handler in :mod:`app.main` matches it
 deliberately, and so do the three middleware refusals that never reach a route.
 The one exception is the 422 FastAPI generates itself, whose ``detail`` is a
@@ -78,18 +78,18 @@ _CATALOGUE: dict[int, dict[str, Any]] = {
         "Rate limited. Retry after the window in the response."
     ),
     status.HTTP_500_INTERNAL_SERVER_ERROR: _response(
-        "Something failed inside Herald. The body never carries detail; quote "
+        "Something failed inside Pulse. The body never carries detail; quote "
         "the X-Request-ID header, which every response has."
     ),
     status.HTTP_501_NOT_IMPLEMENTED: _response(
         "The platform is recognised but its adapter is not finished."
     ),
     status.HTTP_502_BAD_GATEWAY: _response(
-        "A service Herald depends on answered badly — a platform API, a feed, "
+        "A service Pulse depends on answered badly — a platform API, a feed, "
         "or a repository host. Not necessarily a problem with the request."
     ),
     status.HTTP_503_SERVICE_UNAVAILABLE: _response(
-        "A dependency Herald cannot run without is unreachable."
+        "A dependency Pulse cannot run without is unreachable."
     ),
 }
 

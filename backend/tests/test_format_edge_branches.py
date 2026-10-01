@@ -115,7 +115,7 @@ def test_a_thread_at_the_ceiling_exactly_is_not_complained_about():
 def test_an_unknown_conventional_type_keeps_its_prefix_and_falls_through():
     """``wip:`` matches the conventional-commit shape but means nothing here.
 
-    Stripping the prefix would be a lie about a type Herald does not understand,
+    Stripping the prefix would be a lie about a type Pulse does not understand,
     so the whole subject is kept and the section falls back to ``Changed``.
     """
     section, subject = formats.classify_change("wip: half of the new parser")

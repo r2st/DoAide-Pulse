@@ -324,7 +324,7 @@ def test_build_json_ld_returns_valid_json():
         url="https://example.com/test",
         cover_image_url="https://cdn.example.com/img.png",
         keywords=["python", "testing"],
-        author_name="Herald",
+        author_name="Pulse",
         publisher_name="Acme",
     )
     parsed = json.loads(ld)
@@ -333,7 +333,7 @@ def test_build_json_ld_returns_valid_json():
     assert parsed["headline"] == "Test Article"
     assert parsed["image"] == "https://cdn.example.com/img.png"
     assert parsed["keywords"] == ["python", "testing"]
-    assert parsed["author"]["name"] == "Herald"
+    assert parsed["author"]["name"] == "Pulse"
     assert parsed["publisher"]["name"] == "Acme"
     assert "datePublished" in parsed
     assert parsed["wordCount"] > 0

@@ -3,7 +3,7 @@
 ``triggers.record`` commits the event at ``received`` before generation starts,
 and that commit is what makes the dedupe key a promise: from that instant the
 feed entry, webhook delivery or commit range can never start a second piece.
-``fire`` is then the only thing in Herald that ever moves the row off
+``fire`` is then the only thing in Pulse that ever moves the row off
 ``received``.
 
 So a process killed in between — OOM, a deploy restarting the worker,

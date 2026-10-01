@@ -106,7 +106,7 @@ describe("renderMarkdown", () => {
   });
 
   it("cannot be made to break out of a link's href attribute", () => {
-    // The body is generated from feeds and commit messages Herald does not
+    // The body is generated from feeds and commit messages Pulse does not
     // control, and this string is the shape that turns a quoted attribute into
     // an event handler. The up-front escape neutralises the quotes, so the
     // whole thing stays inside the href — or, as here, is not a link at all.

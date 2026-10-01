@@ -1,6 +1,6 @@
 """What one call to the model chain cost, recorded where another process can read it.
 
-Herald has no metrics backend. Everything operational it knows about the LLM
+Pulse has no metrics backend. Everything operational it knows about the LLM
 chain lives in two places, and neither survives the question being asked:
 
 * **The log.** ``llm_router`` writes one INFO line per served completion with a
@@ -52,7 +52,7 @@ from app.models.mixins import utcnow
 #: writes them, and PostgreSQL answers an over-long INSERT with an exception
 #: that is not ``IntegrityError`` and which nothing in the tree catches.
 #:
-#: Both are wider than the values Herald produces today — provider names are
+#: Both are wider than the values Pulse produces today — provider names are
 #: single words and model ids are vendor slugs — because the value comes from
 #: configuration a user edits, and a truncating write is how bookkeeping starts
 #: lying.

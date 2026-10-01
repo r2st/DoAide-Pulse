@@ -1,7 +1,7 @@
 """Outbound webhooks: subscription, signing, delivery, retry and refusal.
 
 The network is stubbed with ``httpx.MockTransport`` and DNS is stubbed out, so
-what is under test is Herald's own decision-making — which endpoint hears about
+what is under test is Pulse's own decision-making — which endpoint hears about
 what, what the body says, what counts as a failure worth retrying, and which
 URLs the server refuses to open at all.
 """
@@ -164,7 +164,7 @@ def test_a_malformed_signature_header_is_refused_rather_than_raising():
 
 
 # --------------------------------------------------------------------------- #
-# Which URLs Herald will call                                                  #
+# Which URLs Pulse will call                                                  #
 # --------------------------------------------------------------------------- #
 
 
@@ -227,9 +227,9 @@ def test_the_request_carries_the_id_of_whatever_caused_it(db, webhook, endpoint)
     """The receiver's half of the trace.
 
     A delivery is dispatched by an API request or re-armed by a sweep, and both
-    already stamp every line Herald writes about it. Sending the same id lets a
+    already stamp every line Pulse writes about it. Sending the same id lets a
     receiver debugging "you posted me something wrong" quote something that
-    appears in Herald's own journal, instead of a timestamp and a description.
+    appears in Pulse's own journal, instead of a timestamp and a description.
     """
     token = request_id_var.set("abc123def456")
     try:
@@ -586,7 +586,7 @@ def _content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
-        title="Herald ships webhooks",
+        title="Pulse ships webhooks",
         slug="herald-ships-webhooks",
         body_markdown="It calls you now.",
         excerpt="It calls you now.",
@@ -614,7 +614,7 @@ def test_a_first_publish_fires_content_published(db, project, webhook, endpoint)
 
     body = endpoint.last_body
     assert body["event"] == "content.published"
-    assert body["data"]["content"]["title"] == "Herald ships webhooks"
+    assert body["data"]["content"]["title"] == "Pulse ships webhooks"
     assert body["data"]["content"]["project"]["name"] == project.name
     assert body["data"]["publication"]["platform"] == "devto"
 

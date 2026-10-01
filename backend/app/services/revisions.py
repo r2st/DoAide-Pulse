@@ -19,7 +19,7 @@ decided.
 first. Unbounded history is the version of this feature that works perfectly for
 a year and then is a table nobody can migrate: a piece under autopilot with an
 hourly headline test writes a revision an hour forever, and the bodies are
-kilobytes each. Herald bounds everything that grows per write — deliveries,
+kilobytes each. Pulse bounds everything that grows per write — deliveries,
 trigger events, preview links, LLM usage all have retention sweeps — and this is
 the same rule, applied at write time rather than by a nightly task because the
 bound is per piece rather than per fleet and the write already has the piece
@@ -175,7 +175,7 @@ def _prune(db: Session, content: Content) -> None:
 
     Counts what is stored and deletes down to ``RETENTION - 1``, leaving room
     for the row being added in the same transaction. Two statements rather than
-    a subquery with ``OFFSET``, because MySQL forbids that shape and Herald's
+    a subquery with ``OFFSET``, because MySQL forbids that shape and Pulse's
     two backends should not diverge on which one runs the cheaper plan.
 
     Deleted with a bulk statement, so the ORM never loads fifty bodies to throw
@@ -376,7 +376,7 @@ def restore(
 
     Refuses on a piece that went out, in the same words and for the same
     reason the PATCH route refuses to edit one: the text is live on the
-    platforms, and changing it here would make Herald disagree with what a
+    platforms, and changing it here would make Pulse disagree with what a
     reader can see without changing anything a reader can see. Asked of the
     rows rather than the column (:attr:`Content.went_out`), because archiving
     moves the column and leaves the post up — and a restore on an archived

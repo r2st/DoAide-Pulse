@@ -1,6 +1,6 @@
 """Production must refuse a JWT secret that is short, not merely non-default.
 
-``JWT_SECRET`` signs every session token Herald issues, with HMAC-SHA256. The
+``JWT_SECRET`` signs every session token Pulse issues, with HMAC-SHA256. The
 production guard only ever compared against the placeholder string, so
 ``JWT_SECRET=hunter2`` started cleanly — and a key shorter than the hash output
 can be recovered offline from a single issued token, which is the whole of the

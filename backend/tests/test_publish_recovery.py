@@ -5,7 +5,7 @@ account with no connections, an autopilot that armed the destinations anyway,
 and ``NotConnected`` ending every row on the first attempt. The arming half is
 fixed (``content_pipeline.publishable_destinations``). This is the other half —
 the rows that fix left behind, and the ones any future account will leave behind
-between connecting a platform and Herald noticing.
+between connecting a platform and Pulse noticing.
 
 What these pin, in order: that the recovery fires on the pair (right sentence,
 live connection) and not on either half alone; that it leaves alone the failures

@@ -521,12 +521,12 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
 
 #: What a reclaimed firing says about itself when the piece survived.
 ADOPTED_DETAIL = (
-    "Written, but Herald was interrupted before it recorded the outcome. "
+    "Written, but Pulse was interrupted before it recorded the outcome. "
     "The piece below was matched back to this firing by a later sweep."
 )
 #: …and when it did not.
 ABANDONED_DETAIL = (
-    "Herald was interrupted while acting on this firing and nothing was "
+    "Pulse was interrupted while acting on this firing and nothing was "
     "written. It will not be retried: the firing's dedupe key is already "
     "spent, so re-sending the same event is ignored as a duplicate."
 )
@@ -539,7 +539,7 @@ def reclaim_stuck_events(db: Session, *, now: Any = None) -> int:
     written, which is what makes the dedupe key a promise: the moment the row
     exists, that feed entry, webhook delivery or commit range can never start a
     second piece. :func:`fire` then moves the row to ``generated``, ``skipped``
-    or ``failed`` — and it is the *only* thing in Herald that ever moves it.
+    or ``failed`` — and it is the *only* thing in Pulse that ever moves it.
 
     So a process that dies in between (OOM, a deploy restarting the worker,
     ``check_trigger``'s hard time limit, an API worker recycled mid-request on

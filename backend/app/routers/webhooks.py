@@ -232,7 +232,7 @@ def delete_webhook(
 ) -> None:
     """Remove an endpoint and its delivery history.
 
-    A genuine row delete, unlike most of Herald: a delivery log is diagnostic
+    A genuine row delete, unlike most of Pulse: a delivery log is diagnostic
     data about an endpoint that no longer exists, and keeping it costs storage
     for something nobody can act on.
     """
@@ -303,7 +303,7 @@ def ping(
         event=WebhookEvent.PING,
         payload=webhooks.envelope(
             WebhookEvent.PING,
-            {"webhook_id": webhook.id, "message": "Herald is calling to say hello."},
+            {"webhook_id": webhook.id, "message": "Pulse is calling to say hello."},
         ),
         status=DeliveryStatus.PENDING,
     )

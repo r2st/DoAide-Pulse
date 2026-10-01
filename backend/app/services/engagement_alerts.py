@@ -1,6 +1,6 @@
 """Noticing that a piece took off, and saying so once.
 
-Herald already collects engagement — :mod:`app.tasks.metrics_tasks` snapshots
+Pulse already collects engagement — :mod:`app.tasks.metrics_tasks` snapshots
 every published post every few hours, and :mod:`app.services.content_engagement`
 adds the snapshots up for the dashboard. What none of that does is *tell*
 anybody. The numbers sit there until somebody opens the app, which means the one

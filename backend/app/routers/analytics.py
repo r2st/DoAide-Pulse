@@ -153,7 +153,7 @@ def generation_cost(
     this router. The usage table has no owner column, because the router that
     writes it is a pure HTTP client that does not know whose request it is
     serving; see :mod:`app.services.ops_metrics`. On the single-tenant
-    deployment Herald ships as the distinction is invisible, and on a
+    deployment Pulse ships as the distinction is invisible, and on a
     multi-account one every caller sees the same series.
 
     Bounded by ``LLM_USAGE_RETENTION_DAYS`` — ask for a longer window and the

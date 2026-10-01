@@ -1,5 +1,5 @@
 [Unit]
-Description=Herald Web (static SPA server)
+Description=Pulse Web (static SPA server)
 Documentation=https://github.com/r2st/Herald
 After=network.target docker.service
 Wants=docker.service

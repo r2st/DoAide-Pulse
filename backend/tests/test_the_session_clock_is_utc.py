@@ -1,4 +1,4 @@
-"""Herald has one clock, and nothing was insisting on it at the connection.
+"""Pulse has one clock, and nothing was insisting on it at the connection.
 
 Every timestamp column is ``DateTime(timezone=True)`` — ``timestamptz`` — and a
 driver reading one converts it to the **session** time zone before handing it

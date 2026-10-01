@@ -49,7 +49,7 @@ def test_listing_filtered_by_project_keeps_only_that_project_s_defaults(
 ):
     client.post(
         API,
-        json=_payload(name="For Herald", default_project_id=project.id),
+        json=_payload(name="For Pulse", default_project_id=project.id),
         headers=auth,
     )
     client.post(
@@ -62,7 +62,7 @@ def test_listing_filtered_by_project_keeps_only_that_project_s_defaults(
     resp = client.get(API, params={"project_id": project.id}, headers=auth)
 
     assert resp.status_code == 200, resp.text
-    assert [t["name"] for t in resp.json()] == ["For Herald"]
+    assert [t["name"] for t in resp.json()] == ["For Pulse"]
 
 
 # --------------------------------------------------------------------------- #

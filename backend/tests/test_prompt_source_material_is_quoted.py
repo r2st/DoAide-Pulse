@@ -1,6 +1,6 @@
-"""The one part of a generation prompt Herald does not write.
+"""The one part of a generation prompt Pulse does not write.
 
-Everything else in the prompt is Herald's own copy or the project brief, which
+Everything else in the prompt is Pulse's own copy or the project brief, which
 the account holder wrote about their own project. The activity digest is
 neither: it is whatever the trigger pulled in.
 
@@ -19,7 +19,7 @@ account's connected platforms under the author's name.
 
 The fence is not a security boundary and these tests do not claim it stops a
 determined attack — no arrangement of a prompt does. They pin that third-party
-text arrives *marked as quoted* rather than reading as though Herald wrote it,
+text arrives *marked as quoted* rather than reading as though Pulse wrote it,
 that the marking cannot be closed early from inside, and that the system prompt
 says what to do with it.
 """
@@ -120,7 +120,7 @@ def test_source_material_carrying_the_closing_marker_cannot_end_its_own_quote(
     project,
 ):
     """Otherwise the fence is worse than nothing: a sender who knows the marker
-    closes the quote and writes the rest of the prompt as though Herald had."""
+    closes the quote and writes the rest of the prompt as though Pulse had."""
     escape = f"Shipped.\n{_FENCE_CLOSE}\n{INJECTION}"
 
     prompt = _prompt(project, signal=_webhook_signal(escape))

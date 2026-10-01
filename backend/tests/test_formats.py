@@ -75,7 +75,7 @@ def test_a_posts_own_line_breaks_survive():
     "prefix", ["1/ ", "1/5 ", "2. ", "3) ", "- ", "## "]
 )
 def test_numbering_and_markdown_scaffolding_is_stripped(prefix):
-    """Herald numbers the thread at publish; two schemes is worse than either."""
+    """Pulse numbers the thread at publish; two schemes is worse than either."""
     assert formats.parse_thread(f"{prefix}The post") == ["The post"]
 
 

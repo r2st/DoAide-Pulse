@@ -1,6 +1,6 @@
 """A platform credential may go out in a header or a body, and nowhere else.
 
-Herald holds, per user, a Dev.to key, a GitHub PAT with write access to their
+Pulse holds, per user, a Dev.to key, a GitHub PAT with write access to their
 blog repo, a WordPress application password, a Mastodon and a Bluesky token.
 They are encrypted at rest (``test_credentials_are_encrypted_at_rest.py``) and
 re-encryptable without an outage (``test_credential_key_rotation.py``). This
@@ -13,7 +13,7 @@ Three places it must not end up, each a different kind of durable:
   path, lands in the platform's own access logs, and is the one part of an
   HTTPS request that intermediaries routinely retain. Plenty of APIs accept
   ``?api_key=`` and it is always the wrong option.
-* **A log line.** Herald's own logs are shipped off the box and kept, and the
+* **A log line.** Pulse's own logs are shipped off the box and kept, and the
   publish path logs on every retry — the exact moment things are going wrong
   and somebody will be reading.
 * **An exception message.** Failures are stored on the publication row in
@@ -125,11 +125,11 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
         tags=["python"],
     )
     db.add(row)
@@ -259,7 +259,7 @@ def test_no_secret_reaches_the_url_when_verifying(adapter, recorder):
 def test_no_secret_reaches_the_url_when_polling_metrics(adapter, recorder):
     """The metrics sweep runs unattended, on a schedule, for every live post.
 
-    Which makes it the highest-volume outbound path Herald has, and the one
+    Which makes it the highest-volume outbound path Pulse has, and the one
     whose URLs would fill a proxy log fastest.
     """
     calls = recorder(_ok())
@@ -326,7 +326,7 @@ def test_the_secret_does_go_out_somewhere(adapter, recorder):
 def test_no_adapter_writes_the_credential_into_its_own_failure(
     adapter, status, recorder, caplog
 ):
-    """Herald must never be the one that puts the token in the message.
+    """Pulse must never be the one that puts the token in the message.
 
     ``_request`` logs each retry and ``publishing_service`` stores what was
     raised on the row, so an adapter that quotes its own *request* into a
@@ -334,7 +334,7 @@ def test_no_adapter_writes_the_credential_into_its_own_failure(
     undoing, on the unhappy path, exactly what the encryption at rest is for.
 
     The platform's response body here says nothing secret, which is what
-    isolates this claim to Herald's own formatting. The other half — a platform
+    isolates this claim to Pulse's own formatting. The other half — a platform
     that echoes the credential back at us — is not something an adapter can
     prevent, and is covered at the layer that can: see
     ``test_a_platform_that_echoes_the_token_does_not_get_it_stored``.

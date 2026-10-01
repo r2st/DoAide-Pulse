@@ -112,7 +112,7 @@ def test_an_ordinary_registration_is_untouched(client):
 def test_brackets_inside_a_string_are_not_structure(client):
     """``{`` in a title is a character, not a level.
 
-    Herald bodies carry code samples, and a fenced block full of braces is the
+    Pulse bodies carry code samples, and a fenced block full of braces is the
     most ordinary thing a post about software contains. A counter that did not
     track string literals would refuse them.
     """

@@ -2,7 +2,7 @@
 
 The cheapest working destination in the product. Mastodon's write API is a form
 POST with a bearer token — no OAuth dance, no paid tier, no approval queue — and
-the audience on the technical instances is exactly Herald's. Getting a token is
+the audience on the technical instances is exactly Pulse's. Getting a token is
 four clicks: Preferences → Development → New application, tick ``write:statuses``
 (and ``read:accounts``, which is what :meth:`verify` uses).
 
@@ -54,7 +54,7 @@ class MastodonAdapter(Adapter):
     # A status, not an article — see `Adapter.hosts_canonical`.
     hosts_canonical = False
     # The whole point of the platform is that the server is the user's choice,
-    # so `instance_url` is an address an account holder aims Herald at. See
+    # so `instance_url` is an address an account holder aims Pulse at. See
     # `Adapter._send`.
     user_supplied_host = True
     credential_fields = (
@@ -164,7 +164,7 @@ class MastodonAdapter(Adapter):
                     f"{wanted - formatting.MASTODON_LIMIT} characters over the "
                     f"{formatting.MASTODON_LIMIT}-character default, so the "
                     "toot will be shortened. Instances can raise this limit; "
-                    "Herald composes to the default either way.",
+                    "Pulse composes to the default either way.",
                     limit=formatting.MASTODON_LIMIT,
                     actual=wanted,
                 )

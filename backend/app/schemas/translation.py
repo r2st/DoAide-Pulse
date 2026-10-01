@@ -21,7 +21,7 @@ from app.services import languages
 
 
 class LanguageOut(BaseModel):
-    """One language Herald can translate into."""
+    """One language Pulse can translate into."""
 
     code: str
     #: In English, for the picker's label.

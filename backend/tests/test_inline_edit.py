@@ -63,7 +63,7 @@ def stub_llm(monkeypatch):
 
 
 def _project(**overrides) -> Project:
-    defaults = dict(user_id=1, name="Herald", slug="herald", tone=Tone.TECHNICAL)
+    defaults = dict(user_id=1, name="Pulse", slug="pulse", tone=Tone.TECHNICAL)
     defaults.update(overrides)
     return Project(**defaults)
 
@@ -73,7 +73,7 @@ def _edit(operation=EditOperation.REWRITE, **overrides):
         body_markdown=BODY,
         selection=PASSAGE,
         operation=operation,
-        title="How Herald publishes",
+        title="How Pulse publishes",
         project=_project(),
     )
     kwargs.update(overrides)

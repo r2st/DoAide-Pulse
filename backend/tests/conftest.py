@@ -381,8 +381,8 @@ def stub_github(monkeypatch, task_session):
 def project(db, user) -> Project:
     row = Project(
         user_id=user.id,
-        name="Herald",
-        slug="herald",
+        name="Pulse",
+        slug="pulse",
         description="AI marketing automation for developer projects.",
         repo_url="https://github.com/r2st/Herald",
         live_url="https://herald.example.com",

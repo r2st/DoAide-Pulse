@@ -1,13 +1,13 @@
 """projects.utm_enabled, projects.utm_campaign
 
 Attribution for the links published posts point at. Only Dev.to reports stats
-back to Herald, so without tagging there is no way to answer "which platform
+back to Pulse, so without tagging there is no way to answer "which platform
 actually sent traffic" — with it, the project's own analytics answers it for
 every platform at once.
 
 ``utm_enabled`` backfills to true, which changes behaviour for existing
 projects: their next publish starts tagging share links and ``project_url``.
-That is the intent, and it is confined to links Herald itself writes into a
+That is the intent, and it is confined to links Pulse itself writes into a
 post — ``canonical_url`` is deliberately never tagged (see app.services.utm).
 
 ``utm_campaign`` backfills to the empty string rather than the slug, because

@@ -27,7 +27,7 @@ function entry(overrides = {}) {
     publication_id: id,
     title: `Post ${id}`,
     project_id: 1,
-    project_name: "Herald",
+    project_name: "Pulse",
     content_type: "announcement",
     platform: "devto",
     status: "scheduled",
@@ -457,7 +457,7 @@ describe("moving with the keyboard", () => {
  * That matters for one assertion in particular: `fireEvent` returns `false`
  * when a handler called `preventDefault`, which is the *only* observable
  * difference between a square that will take the drop and one that will not.
- * The refusal is the browser's own "no drop" cursor, drawn because Herald
+ * The refusal is the browser's own "no drop" cursor, drawn because Pulse
  * declined to accept the dragover — there is no state, no request and no toast
  * to assert on instead.
  */
@@ -659,13 +659,13 @@ describe("changing month", () => {
 });
 
 /**
- * The aside: what Herald suggests, and on whose authority.
+ * The aside: what Pulse suggests, and on whose authority.
  *
  * Both panels were rendered by no test at all — the harness sent an empty
  * `cadence` and `suggested_slots` on every response, so the whole right-hand
  * column of the page was the empty state, permanently.
  *
- * The provenance chip is the part that earns the tests. Herald has two sources
+ * The provenance chip is the part that earns the tests. Pulse has two sources
  * for "post at 09:00 on Tuesdays": the account's own first-day view counts, and
  * a generic published table used until there are enough posts to say anything.
  * They look identical on screen. A suggestion the reader cannot interrogate is

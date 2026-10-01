@@ -1,6 +1,6 @@
 """Reaching PostgreSQL had no time limit, and the health probe inherited it.
 
-Herald bounds a *query* — ``statement_timeout`` is sent at connect time so every
+Pulse bounds a *query* — ``statement_timeout`` is sent at connect time so every
 checkout carries it — and bounds *waiting for a pooled connection*, via
 ``pool_timeout``. Neither of those covers opening a connection in the first
 place, which is the step that fails when a database goes away.
@@ -77,7 +77,7 @@ def test_zero_is_the_documented_way_to_ask_for_no_bound():
     """libpq's own spelling, matching ``db_statement_timeout_seconds``.
 
     Absent rather than ``0``: passing the parameter explicitly as zero says the
-    same thing to libpq, but leaving it out is what "Herald is not setting this"
+    same thing to libpq, but leaving it out is what "Pulse is not setting this"
     should look like in the connect args somebody is reading during an incident.
     """
     assert _connect_timeout_arg(0) == {}

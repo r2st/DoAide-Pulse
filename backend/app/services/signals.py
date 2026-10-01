@@ -6,7 +6,7 @@ looking at GitHub, which is exactly the coupling that made a second trigger kind
 impossible to add without a second content engine.
 
 A :class:`TriggerSignal` is what all four kinds collapse to: a headline, some
-prose, a list of bullet points, a link, and a key that says whether Herald has
+prose, a list of bullet points, a link, and a key that says whether Pulse has
 already seen this. A release, a feed entry, a webhook body and a Friday morning
 all fit that shape, and the generator does not need to know which one it got.
 

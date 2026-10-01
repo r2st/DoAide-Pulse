@@ -86,7 +86,7 @@ function draw() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.listProjects.mockResolvedValue([{ id: 7, name: "Herald" }]);
+  api.listProjects.mockResolvedValue([{ id: 7, name: "Pulse" }]);
   api.triggerKinds.mockResolvedValue(KINDS);
   api.listTriggers.mockResolvedValue([trigger()]);
   api.triggerEvents.mockResolvedValue([]);
@@ -112,7 +112,7 @@ describe("the list", () => {
   it("shows a hostile error message as text rather than markup", async () => {
     // `last_error` is the remote end's own words: for a webhook it is an
     // excerpt of the response body, for a feed whatever the server said. None
-    // of it is Herald's, so the endpoint picks this string, not the user. It
+    // of it is Pulse's, so the endpoint picks this string, not the user. It
     // reaches the DOM as a JSX child, which React escapes — pinned here so a
     // later "render the error as rich text" never quietly makes it a payload.
     const hostile = '<img src=x onerror="alert(1)">';
@@ -195,7 +195,7 @@ describe("the list", () => {
     expect(screen.getByText("Changelog")).toBeInTheDocument();
   });
 
-  it("offers Check now only for the kinds Herald polls", async () => {
+  it("offers Check now only for the kinds Pulse polls", async () => {
     api.listTriggers.mockResolvedValue([
       trigger({ id: 1, kind: "rss" }),
       trigger({
@@ -466,7 +466,7 @@ describe("the builder", () => {
 
   it("attaches the trigger to the project chosen, not the first one listed", async () => {
     api.listProjects.mockResolvedValue([
-      { id: 7, name: "Herald" },
+      { id: 7, name: "Pulse" },
       { id: 8, name: "Second" },
     ]);
     api.createTrigger.mockResolvedValue(trigger());
@@ -743,7 +743,7 @@ describe("rotating a webhook's secret", () => {
   });
 
   it("warns that the old URL stops working immediately", async () => {
-    // The cost of this one is not on Herald's side: whatever is POSTing to the
+    // The cost of this one is not on Pulse's side: whatever is POSTing to the
     // old URL starts failing the moment it is confirmed, and nobody is told.
     const confirm = confirming(false);
     api.listTriggers.mockResolvedValue([webhook()]);

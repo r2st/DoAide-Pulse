@@ -4,7 +4,7 @@
 [project]
 name = "herald-backend"
 version = "0.1.0"
-description = "Herald — AI marketing automation for developer projects (FastAPI backend)"
+description = "Pulse — AI marketing automation for developer projects (FastAPI backend)"
 requires-python = ">=3.11"
 dynamic = ["dependencies"]
 
@@ -25,7 +25,7 @@ addopts = "-q"
 # nothing — with it lifted the suite emitted exactly one deprecation, from
 # Starlette's test client — but it also meant the *next* one would arrive
 # silently, and a deprecation is a dated notice that some dependency is about
-# to stop working. Herald tracks FastAPI and Starlette closely enough that the
+# to stop working. Pulse tracks FastAPI and Starlette closely enough that the
 # notice period is the only warning it gets. Anything genuinely unfixable from
 # here belongs below this line with a reason attached, not under a category
 # ignore that also covers everything nobody has looked at yet.

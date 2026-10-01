@@ -2,7 +2,7 @@
 
 ``PUT /settings/connections`` and ``POST /settings/connections/{platform}/verify``
 both call ``adapter.verify``, which is a synchronous HTTP request to the
-platform made from Herald's address while the caller waits. That is the same
+platform made from Pulse's address while the caller waits. That is the same
 thing ``/webhooks/{id}/ping`` and ``/triggers/{id}/check`` do, and those have
 carried ``rate_limit_outbound_probe`` since it was added — these two did not,
 because the sweep in ``test_account_rate_limits`` looked for a list of costly
@@ -14,7 +14,7 @@ request":
 * It verifies the credentials **in the request body**, not the stored ones. So
   unlimited it answers "is this token valid?" for any token at all — a
   credential-stuffing oracle against Dev.to, Hashnode, WordPress and the rest,
-  run from Herald's address and its reputation rather than the caller's.
+  run from Pulse's address and its reputation rather than the caller's.
 * :meth:`app.services.publishers.git.GitAdapter._token` falls back to the
   install's shared ``GITHUB_TOKEN`` when the connection carries no token of its
   own. That is one budget for every account here, and 403 for all of them once

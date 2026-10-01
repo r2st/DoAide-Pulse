@@ -73,7 +73,7 @@ def _to_out(row: ContentTranslation, content: Content) -> TranslationOut:
 @router.get(
     "/languages",
     response_model=list[LanguageOut],
-    summary="Languages Herald translates into",
+    summary="Languages Pulse translates into",
     responses=errors(*AUTHENTICATED),
 )
 def list_languages(
@@ -200,10 +200,10 @@ def translate_content(
     minutes and cannot publish unattended. See
     :func:`app.services.translation.validate` for what is checked and — just as
     importantly — what is not. Nothing here judges whether the French is *good*
-    French; Herald has no way to know that, and a model asked to grade its own
+    French; Pulse has no way to know that, and a model asked to grade its own
     output says yes.
 
-    422 for a piece too short or too long to translate and for a language Herald
+    422 for a piece too short or too long to translate and for a language Pulse
     does not support; 503 when no provider answered, which is worth retrying.
     """
     content = _owned(content_id, db, user)
@@ -249,7 +249,7 @@ def delete_translation(
     to the original when there is no row, and says so in the log line.
 
     Nothing already published changes. A translation that has gone out is on the
-    platform, and deleting the row here is Herald forgetting it rather than the
+    platform, and deleting the row here is Pulse forgetting it rather than the
     post coming down — the same rule ``DELETE /content/{id}`` states.
     """
     content = _owned(content_id, db, user)

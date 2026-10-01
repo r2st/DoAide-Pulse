@@ -4,13 +4,13 @@ The translation itself is one model call. This module is mostly the second half
 — validating what came back — because that is the half that decides whether the
 feature is usable. A translation is the one kind of generated text whose author
 cannot read it: somebody publishing a Japanese version of their release notes is
-trusting Herald completely, and "it looked like Japanese" is the whole of the
+trusting Pulse completely, and "it looked like Japanese" is the whole of the
 review they are able to give. Every other generator in the tree can fall back on
 a human glance. This one cannot, so the machine checks have to be worth
 something.
 
 They are all *structural*, and that is deliberate. Nothing here judges whether
-the French is good French — Herald has no way to know that, and a model asked to
+the French is good French — Pulse has no way to know that, and a model asked to
 grade its own output says yes. What it can check is whether the translation is
 still the same artefact: the same links, the same code, the same headings, a
 plausible length, and characters belonging to the language it claims to be in.
@@ -68,7 +68,7 @@ class TranslationUnavailable(TranslationError):
 #: Not a truncation point — a refusal. Translating the first 40,000 characters
 #: of a 60,000-character article and storing the result as "the French version"
 #: produces a piece that ends mid-sentence and looks complete in every listing
-#: Herald renders. The honest failure is "this piece is too long to translate",
+#: Pulse renders. The honest failure is "this piece is too long to translate",
 #: which a user can act on by splitting it.
 #:
 #: Well under :data:`app.models.content.BODY_MARKDOWN_MAX_LENGTH` (200,000),
@@ -134,7 +134,7 @@ _FENCE = re.compile(r"^\s*```", re.MULTILINE)
 #: conservative about its end, because a false match on both sides cancels out —
 #: the check compares two sets built by the same regex.
 _URL = re.compile(r"https?://[^\s<>()\[\]\"'`]+")
-#: ATX headings. Setext headings are not matched; Herald's generator does not
+#: ATX headings. Setext headings are not matched; Pulse's generator does not
 #: emit them and a body that mixes both would report a difference that is not one.
 _HEADING = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
 
@@ -391,7 +391,7 @@ def translate(db: Session, content: Content, language: str) -> ContentTranslatio
     """
     entry = languages.get(language)
     if entry is None or entry.is_source:
-        raise TranslationError(f"{language!r} is not a language Herald translates into.")
+        raise TranslationError(f"{language!r} is not a language Pulse translates into.")
     code = entry.code
 
     body = content.body_markdown or ""

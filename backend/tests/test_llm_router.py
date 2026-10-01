@@ -231,17 +231,17 @@ def test_extract_json_picks_the_largest_object_from_a_scratchpad():
     """Reasoning models sketch before answering; the finished object is bigger."""
     raw = (
         'We need a post. Plan: {"title": "?"} '
-        'Now the answer: {"title": "Herald ships", "body_markdown": "## Why\\n\\nBecause."}'
+        'Now the answer: {"title": "Pulse ships", "body_markdown": "## Why\\n\\nBecause."}'
     )
     parsed = ai.extract_json_object(raw)
-    assert parsed["title"] == "Herald ships"
+    assert parsed["title"] == "Pulse ships"
     assert "body_markdown" in parsed
 
 
 def test_extract_json_returns_none_for_a_truncated_object():
     """A response cut off at max_tokens has no closing brace and must not
     half-parse into something that looks like a usable post."""
-    raw = '{"title": "Herald ships", "body_markdown": "## Why\\n\\nBecause we ne'
+    raw = '{"title": "Pulse ships", "body_markdown": "## Why\\n\\nBecause we ne'
     assert ai.extract_json_object(raw) is None
 
 
@@ -261,11 +261,11 @@ def test_json_completion_reports_unparseable_output_as_an_ai_error(monkeypatch):
 
 
 def test_reasoning_detection_is_conservative():
-    assert ai.looks_like_reasoning("We need to write an announcement about Herald.")
+    assert ai.looks_like_reasoning("We need to write an announcement about Pulse.")
     assert ai.looks_like_reasoning("The user wants a post. Let's write one.")
     # One incidental marker in real prose must not trip it.
     assert not ai.looks_like_reasoning(
-        "Herald ships a lot. We must be careful about rate limits, though."
+        "Pulse ships a lot. We must be careful about rate limits, though."
     )
     assert not ai.looks_like_reasoning("")
 

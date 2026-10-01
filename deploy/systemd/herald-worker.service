@@ -1,5 +1,5 @@
 [Unit]
-Description=Herald Celery worker (generation, publishing, metrics)
+Description=Pulse Celery worker (generation, publishing, metrics)
 Documentation=https://github.com/r2st/Herald
 After=network.target postgresql.service redis-server.service
 Wants=postgresql.service redis-server.service

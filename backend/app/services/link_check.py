@@ -3,7 +3,7 @@
 Free models invent plausible documentation URLs. Not malformed ones — well-formed
 links to pages that have never existed, `https://fastapi.tiangolo.com/advanced/
 custom-middleware/`, the sort of thing you only catch by clicking. A 404 in a
-published post is the most visible failure mode Herald has, and it costs a few
+published post is the most visible failure mode Pulse has, and it costs a few
 HTTP requests to rule out.
 
 The verdict space is deliberately three-valued, and that is the whole design:
@@ -109,7 +109,7 @@ def _unreachable_for_a_reader(url: str) -> str | None:
 
     Also the reason nothing below resolves a hostname twice: the check runs on
     the server, so a link to ``localhost`` or ``10.0.0.5`` would otherwise turn
-    the checker into a probe of Herald's own network. Refusing those is both the
+    the checker into a probe of Pulse's own network. Refusing those is both the
     correct editorial verdict — the link is broken for everyone who is not on
     this box — and the right thing to do with a URL a language model wrote.
 
@@ -147,7 +147,7 @@ def unreachable_reason(url: str) -> str | None:
     """Why *url* points somewhere no outside caller could reach, or ``None``.
 
     The same pre-flight the link checker runs, exposed for the other places
-    Herald is handed a URL by a user or a model and then asks the server to open
+    Pulse is handed a URL by a user or a model and then asks the server to open
     it — outbound webhooks above all. Resolving the host and refusing loopback,
     private and link-local addresses is what stops "call this URL when a post
     goes out" from being a request to read the cloud metadata endpoint.
@@ -199,7 +199,7 @@ def _follow_safely(
     buffers the entire body first to hand back a ``.text`` this function never
     looks at. On a HEAD that costs nothing; the GET retry below is the problem,
     and it is not a hypothetical one — the retry exists precisely for hosts that
-    refuse HEAD, so the bodies Herald ends up fetching are exactly the ones it
+    refuse HEAD, so the bodies Pulse ends up fetching are exactly the ones it
     did not choose to. The URL comes out of a user's document, the response size
     is decided by whoever owns it, and :func:`check` runs
     ``link_check_max_urls`` of these at once inside a request somebody is

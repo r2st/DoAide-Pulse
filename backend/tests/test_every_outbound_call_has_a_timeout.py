@@ -4,7 +4,7 @@ All eleven call sites already pass one, so this fixes nothing. It exists because
 of what the default is when somebody forgets: ``requests`` and ``smtplib`` wait
 for ever, and a socket that never returns is not an error any retry, circuit
 breaker or ``except`` clause in this codebase can see. The worker thread is
-simply gone. Herald runs two uvicorn workers and a Celery pool, so a handful of
+simply gone. Pulse runs two uvicorn workers and a Celery pool, so a handful of
 those is the whole application, and the symptom — everything hangs, nothing logs
 — points nowhere near the line that caused it.
 

@@ -193,7 +193,7 @@ def purge_old_preview_links() -> dict:
 def purge_old_llm_usage() -> dict:
     """Drop LLM accounting rows past ``llm_usage_retention_days``.
 
-    The one table in Herald written on a path that nothing rate-limits: a row
+    The one table in Pulse written on a path that nothing rate-limits: a row
     per completion *attempt*, so a provider chain failing over three ways writes
     three, and the autopilot sweep spends them on a schedule whether or not
     anybody asked for a piece. Left alone it is the table that grows fastest and

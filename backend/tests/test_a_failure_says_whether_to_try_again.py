@@ -40,7 +40,7 @@ def _db_error(kind: type[Exception]) -> Exception:
 
 
 RETRYABLE = [
-    # The platform said "later", in each of the three dialects Herald speaks.
+    # The platform said "later", in each of the three dialects Pulse speaks.
     RateLimited("slow down", retry_after=30.0),
     GitHubRateLimited("rate limited"),
     LLMRateLimited("quota", retry_after=60.0),
@@ -157,7 +157,7 @@ def test_a_response_status_that_means_not_ever_is_permanent(status):
 def test_a_status_error_is_read_off_the_response_not_off_its_base_class():
     """``HTTPStatusError`` is an ``httpx.HTTPError`` sitting next to the
     transport types, and the transport arm calls every one of those retryable.
-    A 401 from a platform is the single most common permanent failure Herald
+    A 401 from a platform is the single most common permanent failure Pulse
     has, so being generalised into "try again" would misreport the majority of
     real credential problems."""
     assert isinstance(_status_error(401), httpx.HTTPError)

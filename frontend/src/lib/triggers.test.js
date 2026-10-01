@@ -30,7 +30,7 @@ describe("fieldsFor", () => {
     }
   });
 
-  it("only offers every_hours on the kinds Herald polls", () => {
+  it("only offers every_hours on the kinds Pulse polls", () => {
     for (const kind of Object.keys(KIND_FIELDS)) {
       const has = fieldsFor(kind).some((f) => f.key === "every_hours");
       expect(has).toBe(isPolled(kind));
@@ -217,7 +217,7 @@ describe("triggerHealth", () => {
 });
 
 describe("isPolled", () => {
-  it("is true for the kinds Herald has to go and look at", () => {
+  it("is true for the kinds Pulse has to go and look at", () => {
     expect(isPolled("rss")).toBe(true);
     expect(isPolled("github")).toBe(true);
     expect(isPolled("schedule")).toBe(true);

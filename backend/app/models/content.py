@@ -93,7 +93,7 @@ def clamp_body(body_markdown: str, *, limit: int = BODY_MARKDOWN_MAX_LENGTH) -> 
     :data:`BODY_MARKDOWN_MAX_LENGTH` was described as the ceiling "the paths
     that build a body *without* going through that schema apply", and exactly
     one of them did — :mod:`app.services.templates`, which caps a rendered
-    template at ``BODY_LIMIT``. The path that actually produces most of Herald's
+    template at ``BODY_LIMIT``. The path that actually produces most of Pulse's
     bodies did not: :func:`app.services.content_generator.content_from_generated`
     writes ``generated.body_markdown`` into the column as it came out of the
     model.
@@ -109,7 +109,7 @@ def clamp_body(body_markdown: str, *, limit: int = BODY_MARKDOWN_MAX_LENGTH) -> 
     a task with a soft time limit.
 
     A generation reaching this cap is a malfunction, not a long article. The
-    longest shape Herald asks for is a 1200-word tutorial, and the token budget
+    longest shape Pulse asks for is a 1200-word tutorial, and the token budget
     derived from it cannot produce 30,000 words — so the value here is not a
     judgement about article length, it is where a runaway completion stops being
     stored whole.
@@ -351,7 +351,7 @@ class Content(Base, TimestampMixin):
     # ---- Media ----
     #: The image the platform shows beside this post in its feed, and the one
     #: LinkedIn and Twitter use for the link preview. An absolute URL rather than
-    #: an upload: every destination Herald publishes to takes a URL and fetches
+    #: an upload: every destination Pulse publishes to takes a URL and fetches
     #: it itself, so hosting the bytes would add a storage story to the deploy
     #: for no gain on the platform side.
     cover_image_url: Mapped[str | None] = mapped_column(String(700))
@@ -457,7 +457,7 @@ class Content(Base, TimestampMixin):
         cannot answer: archiving moves the column and leaves the post up, so a
         guard that read ``status == PUBLISHED`` lasted exactly until the piece
         was archived. The rows are the record of what went out; the column is
-        what Herald is showing. ``publications`` is ``lazy="selectin"``, so on a
+        what Pulse is showing. ``publications`` is ``lazy="selectin"``, so on a
         loaded piece this costs no query of its own.
         """
         from app.models.publication import PublicationStatus

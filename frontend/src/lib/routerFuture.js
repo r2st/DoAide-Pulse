@@ -17,7 +17,7 @@
  *   flashing the nearest fallback.
  * - `v7_relativeSplatPath` fixes relative link resolution inside a splat route
  *   (`path="*"`), where v6 resolves against the matched splat rather than the
- *   route that declared it. Herald has one splat — the catch-all redirect in
+ *   route that declared it. Pulse has one splat — the catch-all redirect in
  *   `App.jsx` — so this is a no-op today and a trap disarmed for the next one.
  *
  * Exported as a single frozen object so the app and every test mount the same

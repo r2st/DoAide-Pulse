@@ -1,4 +1,4 @@
-"""Deactivating an account stops the work Herald does on its behalf.
+"""Deactivating an account stops the work Pulse does on its behalf.
 
 ``User.is_active`` was honoured everywhere a request carried a token — login,
 :func:`app.deps.get_current_user`, the password-reset flow, the weekly digest —
@@ -304,7 +304,7 @@ def _draft(db, project) -> Content:
 def test_a_dormant_accounts_preview_link_stops_resolving(db, dormant_project):
     """The one door deactivation left open.
 
-    Every other switch-off in this file is checked at the moment Herald acts.
+    Every other switch-off in this file is checked at the moment Pulse acts.
     A preview link is checked when a *stranger* acts: no token, no account, an
     anonymous read of an unpublished draft, granted before the deactivation and
     outliving it by up to ``preview_link_max_ttl_hours``.
@@ -383,11 +383,11 @@ def _published(db, project) -> Content:
 
 
 def test_a_dormant_accounts_feed_stops_being_served(client, db, dormant_project):
-    """The last thing Herald kept doing for a switched-off account.
+    """The last thing Pulse kept doing for a switched-off account.
 
     Unlike a preview link there is no expiry to run out: the feed would have
     gone on rendering the account's project metadata to every subscriber on a
-    timer, indefinitely, from Herald's own domain.
+    timer, indefinitely, from Pulse's own domain.
     """
     _published(db, dormant_project)
 
@@ -431,7 +431,7 @@ def test_a_feed_stops_the_moment_the_account_is_switched_off(client, db, user, p
 def test_pausing_a_project_leaves_its_feed_alone(client, db, project):
     """``Project.is_active`` is a generation switch, not a retraction.
 
-    Pausing stops Herald writing *new* pieces. Dropping the feed of what was
+    Pausing stops Pulse writing *new* pieces. Dropping the feed of what was
     already published would strand every subscriber over a setting that says
     nothing about them — and the owner is still signed in and able to ask.
     """
@@ -458,7 +458,7 @@ def test_a_live_accounts_feed_is_unaffected(client, db, project):
 
 
 def test_work_already_queued_still_goes_out(db, dormant_project):
-    """Deactivation stops Herald starting new work, not finishing instructed work.
+    """Deactivation stops Pulse starting new work, not finishing instructed work.
 
     A queued publication is an explicit instruction that predates the
     deactivation, and dropping it would strand the row with no error on it and

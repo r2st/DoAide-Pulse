@@ -20,7 +20,7 @@ with the whole response — chain-of-thought *and* the answer — parked in
 
 Asking for JSON sidesteps the whole problem: the object is still in there, and
 :func:`extract_json_object` finds it. That is why every generator prompt in
-Herald asks for a JSON envelope rather than raw prose.
+Pulse asks for a JSON envelope rather than raw prose.
 """
 from __future__ import annotations
 
@@ -173,7 +173,7 @@ def looks_like_reasoning(text: str) -> bool:
     return sum(1 for marker in _REASONING_MARKERS if marker in head) >= 2
 
 
-#: Scripts that have no business appearing in the English copy Herald writes.
+#: Scripts that have no business appearing in the English copy Pulse writes.
 #:
 #: Greek and the Latin supplements are deliberately *absent*. "a lambda folded
 #: over sigma", "Bücher", and the typographic dashes, curly quotes and ellipses
@@ -228,7 +228,7 @@ def stray_script_runs(
     thrown away: it is one bad word in an otherwise good article.
 
     Text genuinely *written* in one of these scripts returns nothing — see
-    :data:`_MULTILINGUAL_SHARE`. Herald writes English today, but a body that is
+    :data:`_MULTILINGUAL_SHARE`. Pulse writes English today, but a body that is
     thirty percent Devanagari is a translation, not a glitch, and this is the
     wrong gate to fail it at.
 
@@ -328,7 +328,7 @@ def stray_letter_splices(
     """Words carrying a letter that does not belong to them.
 
     The companion to :func:`stray_script_runs`, for the half of the same failure
-    that one cannot see. That gate looks for *scripts* Herald never writes in,
+    that one cannot see. That gate looks for *scripts* Pulse never writes in,
     and it deliberately exempts Greek and the Latin supplements so that "a lambda
     folded over sigma", "Bücher" and "résumé" survive. The sampler slips inside
     those ranges too, and when it does the result reads as an ordinary word::
@@ -427,7 +427,7 @@ def stray_letter_splices(
     return seen
 
 
-#: Wrappers for the parts of a prompt Herald does not write. See
+#: Wrappers for the parts of a prompt Pulse does not write. See
 #: :func:`quote_source_material`.
 #:
 #: Defined here rather than in :mod:`app.services.content_generator`, which is
@@ -447,13 +447,13 @@ def quote_source_material(text: str) -> str:
     The prose case for this lives on
     :func:`app.services.content_generator._quote_source_material`, which is now
     a thin alias of this function; the argument there is about an activity
-    digest, and it applies unchanged to any text Herald did not write. The
+    digest, and it applies unchanged to any text Pulse did not write. The
     closing marker is stripped from the quoted text so it cannot be ended early,
     and the opening one so a second quote cannot be started.
 
     Not a security boundary — nothing built out of a prompt is. It is the
     difference between text that is obviously quoted and text that reads as
-    though Herald wrote it.
+    though Pulse wrote it.
     """
     inner = text.replace(FENCE_CLOSE, "").replace(FENCE_OPEN, "")
     return f"{FENCE_OPEN}\n{inner}\n{FENCE_CLOSE}"

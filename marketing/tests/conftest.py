@@ -36,7 +36,7 @@ PLAN = {
         },
         {
             "key": "herald",
-            "name": "Herald",
+            "name": "Pulse",
             "description": "Marketing automation for developers.",
             "live_url": "https://herald.example.com",
             "utm_enabled": True,
@@ -75,7 +75,7 @@ PLAN = {
         {
             "key": "launch",
             "project": "herald",
-            "title": "Herald Ships",
+            "title": "Pulse Ships",
             "body_file": "launch.md",
             "platforms": ["bluesky"],
         },
@@ -95,7 +95,7 @@ def plan_dir(tmp_path: Path) -> Path:
     for name, body in (
         ("reconciliation.md", "# Where ITC Leaks\n\nFour problems, one name.\n"),
         ("matching.md", "# Matching\n\nExact string matching does not work.\n"),
-        ("launch.md", "# Herald\n\nIt writes the posts.\n"),
+        ("launch.md", "# Pulse\n\nIt writes the posts.\n"),
     ):
         (content / name).write_text(body, encoding="utf-8")
 

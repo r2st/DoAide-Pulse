@@ -1,6 +1,6 @@
 """content.cover_image_url
 
-The one field every blogging platform surfaces in its feed and Herald had no
+The one field every blogging platform surfaces in its feed and Pulse had no
 column for. Stored as an absolute URL rather than an uploaded file: Dev.to,
 Hashnode, Medium and WordPress all fetch the image from their own servers, so
 holding the bytes here would add object storage to the deploy and change nothing

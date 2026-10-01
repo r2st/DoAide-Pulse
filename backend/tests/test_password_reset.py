@@ -262,7 +262,7 @@ def test_purge_expired_clears_spent_and_stale_rows(client, db, user, outbox):
 # --------------------------------------------------------------------------- #
 #
 # The threat this answers is the ordinary one: somebody resets their password
-# *because* the account has been taken. Herald's access tokens are stateless
+# *because* the account has been taken. Pulse's access tokens are stateless
 # JWTs with no revocation list, so before `tokens_valid_from` the reset changed
 # what the next sign-in needed and nothing else — the attacker's bearer token
 # went on working for the rest of ACCESS_TOKEN_EXPIRE_MINUTES.
@@ -342,7 +342,7 @@ def test_an_account_that_never_reset_accepts_its_tokens(client, user, auth, db):
 
 
 def test_a_token_with_no_iat_is_refused_once_a_reset_has_happened(client, user, db):
-    """A token Herald did not mint cannot be placed in time, so it cannot be
+    """A token Pulse did not mint cannot be placed in time, so it cannot be
     shown to postdate the reset — and is refused rather than trusted."""
     import jwt
 

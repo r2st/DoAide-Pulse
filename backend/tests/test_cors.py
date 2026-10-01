@@ -1,6 +1,6 @@
 """CORS policy and application-level security middleware.
 
-Herald authenticates with a bearer token the SPA sends explicitly. Nothing is
+Pulse authenticates with a bearer token the SPA sends explicitly. Nothing is
 carried in a cookie, so credentialed cross-origin requests are neither needed
 nor allowed.
 
@@ -36,7 +36,7 @@ def test_simple_request_response_carries_no_credentials_header(client):
 
 
 def test_authorization_header_is_still_allowed(client):
-    """Removing credentials must not break the way Herald actually authenticates."""
+    """Removing credentials must not break the way Pulse actually authenticates."""
     resp = client.options("/api/v1/auth/login", headers=PREFLIGHT_HEADERS)
     allowed = resp.headers["access-control-allow-headers"].lower()
     assert "authorization" in allowed

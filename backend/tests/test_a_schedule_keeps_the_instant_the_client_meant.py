@@ -44,7 +44,7 @@ from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import scheduling
 
 #: The two sides of a US daylight-saving transition. Eastern is the zone
-#: Herald's cadence table is written against, so it is the one a user is most
+#: Pulse's cadence table is written against, so it is the one a user is most
 #: likely to be dragging a calendar item around in.
 EDT = timezone(-timedelta(hours=4))
 EST = timezone(-timedelta(hours=5))
@@ -125,7 +125,7 @@ def test_a_wall_time_that_does_not_exist_locally_is_still_an_instant():
     """02:30 on the spring-forward morning never happens in New York.
 
     It is still a perfectly good instant when the client says which side of the
-    jump it meant, and refusing it would be Herald having an opinion about a
+    jump it meant, and refusing it would be Pulse having an opinion about a
     calendar it does not own. UTC has no transitions, so there is nothing here
     to disambiguate once the offset has been applied.
     """

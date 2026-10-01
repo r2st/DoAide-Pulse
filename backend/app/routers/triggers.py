@@ -2,12 +2,12 @@
 
 ``POST /triggers/inbound/{token}`` is unauthenticated on purpose: the sender is
 a GitHub Action, a Zapier zap, a status-page integration — something that has a
-URL and no way to hold a Herald bearer token. The token in the path *is* the
+URL and no way to hold a Pulse bearer token. The token in the path *is* the
 credential, which is why it is 256 bits of ``secrets.token_urlsafe`` and why the
 endpoint carries its own rate limit rather than relying on the authenticated
 surface's.
 
-A trigger may additionally require an HMAC signature, in the same format Herald
+A trigger may additionally require an HMAC signature, in the same format Pulse
 uses for its own outbound webhooks. That upgrade is worth taking whenever the
 sender can do it: a URL leaks by being pasted into a chat window, and a
 signature makes a leaked URL useless on its own.
@@ -618,14 +618,14 @@ class _InboundHeaders:
 def _verified_signature(trigger: Trigger, raw: bytes, headers: _InboundHeaders) -> str:
     """The signature that authenticated this request, or ``""`` if none did.
 
-    Both schemes are accepted and either is sufficient. Herald's own
-    (``X-Herald-Signature``) is what its docs tell an integrator to send;
+    Both schemes are accepted and either is sufficient. Pulse's own
+    (``X-Pulse-Signature``) is what its docs tell an integrator to send;
     GitHub's (``X-Hub-Signature-256``) is what GitHub sends and cannot be talked
     out of, and a GitHub push event is the most likely thing this endpoint ever
     receives. Refusing the latter meant a GitHub webhook could only be wired up
     with ``require_signature`` off.
 
-    Herald's is checked first because it is the stricter of the two — it carries
+    Pulse's is checked first because it is the stricter of the two — it carries
     a timestamp and so is bounded to a five-minute window on its own, where
     GitHub's is bounded by nothing but the replay nonce.
 
@@ -637,7 +637,7 @@ def _verified_signature(trigger: Trigger, raw: bytes, headers: _InboundHeaders) 
     secret = trigger_service.read_secret(trigger)
     if not secret:
         return ""
-    # Decoded once, here, and only for Herald's scheme — which signs the decoded
+    # Decoded once, here, and only for Pulse's scheme — which signs the decoded
     # form. GitHub's signs the bytes; see `verify_github` on why the two must
     # not share an input.
     if headers.herald_signature and webhooks.verify(
@@ -700,7 +700,7 @@ def _ingest(db: Session, token: str, raw: bytes, headers: _InboundHeaders) -> di
 
     signal = trigger_service.signal_from_webhook(trigger, payload)
     # Replay protection, layered *under* the sender's own dedupe rather than
-    # over it. A trigger with `dedupe_path` configured has told Herald what
+    # over it. A trigger with `dedupe_path` configured has told Pulse what
     # makes its events unique and that answer wins; this only fills the gap
     # where there was no answer at all, which is the default and was therefore
     # every trigger nobody had configured. See `webhooks.replay_nonce` for why

@@ -1,6 +1,6 @@
 """One piece's engagement, added up across everywhere it went.
 
-Herald already collects this and already stores it. :mod:`app.tasks.metrics_tasks`
+Pulse already collects this and already stores it. :mod:`app.tasks.metrics_tasks`
 polls each live publication, :class:`app.models.metrics.ContentMetric` keeps the
 series append-only, and ``/api/v1/analytics/*`` reads it back — but every one of
 those reads is organised by *publication*: one platform's numbers, or one

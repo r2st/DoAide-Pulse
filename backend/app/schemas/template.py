@@ -105,7 +105,7 @@ class TemplateBase(BaseModel):
         shadowed = reserved_names(declared)
         if shadowed:
             raise ValueError(
-                f"{', '.join(shadowed)} clashes with a built-in Herald fills in "
+                f"{', '.join(shadowed)} clashes with a built-in Pulse fills in "
                 f"for you ({', '.join(sorted(BUILTINS))}). Pick another name."
             )
 
@@ -116,7 +116,7 @@ class TemplateBase(BaseModel):
             raise ValueError(
                 "This template uses "
                 + ", ".join(f"{{{{{name}}}}}" for name in unknown)
-                + ", which is neither a variable you declared nor one Herald "
+                + ", which is neither a variable you declared nor one Pulse "
                 "fills in. Declare it, or fix the spelling."
             )
 

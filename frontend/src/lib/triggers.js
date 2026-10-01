@@ -54,7 +54,7 @@ const COMMON_FIELDS = [
   },
 ];
 
-/** The poll interval, for the kinds Herald has to go and look at. */
+/** The poll interval, for the kinds Pulse has to go and look at. */
 const EVERY_HOURS = {
   key: "every_hours",
   label: "Check every",

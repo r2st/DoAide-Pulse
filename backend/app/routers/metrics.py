@@ -7,7 +7,7 @@ migration all describe data as being "for ``/api/v1/metrics``". The write paths
 were all live; only the reader was missing. This is it.
 
 Distinct from ``/api/v1/analytics/*``, which is about how the *posts* did, for
-the person who wrote them. This is about how *Herald* is doing, for the person
+the person who wrote them. This is about how *Pulse* is doing, for the person
 running it: what the quota went on, whether the autopilot is scanning, whether
 publishing is landing, which upstreams are standing down.
 

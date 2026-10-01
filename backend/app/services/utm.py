@@ -1,6 +1,6 @@
-"""Campaign tagging for the links Herald publishes.
+"""Campaign tagging for the links Pulse publishes.
 
-Herald can see how a post did *on the platform* only where the platform has a
+Pulse can see how a post did *on the platform* only where the platform has a
 stats API, which today is Dev.to and nowhere else. What it can always see —
 through whatever analytics the project's own site already runs — is the traffic
 that arrives from a post. Tagging the outbound link is what makes that arrival
@@ -32,7 +32,7 @@ _KEYS = ("utm_source", "utm_medium", "utm_campaign", "utm_content")
 #: ``/docs/api_(v2)``. Reading the address as "anything up to the first ``)``"
 #: stopped one character early and then took the article's ``)`` as the link's
 #: own, so a rewrite published ``…/api_(v2?utm_source=devto)`` — a dead link,
-#: on the user's own domain, in prose Herald had been asked only to tag.
+#: on the user's own domain, in prose Pulse had been asked only to tag.
 #:
 #: One level of nesting, not arbitrary depth, which a regex cannot do. Anything
 #: deeper or unbalanced simply fails to match and is left exactly as written —
@@ -113,7 +113,7 @@ def tag_markdown_links(body: str, *, host: str, **params: str) -> str:
     """Campaign-tag the Markdown links in *body* that point at *host*.
 
     This is where the attribution actually comes from. A Dev.to article is read
-    on Dev.to and Herald never sees a click; what the project's own analytics
+    on Dev.to and Pulse never sees a click; what the project's own analytics
     sees is a visit arriving from the link inside that article. Tagging the
     outbound ``project_url`` alone would not touch it, because the blogging
     adapters put the body on the page and nothing else.

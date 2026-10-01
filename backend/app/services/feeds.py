@@ -2,18 +2,18 @@
 
 Almost every source a marketing team cares about already publishes a feed: a
 changelog, a status page, a competitor's blog, a GitHub releases atom. So the
-RSS trigger is the widest net Herald can cast without asking anyone to build an
+RSS trigger is the widest net Pulse can cast without asking anyone to build an
 integration — which is also why the URL is the least trustworthy input in the
 system, and why three quite boring precautions are load-bearing here.
 
-**The URL is validated like a webhook's.** It is typed into a box and Herald's
+**The URL is validated like a webhook's.** It is typed into a box and Pulse's
 server is what opens it, so the same SSRF checks apply — loopback, private and
 link-local space are refused, and redirects are not followed. See
 ``app.services.webhooks``, whose reasoning this borrows wholesale.
 
 **The response is capped before it is parsed, and its DTD is refused.** The cap
 (:data:`MAX_FEED_BYTES`) bounds what comes off the socket; a feed that does not
-fit in two megabytes is not a feed Herald can work with anyway. It does *not*
+fit in two megabytes is not a feed Pulse can work with anyway. It does *not*
 bound what parsing that response costs, which is the whole point of the "billion
 laughs" family of attacks: ``xml.etree`` expands internal entities eagerly, so a
 few hundred bytes of nested ``<!ENTITY>`` declarations become gigabytes of
@@ -95,7 +95,7 @@ def validate_feed_url(url: str) -> str:
     """Return *url* stripped, or raise :class:`FeedError`.
 
     Shares the outbound-webhook validator rather than reimplementing it: the
-    question ("will Herald's server open this?") is identical, and two answers
+    question ("will Pulse's server open this?") is identical, and two answers
     to it would eventually disagree.
     """
     try:
@@ -177,7 +177,7 @@ def _reject_dtd_entities(xml: str | bytes) -> None:
     ``StartElementHandler`` aborts the scan at the root element: entity
     declarations live in the DTD, the DTD precedes the root, so once the root
     opens there is nothing left to find. That is what keeps this a scan of the
-    prolog rather than a second full parse of every feed Herald reads.
+    prolog rather than a second full parse of every feed Pulse reads.
 
     External entities are refused by the same handler, which matters for a
     different reason: expat will not *fetch* one by default, but a document that
@@ -191,7 +191,7 @@ def _reject_dtd_entities(xml: str | bytes) -> None:
 
     def _on_entity_decl(name: str, *_args: object) -> None:
         raise FeedError(
-            f"That feed declares an XML entity ({name!r}). Herald does not parse "
+            f"That feed declares an XML entity ({name!r}). Pulse does not parse "
             "feeds with a document type definition."
         )
 
@@ -277,13 +277,13 @@ def _client() -> httpx.Client:
     A function rather than an inline constructor so tests can hand :func:`fetch`
     a transport instead of a socket. ``follow_redirects=False`` for the same
     reason webhook delivery refuses redirects: a 3xx can move a validated public
-    URL to somewhere inside the network, and Herald cannot tell which it is.
+    URL to somewhere inside the network, and Pulse cannot tell which it is.
     """
     return httpx.Client(
         timeout=settings.feed_timeout_seconds,
         follow_redirects=False,
         headers={
-            "User-Agent": f"Herald/0.1 feeds (+{settings.openrouter_app_url})",
+            "User-Agent": f"Pulse/0.1 feeds (+{settings.openrouter_app_url})",
             "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml",
         },
     )
@@ -299,7 +299,7 @@ def _read_capped(http: httpx.Client, target: str) -> bytes:
     with http.stream("GET", target) as response:
         if response.is_redirect:
             raise FeedError(
-                f"The feed returned {response.status_code} — Herald does not follow "
+                f"The feed returned {response.status_code} — Pulse does not follow "
                 "feed redirects. Use the URL it points at."
             )
         if response.status_code >= 400:
@@ -312,7 +312,7 @@ def _read_capped(http: httpx.Client, target: str) -> bytes:
             if size > MAX_FEED_BYTES:
                 raise FeedError(
                     f"That feed is larger than {MAX_FEED_BYTES // (1024 * 1024)} MB, "
-                    "which is more than Herald will parse."
+                    "which is more than Pulse will parse."
                 )
             chunks.append(chunk)
     return b"".join(chunks)

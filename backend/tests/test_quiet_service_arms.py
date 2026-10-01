@@ -245,14 +245,14 @@ def smtp(monkeypatch):
     monkeypatch.setattr(settings, "smtp_port", 587)
     monkeypatch.setattr(settings, "smtp_user", "herald@example.com")
     monkeypatch.setattr(settings, "smtp_password", "app-password")
-    monkeypatch.setattr(settings, "smtp_from", "Herald <herald@example.com>")
+    monkeypatch.setattr(settings, "smtp_from", "Pulse <herald@example.com>")
     return _FakeSMTP
 
 
 def test_an_html_body_is_added_as_the_preferred_alternative(smtp):
     """Order is the assertion: the text part has to survive as the fallback.
 
-    The digest is the one mail Herald sends with both, and a client that cannot
+    The digest is the one mail Pulse sends with both, and a client that cannot
     render HTML — or a user who has switched it off — gets the text part only
     if it is still there underneath.
     """

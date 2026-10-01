@@ -42,7 +42,7 @@ def _project(**overrides) -> Project:
     defaults = dict(
         id=1,
         user_id=1,
-        name="Herald",
+        name="Pulse",
         slug="herald",
         description="Updates.",
         live_url="https://herald.example.com",
@@ -151,10 +151,10 @@ def test_tabs_and_newlines_are_kept():
 
 
 def test_a_control_character_in_the_project_name_is_dropped_too():
-    xml = rss.build_feed(_project(name="Her\x00ald"), [], self_url=SELF)
+    xml = rss.build_feed(_project(name="Pul\x00se"), [], self_url=SELF)
 
     root = ElementTree.fromstring(xml)
-    assert root.find("channel/title").text == "Herald"
+    assert root.find("channel/title").text == "Pulse"
 
 
 def test_a_control_character_in_the_request_url_is_dropped():

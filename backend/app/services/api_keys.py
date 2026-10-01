@@ -5,14 +5,14 @@ The token is three parts joined by underscores::
     hrld_a1b2c3d4e5f6_9tX...43-urlsafe-characters
 
 * ``hrld`` — a fixed marker. Present so a leaked string is recognisably a
-  Herald credential: GitHub's and GitLab's secret scanners match on prefixes,
+  Pulse credential: GitHub's and GitLab's secret scanners match on prefixes,
   and a token that looks like any other base64 blob is one nobody can grep the
   logs for either.
 * the **prefix** — twelve hex characters, stored in the clear and unique. This
   is the lookup handle, and the reason authentication is one indexed SELECT
   rather than a table scan comparing digests.
 * the **secret** — 32 bytes from :mod:`secrets`, URL-safe. The only part that
-  matters, and the only part Herald does not keep.
+  matters, and the only part Pulse does not keep.
 
 The stored form is a plain SHA-256 of the whole token. That is a deliberate
 departure from :func:`app.security.hash_password`, which uses bcrypt at a work
@@ -51,7 +51,7 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-#: Marks the string as a Herald credential. See the module docstring.
+#: Marks the string as a Pulse credential. See the module docstring.
 TOKEN_MARKER = "hrld"
 
 #: Bytes of randomness in the lookup prefix. Six bytes is twelve hex characters
@@ -118,7 +118,7 @@ def split(token: str) -> str | None:
     credential that is fine, reproducible on about half the keys ever minted.
 
     Splitting into exactly three parts and checking the marker; anything else is
-    not a Herald token and is refused without touching the database.
+    not a Pulse token and is refused without touching the database.
     """
     parts = token.split("_", 2)
     if len(parts) != 3 or parts[0] != TOKEN_MARKER:
@@ -238,7 +238,7 @@ def authenticate(
         return None
     prefix = split(token)
     if prefix is None:
-        logger.debug("api key refused: the header is not a Herald token")
+        logger.debug("api key refused: the header is not a Pulse token")
         return None
 
     key = db.scalar(select(ApiKey).where(ApiKey.prefix == prefix))

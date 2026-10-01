@@ -281,7 +281,7 @@ def test_a_wait_inside_the_ceiling_is_still_honoured_in_process(
 # --------------------------------------------------------------------------- #
 #
 # ``Retry-After`` is not a 429 header (RFC 9110 §10.2.3) — a 503 carries it to
-# announce a maintenance window, and it answers the same question. Herald read
+# announce a maintenance window, and it answers the same question. Pulse read
 # it only on 429, so a platform saying "back in an hour" got the one-second
 # backoff, the whole in-process budget inside the first blink of the outage, and
 # then a row parked on ``retry_defer_seconds`` as though nothing had been said.

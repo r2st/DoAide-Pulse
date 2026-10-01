@@ -1,6 +1,6 @@
 """What a post looks like when somebody pastes its link into a feed.
 
-Herald already gets the post onto the platform. This module is about the *other*
+Pulse already gets the post onto the platform. This module is about the *other*
 place every post appears: the unfurled card in a timeline, a Slack channel or a
 LinkedIn share. That card is assembled by the crawler from Open Graph and
 Twitter Card meta tags, and when they are missing the network invents something
@@ -10,7 +10,7 @@ rectangle. The post is fine; the thing 90% of people see is not.
 Two jobs, deliberately kept apart:
 
 * :func:`meta_tags` produces the tags themselves, for the one destination where
-  Herald controls the page — a Git-published blog. Everywhere else the platform
+  Pulse controls the page — a Git-published blog. Everywhere else the platform
   writes its own head and ignores anything we send.
 
 * :func:`previews` and :func:`audit` answer "what will this look like, and what
@@ -130,7 +130,7 @@ def card_image(cover_image_url: str | None) -> str | None:
     both need it and used to answer it separately: the preview refused a
     relative path (correctly — see :data:`_ABSOLUTE_URL`) while ``meta_tags``
     emitted it anyway, together with ``twitter:card: summary_large_image``. That
-    pairing is the worst of the three outcomes, and it is the one Herald
+    pairing is the worst of the three outcomes, and it is the one Pulse
     *published*: :meth:`app.services.publishers.git.GitAdapter.build_file`
     writes these keys into a real page's front matter, so the crawler was told
     to lay out the large card and handed an image it cannot resolve — the grey

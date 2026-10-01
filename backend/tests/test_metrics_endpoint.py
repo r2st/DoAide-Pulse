@@ -252,7 +252,7 @@ def test_a_row_outside_the_window_is_not_counted(client, auth, db, project):
 def test_average_generation_time_comes_from_the_content_purpose(
     client, auth, db, project
 ):
-    """Herald stores no generation duration, so this is the only honest source.
+    """Pulse stores no generation duration, so this is the only honest source.
 
     The headline call is deliberately much slower: if the average were taken
     over every purpose it would be 3000, and the number would stop meaning

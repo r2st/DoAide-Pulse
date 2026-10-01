@@ -34,7 +34,7 @@ KINDS = "/api/v1/triggers/kinds"
 
 #: Dependencies that mean "a valid credential got you here".
 #:
-#: Two of them, because Herald has two kinds of caller. ``get_current_user``
+#: Two of them, because Pulse has two kinds of caller. ``get_current_user``
 #: resolves a person's bearer token; ``require_api_key`` — the closure
 #: :func:`app.deps.require_scope` returns — resolves a machine's ``X-API-Key``
 #: against the ``api_keys`` table and its scopes. A route behind either one is
@@ -193,7 +193,7 @@ def feed_project(project, db):
     db.add(
         Content(
             project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
-            title="Herald 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+            title="Pulse 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
         )
     )
     db.commit()

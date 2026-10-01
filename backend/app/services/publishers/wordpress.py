@@ -91,7 +91,7 @@ class WordPressAdapter(Adapter):
             "title": request.title,
             # The cover is inlined as the first block rather than set as
             # `featured_media`: that field takes a media *id*, so using it means
-            # uploading the bytes to /wp/v2/media first. Herald holds a URL, not
+            # uploading the bytes to /wp/v2/media first. Pulse holds a URL, not
             # the image, and the first image in the content is what most themes
             # fall back to for the archive thumbnail anyway.
             "content": formatting.lead_image_html(

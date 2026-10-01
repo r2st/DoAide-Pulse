@@ -50,11 +50,11 @@ def _content(db, project, *, status=ContentStatus.REVIEW, slug="herald-1-0", **k
     row = Content(
         project_id=project.id,
         content_type=ContentType.FEATURE_SPOTLIGHT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug=slug,
         body_markdown="## It's out\n\n" + ("word " * 200),
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
         status=status,
         **kwargs,
     )

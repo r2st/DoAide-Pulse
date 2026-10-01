@@ -1,6 +1,6 @@
-"""Herald's two corruption gates, asked about text that is not English.
+"""Pulse's two corruption gates, asked about text that is not English.
 
-Both gates were written when Herald wrote English and only English, and both
+Both gates were written when Pulse wrote English and only English, and both
 guess at "is this text in another language" from how many of its letters are
 non-ASCII. That guess has one threshold — ``_MULTILINGUAL_SHARE``, ten percent —
 and it is wrong at both ends for a translation:
@@ -33,47 +33,47 @@ from app.services import ai, languages
 # --------------------------------------------------------------------------- #
 
 FRENCH = (
-    "Herald génère des articles à partir de vos dépôts. La première étape "
+    "Pulse génère des articles à partir de vos dépôts. La première étape "
     "consiste à connecter votre compte GitHub, puis à sélectionner le "
     "référentiel que vous souhaitez surveiller. Chaque fois qu'une version est "
-    "publiée, Herald rédige un brouillon complet et vous l'envoie pour "
+    "publiée, Pulse rédige un brouillon complet et vous l'envoie pour "
     "révision. Vous gardez le contrôle éditorial: rien n'est publié sans votre "
     "accord préalable."
 )
 
 GERMAN = (
-    "Herald erstellt Artikel aus Ihren Repositories. Zunächst verbinden Sie Ihr "
+    "Pulse erstellt Artikel aus Ihren Repositories. Zunächst verbinden Sie Ihr "
     "GitHub-Konto und wählen das Repository aus, das überwacht werden soll. Bei "
-    "jeder Veröffentlichung schreibt Herald einen vollständigen Entwurf und "
+    "jeder Veröffentlichung schreibt Pulse einen vollständigen Entwurf und "
     "sendet ihn zur Überprüfung. Die redaktionelle Kontrolle bleibt bei Ihnen: "
     "nichts wird ohne Ihre ausdrückliche Zustimmung veröffentlicht."
 )
 
 SPANISH = (
-    "Herald genera artículos a partir de sus repositorios. El primer paso es "
+    "Pulse genera artículos a partir de sus repositorios. El primer paso es "
     "conectar su cuenta de GitHub y seleccionar el repositorio que desea "
-    "supervisar. Cada vez que se publica una versión, Herald redacta un "
+    "supervisar. Cada vez que se publica una versión, Pulse redacta un "
     "borrador completo y se lo envía para su revisión."
 )
 
 POLISH = (
-    "Herald tworzy artykuły na podstawie twoich repozytoriów. Najpierw połącz "
+    "Pulse tworzy artykuły na podstawie twoich repozytoriów. Najpierw połącz "
     "swoje konto GitHub, a następnie wybierz repozytorium, które chcesz "
-    "śledzić. Za każdym razem, gdy zostanie opublikowana nowa wersja, Herald "
+    "śledzić. Za każdym razem, gdy zostanie opublikowana nowa wersja, Pulse "
     "przygotuje pełny szkic i prześle go do przeglądu."
 )
 
 RUSSIAN = (
-    "Herald создает статьи из ваших репозиториев. Сначала подключите свою "
+    "Pulse создает статьи из ваших репозиториев. Сначала подключите свою "
     "учетную запись GitHub, а затем выберите репозиторий, за которым хотите "
-    "следить. Каждый раз, когда публикуется новая версия, Herald пишет полный "
+    "следить. Каждый раз, когда публикуется новая версия, Pulse пишет полный "
     "черновик и отправляет его вам на проверку."
 )
 
 JAPANESE = (
-    "Herald はリポジトリから記事を生成します。まず GitHub アカウントを接続し、"
+    "Pulse はリポジトリから記事を生成します。まず GitHub アカウントを接続し、"
     "監視したいリポジトリを選択してください。バージョンが公開されるたびに、"
-    "Herald は完全な下書きを作成し、レビューのために送信します。"
+    "Pulse は完全な下書きを作成し、レビューのために送信します。"
 )
 
 #: The English body the gates were built for, with the corruption they were

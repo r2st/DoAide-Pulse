@@ -1,6 +1,6 @@
-"""Outbound webhooks: user-configured HTTP callbacks for Herald's events.
+"""Outbound webhooks: user-configured HTTP callbacks for Pulse's events.
 
-Herald will never natively integrate with everything a developer runs. A
+Pulse will never natively integrate with everything a developer runs. A
 webhook is the escape hatch — one table, one dispatcher, and suddenly a publish
 can trigger a Discord announcement, a Slack message, a CI job, or a row in a
 spreadsheet nobody here has heard of.
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 
 class WebhookEvent(str, Enum):
-    """What Herald will call you about.
+    """What Pulse will call you about.
 
     Deliberately few. Every event here is one a person would act on — something
     went out, something failed, something needs a human — rather than a mirror
@@ -72,7 +72,7 @@ class WebhookEvent(str, Enum):
     #: :attr:`app.models.content.Content.engagement_notified_at`. The one event
     #: here that is about something going *right*, and the reason it earns a
     #: place beside three failures: knowing which piece took off is what tells
-    #: somebody to go and put more behind it, and nothing else in Herald
+    #: somebody to go and put more behind it, and nothing else in Pulse
     #: volunteers that without being opened.
     ENGAGEMENT_THRESHOLD = "content.engagement_threshold"
     #: Sent by the "send a test" button, and never by anything else. Present in
@@ -120,7 +120,7 @@ class Webhook(Base, TimestampMixin):
     events: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
 
     #: Fernet-encrypted ``{"secret": ...}`` — the HMAC key the receiver verifies
-    #: the signature with. Herald generates it and shows it exactly once, on
+    #: the signature with. Pulse generates it and shows it exactly once, on
     #: create and on rotate; there is no endpoint that reads it back. A secret
     #: an API will hand out on request is a secret in name only.
     encrypted_secret: Mapped[str] = mapped_column(Text, default="", nullable=False)

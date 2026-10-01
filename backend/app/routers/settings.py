@@ -93,12 +93,12 @@ def upsert_connection(
     worst possible moment.
 
     Which is also why this carries the outbound-probe budget: verification is a
-    synchronous request to the platform, made from Herald's address on the
+    synchronous request to the platform, made from Pulse's address on the
     caller's say-so, and the credentials it verifies are the ones in the body
     rather than anything already stored — so it is the one endpoint here that
     answers "is this token good?" for a token the caller just made up. Left
     unlimited it is a credential-stuffing oracle against the platforms, run
-    from Herald. On the Git adapter it is worse than that: ``GitAdapter._token``
+    from Pulse. On the Git adapter it is worse than that: ``GitAdapter._token``
     falls back to the install's shared ``GITHUB_TOKEN`` when the connection
     carries none, so an unlimited loop here spends the same single budget that
     ``rate_limit_repo_scan`` exists to protect, and answers 403 to every account
@@ -212,7 +212,7 @@ def verify_connection(
     :func:`upsert_connection` does — one call is one synchronous request to the
     platform — minus the stuffing-oracle half, since the credentials here are
     the stored ones. What is left is still a button that turns one HTTP request
-    from the caller into one from Herald, and on the Git adapter one that can
+    from the caller into one from Pulse, and on the Git adapter one that can
     spend the install's shared ``GITHUB_TOKEN``.
     """
     from app.services.crypto import decrypt_credentials
@@ -274,7 +274,7 @@ def delete_connection(
 ) -> None:
     """Forget a platform's credentials.
 
-    A hard delete, unlike the rest of Herald: there is nothing here worth
+    A hard delete, unlike the rest of Pulse: there is nothing here worth
     keeping, and "deleted" has to mean the ciphertext is gone. Content already
     published there is untouched — this removes the ability to publish again,
     not the record of having done so.

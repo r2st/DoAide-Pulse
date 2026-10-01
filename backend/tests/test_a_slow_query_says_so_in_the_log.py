@@ -1,6 +1,6 @@
 """The slow-query log, and the values it must never contain.
 
-Herald has three database timeouts and all three are ceilings: they say what it
+Pulse has three database timeouts and all three are ceilings: they say what it
 refuses to wait for, and by the time one fires the request it was protecting is
 already lost. The query that takes four seconds every time and *succeeds* is
 invisible to every one of them, and invisible to the test suite too — an N+1

@@ -85,7 +85,7 @@ _CREDENTIALS: dict[Platform, dict[str, str]] = {
     Platform.BUTTONDOWN: {"api_key": "buttondown-key"},
 }
 
-#: Every platform Herald can actually publish to, as (platform, adapter) pairs.
+#: Every platform Pulse can actually publish to, as (platform, adapter) pairs.
 #: Read off the registry rather than listed here: an adapter that becomes
 #: implemented joins these sweeps by doing so, which is the point — the failure
 #: this file exists to catch is a *new* destination quietly not honouring the
@@ -234,7 +234,7 @@ def test_a_rate_limit_is_carried_up_with_the_platforms_own_wait(adapter, transpo
     """429 + ``Retry-After`` must reach the caller as ``RateLimited``.
 
     The wait is the whole value of the type. Downgraded to a plain
-    ``PublishError`` the row comes back on Herald's own backoff, which is how a
+    ``PublishError`` the row comes back on Pulse's own backoff, which is how a
     soft limit becomes a hard ban; upgraded to a ``CredentialError`` the piece
     fails for good against a token that was never the problem.
 
@@ -270,7 +270,7 @@ def test_an_announced_maintenance_window_is_honoured_by_every_adapter(
     """RFC 9110 §10.2.3 puts ``Retry-After`` on 503 too, and it means the same.
 
     A platform saying "back in fifteen minutes" has given us the one number
-    worth having. Answering it with Herald's own one-second backoff spends the
+    worth having. Answering it with Pulse's own one-second backoff spends the
     whole in-process budget inside the first blink of the outage.
     """
     calls = transport(_response(503, headers={"Retry-After": "900"}))

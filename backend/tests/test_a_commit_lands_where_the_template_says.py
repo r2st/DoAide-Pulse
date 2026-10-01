@@ -1,6 +1,6 @@
-"""The one path in Herald built from user input, and where it is allowed to go.
+"""The one path in Pulse built from user input, and where it is allowed to go.
 
-Herald accepts no uploads — there is no ``UploadFile`` in the tree and no
+Pulse accepts no uploads — there is no ``UploadFile`` in the tree and no
 multipart endpoint — so the usual "where does the file land" question has one
 answer and one place to ask it: :meth:`GitAdapter.path_for`, which turns a
 ``path_template`` credential and a content slug into the path of a file that is
@@ -23,7 +23,7 @@ filesystem character:
 * ``blog/{slug}.md#x`` commits to ``blog/<slug>.md`` and the fragment is never
   sent at all.
 * ``%2e%2e`` is a ``..`` that the ``..`` check cannot see, decoded — if it is
-  decoded — at the far end, where the decision is GitHub's rather than Herald's.
+  decoded — at the far end, where the decision is GitHub's rather than Pulse's.
 
 Which makes this a traversal test in a slightly unusual shape: the escape is
 through the URL rather than through the tree, and it is reached by a
@@ -52,10 +52,10 @@ def request_() -> PublishRequest:
     return PublishRequest(
         title="Automating developer marketing",
         slug="automating",
-        body_markdown="## Why\n\nHerald writes the posts.\n",
-        excerpt="Herald writes the posts.",
-        meta_description="Herald automates developer marketing end to end.",
-        project_name="Herald",
+        body_markdown="## Why\n\nPulse writes the posts.\n",
+        excerpt="Pulse writes the posts.",
+        meta_description="Pulse automates developer marketing end to end.",
+        project_name="Pulse",
     )
 
 

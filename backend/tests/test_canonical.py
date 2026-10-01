@@ -40,11 +40,11 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
         tags=["python"],
     )
     db.add(row)
@@ -244,12 +244,12 @@ def test_a_relative_or_empty_url_is_not_adopted(db, content, connected, monkeypa
 def test_a_url_longer_than_the_column_is_not_adopted(db, content, connected, monkeypatch):
     """``external_url`` is String(700); ``canonical_url`` is String(500).
 
-    So a URL a platform returned and Herald stored without complaint can still
+    So a URL a platform returned and Pulse stored without complaint can still
     be one this column cannot hold, and this is the worst place in the tree for
     that to be discovered. The post is already live by the time ``_adopt_canonical``
     runs, and on PostgreSQL the over-long assignment fails the *same commit* that
     records the publication as PUBLISHED — leaving the piece on the platform and
-    Herald convinced it never went out, which is precisely the state the retry
+    Pulse convinced it never went out, which is precisely the state the retry
     logic then tries to fix by publishing it again.
 
     Declining to adopt costs a rel=canonical the author can still type in. Every

@@ -1,6 +1,6 @@
 """The document an XSS would actually run in is the one nothing was protecting.
 
-Herald serves two things on one origin: the API on :3006, which returns JSON,
+Pulse serves two things on one origin: the API on :3006, which returns JSON,
 and the built SPA on :3007, which returns the only HTML document in the system.
 A Content-Security-Policy on a JSON response is close to inert — there is no
 document for it to govern — so the policy that would actually stop injected
@@ -52,7 +52,7 @@ def root(tmp_path_factory) -> Path:
     building the SPA to assert a header would tie this to npm.
     """
     directory = tmp_path_factory.mktemp("dist")
-    (directory / "index.html").write_text("<!doctype html><title>Herald</title>", "utf-8")
+    (directory / "index.html").write_text("<!doctype html><title>Pulse</title>", "utf-8")
     (directory / "assets").mkdir()
     (directory / "assets" / "index-abc123.js").write_text("export default 1;", "utf-8")
     return directory
@@ -120,7 +120,7 @@ def test_the_spa_fallback_still_serves_the_shell(base_url: str):
     """The policy must not have cost the routing behaviour it wraps."""
     resp = httpx.get(f"{base_url}/calendar")
     assert resp.status_code == 200
-    assert "<title>Herald</title>" in resp.text
+    assert "<title>Pulse</title>" in resp.text
 
 
 def test_a_missing_asset_is_still_a_404(base_url: str):

@@ -38,11 +38,11 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
         status=ContentStatus.APPROVED,
     )
     db.add(row)

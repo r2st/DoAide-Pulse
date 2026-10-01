@@ -237,7 +237,7 @@ describe("recent content and by-project", () => {
           {
             id: 3,
             title: "A retry budget that outlasts the outage",
-            project_name: "Herald",
+            project_name: "Pulse",
             content_type: "changelog",
             created_at: "2026-08-01T10:00:00Z",
             status: "published",
@@ -255,12 +255,12 @@ describe("recent content and by-project", () => {
   it("lists per-project traction", async () => {
     api.dashboard.mockResolvedValue(
       payload({
-        by_project: [{ project_id: 1, name: "Herald", published: 5, views: 900 }],
+        by_project: [{ project_id: 1, name: "Pulse", published: 5, views: 900 }],
       }),
     );
     draw();
 
-    expect(await screen.findByText("Herald")).toBeInTheDocument();
+    expect(await screen.findByText("Pulse")).toBeInTheDocument();
     expect(screen.getByText("5 pub")).toBeInTheDocument();
   });
 });

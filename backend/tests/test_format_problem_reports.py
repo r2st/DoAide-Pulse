@@ -2,7 +2,7 @@
 
 ``normalize`` rewrites; ``problems`` only reports. These are the report arms —
 the ones that fire on a post over the character limit, a section with more
-entries than Herald will keep, and the tokeniser's odd inputs underneath. An
+entries than Pulse will keep, and the tokeniser's odd inputs underneath. An
 unreported problem here becomes a silently truncated post at publish time.
 """
 from __future__ import annotations

@@ -7,7 +7,7 @@ of every completion, in whichever process made the call. It opens its own
 session because the router has none — it is a pure HTTP client, and threading a
 ``Session`` through ``complete`` → ``_sweep`` → ``_call`` to write one
 bookkeeping row would put the database in the signature of every LLM call in
-Herald, including the ones made from request handlers that already hold a
+Pulse, including the ones made from request handlers that already hold a
 different session.
 
 :func:`summary` is called once, from ``/api/v1/metrics``, with the caller's
@@ -198,7 +198,7 @@ def by_purpose(db: Session, *, hours: int = 24) -> list[dict[str, Any]]:
     different questions and only one of them is per-provider. ``summary`` says
     which upstream the tokens went to — the quota question. This says which
     feature spent them, which is the only place "average generation time" can
-    honestly come from: Herald stores no generation duration on ``Content``, so
+    honestly come from: Pulse stores no generation duration on ``Content``, so
     the number is the mean wall-clock of the completions tagged
     :data:`GENERATION_PURPOSE`, and tagging is done by the callers listed in
     :mod:`app.models.llm_usage`'s note on the column.

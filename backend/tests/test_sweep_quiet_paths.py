@@ -1,6 +1,6 @@
 """What the beat sweeps do on the days nothing needs doing.
 
-Every sweep in Herald runs on a schedule whether or not there is work, so the
+Every sweep in Pulse runs on a schedule whether or not there is work, so the
 "nothing to do" arm runs far more often than the working one. It is also the arm
 that is easiest to get wrong in a way nobody notices: a sweep that logs a swap it
 did not make, or reports a digest it did not send, is misinformation on a daily

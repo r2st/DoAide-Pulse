@@ -55,7 +55,7 @@ _ALLOWED_SCHEMES = ("http:", "https:", "mailto:", "/", "#", "")
 
 #: Substrings that must not appear in text a platform will *not* parse as
 #: markup — a social post, a plain-text field. There the harm is not execution,
-#: it is Herald posting somebody else's payload under the author's name.
+#: it is Pulse posting somebody else's payload under the author's name.
 _FORBIDDEN = (
     "<script",
     "</script",
@@ -73,7 +73,7 @@ def _executable(html: str) -> list[str]:
     Parsed rather than grepped, because the two give different answers and only
     one of them is the question. ``onerror="alert(1)"`` appearing inside an
     escaped ``<h1>`` is text — it is what a post *about* an attack looks like,
-    and Herald publishes those. The same string as a real attribute on a real
+    and Pulse publishes those. The same string as a real attribute on a real
     tag is the bug. A substring match cannot tell them apart; a parser is what
     the reader's browser will use, so it is what this uses.
     """
@@ -137,7 +137,7 @@ _CREDENTIALS: dict[Platform, dict[str, str]] = {
     },
 }
 
-#: The adapters that send **HTML** — the ones Herald sanitises for, because the
+#: The adapters that send **HTML** — the ones Pulse sanitises for, because the
 #: bytes it sends are the bytes a browser will parse.
 _HTML_PLATFORMS = [Platform.MEDIUM, Platform.WORDPRESS]
 
@@ -178,19 +178,19 @@ def _payload(adapter, calls, request=_HOSTILE_REQUEST) -> dict:
 
 
 def _markup(adapter, calls, request=_HOSTILE_REQUEST) -> str:
-    """The field Herald composed as HTML and the platform will render as HTML.
+    """The field Pulse composed as HTML and the platform will render as HTML.
 
     The distinction this draws is the whole point of the file. ``content`` is
-    markup *Herald wrote*: it concatenates the sanitiser's output with a lead
+    markup *Pulse wrote*: it concatenates the sanitiser's output with a lead
     image and, on Medium, an ``<h1>``, and a browser parses the result. Every
     other field — ``title``, ``excerpt``, the Yoast meta — is a **data** field
-    that the platform escapes when it renders it, and Herald sends it as typed
+    that the platform escapes when it renders it, and Pulse sends it as typed
     for the same reason it does not strip apostrophes: it is the author's text,
-    not Herald's markup.
+    not Pulse's markup.
 
     So a vector in ``title`` is not a finding here, and a vector in ``content``
     is. What must hold for the data fields is a different claim, checked
-    separately: wherever Herald *interpolates* one of them into markup of its
+    separately: wherever Pulse *interpolates* one of them into markup of its
     own, it escapes it first.
     """
     return str(_payload(adapter, calls, request).get("content", ""))
@@ -209,7 +209,7 @@ def test_nothing_executable_reaches_a_platform_that_renders_html(platform, outgo
 
     Medium and WordPress both sanitise their own input, and that is the argument
     for doing it here *as well as* rather than *instead of*: whichever of the
-    two relaxes first is the one nobody is watching, and Herald would learn
+    two relaxes first is the one nobody is watching, and Pulse would learn
     about it from the author's readers, on the author's domain, under the
     author's name.
     """
@@ -250,10 +250,10 @@ def test_a_hostile_title_cannot_break_out_of_the_lead_image(platform, outgoing):
     double-quoted HTML attributes, and the result is concatenated onto
     ``to_html``'s output rather than passed through ``sanitize_html`` with it.
     So the escaping in ``escape_attribute`` is the only thing standing between a
-    title and an ``onerror=`` on a tag Herald wrote itself.
+    title and an ``onerror=`` on a tag Pulse wrote itself.
 
     Worth its own test rather than leaving it to the sweep above, because this
-    is the one place a *non-body* field is interpolated into markup by Herald
+    is the one place a *non-body* field is interpolated into markup by Pulse
     rather than merely carried.
     """
     adapter = get_adapter(platform)
@@ -366,7 +366,7 @@ def test_a_social_post_carries_no_markup_and_no_script_body(
     A social composer flattens the *body* with ``to_plain_text``, which renders
     to HTML and strips the tags. Before the sanitiser existed that read a
     script's body as ordinary prose: the tag disappeared and ``alert('xss')``
-    went out as part of the post — not executable, but Herald posting an
+    went out as part of the post — not executable, but Pulse posting an
     attacker's string under the author's name.
 
     The excerpt got none of that, and the excerpt is the *first* term in all
@@ -418,15 +418,15 @@ def test_a_social_post_still_says_something(platform, build, hostile_content):
 def test_a_markdown_destination_receives_the_body_as_written():
     """Dev.to, Hashnode and Buttondown are sent Markdown, not HTML.
 
-    Herald does not sanitise it, and this test says so rather than leaving it to
+    Pulse does not sanitise it, and this test says so rather than leaving it to
     be inferred. The reasoning: the body is Markdown until *their* renderer runs,
     each of those platforms sanitises its own output, and rendering here to
     sanitise would mean sending HTML to an API that documents a Markdown field —
-    changing what is published in order to defend a rendering Herald does not do.
+    changing what is published in order to defend a rendering Pulse does not do.
 
-    ``sanitize_html`` covers the destinations Herald hands finished markup to.
+    ``sanitize_html`` covers the destinations Pulse hands finished markup to.
     This is the boundary of that claim, and moving it is a product decision
-    about what Herald is allowed to edit, not a bug fix.
+    about what Pulse is allowed to edit, not a bug fix.
     """
     adapter = get_adapter(Platform.DEVTO)
     calls: list[dict] = []

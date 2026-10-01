@@ -77,10 +77,10 @@ def test_host_of_ignores_www_port_and_case():
 
 
 def test_body_links_to_the_project_are_tagged():
-    body = "Try [Herald](https://herald.example.com/signup) today."
+    body = "Try [Pulse](https://herald.example.com/signup) today."
     out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
     assert "utm_source=devto" in out
-    assert out.startswith("Try [Herald](https://herald.example.com/signup?")
+    assert out.startswith("Try [Pulse](https://herald.example.com/signup?")
 
 
 def test_third_party_links_are_left_alone():
@@ -121,7 +121,7 @@ def test_an_unbalanced_bracket_is_left_alone_rather_than_mangled():
 
 
 def test_link_titles_survive_the_rewrite():
-    body = '[Herald](https://herald.example.com/ "The tool")'
+    body = '[Pulse](https://herald.example.com/ "The tool")'
     out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
     assert out.endswith('"The tool")')
     assert "utm_campaign=herald" in out
@@ -229,7 +229,7 @@ def test_disabling_utm_leaves_every_url_alone(db, content):
 
 def test_no_platform_means_no_invented_source(db, content):
     # The SEO panel builds a request without naming a destination. A utm_source
-    # Herald made up would look like data.
+    # Pulse made up would look like data.
     request = publishing_service.build_request(content)
     assert "utm_" not in (request.share_url or "")
     assert request.idempotency_key is None

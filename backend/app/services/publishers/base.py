@@ -26,7 +26,7 @@ long ``Retry-After`` upwards rather than sleeping through a fraction of it.
 
 **Three adapters are pointed at a host the user typed.** WordPress, Mastodon and
 Bluesky are all "tell me where your server is" platforms, so their base URL
-arrives from a settings form and Herald's own process is what opens it —
+arrives from a settings form and Pulse's own process is what opens it —
 ``http://169.254.169.254/`` is a valid site URL, and the reply comes back to the
 caller inside the error message. Those adapters set
 :attr:`Adapter.user_supplied_host`, which makes :meth:`Adapter._request` resolve
@@ -69,7 +69,7 @@ _REJECTED_WITHOUT_PROCESSING = frozenset({429, 503})
 _TRANSIENT_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 #: How many hops a user-supplied host is allowed to bounce the request through
-#: before Herald stops following. Matches ``link_check``'s budget.
+#: before Pulse stops following. Matches ``link_check``'s budget.
 _MAX_REDIRECTS = 10
 
 
@@ -134,7 +134,7 @@ class NotImplementedAdapter(PublishError):
 
 
 class RefusedHost(CredentialError):
-    """The adapter was pointed somewhere Herald will not send a request.
+    """The adapter was pointed somewhere Pulse will not send a request.
 
     A subclass of :class:`CredentialError` because the two answers a caller needs
     are the same: stop retrying, and tell the user to fix the connection. The
@@ -360,7 +360,7 @@ class Adapter(ABC):
     #: already live.
     #:
     #: This is the capability :mod:`app.services.headlines` depends on and the
-    #: reason it cannot be assumed. A headline swap changes Herald's copy of the
+    #: reason it cannot be assumed. A headline swap changes Pulse's copy of the
     #: title; unless the destination is told, readers keep seeing the old one
     #: while the engagement they generate is credited to the new one. Half the
     #: destinations here genuinely cannot be told — a Bluesky post has no title
@@ -414,7 +414,7 @@ class Adapter(ABC):
 
         Only the title. The body, tags and canonical are left exactly as
         published — a headline test changes one variable, and re-sending a body
-        that has since been edited in Herald would smuggle an unreviewed
+        that has since been edited in Pulse would smuggle an unreviewed
         revision onto a live post under cover of a title swap.
 
         Raises :class:`NotImplementedAdapter` by default. Adapters that
@@ -645,7 +645,7 @@ class Adapter(ABC):
         reason = link_check.unreachable_reason(url)
         if reason:
             raise RefusedHost(
-                f"Herald will not send {self.display_name} requests to that "
+                f"Pulse will not send {self.display_name} requests to that "
                 f"address — {reason}"
             )
 
@@ -678,7 +678,7 @@ class Adapter(ABC):
             # puts it on 429, and it answers the same question: the platform has
             # told us when it will be ready. Reading it only for 429 meant a
             # maintenance window announcing "back in an hour" was answered with
-            # Herald's own one-second backoff — the whole in-process budget spent
+            # Pulse's own one-second backoff — the whole in-process budget spent
             # inside the first blink of the outage, and then a row parked on
             # ``retry_defer_seconds`` as though nobody had said anything, when
             # the platform had already given the one number worth having.

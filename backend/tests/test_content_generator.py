@@ -14,10 +14,10 @@ from app.services.github_client import Commit, RepoActivity
 def good_payload(**overrides):
     body = "## Why\n\n" + ("word " * 300)
     return {
-        "title": "Herald ships marketing automation",
+        "title": "Pulse ships marketing automation",
         "body_markdown": body,
-        "excerpt": "Herald writes the posts about the projects you ship.",
-        "meta_description": "Herald automates developer marketing end to end, from "
+        "excerpt": "Pulse writes the posts about the projects you ship.",
+        "meta_description": "Pulse automates developer marketing end to end, from "
         "repo watch to published post.",
         "keywords": ["marketing automation", "Marketing Automation", "devtools"],
         "tags": ["python", "fastapi", "ai", "devtools", "fifth"],
@@ -111,7 +111,7 @@ def test_chain_failure_falls_back_to_a_template(project, monkeypatch):
 def test_a_chain_of_thought_body_is_rejected(project, stub_llm):
     stub_llm["payload"] = good_payload(
         body_markdown="We need to write an announcement. The user wants a post about "
-        "Herald. Let's write one that covers " + ("the features " * 60)
+        "Pulse. Let's write one that covers " + ("the features " * 60)
     )
     result = content_generator.generate(project, ContentType.ANNOUNCEMENT)
     assert result.is_fallback is True
@@ -127,7 +127,7 @@ def test_a_missing_title_gets_a_sensible_one(project, stub_llm):
     stub_llm["payload"] = good_payload(title="")
     result = content_generator.generate(project, ContentType.ANNOUNCEMENT)
     assert result.is_fallback is False
-    assert result.title == "Herald: Announcement"
+    assert result.title == "Pulse: Announcement"
 
 
 def test_unparseable_output_falls_back(project, stub_llm):

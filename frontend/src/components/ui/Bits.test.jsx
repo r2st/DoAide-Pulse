@@ -69,7 +69,7 @@ describe("SectionHeader", () => {
 
 describe("Empty", () => {
   it("says what to do next, not only that there is nothing", () => {
-    // The whole point of this component: most of Herald's lists start empty,
+    // The whole point of this component: most of Pulse's lists start empty,
     // and an empty list with no next action is a dead end.
     render(
       <Empty

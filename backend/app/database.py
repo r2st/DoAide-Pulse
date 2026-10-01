@@ -113,9 +113,9 @@ def _connect_timeout_arg(seconds: float) -> dict[str, int]:
 
 
 def _connect_options(seconds: float) -> dict[str, str]:
-    """Every libpq startup setting Herald needs, as one ``connect_args``.
+    """Every libpq startup setting Pulse needs, as one ``connect_args``.
 
-    ``timezone=UTC`` is here because Herald has exactly one clock and had no way
+    ``timezone=UTC`` is here because Pulse has exactly one clock and had no way
     of insisting on it. Timestamp columns are ``timestamptz``, and a driver
     reading one converts it to the *session* time zone before handing it back —
     a zone that comes from ``postgresql.conf``, the role, or the server's own
@@ -205,7 +205,7 @@ def install_slow_query_logging(target: Engine, threshold_ms: int) -> bool:
     """Log every statement that takes at least *threshold_ms*. Returns whether armed.
 
     The three database timeouts in :mod:`app.config` are ceilings: they say what
-    Herald refuses to wait for, and by the time one fires the request it was
+    Pulse refuses to wait for, and by the time one fires the request it was
     protecting is already lost. This is the complement — the query that takes
     four seconds, *succeeds*, and is therefore invisible to all of them. It is
     also the only instrument here that survives the process: an N+1 shows up in

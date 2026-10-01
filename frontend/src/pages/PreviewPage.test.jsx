@@ -26,13 +26,13 @@ function draw() {
 
 function preview(overrides = {}) {
   return {
-    title: "Shipping Herald 1.0",
-    body_markdown: "## It shipped\n\nHerald 1.0 is out today.",
-    excerpt: "Herald 1.0 is out.",
+    title: "Shipping Pulse 1.0",
+    body_markdown: "## It shipped\n\nPulse 1.0 is out today.",
+    excerpt: "Pulse 1.0 is out.",
     cover_image_url: null,
     word_count: 6,
     read_minutes: 1,
-    project_name: "Herald",
+    project_name: "Pulse",
     ...overrides,
   };
 }
@@ -44,7 +44,7 @@ beforeEach(() => {
 it("asks the public endpoint for the token in the url, not an authenticated one", async () => {
   api.publicPreview.mockResolvedValue(preview());
   draw();
-  await screen.findByText("Shipping Herald 1.0");
+  await screen.findByText("Shipping Pulse 1.0");
 
   expect(api.publicPreview).toHaveBeenCalledWith("abc123");
 });
@@ -66,7 +66,7 @@ describe("while the link is loading", () => {
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument();
 
     release(preview());
-    await screen.findByText("Shipping Herald 1.0");
+    await screen.findByText("Shipping Pulse 1.0");
   });
 
   it("still announces the wait to a screen reader", async () => {
@@ -84,13 +84,13 @@ describe("while the link is loading", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Loading preview…");
 
     release(preview());
-    await screen.findByText("Shipping Herald 1.0");
+    await screen.findByText("Shipping Pulse 1.0");
   });
 
   it("clears the skeleton once the draft arrives", async () => {
     api.publicPreview.mockResolvedValue(preview());
     const { container } = draw();
-    await screen.findByText("Shipping Herald 1.0");
+    await screen.findByText("Shipping Pulse 1.0");
 
     expect(container.querySelector(".animate-shimmer")).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -110,16 +110,16 @@ describe("a live link", () => {
     api.publicPreview.mockResolvedValue(preview());
     draw();
 
-    expect(await screen.findByText("Shipping Herald 1.0")).toBeInTheDocument();
+    expect(await screen.findByText("Shipping Pulse 1.0")).toBeInTheDocument();
     expect(screen.getByText("It shipped")).toBeInTheDocument();
-    expect(screen.getByText("Herald 1.0 is out today.")).toBeInTheDocument();
+    expect(screen.getByText("Pulse 1.0 is out today.")).toBeInTheDocument();
   });
 
   it("shows the project name and reading stats", async () => {
     api.publicPreview.mockResolvedValue(preview());
     draw();
 
-    expect(await screen.findByText(/Herald/)).toBeInTheDocument();
+    expect(await screen.findByText(/Pulse/)).toBeInTheDocument();
     expect(screen.getByText(/6 words/)).toBeInTheDocument();
   });
 
@@ -128,7 +128,7 @@ describe("a live link", () => {
       preview({ cover_image_url: "https://example.com/cover.png" }),
     );
     const { container } = draw();
-    await screen.findByText("Shipping Herald 1.0");
+    await screen.findByText("Shipping Pulse 1.0");
 
     expect(container.querySelector("img")).toHaveAttribute(
       "src",
@@ -139,7 +139,7 @@ describe("a live link", () => {
   it("renders no image element when there is no cover", async () => {
     api.publicPreview.mockResolvedValue(preview({ cover_image_url: null }));
     const { container } = draw();
-    await screen.findByText("Shipping Herald 1.0");
+    await screen.findByText("Shipping Pulse 1.0");
 
     expect(container.querySelector("img")).not.toBeInTheDocument();
   });

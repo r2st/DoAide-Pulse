@@ -1,7 +1,7 @@
 """The usage table is bounded by a purge, and the purge is actually called.
 
 ``llm_usage.purge`` was written by R79 and had no caller, and the setting its
-model docstring named was not in ``config.py`` — so the one table in Herald
+model docstring named was not in ``config.py`` — so the one table in Pulse
 written on a path nothing rate-limits grew without limit. A row per completion
 *attempt*, written by the autopilot on a schedule whether or not anybody asked
 for a piece.

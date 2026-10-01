@@ -1,6 +1,6 @@
 """Output shapes: a piece is not always an article.
 
-Every content type Herald had was 450 to 1200 words of Markdown prose with ``##``
+Every content type Pulse had was 450 to 1200 words of Markdown prose with ``##``
 headings. That is one shape, and the generator's prompt, its length budget and
 its "is this usable?" checks were all written for it. Asking the same code path
 for a Twitter thread produced a blog post with the headings removed.
@@ -8,7 +8,7 @@ for a Twitter thread produced a blog post with the headings removed.
 So a :class:`ContentFormat` is the shape, derived from the type. Three of them:
 
 ``article``
-    What Herald already did. Prose, subheadings, measured in words.
+    What Pulse already did. Prose, subheadings, measured in words.
 ``thread``
     A sequence of posts, each standing on its own and each under a platform's
     character limit. Measured in posts, not words.
@@ -79,7 +79,7 @@ MAX_THREAD_POSTS = 25
 MIN_THREAD_POSTS = 2
 
 #: Numbering the author or the model added: "1/", "3/7", "2.". Stripped on the
-#: way in, because Herald's publish adapters number the thread themselves and
+#: way in, because Pulse's publish adapters number the thread themselves and
 #: two numbering schemes on one post is worse than either.
 _NUMBERING = re.compile(r"^\s*(?:\d+\s*/\s*\d*|\d+[.)])\s+")
 
@@ -199,7 +199,7 @@ def thread_problems(body: str, *, limit: int = THREAD_POST_LIMIT) -> list[str]:
             )
     if len(posts) > MAX_THREAD_POSTS:
         problems.append(
-            f"{len(posts)} posts is past the {MAX_THREAD_POSTS} Herald will "
+            f"{len(posts)} posts is past the {MAX_THREAD_POSTS} Pulse will "
             "publish. The tail will be dropped."
         )
     return problems
@@ -465,7 +465,7 @@ PROMPT_RULES: dict[ContentFormat, str] = {
         "- The body is a thread: one post per paragraph, separated by a blank "
         f"line, {MIN_THREAD_POSTS} to 8 posts.\n"
         f"- Every post must be under {THREAD_POST_LIMIT} characters on its own.\n"
-        "- Do not number the posts — Herald numbers them when it publishes.\n"
+        "- Do not number the posts — Pulse numbers them when it publishes.\n"
         "- No Markdown headings, and no bullet lists. The first post has to earn "
         "the second one; the last says what to do next."
     ),

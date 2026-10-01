@@ -24,9 +24,9 @@ COVER = "https://cdn.example.com/cover.png"
 def request_() -> PublishRequest:
     return PublishRequest(
         title="Automating developer marketing",
-        body_markdown="## Why\n\nHerald writes the posts.\n",
-        excerpt="Herald writes the posts.",
-        meta_description="Herald automates developer marketing.",
+        body_markdown="## Why\n\nPulse writes the posts.\n",
+        excerpt="Pulse writes the posts.",
+        meta_description="Pulse automates developer marketing.",
         tags=["python"],
         cover_image_url=COVER,
     )

@@ -40,7 +40,7 @@ def test_healthy_when_both_dependencies_answer(client, redis_up):
 
 
 def test_database_down_fails_the_check(client, redis_up, monkeypatch):
-    """Postgres is required unconditionally: no database, no Herald."""
+    """Postgres is required unconditionally: no database, no Pulse."""
     monkeypatch.setattr(misc, "_check_database", lambda db: misc._Probe(False, "boom"))
     resp = client.get(HEALTH)
     assert resp.status_code == 503

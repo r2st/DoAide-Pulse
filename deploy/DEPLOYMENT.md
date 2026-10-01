@@ -1,6 +1,6 @@
-# Herald — production deployment
+# Pulse — production deployment
 
-Herald runs on the shared Hetzner box `89.167.8.178` (Ubuntu 24.04, 4 GB RAM)
+Pulse runs on the shared Hetzner box `89.167.8.178` (Ubuntu 24.04, 4 GB RAM)
 alongside GoSumo, Documedic, HomeNex, Authmatic and Knol. It is **not** Docker:
 `docker-compose.yml` in the repo root is local-dev only. Production is four
 systemd units in front of the host's PostgreSQL and Redis, published by the
@@ -27,7 +27,7 @@ Documedic 3003/3004, HomeNex 3005, Authmatic 8000):
 
 Both bind **`172.18.0.1`** (the `knol_knol` Docker bridge gateway), not
 `0.0.0.0`. That address is the host as seen from inside the Caddy container, so
-Caddy can reach Herald while the public internet cannot — the box has no host
+Caddy can reach Pulse while the public internet cannot — the box has no host
 firewall, and the sibling apps' `0.0.0.0` binds are in fact reachable on the
 open internet. The cost is that the units depend on Docker being up; they have
 `After=docker.service` and `Restart=always`, so a Docker restart resolves
@@ -58,9 +58,9 @@ location — the working directory — is read-only under `ProtectSystem=strict`
 - **PostgreSQL 16**, the host instance on `127.0.0.1:5432`. Database `herald`,
   owner role `herald`. (GoSumo's Postgres on 5433 is a separate container and
   is not used here.)
-- **Redis**, installed from apt for Herald and listening on `127.0.0.1:6379`,
+- **Redis**, installed from apt for Pulse and listening on `127.0.0.1:6379`,
   DB 0 (app) / 1 (Celery broker) / 2 (results). GoSumo's containerised Redis on
-  6380 is deliberately left alone — sharing it would couple Herald's queue to
+  6380 is deliberately left alone — sharing it would couple Pulse's queue to
   GoSumo's container lifecycle and its `noeviction` budget.
 
 ## Frontend: built locally, never on the server
@@ -77,7 +77,7 @@ A split-origin setup would need CORS plus an absolute URL baked into the build.
 
 ## Caddy
 
-Herald's vhost lives in the shared config at `/opt/knol/Caddyfile`
+Pulse's vhost lives in the shared config at `/opt/knol/Caddyfile`
 (container `knol-caddy`); the canonical copy of the block is
 `deploy/Caddyfile.herald`.
 
@@ -95,7 +95,7 @@ docker exec knol-caddy caddy reload   --config /etc/caddy/Caddyfile
 > replaced, `docker compose -f /opt/knol/docker-compose.prod.yml up -d caddy`
 > re-links it (brief blip for every site on the box).
 >
-> As of the initial Herald deploy the host file and the running config are
+> As of the initial Pulse deploy the host file and the running config are
 > **byte-for-byte identical in content but on different inodes** — a Caddy
 > container recreate is needed before any further Caddyfile edit will take
 > effect.
@@ -165,7 +165,7 @@ untouched precisely so that recovery stays possible.
 LLM calls go to **OpenRouter free models** (`openai/gpt-oss-20b:free`,
 `openai/gpt-oss-120b:free`), using the same key Documedic uses. That key is on
 OpenRouter's free tier: **50 free-model requests per day, shared across every
-app using it**, after which calls return HTTP 429 and Herald falls through its
+app using it**, after which calls return HTTP 429 and Pulse falls through its
 provider chain to a static template.
 
 ### The fallback chain
@@ -189,7 +189,7 @@ GROQ_API_KEY=…      # https://console.groq.com/keys
 ```
 
 Both are free tiers with limits an order of magnitude above 50/day, and neither
-is shared with the other apps on this box. Giving Herald its own OpenRouter key
+is shared with the other apps on this box. Giving Pulse its own OpenRouter key
 (or $10 of credit, which unlocks 1000/day) is still the better fix for the
 primary provider; the fallbacks are what stop a bad afternoon from silently
 degrading every generated post.
@@ -223,7 +223,7 @@ breaker state.
 
 **The status code is load-bearing** — it is Caddy's `health_uri`, so a non-2xx
 takes this uvicorn out of the upstream pool, and with one upstream that means
-`/api/*` starts answering 502. So it fails only on a dependency Herald cannot
+`/api/*` starts answering 502. So it fails only on a dependency Pulse cannot
 work without:
 
 | Dependency | Required | Down ⇒ |
@@ -260,7 +260,7 @@ the only part that is rate limited (`app/ratelimit.py`, slowapi).
   requests (`swallow_errors`), not to blocking them; the health check catches the
   outage separately.
 - **The client address comes from Caddy**, which appends the peer it saw to
-  `X-Forwarded-For`. Herald reads the **rightmost** entry, so a caller cannot
+  `X-Forwarded-For`. Pulse reads the **rightmost** entry, so a caller cannot
   prepend a value and reset its own budget. `RATE_LIMIT_TRUST_FORWARDED_FOR=false`
   falls back to `request.client.host`, which behind this proxy is one bucket for
   the entire internet — only correct if the app is ever exposed directly.
@@ -285,7 +285,7 @@ To send it properly, set `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD` in
 
 Two things this flow does **not** do:
 
-- **It does not log anyone out.** Herald's JWTs are stateless with no revocation
+- **It does not log anyone out.** Pulse's JWTs are stateless with no revocation
   list, so tokens issued before a reset keep working until they expire —
   `ACCESS_TOKEN_EXPIRE_MINUTES`, 24 h by default. Resetting a password because
   a token leaked needs a `JWT_SECRET` rotation, which invalidates every session.
@@ -333,7 +333,7 @@ git checkout <good-sha>
 Take a code and database snapshot before anything risky:
 
 ```bash
-ssh … 'tar czf /opt/backups/herald-code-$(date +%s).tar.gz -C /opt Herald'
+ssh … 'tar czf /opt/backups/herald-code-$(date +%s).tar.gz -C /opt Pulse'
 ssh … 'sudo -u postgres pg_dump herald | gzip > /opt/backups/herald-db-$(date +%s).sql.gz'
 ```
 

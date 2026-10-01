@@ -218,7 +218,7 @@ describe("the content editor", () => {
     return {
       id: 3,
       project_id: 7,
-      project_name: "Herald",
+      project_name: "Pulse",
       title: "Saved title",
       body_markdown: "A morning of writing",
       excerpt: "Saved excerpt",

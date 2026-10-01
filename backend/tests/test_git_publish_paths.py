@@ -30,10 +30,10 @@ def request_() -> PublishRequest:
     return PublishRequest(
         title="Automating developer marketing",
         slug="automating",
-        body_markdown="## Why\n\nHerald writes the posts.\n",
-        excerpt="Herald writes the posts.",
-        meta_description="Herald automates developer marketing end to end.",
-        project_name="Herald",
+        body_markdown="## Why\n\nPulse writes the posts.\n",
+        excerpt="Pulse writes the posts.",
+        meta_description="Pulse automates developer marketing end to end.",
+        project_name="Pulse",
     )
 
 
@@ -311,4 +311,4 @@ def test_the_committed_file_is_the_rendered_post(request_):
 
     committed = repo.files[adapter.path_for(request_, _CREDENTIALS)]
     assert committed.startswith("---")
-    assert "Herald writes the posts." in committed
+    assert "Pulse writes the posts." in committed

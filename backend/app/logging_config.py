@@ -100,13 +100,13 @@ def resolve_level(name: str) -> int:
 
 
 def configure_logging(*, level: str | None = None) -> None:
-    """Install Herald's handler on the root logger. Idempotent.
+    """Install Pulse's handler on the root logger. Idempotent.
 
     Called from :func:`app.main.create_app` and from the Celery ``setup_logging``
     signal, so every entry point that runs application code gets the same
     output: the API under uvicorn, the worker, beat, and ``python -m app.seed``.
 
-    Only Herald's own handler is replaced. Uvicorn's handlers stay on uvicorn's
+    Only Pulse's own handler is replaced. Uvicorn's handlers stay on uvicorn's
     loggers, which is what keeps access logs looking like access logs; pytest's
     capture handlers are attached elsewhere too and are likewise untouched.
     """

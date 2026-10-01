@@ -2,11 +2,11 @@
 
 An email address is not a case-sensitive string. The domain is definitively
 case-insensitive (RFC 5321 §2.4), and while the local part is formally the
-mailbox provider's business, every provider a Herald user actually has an
+mailbox provider's business, every provider a Pulse user actually has an
 account with treats it that way too. Mail clients know this and display
 addresses in whatever case they please.
 
-Herald's ``users.email`` column, though, is ``String(320)`` with a plain unique
+Pulse's ``users.email`` column, though, is ``String(320)`` with a plain unique
 index, and every lookup was ``User.email == <what they typed>``. So the case an
 address happened to be stored in became part of the credential:
 
@@ -62,7 +62,7 @@ def find_by_email(db: Session, email: str) -> User | None:
     docstring for why that order is load-bearing rather than an optimisation.
 
     ``lower(email)`` cannot use the index on ``email``, so the fallback is a
-    scan. That is deliberate and it is affordable: Herald is single-user per
+    scan. That is deliberate and it is affordable: Pulse is single-user per
     install and the table holds a handful of rows, so a functional index would
     be a migration bought for a query that reads three of them. The exact match
     above it *is* indexed, and on a normalized database it is the one that hits.

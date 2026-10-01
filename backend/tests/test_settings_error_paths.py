@@ -2,7 +2,7 @@
 
 :mod:`tests.test_settings` covers the happy path and the two validation
 refusals. The arms below are the ones that only run when something outside
-Herald misbehaves, and each maps to a distinct status code on purpose:
+Pulse misbehaves, and each maps to a distinct status code on purpose:
 
 ``501``
     The platform has no adapter yet. Nothing the user can do about it, and it is
@@ -10,7 +10,7 @@ Herald misbehaves, and each maps to a distinct status code on purpose:
 ``502``
     The platform answered badly. The credentials might be perfect.
 ``500``
-    Herald cannot encrypt what it was given — a misconfigured instance, not a
+    Pulse cannot encrypt what it was given — a misconfigured instance, not a
     bad token.
 
 The distinction matters most on re-verification, where a wrong verdict is

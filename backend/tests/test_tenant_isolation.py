@@ -1,6 +1,6 @@
 """One account must never reach another account's rows.
 
-Herald is single-tenant per user with no sharing model at all: every object
+Pulse is single-tenant per user with no sharing model at all: every object
 hangs off a project, and every project hangs off a user. That makes the check
 mechanical, and mechanical is exactly what wants a test sweep rather than a
 reading — one endpoint added without its guard is a whole account readable by

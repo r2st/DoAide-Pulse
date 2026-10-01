@@ -17,7 +17,7 @@ from app.services import content_generator, github_client
 API = "/api/v1/projects"
 
 
-def _payload(name: str = "Herald", **extra) -> dict:
+def _payload(name: str = "Pulse", **extra) -> dict:
     return {"name": name, "description": "A thing that writes things.", **extra}
 
 
@@ -53,9 +53,9 @@ def test_a_slug_race_lost_at_the_database_still_creates_the_project(
     assert resp.status_code == 201, resp.text
     body = resp.json()
     # The retry keeps the readable stem and appends disambiguating hex.
-    assert body["slug"].startswith("herald-")
-    assert body["slug"] != "herald"
-    assert body["name"] == "Herald"
+    assert body["slug"].startswith("pulse-")
+    assert body["slug"] != "pulse"
+    assert body["name"] == "Pulse"
 
 
 def test_the_retry_builds_a_fresh_row_rather_than_reusing_the_rolled_back_one(
@@ -81,7 +81,7 @@ def test_the_retry_builds_a_fresh_row_rather_than_reusing_the_rolled_back_one(
     resp = client.post(
         API,
         json=_payload(
-            "Herald",
+            "Pulse",
             repo_url="https://github.com/r2st/Herald",
             tech_stack=["FastAPI"],
             keywords=["marketing"],
@@ -99,16 +99,16 @@ def test_the_retry_builds_a_fresh_row_rather_than_reusing_the_rolled_back_one(
 def test_the_third_project_of_the_same_name_walks_past_the_second_suffix(
     client, auth
 ):
-    """``herald``, then ``herald-2``, then ``herald-3`` — the loop increments."""
+    """``pulse``, then ``pulse-2``, then ``pulse-3`` — the loop increments."""
     slugs = [
         client.post(API, json=_payload(), headers=auth).json()["slug"]
         for _ in range(3)
     ]
 
-    assert slugs == ["herald", "herald-2", "herald-3"]
+    assert slugs == ["pulse", "pulse-2", "pulse-3"]
 
 
-def test_two_users_may_both_own_a_project_called_herald(client, auth, db):
+def test_two_users_may_both_own_a_project_called_pulse(client, auth, db):
     """Slugs are unique per user, not globally."""
     from app.models.user import User
     from app.security import hash_password
@@ -130,20 +130,20 @@ def test_two_users_may_both_own_a_project_called_herald(client, auth, db):
         API, json=_payload(), headers={"Authorization": f"Bearer {token}"}
     ).json()
 
-    assert mine["slug"] == theirs["slug"] == "herald"
+    assert mine["slug"] == theirs["slug"] == "pulse"
 
 
 def test_a_rename_onto_an_existing_name_gets_the_suffix_not_a_500(client, auth):
-    first = client.post(API, json=_payload("Herald"), headers=auth).json()
+    first = client.post(API, json=_payload("Pulse"), headers=auth).json()
     second = client.post(API, json=_payload("Beacon"), headers=auth).json()
 
     resp = client.patch(
-        f"{API}/{second['id']}", json={"name": "Herald"}, headers=auth
+        f"{API}/{second['id']}", json={"name": "Pulse"}, headers=auth
     )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["slug"] == "herald-2"
-    assert first["slug"] == "herald"
+    assert resp.json()["slug"] == "pulse-2"
+    assert first["slug"] == "pulse"
 
 
 # --------------------------------------------------------------------------- #

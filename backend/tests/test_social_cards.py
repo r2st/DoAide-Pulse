@@ -382,14 +382,14 @@ def test_summary_bundles_everything_the_panel_needs():
         url="https://example.com/blog/post",
         meta_description="A" * 80,
         cover_image_url="https://cdn.example.com/cover.png",
-        site_name="Herald",
+        site_name="Pulse",
         tags=["python"],
     )
 
     assert len(result["previews"]) == len(social_cards.NETWORKS)
     assert result["issues"] == []
     assert result["meta_html"].startswith("<meta ")
-    assert {"key": "og:site_name", "value": "Herald"} in result["meta_tags"]
+    assert {"key": "og:site_name", "value": "Pulse"} in result["meta_tags"]
     assert result["recommended_image"] == {"width": 1200, "height": 630}
 
 
@@ -403,7 +403,7 @@ def test_a_relative_cover_produces_no_image_tags_and_the_small_card():
 
     That pairing — `summary_large_image` plus an `og:image` no crawler can
     resolve — is the grey rectangle this module exists to prevent, and it is
-    the one Herald published: `GitAdapter.build_file` writes these keys into a
+    the one Pulse published: `GitAdapter.build_file` writes these keys into a
     real page's front matter.
     """
     tags = dict(
@@ -436,7 +436,7 @@ def test_an_absolute_cover_still_gets_the_large_card():
 
 
 def test_the_git_front_matter_never_claims_an_image_it_cannot_resolve():
-    """What actually lands on disk, for the destination Herald controls."""
+    """What actually lands on disk, for the destination Pulse controls."""
     keys = social_cards.front_matter_keys(
         social_cards.meta_tags(
             title="A post",

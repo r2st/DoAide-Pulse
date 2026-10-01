@@ -1,4 +1,4 @@
-"""A headline swap changed Herald's copy of the title and nothing else.
+"""A headline swap changed Pulse's copy of the title and nothing else.
 
 The gap this file pins shut: ``headlines.apply_headline`` retitles the piece in
 the database, opens a fresh attribution window, and starts crediting that new
@@ -186,7 +186,7 @@ def test_an_adapter_that_cannot_retitle_says_so_rather_than_silently_passing():
 def test_devto_retitle_sends_the_title_and_nothing_else(monkeypatch):
     """A headline test changes one variable.
 
-    Resending the body would smuggle whatever the piece has become in Herald
+    Resending the body would smuggle whatever the piece has become in Pulse
     since publication onto a live post under cover of a title swap.
     """
     adapter = DevToAdapter()
@@ -268,7 +268,7 @@ def test_git_retitle_edits_the_front_matter_and_leaves_the_body_alone(monkeypatc
     """A repo has no partial update, so the risk here is rewriting too much.
 
     Re-rendering from the request would be less code and would also push
-    whatever the body has become in Herald since, plus a fresh ``date``, under a
+    whatever the body has become in Pulse since, plus a fresh ``date``, under a
     commit message that says the title changed.
     """
     adapter = GitAdapter()
@@ -638,7 +638,7 @@ def test_a_retitle_that_failed_stops_the_piece_being_judged(db, piece):
 def test_a_row_from_before_the_column_existed_is_still_counted(db, piece):
     """No backfill, and no silent loss of every piece published before today.
 
-    NULL means "published before Herald recorded this", which is exactly how
+    NULL means "published before Pulse recorded this", which is exactly how
     those rows were already being counted. The guard that does the real work for
     them is the platform capability, which needs no stored state.
     """

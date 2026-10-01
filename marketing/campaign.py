@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Drive a Herald content campaign from a declarative plan.
+"""Drive a Pulse content campaign from a declarative plan.
 
 A campaign file describes the projects that should exist and the articles that
-should be in them. This runner makes Herald match that description. It is
+should be in them. This runner makes Pulse match that description. It is
 **idempotent**: running it twice creates nothing twice, and running it after
 editing an article body updates the piece rather than duplicating it.
 
@@ -158,7 +158,7 @@ class Plan:
 
         A reader landing on part two from a search result has no way to know
         part one exists unless the title says so. Only the part number goes in,
-        not the series name: Herald flags a title over 60 characters because
+        not the series name: Pulse flags a title over 60 characters because
         search results cut off around there, and " — 409A Valuation Guide
         (Part 2)" spends 30 of them on words nobody is searching for. The series
         name belongs in the body, where it costs nothing.
@@ -174,7 +174,7 @@ class Plan:
 # --------------------------------------------------------------------------- #
 
 
-def sync_projects(client: HeraldClient, plan: Plan, *, dry_run: bool) -> dict[str, int]:
+def sync_projects(client: PulseClient, plan: Plan, *, dry_run: bool) -> dict[str, int]:
     """Ensure every project in the plan exists and matches. Returns key -> id."""
     existing = {p["name"].lower(): p for p in client.list_projects()}
     ids: dict[str, int] = {}
@@ -224,10 +224,10 @@ def _declared(plan: Plan, article: dict) -> dict:
     """The content fields this article actually states.
 
     The distinction between "not stated" and "stated as empty" is the whole
-    point, and it only bites on the *second* run. Herald fills in a missing
+    point, and it only bites on the *second* run. Pulse fills in a missing
     excerpt and meta description from the body at creation time. Sending
     ``excerpt: ""`` back for an article that never named one does not mean "no
-    excerpt" — it means "replace the one Herald wrote with nothing", which is
+    excerpt" — it means "replace the one Pulse wrote with nothing", which is
     an idempotent sync quietly destroying data it did not author.
 
     ``body_markdown`` is always declared: it comes from ``body_file``, which
@@ -241,7 +241,7 @@ def _declared(plan: Plan, article: dict) -> dict:
 
 
 def _content_payload(plan: Plan, article: dict, project_id: int) -> dict:
-    """The create body: everything declared, plus what Herald needs up front."""
+    """The create body: everything declared, plus what Pulse needs up front."""
     return {
         "project_id": project_id,
         "content_type": article.get("content_type", "tutorial"),
@@ -252,7 +252,7 @@ def _content_payload(plan: Plan, article: dict, project_id: int) -> dict:
 
 
 def sync_articles(
-    client: HeraldClient, plan: Plan, project_ids: dict[str, int], *, dry_run: bool
+    client: PulseClient, plan: Plan, project_ids: dict[str, int], *, dry_run: bool
 ) -> dict[str, int]:
     """Create or update every article. Returns article key -> content id.
 
@@ -327,9 +327,9 @@ def sync_articles(
 
 
 def _warn_if_not_converged(key: str, sent: dict, stored: dict) -> None:
-    """Say so when Herald stored something other than what the plan asked for.
+    """Say so when Pulse stored something other than what the plan asked for.
 
-    Herald normalises several of these fields — keywords are lowercased,
+    Pulse normalises several of these fields — keywords are lowercased,
     deduplicated and capped at eight — so a plan can ask for something the API
     will never echo back. Nothing errors: the PATCH succeeds, the next run sees
     the same difference, and the runner reports an update forever while the
@@ -343,7 +343,7 @@ def _warn_if_not_converged(key: str, sent: dict, stored: dict) -> None:
     )
     if resisted:
         print(
-            f"      note: {key}: Herald normalised {', '.join(resisted)} — the "
+            f"      note: {key}: Pulse normalised {', '.join(resisted)} — the "
             "plan and the stored value will differ on every run until the plan "
             "matches"
         )
@@ -354,10 +354,10 @@ def _warn_if_not_converged(key: str, sent: dict, stored: dict) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def check_links(client: HeraldClient, plan: Plan, content_ids: dict[str, int]) -> int:
+def check_links(client: PulseClient, plan: Plan, content_ids: dict[str, int]) -> int:
     """Report dead links before they block a publish. Returns the broken count.
 
-    Herald runs this itself at publish time and refuses on a definitive 404, so
+    Pulse runs this itself at publish time and refuses on a definitive 404, so
     finding out here is strictly better than finding out at 3am when the beat
     task tries to send the post.
     """
@@ -382,7 +382,7 @@ def check_links(client: HeraldClient, plan: Plan, content_ids: dict[str, int]) -
 
 
 def schedule(
-    client: HeraldClient,
+    client: PulseClient,
     plan: Plan,
     content_ids: dict[str, int],
     *,
@@ -393,14 +393,14 @@ def schedule(
 ) -> None:
     """Put the campaign on the calendar.
 
-    Two modes. ``--optimize`` hands the timing to Herald, which picks a slot
+    Two modes. ``--optimize`` hands the timing to Pulse, which picks a slot
     per platform from its cadence table and staggers the cross-post. ``--start``
     plus ``--every`` lays the articles out on a fixed drumbeat, which is what
     you want when the cadence matters more than the hour of day.
 
     Either way this refuses to touch a platform with no live connection: a
     schedule that validates now and fails at 3am because nothing was ever
-    connected is the worst of both worlds, and Herald would reject it anyway.
+    connected is the worst of both worlds, and Pulse would reject it anyway.
     """
     connected = set(client.connected_platforms())
     wanted = {p for a in plan.articles for p in a.get("platforms", [])}
@@ -409,7 +409,7 @@ def schedule(
         raise SystemExit(
             f"Not connected to: {', '.join(missing)}.\n"
             "Connect them first (PUT /settings/connections, or Settings in the "
-            "web UI) — Herald rejects a publish to a platform with no live "
+            "web UI) — Pulse rejects a publish to a platform with no live "
             "connection, so scheduling one would only fail later."
         )
 
@@ -421,7 +421,7 @@ def schedule(
             continue
 
         if optimize:
-            label = "Herald-chosen slots"
+            label = "Pulse-chosen slots"
             kwargs: dict[str, Any] = {"optimize": True}
         else:
             assert when is not None
@@ -449,11 +449,11 @@ def schedule(
 # --------------------------------------------------------------------------- #
 
 
-def status(client: HeraldClient, plan: Plan) -> None:
+def status(client: PulseClient, plan: Plan) -> None:
     projects = {p["name"].lower(): p for p in client.list_projects()}
     # One listing per *project*, not one per article. A campaign is mostly
     # several articles against the same handful of projects, so fetching inside
-    # the loop asked Herald for the same list a dozen times to render one table.
+    # the loop asked Pulse for the same list a dozen times to render one table.
     listings: dict[int, list[dict]] = {}
     print(f"{'article':<42} {'status':<10} publications")
     print("-" * 78)
@@ -500,12 +500,12 @@ def _check_schedule_args(args: argparse.Namespace) -> None:
     mistyped flag created or updated a dozen articles and then bailed. Worse,
     ``--every 0`` was not checked anywhere — it stacked the whole campaign on
     one instant — and a negative value walked backwards into the past, where
-    Herald refuses each publish in turn, leaving half the campaign scheduled.
+    Pulse refuses each publish in turn, leaving half the campaign scheduled.
     """
     if args.optimize:
         if args.start is not None:
             raise SystemExit(
-                "--optimize and --start are mutually exclusive: either Herald "
+                "--optimize and --start are mutually exclusive: either Pulse "
                 "picks the times or you do."
             )
         return
@@ -518,7 +518,7 @@ def _check_schedule_args(args: argparse.Namespace) -> None:
             "the whole campaign out in the same instant."
         )
 
-    # A naive --start is read as UTC by Herald, so compare in UTC too rather
+    # A naive --start is read as UTC by Pulse, so compare in UTC too rather
     # than against a local clock that would be wrong by the offset.
     start = args.start
     now = datetime.now(UTC)
@@ -526,14 +526,14 @@ def _check_schedule_args(args: argparse.Namespace) -> None:
         now = now.replace(tzinfo=None)
     if start < now:
         raise SystemExit(
-            f"--start {start.isoformat()} is in the past — Herald refuses a "
+            f"--start {start.isoformat()} is in the past — Pulse refuses a "
             "publish dated backwards, so this would fail article by article."
         )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Drive a Herald content campaign from a declarative plan."
+        description="Drive a Pulse content campaign from a declarative plan."
     )
     parser.add_argument(
         "command", choices=("plan", "sync", "links", "schedule", "status")
@@ -550,7 +550,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--optimize",
         action="store_true",
-        help="let Herald pick each platform's slot instead of --start/--every",
+        help="let Pulse pick each platform's slot instead of --start/--every",
     )
     args = parser.parse_args(argv)
 
@@ -575,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"      {plan.title(article)}")
         return 0
 
-    with HeraldClient(base_url) as client:
+    with PulseClient(base_url) as client:
         client.login_from_env()
         try:
             if args.command == "status":
@@ -602,7 +602,7 @@ def main(argv: list[str] | None = None) -> int:
                     optimize=args.optimize,
                     dry_run=args.dry_run,
                 )
-        except HeraldError as exc:
+        except PulseError as exc:
             print(f"\nAPI error: {exc}", file=sys.stderr)
             return 1
     return 0

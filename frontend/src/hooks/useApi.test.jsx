@@ -1,5 +1,5 @@
 /**
- * The loader every page in Herald reads its data through.
+ * The loader every page in Pulse reads its data through.
  *
  * Its loading/error/data cycle is asserted a hundred times over by the page
  * tests, but always through a page. The one thing they cannot reach is the

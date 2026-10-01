@@ -1,13 +1,13 @@
 """The three endpoints whose effect cannot be inspected afterwards.
 
-Herald archives, cancels and revokes rather than deleting nearly everywhere, and
+Pulse archives, cancels and revokes rather than deleting nearly everywhere, and
 those states are all readable back off the row. Three paths genuinely destroy:
 
 * ``DELETE /projects/{id}`` cascades to the content, the publication history and
   the triggers. Its own docstring says it — "this one really deletes" — and adds
   the part that makes it worth a log line: *content already live on a platform
   stays live*. Afterwards there is nothing left to ask what went, and the posts
-  it was the only record of are still out there under Herald's name.
+  it was the only record of are still out there under Pulse's name.
 * ``DELETE /content/{id}`` is the same shape one level down.
 * ``DELETE /settings/connections/{platform}`` destroys the ciphertext on
   purpose, and takes with it the ability to publish anything queued for that

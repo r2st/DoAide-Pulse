@@ -1,7 +1,7 @@
 """Publishing adapters and the registry that resolves them.
 
 One adapter per platform, all behind :class:`~app.services.publishers.base.Adapter`.
-The registry is the single place that answers "can Herald actually publish
+The registry is the single place that answers "can Pulse actually publish
 here?" — the ``Platform`` enum is only the vocabulary.
 
 Adding a platform is: write the adapter, add it to :data:`_ADAPTERS`, add the

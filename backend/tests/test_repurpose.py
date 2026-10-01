@@ -21,10 +21,10 @@ def _long_content(**overrides) -> Content:
     defaults = dict(
         project_id=1,
         content_type=ContentType.FEATURE_SPOTLIGHT,
-        title="Herald ships internal link suggestions",
+        title="Pulse ships internal link suggestions",
         slug="herald-ships-internal-link-suggestions",
         body_markdown=body,
-        excerpt="Herald now suggests internal links by keyword overlap.",
+        excerpt="Pulse now suggests internal links by keyword overlap.",
         tags=["python", "fastapi"],
         canonical_url="https://example.com/herald-ships-internal-link-suggestions",
     )
@@ -65,11 +65,11 @@ def test_falls_back_to_mechanical_builders_without_a_provider(project):
 def test_uses_ai_output_when_the_chain_succeeds(project, stub_llm):
     stub_llm["payload"] = {
         "twitter_thread": [
-            "Herald just shipped internal link suggestions for your posts.",
+            "Pulse just shipped internal link suggestions for your posts.",
             "It scores every published piece by keyword overlap with the draft.",
             "No more guessing which old post to cross-link.",
         ],
-        "linkedin_post": "Herald now suggests internal links automatically, scoring "
+        "linkedin_post": "Pulse now suggests internal links automatically, scoring "
         "every published post in a project by how much its keywords overlap with "
         "whatever you're currently drafting. One less thing to remember before you "
         "hit publish.",
@@ -84,7 +84,7 @@ def test_uses_ai_output_when_the_chain_succeeds(project, stub_llm):
     # The link is appended to the first tweet, not the rest.
     assert content.canonical_url in result.twitter_thread[0]
     assert content.canonical_url not in result.twitter_thread[1]
-    assert result.linkedin_post.strip().startswith("Herald now suggests")
+    assert result.linkedin_post.strip().startswith("Pulse now suggests")
     assert content.canonical_url in result.linkedin_post
 
 

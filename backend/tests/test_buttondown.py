@@ -28,15 +28,15 @@ def adapter() -> ButtondownAdapter:
 @pytest.fixture
 def request_() -> PublishRequest:
     return PublishRequest(
-        title="Herald writes the posts now",
-        body_markdown="## Why\n\nHerald watches your repos and writes the posts.",
-        excerpt="Herald watches your repos.",
-        meta_description="Herald automates developer marketing.",
+        title="Pulse writes the posts now",
+        body_markdown="## Why\n\nPulse watches your repos and writes the posts.",
+        excerpt="Pulse watches your repos.",
+        meta_description="Pulse automates developer marketing.",
         tags=["python", "automation"],
         slug="herald-writes-the-posts-now",
         canonical_url="https://herald.example.com/blog/writes",
         project_url="https://herald.example.com",
-        project_name="Herald",
+        project_name="Pulse",
     )
 
 
@@ -190,7 +190,7 @@ def test_the_cover_leads_and_the_link_closes(adapter, request_):
         replace(request_, cover_image_url="https://img.example.com/c.png")
     )
 
-    assert body.startswith("![Herald writes the posts now](https://img.example.com/c.png)")
+    assert body.startswith("![Pulse writes the posts now](https://img.example.com/c.png)")
     assert body.rstrip().endswith(f"[Read it on the web]({request_.canonical_url})")
 
 
@@ -222,10 +222,10 @@ def test_verify_returns_the_newsletter_name(adapter, monkeypatch):
     monkeypatch.setattr(
         adapter,
         "_request",
-        lambda *a, **kw: FakeResponse({"results": [{"name": "The Herald Weekly"}]}),
+        lambda *a, **kw: FakeResponse({"results": [{"name": "The Pulse Weekly"}]}),
     )
 
-    assert adapter.verify({"api_key": "k"}) == "The Herald Weekly"
+    assert adapter.verify({"api_key": "k"}) == "The Pulse Weekly"
 
 
 def test_verify_accepts_a_bare_list_too(adapter, monkeypatch):

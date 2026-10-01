@@ -36,7 +36,7 @@ function draw() {
 function project(overrides = {}) {
   return {
     id: 1,
-    name: "Herald",
+    name: "Pulse",
     description: "A dev-blog autopilot.",
     repo_url: "https://github.com/r2st/Herald",
     repo_full_name: "r2st/Herald",
@@ -95,7 +95,7 @@ describe("a project card", () => {
     api.listProjects.mockResolvedValue([project()]);
     draw();
 
-    expect(await screen.findByText("Herald")).toBeInTheDocument();
+    expect(await screen.findByText("Pulse")).toBeInTheDocument();
     expect(screen.getByText("r2st/Herald")).toBeInTheDocument();
     expect(screen.getByTitle("Autopilot mode")).toHaveTextContent("draft");
   });
@@ -113,7 +113,7 @@ describe("a project card", () => {
     api.listProjects.mockResolvedValue([project({ repo_full_name: "" })]);
     draw();
 
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     expect(screen.queryByRole("button", { name: "Scan repo" })).not.toBeInTheDocument();
   });
 
@@ -121,7 +121,7 @@ describe("a project card", () => {
     api.listProjects.mockResolvedValue([project()]);
     draw();
 
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     expect(screen.getByText("4 pieces")).toBeInTheDocument();
     expect(screen.getByText("3 published")).toBeInTheDocument();
   });
@@ -130,7 +130,7 @@ describe("a project card", () => {
     api.listProjects.mockResolvedValue([project({ content_count: 1 })]);
     draw();
 
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     expect(screen.getByText("1 piece")).toBeInTheDocument();
   });
 
@@ -159,14 +159,14 @@ describe("a project card", () => {
       project({ last_scanned_at: "2026-08-13T09:00:00Z" }),
     ]);
     const { unmount } = draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     expect(screen.getByTitle("Last repo scan")).toBeInTheDocument();
     unmount();
 
     api.listProjects.mockResolvedValue([project({ last_scanned_at: null })]);
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     expect(screen.queryByTitle("Last repo scan")).not.toBeInTheDocument();
   });
@@ -182,7 +182,7 @@ describe("scanning a repo", () => {
     });
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Scan repo" }));
 
@@ -202,7 +202,7 @@ describe("scanning a repo", () => {
     });
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Scan repo" }));
 
@@ -218,7 +218,7 @@ describe("scanning a repo", () => {
     api.scanProject.mockRejectedValue(new Error("rate limited"));
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Scan repo" }));
 
@@ -239,11 +239,11 @@ describe("deleting a project", () => {
     api.listProjects.mockResolvedValueOnce([project()]).mockResolvedValueOnce([]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("Herald"));
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining("Pulse"));
     expect(api.deleteProject).toHaveBeenCalledWith(1);
     expect(await screen.findByText("No projects yet")).toBeInTheDocument();
   });
@@ -253,12 +253,12 @@ describe("deleting a project", () => {
     api.listProjects.mockResolvedValue([project()]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(api.deleteProject).not.toHaveBeenCalled();
-    expect(screen.getByText("Herald")).toBeInTheDocument();
+    expect(screen.getByText("Pulse")).toBeInTheDocument();
   });
 
   it("toasts a refused delete and leaves the card where it was", async () => {
@@ -270,12 +270,12 @@ describe("deleting a project", () => {
     api.deleteProject.mockRejectedValue(new Error("Project has queued publications"));
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
     expect(toast.error).toHaveBeenCalledWith("Project has queued publications");
-    expect(screen.getByText("Herald")).toBeInTheDocument();
+    expect(screen.getByText("Pulse")).toBeInTheDocument();
   });
 });
 
@@ -321,12 +321,12 @@ describe("the add/edit dialog", () => {
     api.listProjects.mockResolvedValue([project()]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
-    expect(screen.getByRole("heading", { name: "Edit Herald" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Name")).toHaveValue("Herald");
+    expect(screen.getByRole("heading", { name: "Edit Pulse" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Name")).toHaveValue("Pulse");
     expect(screen.getByLabelText(/Tech stack/)).toHaveValue("FastAPI, React");
   });
 
@@ -334,7 +334,7 @@ describe("the add/edit dialog", () => {
     api.listProjects.mockResolvedValue([project()]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
     const select = await screen.findByLabelText("Primary destination");
@@ -349,7 +349,7 @@ describe("the add/edit dialog", () => {
     api.listProjects.mockResolvedValue([project()]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Add project" }));
 
@@ -366,7 +366,7 @@ describe("the add/edit dialog", () => {
     ]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
@@ -379,7 +379,7 @@ describe("the add/edit dialog", () => {
     api.listProjects.mockResolvedValue([project({ canonical_platform: "devto" })]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     await user.click(screen.getByRole("button", { name: "Edit" }));
     await screen.findByLabelText("Primary destination");
 
@@ -393,7 +393,7 @@ describe("the add/edit dialog", () => {
     api.listProjects.mockResolvedValue([project()]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
     const auto = screen.getByLabelText(/Auto-set canonical URL/);
@@ -410,7 +410,7 @@ describe("the add/edit dialog", () => {
     api.listProjects.mockResolvedValue([project({ utm_enabled: false })]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
     const utm = screen.getByLabelText(/Tag links with UTM/);
@@ -426,7 +426,7 @@ describe("the add/edit dialog", () => {
     api.listProjects.mockResolvedValue([project({ utm_enabled: false })]);
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
     expect(screen.getByLabelText("Campaign name")).toBeDisabled();
@@ -459,7 +459,7 @@ describe("the add/edit dialog", () => {
     api.updateProject.mockResolvedValue(project());
     const user = userEvent.setup();
     draw();
-    await screen.findByText("Herald");
+    await screen.findByText("Pulse");
     await user.click(screen.getByRole("button", { name: "Edit" }));
 
     await user.click(screen.getByRole("button", { name: "Save project" }));

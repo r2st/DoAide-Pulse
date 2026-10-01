@@ -34,7 +34,7 @@ const FOCUSABLE = [
  *     …
  *   </Dialog>
  *
- * Herald had eight of these written out by hand. Each one announced itself as
+ * Pulse had eight of these written out by hand. Each one announced itself as
  * `aria-modal="true"` and none of them behaved like it: Tab walked straight out
  * the back of the dialog into the page it was covering, Escape did nothing, and
  * focus was wherever the last click left it — which for a dialog opened from the

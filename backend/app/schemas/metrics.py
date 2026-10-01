@@ -28,7 +28,7 @@ class ContentCountsOut(BaseModel):
     total: int = Field(description="Every piece the account has, in any status.")
     by_status: dict[str, int] = Field(
         description=(
-            "One entry per status in Herald's vocabulary — draft, review, "
+            "One entry per status in Pulse's vocabulary — draft, review, "
             "approved, published, archived, failed — including the ones at "
             "zero, so the key set does not change as the data does."
         )
@@ -87,7 +87,7 @@ class PlatformPublishOut(BaseModel):
             "Mean wall-clock of this platform's API call, failed attempts "
             "included. Null when nothing has been timed — a row still pending "
             "or scheduled has no duration, and neither has one written before "
-            "Herald recorded them."
+            "Pulse recorded them."
         ),
     )
 
@@ -161,7 +161,7 @@ class LLMUsageOut(BaseModel):
         default=None,
         description=(
             "Mean wall-clock of the completions that generated a piece, or "
-            "null if none were generated in the window. Herald stores no "
+            "null if none were generated in the window. Pulse stores no "
             "generation duration on the content itself, so this is the only "
             "source for it."
         ),

@@ -62,7 +62,7 @@ One substantial piece a month, syndicated properly, indefinitely. That is twelve
 
 If a month feels slow, it is worth remembering what the alternative actually was — which for most small teams is not a faster cadence but zero, because everything downstream of "the code is live" happens by hand and therefore does not happen.
 
-## Where Herald fits
+## Where Pulse fits
 
 [Herald](https://herald.doaide.com) is marketing automation for developers who ship more than they write about. It watches your project repos, drafts posts and social copy when something meaningful lands, runs them past you, publishes to Dev.to, Medium and elsewhere on a schedule with canonical URLs configured correctly, and then tracks which pieces actually got read.
 

@@ -123,7 +123,7 @@ def resolve(db: Session, raw_token: str) -> Content | None:
 
     The account check is a join rather than a walk through ``row.content``,
     because it decides whether there is a row at all. Deactivation is how an
-    account is switched off in Herald: its tokens stop working
+    account is switched off in Pulse: its tokens stop working
     (:func:`app.deps.get_current_user`), its sweeps skip it, its inbound
     webhooks write nothing, its approved content is not released. This endpoint
     was the exception — an anonymous, unauthenticated read of an *unpublished*

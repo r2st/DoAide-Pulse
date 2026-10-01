@@ -3,7 +3,7 @@ import { useId } from "react";
 /**
  * Chart primitives, hand-rolled in SVG.
  *
- * Herald has no charting dependency and does not want one: the whole surface
+ * Pulse has no charting dependency and does not want one: the whole surface
  * needed here is a filled line and a row of bars, and every library that draws
  * those arrives with its own type scale, its own colours and its own idea of
  * what a tooltip looks like — none of which match the hairline-and-mono
@@ -151,7 +151,7 @@ export function AreaChart({
 /**
  * How successive series are told apart: weight and dash, not hue.
  *
- * Herald's palette has exactly one accent — "used only for the thing you should
+ * Pulse's palette has exactly one accent — "used only for the thing you should
  * look at or click next" — so a chart that spent three colours on three lines
  * would be the loudest thing on the page and would mean nothing by being loud.
  * The first series gets the accent because it is the one the panel is about;

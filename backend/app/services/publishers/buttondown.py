@@ -2,7 +2,7 @@
 
 An API key in a header, Markdown in the body, and a free tier that does not
 expire. Like WordPress and unlike LinkedIn, there is no OAuth dance, which is
-what makes email one of the few channels Herald can support honestly without a
+what makes email one of the few channels Pulse can support honestly without a
 registered app nobody can complete.
 
 **Email is the one destination that cannot be taken back.** A blog post can be
@@ -42,7 +42,7 @@ from app.services.publishers.base import (
 _API = "https://api.buttondown.com/v1"
 
 #: Buttondown reads a leading ``---`` as YAML front matter and rejects the email
-#: with ``body_contains_frontmatter`` rather than guessing. A Herald body starts
+#: with ``body_contains_frontmatter`` rather than guessing. A Pulse body starts
 #: with a heading or a paragraph, but a Markdown horizontal rule is a legal way
 #: to open a piece and a 400 at send time is a bad way to find that out.
 _FRONT_MATTER_START = "---"
@@ -58,7 +58,7 @@ class ButtondownAdapter(Adapter):
     implemented = True
     # Not "referral" and not "syndication": an email subscriber arrives from a
     # channel the reader opted into, and folding that in with a link on a social
-    # post throws away the only segmentation Herald gets for free.
+    # post throws away the only segmentation Pulse gets for free.
     utm_medium = "email"
     # The archive page is an issue of a newsletter, not the article's home.
     hosts_canonical = False

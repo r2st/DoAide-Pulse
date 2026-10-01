@@ -1,6 +1,6 @@
-"""A project Herald writes about.
+"""A project Pulse writes about.
 
-One row per thing the developer wants promoted — TalentPing, GoSumo, Herald
+One row per thing the developer wants promoted — TalentPing, GoSumo, Pulse
 itself. Everything the content engine needs to write in the project's voice
 lives here, alongside the repo watermarks the autopilot uses to notice that
 something new has shipped.
@@ -124,7 +124,7 @@ def scan_due(
 
     Measures from ``last_scanned_at`` — when the repo was last *looked at*, not
     when a piece was last written. A scan that finds nothing new still counts,
-    which is the intended reading: the interval bounds how often Herald goes
+    which is the intended reading: the interval bounds how often Pulse goes
     and asks, and asking is what spends the GitHub quota. What comes back is
     what ``autopilot_commit_threshold`` and ``autopilot_daily_content_limit``
     are for.
@@ -207,7 +207,7 @@ class Project(Base, TimestampMixin):
     )
 
     # ---- Headline testing ----
-    #: Let Herald swap in the best-performing past headline on its own. Off by
+    #: Let Pulse swap in the best-performing past headline on its own. Off by
     #: default, and deliberately: a title changing under the author without
     #: their say-so is startling, and the measurement carries a known bias
     #: toward whichever headline was live at launch (see
@@ -290,7 +290,7 @@ class Project(Base, TimestampMixin):
     #: How long the last completed scan of this repo took, end to end, including
     #: the GitHub round-trips. ``None`` until one finishes.
     #:
-    #: Herald has no metrics backend, so "the autopilot got slow" was a thing
+    #: Pulse has no metrics backend, so "the autopilot got slow" was a thing
     #: somebody noticed in the UI. A scan is bounded by a 180-second soft time
     #: limit and does two or three HTTP calls to a rate-limited API, so it is
     #: both the slowest recurring thing on the box and the one whose slowdown is
@@ -312,7 +312,7 @@ class Project(Base, TimestampMixin):
     content: Mapped[list[Content]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
-    #: Everything that can make Herald write about this project. The repo
+    #: Everything that can make Pulse write about this project. The repo
     #: watermark columns above are the pre-trigger way of expressing one of
     #: these; a ``github`` trigger keeps its own watermark in ``Trigger.state``
     #: and takes the project out of the legacy scan.

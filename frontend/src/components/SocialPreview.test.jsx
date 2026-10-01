@@ -21,7 +21,7 @@ const GOOD_DESCRIPTION =
 
 function draft(overrides = {}) {
   return {
-    title: "Shipping Herald v2",
+    title: "Shipping Pulse v2",
     body_markdown: "## Why\n\nA paragraph.",
     excerpt: "",
     meta_description: GOOD_DESCRIPTION,
@@ -46,7 +46,7 @@ it("renders a tab per network with the first one selected", () => {
 it("shows the title and the domain on the card", () => {
   render(<SocialPreview draft={draft()} url="https://blog.example.com/post" />);
 
-  expect(screen.getByText("Shipping Herald v2")).toBeInTheDocument();
+  expect(screen.getByText("Shipping Pulse v2")).toBeInTheDocument();
   expect(screen.getByText("blog.example.com")).toBeInTheDocument();
 });
 
@@ -133,7 +133,7 @@ it("falls back to the text-only card when the cover URL does not load", () => {
   // and only fetching it says otherwise.
   expect(document.querySelector("img")).toBeNull();
   expect(document.querySelector("svg[aria-hidden]")).not.toBeNull();
-  expect(screen.getByText("Shipping Herald v2")).toBeInTheDocument();
+  expect(screen.getByText("Shipping Pulse v2")).toBeInTheDocument();
 });
 
 it("falls back to the small text-only card when there is no cover", () => {
@@ -173,7 +173,7 @@ it("does not fetch the meta tags until they are asked for", () => {
 
 it("fetches and shows the meta tags on request", async () => {
   api.socialCards.mockResolvedValue({
-    meta_html: '<meta property="og:title" content="Shipping Herald v2">',
+    meta_html: '<meta property="og:title" content="Shipping Pulse v2">',
   });
   render(<SocialPreview draft={draft()} url="https://e.com/p" contentId={7} />);
 
@@ -181,7 +181,7 @@ it("fetches and shows the meta tags on request", async () => {
 
   await waitFor(() =>
     expect(screen.getByLabelText(/meta tags/i)).toHaveValue(
-      '<meta property="og:title" content="Shipping Herald v2">',
+      '<meta property="og:title" content="Shipping Pulse v2">',
     ),
   );
   expect(api.socialCards).toHaveBeenCalledWith(7);
@@ -223,13 +223,13 @@ it("updates when the draft changes", () => {
   const { rerender } = render(
     <SocialPreview draft={draft()} url="https://e.com/p" />,
   );
-  expect(screen.getByText("Shipping Herald v2")).toBeInTheDocument();
+  expect(screen.getByText("Shipping Pulse v2")).toBeInTheDocument();
 
   rerender(<SocialPreview draft={draft({ title: "Renamed" })} url="https://e.com/p" />);
 
   // The whole point of computing locally: it tracks the unsaved draft.
   expect(screen.getByText("Renamed")).toBeInTheDocument();
-  expect(screen.queryByText("Shipping Herald v2")).not.toBeInTheDocument();
+  expect(screen.queryByText("Shipping Pulse v2")).not.toBeInTheDocument();
 });
 
 // ---- Copying the tags -----------------------------------------------------

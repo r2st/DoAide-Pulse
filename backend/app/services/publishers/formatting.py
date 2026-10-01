@@ -19,7 +19,7 @@ from bs4 import BeautifulSoup
 #: with language hints, tables, and footnote-free smart handling of line breaks.
 _MD_EXTENSIONS = ["fenced_code", "tables", "sane_lists", "nl2br"]
 
-#: The tags a rendered Herald post is allowed to contain — the union of what
+#: The tags a rendered Pulse post is allowed to contain — the union of what
 #: ``_MD_EXTENSIONS`` can emit and what :func:`lead_image_html` prepends.
 #: Anything outside this list is dropped by :func:`sanitize_html`.
 _ALLOWED_TAGS = {
@@ -65,7 +65,7 @@ def sanitize_html(html: str) -> str:
     Markdown is *not* a sanitiser and has never claimed to be: Python-Markdown
     passes raw HTML in the source straight through to its output, by design.
     That is fine when the author and the reader are the same person, and it is
-    not what happens here — a Herald post reaches its audience on the author's
+    not what happens here — a Pulse post reaches its audience on the author's
     Medium or WordPress blog, and the Markdown it was rendered from may have
     been written by a model, assembled from an RSS trigger, or pasted in from
     somewhere nobody vetted. Any of those paths can carry a ``<script>`` tag, an
@@ -74,7 +74,7 @@ def sanitize_html(html: str) -> str:
 
     Both target platforms sanitise their own input, which is exactly the
     argument for doing it here as well rather than instead: the one that stops
-    mattering is whichever one is silently relaxed first, and Herald finds out
+    mattering is whichever one is silently relaxed first, and Pulse finds out
     about that from its readers.
 
     An allow-list rather than a block-list, and ``nh3`` (Rust's ammonia) rather
@@ -239,7 +239,7 @@ def front_matter(fields: dict[str, object]) -> str:
     booleans and flat string lists, and a real serializer would still need the
     same quoting decisions made explicitly. What it must not skip is the
     escaping — see :func:`escape_yaml_scalar` for what goes wrong without it.
-    Keys are Herald's own constants and are never escaped; values are not.
+    Keys are Pulse's own constants and are never escaped; values are not.
     """
     lines = ["---"]
     for key, value in fields.items():
@@ -311,7 +311,7 @@ def truncate_with_link(
     only part of itself that does any work. The one case this cannot rescue is
     a URL longer than the whole limit, where the post goes out as the bare link
     and over budget — a truncated URL is a dead link, so there is no better
-    answer here. Herald's own share links stay well clear of that; see the
+    answer here. Pulse's own share links stay well clear of that; see the
     ``utm_content`` cap in ``app.services.publishing_service``.
     """
     if not url:

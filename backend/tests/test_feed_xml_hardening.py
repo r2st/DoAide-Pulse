@@ -2,7 +2,7 @@
 
 ``test_feeds.py`` covers feeds that are merely *wrong* — truncated, empty, the
 wrong format, a date nobody can parse. This file covers feeds that are hostile,
-which is a different question: the RSS trigger points Herald's own worker at a
+which is a different question: the RSS trigger points Pulse's own worker at a
 URL a user typed, so a feed body is attacker-controlled input that arrives with
 no signature, no size the user vouched for, and no reason to be well-meaning.
 

@@ -32,21 +32,21 @@ def test_create_and_list_project(client, auth):
 
 
 def test_slug_collision_gets_suffixed(client, auth, project):
-    resp = client.post("/api/v1/projects", headers=auth, json={"name": "Herald"})
+    resp = client.post("/api/v1/projects", headers=auth, json={"name": "Pulse"})
     assert resp.status_code == 201
-    assert resp.json()["slug"] == "herald-2"
+    assert resp.json()["slug"] == "pulse-2"
 
 
 def test_rename_reslugs_but_no_op_patch_does_not(client, auth, project):
     resp = client.patch(
         f"/api/v1/projects/{project.id}", headers=auth, json={"description": "Same name"}
     )
-    assert resp.json()["slug"] == "herald"
+    assert resp.json()["slug"] == "pulse"
 
     resp = client.patch(
-        f"/api/v1/projects/{project.id}", headers=auth, json={"name": "Herald Two"}
+        f"/api/v1/projects/{project.id}", headers=auth, json={"name": "Pulse Two"}
     )
-    assert resp.json()["slug"] == "herald-two"
+    assert resp.json()["slug"] == "pulse-two"
 
 
 def test_other_users_project_is_404(client, auth, db):
@@ -112,13 +112,13 @@ def test_list_projects_uses_batched_counts(client, auth, project, db, sql_log):
     resp = client.get("/api/v1/projects", headers=auth)
     assert resp.status_code == 200
     body = resp.json()
-    # project fixture ("Herald") + p2 ("GoSumo")
+    # project fixture ("Pulse") + p2 ("GoSumo")
     assert len(body) == 2
 
     # Verify counts are correct.
     by_slug = {p["slug"]: p for p in body}
-    assert by_slug["herald"]["content_count"] == 2
-    assert by_slug["herald"]["published_count"] == 1
+    assert by_slug["pulse"]["content_count"] == 2
+    assert by_slug["pulse"]["published_count"] == 1
     assert by_slug["gosumo"]["content_count"] == 2
     assert by_slug["gosumo"]["published_count"] == 1
 
@@ -219,7 +219,7 @@ def test_feed_is_public_and_lists_only_published_content(client, project, db):
     """No Authorization header at all — an RSS reader has none to send."""
     published = Content(
         project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+        title="Pulse 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
         excerpt="It's out.",
     )
     draft = Content(
@@ -232,7 +232,7 @@ def test_feed_is_public_and_lists_only_published_content(client, project, db):
     resp = client.get(f"/api/v1/projects/{project.id}/feed.xml")
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("application/rss+xml")
-    assert "Herald 1.0" in resp.text
+    assert "Pulse 1.0" in resp.text
     assert "Unfinished thing" not in resp.text
 
 
@@ -288,14 +288,14 @@ def test_feed_returns_once_something_is_published(client, project, db):
     db.add(
         Content(
             project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
-            title="Herald 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+            title="Pulse 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
         )
     )
     db.commit()
 
     resp = client.get(f"/api/v1/projects/{project.id}/feed.xml")
     assert resp.status_code == 200
-    assert "Herald 1.0" in resp.text
+    assert "Pulse 1.0" in resp.text
 
 
 # --------------------------------------------------------------------------- #
@@ -331,7 +331,7 @@ def test_publish_accepts_either_platform_spelling(client, auth, project, db):
 
 
 # --------------------------------------------------------------------------- #
-# Standing settings only name platforms Herald can actually publish to         #
+# Standing settings only name platforms Pulse can actually publish to         #
 # --------------------------------------------------------------------------- #
 #
 # ``POST /content/{id}/publish`` has always checked the adapter registry and

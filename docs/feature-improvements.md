@@ -1,4 +1,4 @@
-# Herald — feature improvements
+# Pulse — feature improvements
 
 Written against the code as of `7b3879c`, as proposals. The **first pass** has
 since been implemented in full — the items marked ✅ below are shipped, and the
@@ -46,7 +46,7 @@ Worth stating plainly, because it sets the priorities below.
 - Single user by construction: `Project.user_id`, registration closed, no roles,
   no comments, no audit trail.
 
-The through-line: Herald generates well and distributes narrowly, and the data
+The through-line: Pulse generates well and distributes narrowly, and the data
 it already collects to close the loop is not yet read.
 
 ---
@@ -163,7 +163,7 @@ Not "publishing" so much as broadcasting, but it's a webhook URL and a formatted
 message.
 
 **2.8 RSS/JSON feed out — S**
-Herald already holds every published piece; serving a feed costs one endpoint
+Pulse already holds every published piece; serving a feed costs one endpoint
 and makes the archive syndicable.
 
 ---
@@ -187,7 +187,7 @@ LLM-written summary over the computed numbers (compute first, narrate second —
 never let the model do the arithmetic).
 
 **3.4 GitHub stars/traffic correlation — M**
-Herald already knows the repo and the publish timestamp. Overlay stars and repo
+Pulse already knows the repo and the publish timestamp. Overlay stars and repo
 traffic against publication dates: "this post moved 40 stars" is the metric a
 developer-marketing tool should own, and nobody else can compute it.
 
@@ -258,7 +258,7 @@ documentation links; this catches them for the cost of a few HTTP requests.
 
 **5.3 Internal linking suggestions — M**
 Suggest links to your own previously published pieces by keyword overlap.
-Compounds as the archive grows, and Herald knows every URL it has published.
+Compounds as the archive grows, and Pulse knows every URL it has published.
 
 **5.4 Content refresh detection — M**
 Flag posts whose traffic has decayed or whose tech stack has moved on, and
@@ -289,12 +289,12 @@ digest in **4.5**; makes the review queue reachable without opening the app.
 
 **6.3 Outbound webhooks — S**
 `content.published`, `publication.failed`, `review.pending` as user-configured
-HTTP callbacks. One table, one dispatch helper, and it makes Herald composable
+HTTP callbacks. One table, one dispatch helper, and it makes Pulse composable
 with everything it will never natively integrate with.
 
-**6.4 An MCP server for Herald — M**
+**6.4 An MCP server for Pulse — M**
 Expose projects, drafts, generation and publishing as MCP tools so Claude Code
-can draft and queue a post from inside the repo being written about. Herald's
+can draft and queue a post from inside the repo being written about. Pulse's
 whole premise is "you're already in the terminal"; this meets the user there.
 
 **6.5 Bring-your-own-key / paid models — S**
@@ -303,7 +303,7 @@ select a model per project. Free tier stays the default; quality ceases to be
 capped by it.
 
 **6.6 Notion / Obsidian import — M**
-Pull existing drafts in as `Content` rows so Herald can publish what's already
+Pull existing drafts in as `Content` rows so Pulse can publish what's already
 written, not only what it wrote.
 
 ---
@@ -345,7 +345,7 @@ traffic attribution.
 **Second pass — the feedback loop (~3 weeks)**
 3.2 time series → 3.3 what-works report → 3.4 stars correlation →
 4.1 learned timing → 4.4 evergreen re-share.
-Herald starts recommending rather than only executing.
+Pulse starts recommending rather than only executing.
 
 **Third pass — the writing itself (~3 weeks)**
 1.1 per-platform variants → 1.6 cover images → 1.2/1.3 inline editing with

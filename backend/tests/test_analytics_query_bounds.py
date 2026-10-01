@@ -189,7 +189,7 @@ def test_the_overview_reports_nothing_belonging_to_another_account(
 
     assert body["totals"]["views"] == 100
     assert {row["title"] for row in body["top_content"]} == {"Short one", "Long one"}
-    assert [row["name"] for row in body["by_project"]] == ["Herald"]
+    assert [row["name"] for row in body["by_project"]] == ["Pulse"]
 
 
 # --------------------------------------------------------------------------- #

@@ -1,6 +1,6 @@
 """Per-project API keys: what is stored, what authenticates, and what stops.
 
-Herald's second credential type, and the first one that is handed to a machine
+Pulse's second credential type, and the first one that is handed to a machine
 rather than typed by a person. The properties worth pinning are the ones that
 make it safe to leave on a build server:
 

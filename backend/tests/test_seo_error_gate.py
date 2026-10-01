@@ -27,16 +27,16 @@ from app.services.content_generator import GeneratedContent
 # often enough to sit in the scoring band — so the only thing wrong with the
 # pieces below is the one thing each test removes.
 _BODY = (
-    "## Retries in Herald\n\n"
-    "Retries in Herald are the part people ask about first. "
+    "## Retries in Pulse\n\n"
+    "Retries in Pulse are the part people ask about first. "
     + "The retry path is careful about retries and about what a retry costs. " * 45
 )
 
 _CLEAN = {
-    "title": "Retries in Herald",
+    "title": "Retries in Pulse",
     "body_markdown": _BODY,
     "meta_description": (
-        "How retries work in Herald, why a retry never double-posts, and what "
+        "How retries work in Pulse, why a retry never double-posts, and what "
         "the backoff actually does when a platform is down."
     ),
     "keywords": ["retries"],
@@ -191,7 +191,7 @@ def test_a_clean_piece_still_auto_publishes(db, auto_project, writes):
 def test_a_piece_with_no_meta_description_goes_to_review(
     db, auto_project, writes
 ):
-    """The bug. Herald published these under the user's name, unreviewed."""
+    """The bug. Pulse published these under the user's name, unreviewed."""
     writes(_generated(meta_description=""))
 
     routed = _route(db, auto_project)

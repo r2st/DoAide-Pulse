@@ -261,7 +261,7 @@ class _verdict:
 def repo_project(db, user) -> Project:
     row = Project(
         user_id=user.id,
-        name="Herald",
+        name="Pulse",
         slug="herald-scan",
         description="A thing that ships.",
         tone=Tone.TECHNICAL,

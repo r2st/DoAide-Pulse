@@ -194,7 +194,7 @@ def restore_revision(
 
     Refused with a 409 on a published piece, in the same words ``PATCH`` refuses
     to edit one: the text is live on the platforms, and changing it here would
-    make Herald disagree with what a reader can see without changing anything a
+    make Pulse disagree with what a reader can see without changing anything a
     reader can see. Archived pieces restore fine — archiving means "stop showing
     me this", not "this went out".
 

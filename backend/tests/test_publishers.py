@@ -33,17 +33,17 @@ def request_() -> PublishRequest:
     return PublishRequest(
         title="Automating developer marketing",
         body_markdown=(
-            "## Why\n\nHerald watches your repos and writes the posts.\n\n"
+            "## Why\n\nPulse watches your repos and writes the posts.\n\n"
             "```python\nprint('hello')\n```\n\n"
             "## How\n\nIt uses a chain of free models with a circuit breaker in "
             "front of them, so one dead provider never stops the pipeline.\n"
         ),
-        excerpt="Herald watches your repos and writes the posts for you.",
-        meta_description="Herald automates developer marketing end to end.",
+        excerpt="Pulse watches your repos and writes the posts for you.",
+        meta_description="Pulse automates developer marketing end to end.",
         tags=["python", "dev-tools", "AI", "automation", "extra", "sixth"],
         canonical_url="https://herald.example.com/blog/automating",
         project_url="https://herald.example.com",
-        project_name="Herald",
+        project_name="Pulse",
     )
 
 
@@ -78,7 +78,7 @@ def test_unfinished_adapters_refuse_clearly(request_):
 
 def test_finished_adapters_ask_for_credentials_rather_than_refusing(request_):
     # The distinction the API answers "why can't I publish here?" with: an
-    # unfinished adapter is a Herald problem, a missing credential is the
+    # unfinished adapter is a Pulse problem, a missing credential is the
     # user's, and they must not look the same.
     for adapter in (
         HashnodeAdapter(),

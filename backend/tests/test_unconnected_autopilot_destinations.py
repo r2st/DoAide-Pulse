@@ -54,10 +54,10 @@ def confident(monkeypatch):
         return llm_router.Completion(
             text=json.dumps(
                 {
-                    "title": "Herald ships marketing automation",
+                    "title": "Pulse ships marketing automation",
                     "body_markdown": "## Why\n\n" + ("word " * 300),
-                    "excerpt": "Herald writes the posts about what you ship.",
-                    "meta_description": "Herald automates developer marketing "
+                    "excerpt": "Pulse writes the posts about what you ship.",
+                    "meta_description": "Pulse automates developer marketing "
                     "end to end, from repo watch to published post.",
                     "keywords": ["marketing automation"],
                     "tags": ["python"],
@@ -230,7 +230,7 @@ def test_approving_queues_nothing_for_an_unconnected_project(db, auto_project):
     content = Content(
         project_id=auto_project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="word " * 200,
         status=ContentStatus.APPROVED,
@@ -252,7 +252,7 @@ def test_connecting_the_account_later_releases_the_waiting_piece(
     content = Content(
         project_id=auto_project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="word " * 200,
         status=ContentStatus.APPROVED,

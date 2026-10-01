@@ -105,7 +105,7 @@ def test_a_non_json_body_is_a_github_error_not_a_json_decode_error(monkeypatch):
 
     `resp.json()` raises `json.JSONDecodeError`, which is not a `GitHubError`,
     so it went past the scan route's 502 handler and out through the app's
-    catch-all as a 500 — Herald reporting someone else's fault as its own.
+    catch-all as a 500 — Pulse reporting someone else's fault as its own.
     """
     _stub(
         monkeypatch,

@@ -6,7 +6,7 @@ so this is plain httpx rather than a dependency on PyGithub.
 Two things this module deliberately does *not* do:
 
 * **Authenticate as the user.** A token is a global setting, not per project.
-  Herald reads public repos to write about them; it never pushes.
+  Pulse reads public repos to write about them; it never pushes.
 * **Fetch full history.** The autopilot cares about the delta since a stored
   watermark, so a single page of commits is enough. A repo that has moved more
   than a page since the last scan gets "100+ commits", which is the same
@@ -40,7 +40,7 @@ class GitHubRateLimited(GitHubError):
 
     Separated from the generic error because the caller's response differs: a
     404 means "stop scanning this project", a rate limit means "come back
-    later", and conflating them would make an unauthenticated Herald quietly
+    later", and conflating them would make an unauthenticated Pulse quietly
     disable every project it watches.
 
     *retry_after* is the seconds GitHub asked us to wait, when it said. Only the
@@ -421,7 +421,7 @@ def _commits_page(full_name: str, *, per_page: int) -> list[dict]:
     The endpoint is asked without a ``sha`` parameter, which is what makes this
     cost the same on a repo with one branch and a repo with four hundred:
     GitHub's default is the repo's *default branch*, and there is no per-branch
-    fan-out anywhere in Herald. That is deliberate rather than incidental — a
+    fan-out anywhere in Pulse. That is deliberate rather than incidental — a
     scan that walked every branch would multiply both the request count and the
     editorial noise (a post about somebody's abandoned spike), against an API
     that rate-limits per account. ``tests/test_a_scan_does_not_walk_branches.py``
@@ -517,7 +517,7 @@ README_MAX_CHARS = 200_000
 def fetch_readme(full_name: str) -> str:
     """The repo's README as text, or ``""`` if it has none.
 
-    The one thing Herald can read that says what a project actually *does* in
+    The one thing Pulse can read that says what a project actually *does* in
     the project's own words, which is why
     :mod:`app.services.factcheck` grounds product claims against it.
 

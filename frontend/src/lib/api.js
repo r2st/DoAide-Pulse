@@ -1,4 +1,4 @@
-// API client for the Herald backend.
+// API client for the Pulse backend.
 // Stores the JWT in localStorage and attaches it as a Bearer token.
 
 const BASE = "/api/v1";
@@ -33,7 +33,7 @@ async function request(
   if (res.status === 401) setToken(null);
 
   const text = await res.text();
-  // Not everything that answers this fetch is Herald. A gateway timeout, a
+  // Not everything that answers this fetch is Pulse. A gateway timeout, a
   // proxy's request-too-large page and a stray HTML error page all arrive here
   // as text, and `JSON.parse` on them throws a SyntaxError whose message is
   // "Unexpected token '<'" — which is what the user then sees in the toast

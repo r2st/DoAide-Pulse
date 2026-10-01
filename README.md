@@ -1,8 +1,8 @@
-# Herald
+# Pulse
 
-**You ship the projects. Herald writes and publishes the posts.**
+**You ship the projects. Pulse writes and publishes the posts.**
 
-Herald is marketing automation for developers who ship more than they write
+Pulse is marketing automation for developers who ship more than they write
 about. It watches your project repos, drafts blog posts and social copy when
 something meaningful lands, runs them past you, publishes them across seven
 destinations on a schedule, and tracks which pieces actually got read.
@@ -13,7 +13,7 @@ destinations on a schedule, and tracks which pieces actually got read.
 
 | | |
 |---|---|
-| **Project registry** | Register what you ship — description, stack, audience, tone, repo. Herald reads the repo for what's changed since it last looked. |
+| **Project registry** | Register what you ship — description, stack, audience, tone, repo. Pulse reads the repo for what's changed since it last looked. |
 | **Content engine** | Five content types (tutorial, announcement, feature spotlight, comparison, how-to) × three tones, generated from the project record plus real commit and release data. |
 | **SEO** | Meta description, keywords, tags and a heading-outline audit, applied deterministically rather than spent as a second model call. |
 | **Publishing** | Adapters per platform. Seven publish today — including a commit to your own blog repo — and two need an auth flow nobody can complete on a free tier (see [Platform support](#platform-support)). |
@@ -210,7 +210,7 @@ what happens if you leave it blank. The ones that matter:
 | `GITHUB_TOKEN` | Without it, repo scans run at 60 req/hour on public repos only. |
 | `TOKEN_ENCRYPTION_KEY` | Encrypts platform tokens at rest. **Production refuses to store a credential without it.** |
 | `JWT_SECRET` | Change it. |
-| `REGISTRATION_ENABLED` | Off by default. `POST /auth/register` answers 403 — Herald is single-user and the account comes from `python -m app.seed`. |
+| `REGISTRATION_ENABLED` | Off by default. `POST /auth/register` answers 403 — Pulse is single-user and the account comes from `python -m app.seed`. |
 | `REGISTRATION_INVITE_TOKEN` | Required alongside the flag in production. Enabled-but-tokenless registration is refused there rather than served open. |
 | `RATE_LIMIT_STORAGE_URI` | Blank counts per uvicorn worker. Point it at Redis for one shared budget. |
 | `SMTP_HOST` | Blank means the password reset link is written to the log instead of emailed. Fine for a single-user install; it does put the link in the logs. |

@@ -39,7 +39,7 @@ def test_generate_falls_back_to_a_template_with_zero_confidence(client, auth, pr
     assert body["confidence"] == 0.0
     assert body["source"]["fallback"] is True
     # It says so in the body, so nobody publishes it by accident.
-    assert "Herald" in body["body_markdown"]
+    assert "Pulse" in body["body_markdown"]
     assert "no AI provider was" in body["body_markdown"]
 
 
@@ -61,9 +61,9 @@ def test_create_edit_and_delete_by_hand(client, auth, project):
         headers=auth,
         json={
             "project_id": project.id,
-            "title": "Shipping Herald",
+            "title": "Shipping Pulse",
             "body_markdown": "## Why\n\n" + ("word " * 400),
-            "keywords": ["Herald", "herald", "marketing"],
+            "keywords": ["Pulse", "pulse", "marketing"],
         },
     )
     assert resp.status_code == 201, resp.text
@@ -71,12 +71,12 @@ def test_create_edit_and_delete_by_hand(client, auth, project):
     # Excerpt and meta description are derived when not supplied.
     assert resp.json()["excerpt"]
     assert resp.json()["meta_description"]
-    assert resp.json()["keywords"] == ["herald", "marketing"]
+    assert resp.json()["keywords"] == ["pulse", "marketing"]
 
     resp = client.patch(
-        f"/api/v1/content/{content_id}", headers=auth, json={"title": "Shipping Herald v2"}
+        f"/api/v1/content/{content_id}", headers=auth, json={"title": "Shipping Pulse v2"}
     )
-    assert resp.json()["slug"] == "shipping-herald-v2"
+    assert resp.json()["slug"] == "shipping-pulse-v2"
 
     assert client.delete(f"/api/v1/content/{content_id}", headers=auth).status_code == 204
     assert client.get(f"/api/v1/content/{content_id}", headers=auth).status_code == 404
@@ -256,7 +256,7 @@ def test_create_content_sets_focus_keyword_from_first_keyword(client, auth, proj
         headers=auth,
         json={
             "project_id": project.id,
-            "title": "Herald Marketing",
+            "title": "Pulse Marketing",
             "body_markdown": "## Hi\n\n" + ("word " * 100),
             "keywords": ["marketing automation", "developer tools"],
         },
@@ -273,7 +273,7 @@ def test_create_content_explicit_focus_keyword(client, auth, project):
         headers=auth,
         json={
             "project_id": project.id,
-            "title": "Herald Marketing",
+            "title": "Pulse Marketing",
             "body_markdown": "## Hi\n\n" + ("word " * 100),
             "keywords": ["marketing automation", "developer tools"],
             "focus_keyword": "developer tools",
@@ -443,8 +443,8 @@ def test_a_taken_slug_is_incremented_before_it_is_ever_inserted(client, auth, pr
         project_id=project.id,
         content_type=ContentType.HOW_TO,
         status=ContentStatus.DRAFT,
-        title="Shipping Herald",
-        slug="shipping-herald",
+        title="Shipping Pulse",
+        slug="shipping-pulse",
     ))
     db.commit()
 
@@ -453,12 +453,12 @@ def test_a_taken_slug_is_incremented_before_it_is_ever_inserted(client, auth, pr
         headers=auth,
         json={
             "project_id": project.id,
-            "title": "Shipping Herald",
+            "title": "Shipping Pulse",
             "body_markdown": "## Hello\n\n" + ("word " * 100),
         },
     )
     assert resp.status_code == 201, resp.text
-    assert resp.json()["slug"] == "shipping-herald-2"
+    assert resp.json()["slug"] == "shipping-pulse-2"
 
 
 def test_a_slug_that_is_taken_between_the_check_and_the_insert_still_lands(
@@ -466,7 +466,7 @@ def test_a_slug_that_is_taken_between_the_check_and_the_insert_still_lands(
 ):
     """The race the pre-check cannot win, and the retry that covers it.
 
-    Two concurrent requests can both read "shipping-herald" as free and both
+    Two concurrent requests can both read "shipping-pulse" as free and both
     try to insert it; the unique constraint catches the loser. Forcing the
     pre-check to hand back a slug that is already taken reproduces exactly that
     state, and the retry has to turn a would-be 500 into a created row.
@@ -475,8 +475,8 @@ def test_a_slug_that_is_taken_between_the_check_and_the_insert_still_lands(
         project_id=project.id,
         content_type=ContentType.HOW_TO,
         status=ContentStatus.DRAFT,
-        title="Shipping Herald",
-        slug="shipping-herald",
+        title="Shipping Pulse",
+        slug="shipping-pulse",
     ))
     db.commit()
 
@@ -484,7 +484,7 @@ def test_a_slug_that_is_taken_between_the_check_and_the_insert_still_lands(
     # free, so the commit below is the one that discovers otherwise.
     monkeypatch.setattr(
         "app.routers.content.unique_content_slug",
-        lambda db, project_id, title: "shipping-herald",
+        lambda db, project_id, title: "shipping-pulse",
     )
 
     resp = client.post(
@@ -492,7 +492,7 @@ def test_a_slug_that_is_taken_between_the_check_and_the_insert_still_lands(
         headers=auth,
         json={
             "project_id": project.id,
-            "title": "Shipping Herald",
+            "title": "Shipping Pulse",
             "body_markdown": "## Hello\n\n" + ("word " * 100),
         },
     )
@@ -501,8 +501,8 @@ def test_a_slug_that_is_taken_between_the_check_and_the_insert_still_lands(
     slug = resp.json()["slug"]
     # A random suffix rather than a number: the retry cannot re-run the count
     # query without risking the same race a second time.
-    assert slug.startswith("shipping-herald-")
-    assert slug != "shipping-herald"
+    assert slug.startswith("shipping-pulse-")
+    assert slug != "shipping-pulse"
     # And it is a real row, not an uncommitted object that happens to serialise.
     assert db.scalar(
         select(Content.id).where(Content.project_id == project.id, Content.slug == slug)
@@ -694,7 +694,7 @@ def test_repurpose_returns_snippets_via_the_mechanical_fallback(client, auth, pr
     content = Content(
         project_id=project.id,
         content_type=ContentType.FEATURE_SPOTLIGHT,
-        title="Herald ships bulk content operations",
+        title="Pulse ships bulk content operations",
         slug="herald-ships-bulk-content-operations",
         body_markdown=body,
         excerpt="Approve, reject or publish many drafts in one call.",
@@ -753,7 +753,7 @@ def test_headline_variants_endpoint_uses_fallback_without_a_provider(client, aut
     content = Content(
         project_id=project.id,
         content_type=ContentType.HOW_TO,
-        title="Herald ships bulk content operations",
+        title="Pulse ships bulk content operations",
         slug="bulk-ops",
     )
     db.add(content)

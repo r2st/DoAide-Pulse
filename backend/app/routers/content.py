@@ -170,7 +170,7 @@ def _assert_if_match(content: Content, if_match: str | None) -> None:
     versions = set()
     for tag in candidates:
         # Weak tags are meaningless for If-Match (RFC 9110 §13.1.1 requires a
-        # strong comparison), and Herald never mints one, so a `W/` prefix is
+        # strong comparison), and Pulse never mints one, so a `W/` prefix is
         # something else's idea of this tag. Refused rather than unwrapped.
         if len(tag) < 2 or not tag.startswith('"') or not tag.endswith('"'):
             raise HTTPException(
@@ -205,7 +205,7 @@ def _is_live(content: Content) -> bool:
         PATCH {"status": "archived"}   -> 200
         PATCH {"body_markdown": ...}   -> 200, and the slug moves with the title
 
-    Leaving Herald's copy of a live post saying something the post does not,
+    Leaving Pulse's copy of a live post saying something the post does not,
     under a slug that is no longer the one the canonical link was published
     with. The reason the freeze gives — that editing here would not change what
     is live on the platforms — is exactly as true after archiving, so the
@@ -283,7 +283,7 @@ def _assert_review_ready(
     """Refuse a DRAFT→REVIEW move for a piece nobody should have to read.
 
     The review queue is a request for somebody's attention. Everything else in
-    Herald that puts a piece there has already earned it — the autopilot writes
+    Pulse that puts a piece there has already earned it — the autopilot writes
     a piece, runs it through five gates, and routes it to review *because* one
     of them fired, so the reviewer opens it knowing why. A draft promoted by
     hand carried no such claim, and the two things a thin generation produces —
@@ -1045,7 +1045,7 @@ def content_engagement_metrics(
 ) -> ContentEngagementOut:
     """The newest reading per platform, the totals, and the trend behind them.
 
-    The read Herald was missing: every other metrics endpoint is organised by
+    The read Pulse was missing: every other metrics endpoint is organised by
     *publication*, and "how did this post do" is a question about a piece —
     which is three publications on three platforms reporting three different
     sets of fields. See :mod:`app.services.content_engagement`, including why a
@@ -1521,7 +1521,7 @@ def check_links(
     requests. Kept separate so reading a draft stays free.
 
     Rate-limited per account for the same reason it is separate. One call is up
-    to ``link_check_max_urls`` outbound requests, from Herald's address, to
+    to ``link_check_max_urls`` outbound requests, from Pulse's address, to
     hosts named in a document the caller wrote — which is an amplifier if it can
     be replayed. The URLs themselves are already vetted against private and
     loopback addresses on every hop (:mod:`app.services.link_check`); this caps
@@ -1869,7 +1869,7 @@ def update_content(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This piece is live on the platforms. Archive it to hide it "
-            "from Herald, or unpublish it there first.",
+            "from Pulse, or unpublish it there first.",
         )
 
     # Read before anything is written, because the gate below asks what the
@@ -1964,15 +1964,15 @@ def delete_content(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
-    """Remove a piece and its publication rows from Herald.
+    """Remove a piece and its publication rows from Pulse.
 
     Not a retraction: anything already live on a platform stays live, because
-    Herald has no way to unpublish it there. Archive instead if the point is
+    Pulse has no way to unpublish it there. Archive instead if the point is
     to stop seeing it.
     """
     content = _owned_content(content_id, db, user)
     # The live count, not the total: those are the rows whose posts outlive this
-    # call, and after the cascade Herald has no record that it ever published
+    # call, and after the cascade Pulse has no record that it ever published
     # them. A piece deleted with nothing live is ordinary tidying and says so.
     live = db.scalar(
         select(func.count(Publication.id)).where(
@@ -2093,7 +2093,7 @@ def _assert_publishable(
         # A time in the past would otherwise be picked up by the very next
         # sweep — "publish now" wearing the costume of a schedule. An
         # unresolvable ``timezone`` arrives as the same exception and takes the
-        # same exit: both are the caller having named a moment Herald cannot act
+        # same exit: both are the caller having named a moment Pulse cannot act
         # on, and neither is a bug on this side of the request.
         raise _PublishError(str(exc), status.HTTP_422_UNPROCESSABLE_CONTENT) from exc
 
@@ -2191,7 +2191,7 @@ def _queue_publish(
     summary="Queue a piece for publishing",
     responses=errors(
         *OWNED,
-        # 400 for a platform Herald cannot publish to — no finished adapter, or
+        # 400 for a platform Pulse cannot publish to — no finished adapter, or
         # no credentials on this account. 409 for dead links in the body, which
         # `allow_broken_links` overrides. 422 for a scheduled time in the past.
         status.HTTP_400_BAD_REQUEST,
@@ -2241,7 +2241,7 @@ def _canonical_platform(content: Content) -> Platform | None:
 @router.get(
     "/{content_id}/schedule/suggestions",
     response_model=list[SlotOut],
-    summary="When Herald would publish this",
+    summary="When Pulse would publish this",
     # 400 when there is nothing to suggest slots *for*: no `platforms`, nothing
     # queued, and no connected platform to fall back on.
     responses=errors(*OWNED, status.HTTP_400_BAD_REQUEST),
@@ -2252,7 +2252,7 @@ def schedule_suggestions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[SlotOut]:
-    """When Herald would put this out, and why. Nothing is queued or changed.
+    """When Pulse would put this out, and why. Nothing is queued or changed.
 
     Answering this before the user commits is the point: a proposed Tuesday
     13:00 UTC they can override is more useful than one applied silently.
@@ -2293,7 +2293,7 @@ def schedule_content(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[PublicationOut]:
-    """Put a piece on the calendar for a specific time, or let Herald pick one.
+    """Put a piece on the calendar for a specific time, or let Pulse pick one.
 
     Runs the same adapter, connection and dead-link checks as an immediate
     publish — a schedule that passes validation now and fails at 3am because
@@ -2304,12 +2304,12 @@ def schedule_content(
     if payload.optimize and payload.scheduled_for is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Give a time or ask Herald to pick one — not both.",
+            detail="Give a time or ask Pulse to pick one — not both.",
         )
     if not payload.optimize and payload.scheduled_for is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Give a scheduled_for, or set optimize to have Herald pick "
+            detail="Give a scheduled_for, or set optimize to have Pulse pick "
             "one. Use POST /content/{id}/publish to go out now.",
         )
 
@@ -2654,7 +2654,7 @@ def set_content_status(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This piece is live on the platforms. Archive it to hide it "
-            "from Herald, or unpublish it there first.",
+            "from Pulse, or unpublish it there first.",
         )
 
     previous_status = content.status

@@ -32,7 +32,7 @@ function makeStorage() {
 
 function draft(overrides = {}) {
   return {
-    title: "Shipping Herald v2",
+    title: "Shipping Pulse v2",
     body_markdown: "## Why\n\nA paragraph.",
     excerpt: "",
     meta_description: "",

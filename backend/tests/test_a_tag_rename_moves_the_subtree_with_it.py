@@ -1,6 +1,6 @@
 """The three tag endpoints, and the one of them that writes.
 
-``POST /tags/rename`` is the only write in Herald that acts on rows named by a
+``POST /tags/rename`` is the only write in Pulse that acts on rows named by a
 *string* rather than by id. There is no list of ids to check against, no undo —
 tags are not a field the revision trail tracks — and the blast radius is every
 piece in the account. That asymmetry is what the dry run is for, and most of
@@ -21,9 +21,9 @@ def _piece(db, project, n: int, tags: list[str]) -> Content:
         content_type=ContentType.ANNOUNCEMENT,
         title=f"Piece {n}",
         slug=f"piece-{n}",
-        body_markdown="Deploying Herald with Docker. Docker makes deployment "
+        body_markdown="Deploying Pulse with Docker. Docker makes deployment "
         "repeatable, and deployment is the part people dread.",
-        excerpt="Deploying Herald.",
+        excerpt="Deploying Pulse.",
         status=ContentStatus.DRAFT,
         tags=tags,
     )

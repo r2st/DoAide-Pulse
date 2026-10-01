@@ -173,7 +173,7 @@ def test_a_refused_delivery_reports_its_status_rather_than_raising(
 def test_a_failing_endpoints_own_words_are_stored_whole_but_bounded(
     db, webhook, receiver
 ):
-    """``last_error`` quotes the remote server, which Herald does not control.
+    """``last_error`` quotes the remote server, which Pulse does not control.
 
     It is kept verbatim on purpose — a truncated or scrubbed excerpt is worse
     at the one job it has, which is telling the user what their endpoint said.

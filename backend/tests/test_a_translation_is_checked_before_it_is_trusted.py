@@ -1,12 +1,12 @@
 """A translation is the one generated text whose author cannot read it.
 
-Everything else Herald generates gets a human glance before it matters. Somebody
-publishing a Japanese version of their release notes is trusting Herald
+Everything else Pulse generates gets a human glance before it matters. Somebody
+publishing a Japanese version of their release notes is trusting Pulse
 completely — "it looked like Japanese" is the whole of the review they are able
 to give — so the machine checks have to be worth something.
 
 They are all structural, deliberately. Nothing here judges whether the French is
-*good* French; Herald has no way to know that, and a model asked to grade its own
+*good* French; Pulse has no way to know that, and a model asked to grade its own
 output says yes. What it can check is whether the translation is still the same
 artefact: same links, same code, same headings, a plausible length, characters
 belonging to the language it claims to be in. Those catch the failures that
@@ -27,9 +27,9 @@ from app.services import ai, translation
 V1 = "/api/v1"
 
 ENGLISH_BODY = (
-    "# Publishing with Herald\n"
+    "# Publishing with Pulse\n"
     "\n"
-    "Herald turns your repository activity into finished posts. Connect a "
+    "Pulse turns your repository activity into finished posts. Connect a "
     "GitHub account, choose the repository you want watched, and every release "
     "becomes a complete draft waiting for your review.\n"
     "\n"
@@ -47,9 +47,9 @@ ENGLISH_BODY = (
 )
 
 FRENCH_BODY = (
-    "# Publier avec Herald\n"
+    "# Publier avec Pulse\n"
     "\n"
-    "Herald transforme l'activité de votre dépôt en articles terminés. "
+    "Pulse transforme l'activité de votre dépôt en articles terminés. "
     "Connectez un compte GitHub, choisissez le référentiel que vous souhaitez "
     "surveiller, et chaque version devient un brouillon complet en attente de "
     "votre relecture.\n"
@@ -75,10 +75,10 @@ def piece(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.TUTORIAL,
         status=ContentStatus.DRAFT,
-        title="Publishing with Herald",
+        title="Publishing with Pulse",
         slug="publishing-with-herald",
         body_markdown=ENGLISH_BODY,
-        excerpt="How Herald turns repository activity into posts.",
+        excerpt="How Pulse turns repository activity into posts.",
         meta_description="Turn repository activity into finished posts.",
     )
     db.add(row)
@@ -87,7 +87,7 @@ def piece(db, project) -> Content:
     return row
 
 
-def _validate(piece, body, *, language="fr", title="Publier avec Herald"):
+def _validate(piece, body, *, language="fr", title="Publier avec Pulse"):
     return {
         issue.code
         for issue in translation.validate(
@@ -233,7 +233,7 @@ def test_a_splice_in_the_title_is_caught_as_well_as_in_the_body(piece):
     Same lesson as ``herald-gates-read-the-whole-piece``: a short field outside
     the sweep is a short field that publishes unread.
     """
-    codes = _validate(piece, FRENCH_BODY, title="Publier avec 日本語 Herald")
+    codes = _validate(piece, FRENCH_BODY, title="Publier avec 日本語 Pulse")
 
     assert "garbled" in codes
 
@@ -248,7 +248,7 @@ def _translated(db, piece, *, language="fr", version=None, **fields):
         content_id=piece.id,
         language=language,
         status=TranslationStatus.READY,
-        title="Publier avec Herald",
+        title="Publier avec Pulse",
         body_markdown=FRENCH_BODY,
         source_version=piece.version if version is None else version,
         **fields,
@@ -294,7 +294,7 @@ def test_a_stale_translation_is_not_published(db, piece):
     the user can see and fix.
     """
     _translated(db, piece)
-    piece.title = "Publishing with Herald, revised"
+    piece.title = "Publishing with Pulse, revised"
     db.commit()
     db.refresh(piece)
 
@@ -452,7 +452,7 @@ def test_translating_into_english_is_refused(client, auth, piece):
 def test_a_piece_too_long_to_translate_is_refused_rather_than_truncated(
     client, auth, db, piece
 ):
-    """Half a translation looks complete in every listing Herald renders.
+    """Half a translation looks complete in every listing Pulse renders.
 
     It ends mid-sentence and reads as fluent prose right up to that point, so
     the honest failure is "too long", which a user can act on by splitting it.
@@ -477,9 +477,9 @@ def test_a_translation_is_stored_and_returned(client, auth, db, piece, monkeypat
         "json_completion",
         lambda *a, **k: (
             {
-                "title": "Publier avec Herald",
+                "title": "Publier avec Pulse",
                 "body_markdown": FRENCH_BODY,
-                "excerpt": "Comment Herald transforme l'activité du dépôt.",
+                "excerpt": "Comment Pulse transforme l'activité du dépôt.",
                 "meta_description": "Transformez l'activité de votre dépôt.",
             },
             _completion(),
@@ -609,7 +609,7 @@ def test_the_prompt_quotes_the_body_as_source_material(piece, monkeypatch):
     assert ai.FENCE_OPEN in seen["user"]
     assert ai.FENCE_CLOSE in seen["user"]
     quoted = seen["user"].split(ai.FENCE_OPEN, 1)[1].split(ai.FENCE_CLOSE, 1)[0]
-    assert "Herald turns your repository activity" in quoted
+    assert "Pulse turns your repository activity" in quoted
     assert "SOURCE-MATERIAL" in seen["system"]
 
 

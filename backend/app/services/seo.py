@@ -485,7 +485,7 @@ def blocking_issues(
     otherwise-immaculate piece with no meta description at all loses fifteen
     points for it and five more for the cover image an automated piece never
     has, and lands on exactly 70 — the threshold, which is a ``<`` comparison,
-    so it passed. Same for a piece with no title. Herald published, under its
+    so it passed. Same for a piece with no title. Pulse published, under its
     own name and with nobody in the loop, posts whose defect the SEO panel calls
     an error and states in one sentence.
 

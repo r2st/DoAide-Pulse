@@ -1,13 +1,13 @@
 """Git-based publishing — commit the post to a repository.
 
-The destination most of Herald's audience actually runs. An Astro, Hugo, Eleventy
+The destination most of Pulse's audience actually runs. An Astro, Hugo, Eleventy
 or Next blog is a directory of Markdown files with front matter; publishing to it
 is a commit, not an API integration. That makes this the only destination with
 no OAuth, no application review, no rate tier and no platform that can withdraw
 access — and the only one where the published artefact is a file the user owns.
 
 It should normally be the project's **canonical platform**: the copy on your own
-domain is the original, and Dev.to and Medium are the syndication. Herald's
+domain is the original, and Dev.to and Medium are the syndication. Pulse's
 canonical machinery does the rest.
 
 Three things worth knowing:
@@ -18,7 +18,7 @@ Three things worth knowing:
   build.
 * **Committing is idempotent by path.** Re-publishing the same piece overwrites
   its own file rather than adding a second one, because the contents API is
-  keyed on the path and Herald sends the existing blob's ``sha``.
+  keyed on the path and Pulse sends the existing blob's ``sha``.
 * **The published URL is computed, not returned.** Git hands back a commit, not
   a page — the page appears when CI finishes. ``site_url`` plus the slug is the
   address that will exist; without it the commit URL is returned instead, which
@@ -169,7 +169,7 @@ class GitAdapter(Adapter):
     #: site the same way a correction does.
     supports_title_update = True
     caveat = (
-        "Commits Markdown to a branch. Leave the token blank to use Herald's "
+        "Commits Markdown to a branch. Leave the token blank to use Pulse's "
         "GITHUB_TOKEN, which needs write access to the repo — the one used for "
         "repo scanning is usually read-only."
     )
@@ -209,7 +209,7 @@ class GitAdapter(Adapter):
             label="Access token",
             help_text=(
                 "A token with contents:write on this repo. Blank falls back to "
-                "Herald's GITHUB_TOKEN."
+                "Pulse's GITHUB_TOKEN."
             ),
             required=False,
         ),
@@ -427,7 +427,7 @@ class GitAdapter(Adapter):
         :attr:`~app.services.publishers.base.PublishError.status_code`.
 
         The base class reads every 403 as a rejected credential, which is true
-        of every other destination Herald publishes to and false of this one.
+        of every other destination Pulse publishes to and false of this one.
         GitHub reports its *secondary* rate limit — the burst limit, tripped by
         a sweep publishing several pieces at once — as a **403** carrying
         ``Retry-After``, with the hourly quota still nearly untouched.
@@ -462,7 +462,7 @@ class GitAdapter(Adapter):
         """What to tell the user, in terms of the token *they* control.
 
         ``github_client`` words the same facts for the autopilot, where the
-        token is Herald's own ``GITHUB_TOKEN`` and "set one to raise the
+        token is Pulse's own ``GITHUB_TOKEN`` and "set one to raise the
         ceiling" is useful advice. Here the token is the user's PAT and that
         advice is noise: nothing they can set changes this limit, and the row
         is already parked, so the honest message says who is waiting and for
@@ -741,7 +741,7 @@ class GitAdapter(Adapter):
         A repo has no partial update — a commit replaces the whole blob — so
         this reads the file back and edits the front-matter lines rather than
         re-rendering from *request*. Re-rendering would be far less code and
-        would also push whatever the body has become in Herald since, plus a
+        would also push whatever the body has become in Pulse since, plus a
         fresh ``date``, under a commit message that says the title changed.
 
         *external_id* is the sha of the commit that published the piece, not a

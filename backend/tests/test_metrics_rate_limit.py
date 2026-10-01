@@ -1,6 +1,6 @@
 """What the metrics sweep does when a platform says "stop".
 
-The numbers Herald polls are cumulative counters read a few times a day, so a
+The numbers Pulse polls are cumulative counters read a few times a day, so a
 429 costs nothing to obey: whatever the platform would have said is still true
 at the next sweep. Ignoring it costs a great deal — the sweep walks one
 publication at a time, so an account with forty live Dev.to posts answers a

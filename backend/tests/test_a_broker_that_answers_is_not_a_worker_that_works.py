@@ -3,7 +3,7 @@
 The broker is a queue. It accepts everything whether or not a worker is
 draining it, so a worker that was OOM-killed or never came back from a deploy
 leaves ``/health`` entirely green while nothing publishes, no repo is scanned,
-no trigger fires and no webhook is delivered — Herald's whole product runs in
+no trigger fires and no webhook is delivered — Pulse's whole product runs in
 that process. The person asking "why has nothing gone out since Tuesday?" was
 shown two healthy dependencies and left to guess.
 
@@ -211,7 +211,7 @@ def test_a_silent_queue_is_written_to_the_log_and_not_only_to_the_body(
     one did not, and it is the failure with the least else to find it: the worker
     fleet being gone means no task writes a line either, so a journal spanning
     the whole outage contained nothing about it at all — and the single moment
-    Herald *knew* the fleet was missing went unrecorded.
+    Pulse *knew* the fleet was missing went unrecorded.
     """
     _ping(monkeypatch, [])
 

@@ -1,6 +1,6 @@
 """What the journal says about who tried to get in.
 
-Every other credential decision in Herald leaves a line. A replayed reset link,
+Every other credential decision in Pulse leaves a line. A replayed reset link,
 an expired one and a completed reset are recorded by
 :mod:`app.services.password_reset`; a rejected machine credential is recorded by
 :mod:`app.services.api_keys`. ``POST /auth/login`` recorded nothing — which is
@@ -103,7 +103,7 @@ def test_the_line_names_the_same_bucket_slowapi_will_name(client, user, caplog):
     Both lines are captured in one block and compared to each other rather than
     to a literal address: the bucket is whatever :func:`app.ratelimit.client_key`
     resolves to for this transport, and the property being asserted is that
-    Herald's refusals and slowapi's limit line resolve it *the same way* — not
+    Pulse's refusals and slowapi's limit line resolve it *the same way* — not
     what the answer happens to be. Eleven attempts, because the eleventh is the
     one slowapi refuses.
     """
@@ -128,7 +128,7 @@ def test_a_run_of_guesses_leaves_a_line_each_not_one_at_the_limit(client, user, 
     """The whole point: the signal must not wait for the rate limiter.
 
     Nine attempts is deliberately under the ten-per-minute budget, so slowapi
-    prints nothing and every line here is Herald's own.
+    prints nothing and every line here is Pulse's own.
     """
     assert settings.rate_limit_login.startswith("10/minute")
 

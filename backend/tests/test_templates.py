@@ -119,7 +119,7 @@ def test_a_value_longer_than_the_limit_is_truncated():
 def test_the_title_is_collapsed_to_one_line():
     template = make_template(title="  {{a}}   {{b}} ", variables=[var("a"), var("b")])
 
-    assert tmpl.render(template, {"a": "Herald", "b": "2.0"}).title == "Herald 2.0"
+    assert tmpl.render(template, {"a": "Pulse", "b": "2.0"}).title == "Pulse 2.0"
 
 
 # --------------------------------------------------------------------------- #
@@ -205,7 +205,7 @@ def test_project_builtins_resolve_without_being_declared(project):
 
     result = tmpl.render(template, {}, project=project)
 
-    assert result.body == "Herald — https://herald.example.com"
+    assert result.body == "Pulse — https://herald.example.com"
 
 
 def test_project_url_falls_back_to_the_repo_when_there_is_no_site(project):
@@ -255,9 +255,9 @@ def test_a_supplied_value_cannot_override_a_builtin(project):
     """That would be working around the template rather than filling it in."""
     template = make_template(body="{{project.name}}")
 
-    result = tmpl.render(template, {"project.name": "Not Herald"}, project=project)
+    result = tmpl.render(template, {"project.name": "Not Pulse"}, project=project)
 
-    assert result.body == "Herald"
+    assert result.body == "Pulse"
 
 
 def test_every_advertised_builtin_actually_resolves(project):

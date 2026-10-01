@@ -15,7 +15,7 @@ Two properties are worth pinning, and they are not the same property:
   bad answer, not a bad token — and a ``verify`` that comes back without an
   account *is* about the credentials.
 * **That it raises at all.** A guard that returned ``PublishResult`` with an
-  empty ``external_id`` would record a publication Herald can never poll
+  empty ``external_id`` would record a publication Pulse can never poll
   metrics for or link to, and mark it published.
 """
 from __future__ import annotations
@@ -77,8 +77,8 @@ def _request() -> PublishRequest:
     return PublishRequest(
         title="Retry logic that does not double-post",
         body_markdown="## It works\n\n" + ("word " * 200),
-        excerpt="How Herald avoids double-posting.",
-        meta_description="How Herald avoids double-posting.",
+        excerpt="How Pulse avoids double-posting.",
+        meta_description="How Pulse avoids double-posting.",
         tags=["python"],
         slug="retry-logic",
     )

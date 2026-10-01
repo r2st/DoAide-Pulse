@@ -13,7 +13,7 @@ test that only asserts the commits came back, because with one branch in the
 fixture every version of the code returns the same list. So the assertion has to
 be about the *request*, and nothing else in the suite makes one.
 
-Herald has no per-branch fan-out anywhere. These tests fail if one appears.
+Pulse has no per-branch fan-out anywhere. These tests fail if one appears.
 """
 from __future__ import annotations
 

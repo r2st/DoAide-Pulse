@@ -1,11 +1,11 @@
 """Outbound email over SMTP.
 
-Herald sends exactly one kind of message — the password reset link — so this is
+Pulse sends exactly one kind of message — the password reset link — so this is
 deliberately the smallest thing that can do that: no templating, no queue, no
 provider SDK. ``smtplib`` against whatever host the operator points it at.
 
 **When SMTP is not configured the message is written to the log instead**, at
-WARNING, link and all. That is not a stub: Herald is single-user and self-hosted,
+WARNING, link and all. That is not a stub: Pulse is single-user and self-hosted,
 and the alternative for an operator who never set up a mail server is a reset
 flow that cannot complete at all. ``journalctl -u herald-api`` is a legitimate
 way to collect your own reset link. It does mean the link passes through the

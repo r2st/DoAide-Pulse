@@ -60,7 +60,7 @@ def dispatched(_no_dispatch):
 #: in this file are stand-ins for real ones, so giving them one costs nothing
 #: and stops the fixture from being the only thing under test.
 _BODY = (
-    "Herald writes a post from a repository's commits and puts it in front of "
+    "Pulse writes a post from a repository's commits and puts it in front of "
     "a human before it goes out. This piece is a stand-in for one of those."
 )
 

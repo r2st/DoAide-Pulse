@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Herald — nightly database backup.
+# Pulse — nightly database backup.
 #
 #   ./deploy/backup.sh                    # dump to /var/backups/herald
 #   HERALD_BACKUP_DIR=/tmp/drill ./deploy/backup.sh   # restore drill
@@ -21,7 +21,7 @@
 #
 # Postgres is shared with the other products on this box. This dumps one
 # database, by name — never `pg_dumpall`, which would put GSTBot's and
-# HomeNex's data in a file owned by Herald's service account.
+# HomeNex's data in a file owned by Pulse's service account.
 set -euo pipefail
 
 # Every knob is an environment variable with a default, so the unit file can

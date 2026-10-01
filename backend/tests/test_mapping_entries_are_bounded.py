@@ -225,7 +225,7 @@ def test_the_empty_mapping_is_still_refused():
 def test_the_cap_is_generous_enough_for_a_real_credential():
     """A bound that refuses a legitimate token locks a user out of their platform.
 
-    Every credential Herald asks for is an API key, an app password, a handle,
+    Every credential Pulse asks for is an API key, an app password, a handle,
     a repo path or a site URL. The longest is a signed token; a kilobyte of one
     has to go through.
     """

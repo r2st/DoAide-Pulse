@@ -133,7 +133,7 @@ def test_a_prefix_is_not_a_parent():
 
 
 def test_the_leaf_is_what_a_platform_gets():
-    """The parents are Herald's filing system. On Dev.to the tag list is the
+    """The parents are Pulse's filing system. On Dev.to the tag list is the
     reader's only navigation, and ``guidesdeploymentdocker`` — which is what
     ``normalize_tags`` would make of the path — is not a tag anybody follows."""
     assert tags.leaf("guides/deployment/docker") == "docker"

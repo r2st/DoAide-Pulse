@@ -1,6 +1,6 @@
 """Headline variants, applying a change, and telling which one worked.
 
-Herald doesn't split live traffic — a piece publishes to a handful of
+Pulse doesn't split live traffic — a piece publishes to a handful of
 platforms, not to two random halves of an audience — so this is not
 statistical A/B testing. What it is: generate alternative headlines, let a
 human swap the live one, and remember exactly when each title was live. The
@@ -10,7 +10,7 @@ metric to whichever headline was live when it was captured is just a
 timestamp comparison — no new tracking infrastructure needed.
 
 One thing it *does* need, and did not have: the destination has to know. A
-swap here changes Herald's copy of the title, and until
+swap here changes Pulse's copy of the title, and until
 :mod:`app.services.headline_sync` existed nothing told Dev.to, Hashnode,
 WordPress or the repo the blog is built from — so the reader went on seeing
 the old headline while every click they made was credited to the new one. The
@@ -243,7 +243,7 @@ def performance(content: Content, db: Session) -> list[HeadlineWindow]:
 
     **Only destinations that are actually showing the piece's current headline
     count.** This is the guard the whole feature rests on, and for a long time
-    it was missing. A headline swap changes Herald's copy of the title; a
+    it was missing. A headline swap changes Pulse's copy of the title; a
     Bluesky post has no title, a sent newsletter is in inboxes, and a Dev.to
     retitle can fail. Counting those publications would credit the new headline
     with clicks earned by the old one — and worse, it would keep crediting a

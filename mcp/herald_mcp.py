@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""An MCP server for Herald.
+"""An MCP server for Pulse.
 
-Exposes Herald's HTTP API as MCP tools so an assistant can drive the whole
+Exposes Pulse's HTTP API as MCP tools so an assistant can drive the whole
 content workflow — register a project, write a piece, check its links, look at
 the calendar, schedule it, read the analytics — without a browser.
 
-It talks to Herald over the same public HTTP API a script would use, rather
+It talks to Pulse over the same public HTTP API a script would use, rather
 than importing the app. That keeps it deployable anywhere, lets it point at
 production from a laptop, and means it cannot accidentally reach past the
 API's own authorisation checks.
@@ -24,7 +24,7 @@ Register it with Claude Code::
 **On publishing.** ``herald_publish`` puts a post on a real public account and
 cannot be taken back — a Bluesky post is live the moment it is accepted, and a
 Buttondown send is an email that cannot be unsent. It is exposed because
-controlling Herald through MCP is the point, but it is the one tool here that
+controlling Pulse through MCP is the point, but it is the one tool here that
 does something irreversible in public, and its description says so. Scheduling
 is the gentler path: it lands on the calendar, and ``herald_unschedule`` takes
 it back off.
@@ -62,10 +62,10 @@ from herald_client import DEFAULT_BASE_URL, HeraldClient, HeraldError  # noqa: E
 
 mcp = _Server("herald")
 
-_client: HeraldClient | None = None
+_client: PulseClient | None = None
 
 
-def client() -> HeraldClient:
+def client() -> PulseClient:
     """The logged-in client, created on first use.
 
     Lazy because a server that dies at import time when credentials are absent
@@ -75,16 +75,16 @@ def client() -> HeraldClient:
     global _client
     if _client is None:
         base_url = os.environ.get("HERALD_BASE_URL", DEFAULT_BASE_URL)
-        candidate = HeraldClient(base_url)
+        candidate = PulseClient(base_url)
         candidate.login_from_env()
         _client = candidate
     return _client
 
 
 def _guard(fn: _F) -> _F:
-    """Turn a HeraldError into a readable message rather than a traceback.
+    """Turn a PulseError into a readable message rather than a traceback.
 
-    Herald's ``detail`` strings are written to be actionable — "Not connected
+    Pulse's ``detail`` strings are written to be actionable — "Not connected
     to: devto. Add credentials in Settings." is the fix — and an MCP host shows
     the returned text to the model, so passing it through is worth more than
     the stack trace.
@@ -101,7 +101,7 @@ def _guard(fn: _F) -> _F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return fn(*args, **kwargs)
-        except HeraldError as exc:
+        except PulseError as exc:
             return {"error": exc.detail, "status_code": exc.status_code}
 
     return cast(_F, wrapper)
@@ -132,13 +132,13 @@ def herald_create_project(
     tone: str = "technical",
     canonical_platform: str | None = None,
 ) -> dict:
-    """Register a project for Herald to write about.
+    """Register a project for Pulse to write about.
 
     ``tone`` is one of technical, casual, marketing.
 
     ``canonical_platform`` names the destination that counts as the original
     when a piece goes to several. Set it to the platform you want search to
-    rank — Herald then adopts that URL as the piece's canonical, and every
+    rank — Pulse then adopts that URL as the piece's canonical, and every
     other copy points back to it instead of competing with it.
     """
     return client().create_project(
@@ -247,7 +247,7 @@ def herald_generate_content(
     instructions: str = "",
     include_repo_activity: bool = False,
 ) -> dict:
-    """Draft a piece with Herald's AI engine. Runs inline; allow ~20 seconds.
+    """Draft a piece with Pulse's AI engine. Runs inline; allow ~20 seconds.
 
     ``instructions`` steers it ("focus on the retry logic").
     ``include_repo_activity`` pulls the latest commits and releases first,
@@ -268,7 +268,7 @@ def herald_generate_content(
 def herald_update_content(content_id: int, changes: dict) -> dict:
     """Patch a piece — title, body_markdown, keywords, tags, status, and so on.
 
-    Herald refuses edits to an already-published piece beyond status and
+    Pulse refuses edits to an already-published piece beyond status and
     schedule, because changing the row would not change what is live on the
     platforms.
     """
@@ -324,7 +324,7 @@ def herald_headline_variants(content_id: int) -> dict:
 def herald_platforms() -> list[dict]:
     """Every destination, whether an adapter exists, and whether it is connected.
 
-    Check this before scheduling: Herald rejects a publish to a platform with
+    Check this before scheduling: Pulse rejects a publish to a platform with
     no live connection, and the rejection is the same whether the credentials
     were never added or have gone stale.
     """
@@ -334,7 +334,7 @@ def herald_platforms() -> list[dict]:
 @mcp.tool()
 @_guard
 def herald_schedule_suggestions(content_id: int, platforms: list[str]) -> list[dict]:
-    """When Herald would put this out, and why. Nothing is queued or changed."""
+    """When Pulse would put this out, and why. Nothing is queued or changed."""
     return client().schedule_suggestions(content_id, platforms)
 
 
@@ -350,7 +350,7 @@ def herald_schedule(
     """Put a piece on the calendar.
 
     Give either ``scheduled_for`` (ISO 8601, must be in the future) or
-    ``optimize``, not both. With ``optimize`` Herald picks a slot per platform
+    ``optimize``, not both. With ``optimize`` Pulse picks a slot per platform
     from its cadence table, which staggers a cross-post rather than firing
     every copy into every feed in the same second.
 

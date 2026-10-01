@@ -46,20 +46,20 @@ def test_the_subject_leads_with_what_was_published():
         movement=Movement(views=1234),
     )
 
-    assert d.subject == "Herald: 1 published, 1,234 views this week"
+    assert d.subject == "Pulse: 1 published, 1,234 views this week"
 
 
 def test_a_week_with_only_reads_says_so():
     """Nothing shipped, but last month's tutorial found an audience."""
     d = _digest(movement=Movement(views=9000))
 
-    assert d.subject == "Herald: 9,000 views this week"
+    assert d.subject == "Pulse: 9,000 views this week"
 
 
 def test_a_week_with_neither_asks_for_attention():
     d = _digest(needs_review=3)
 
-    assert d.subject == "Herald: this week needs you"
+    assert d.subject == "Pulse: this week needs you"
 
 
 # --------------------------------------------------------------------------- #
@@ -324,5 +324,5 @@ def test_as_dict_carries_every_section_the_api_shows():
     assert body["failed"][0]["title"] == "A"
     assert body["upcoming"][0]["title"] == "B"
     assert body["attention"][0]["title"] == "C"
-    assert body["subject"] == "Herald: this week needs you"
+    assert body["subject"] == "Pulse: this week needs you"
     assert body["is_empty"] is False

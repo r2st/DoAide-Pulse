@@ -1,6 +1,6 @@
 """The engagement-threshold webhook, and the ways it could fire wrongly.
 
-Herald has collected engagement numbers for a long time and never told anybody
+Pulse has collected engagement numbers for a long time and never told anybody
 about them. This is the notification: a per-project threshold, and one
 ``content.engagement_threshold`` webhook when a piece passes it.
 

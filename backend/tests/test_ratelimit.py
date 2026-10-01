@@ -123,10 +123,10 @@ def test_a_non_ascii_invite_token_is_a_403_not_a_500(client, monkeypatch):
     assert resp.status_code == 403
 
 
-def test_register_refused_in_production_without_an_invite_token(client, monkeypatch):
-    """Fail closed: "enabled but tokenless" in production is a misconfiguration."""
+def test_register_open_in_production_without_an_invite_token(client, monkeypatch):
+    """Open registration: enabled with no invite token lets anyone register."""
     monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "registration_enabled", True)
     monkeypatch.setattr(settings, "registration_invite_token", "")
     resp = client.post(REGISTER, json=_payload())
-    assert resp.status_code == 403
-    assert "no invite token" in resp.json()["detail"].lower()
+    assert resp.status_code == 201

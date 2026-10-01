@@ -1,5 +1,5 @@
 """A consecutive-failure breaker with a cool-down, shared by the two things that
-call somebody else's server on Herald's behalf.
+call somebody else's server on Pulse's behalf.
 
 It was written for :mod:`app.services.llm_router` and lived there, which was
 right while there was one caller. There are two now — the publishing adapters

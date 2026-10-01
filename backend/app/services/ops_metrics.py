@@ -4,7 +4,7 @@ Named ``ops_metrics`` rather than ``metrics`` to keep it apart from
 :mod:`app.models.metrics`, which is :class:`~app.models.metrics.ContentMetric`
 — the per-post view and engagement snapshots that
 :mod:`app.services.analytics_service` reads. Those are metrics about *posts*,
-for the person who wrote them. These are metrics about *Herald*, for the person
+for the person who wrote them. These are metrics about *Pulse*, for the person
 running it, and the two never appear in the same response.
 
 **Two scopes in one payload, and the split is deliberate.**
@@ -22,7 +22,7 @@ threading an account through every call site to answer a question — "is the
 install about to run out of free-tier quota" — that is not per-account in the
 first place. So the token and breaker numbers describe the deployment, and on a
 multi-account install every authenticated caller sees the same ones. On the
-single-tenant deployment Herald actually ships as, that distinction is
+single-tenant deployment Pulse actually ships as, that distinction is
 invisible; it is written down here because it stops being invisible the moment
 somebody adds a second account.
 
@@ -54,7 +54,7 @@ def content_counts(db: Session, user_id: int) -> dict[str, Any]:
     """How many pieces this account has, per status.
 
     Every status is present, including the ones at zero. A caller charting this
-    should not have to know Herald's status vocabulary to discover that
+    should not have to know Pulse's status vocabulary to discover that
     ``failed`` is missing because nothing failed, rather than because the key
     was renamed — and a bar chart that drops its empty categories re-orders
     itself as the data changes.

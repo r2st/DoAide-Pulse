@@ -43,7 +43,7 @@ def collide_once(db, monkeypatch):
     return _install
 
 
-def _payload(project, title="Shipping Herald v2") -> dict:
+def _payload(project, title="Shipping Pulse v2") -> dict:
     return {
         "project_id": project.id,
         "content_type": "announcement",
@@ -64,8 +64,8 @@ def test_a_lost_slug_race_still_creates_the_piece(client, auth, project, collide
 
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["slug"].startswith("shipping-herald-v2-")
-    assert body["title"] == "Shipping Herald v2"
+    assert body["slug"].startswith("shipping-pulse-v2-")
+    assert body["title"] == "Shipping Pulse v2"
 
 
 def test_the_retried_slug_keeps_the_readable_stem(client, auth, project, collide_once):
@@ -75,7 +75,7 @@ def test_the_retried_slug_keeps_the_readable_stem(client, auth, project, collide
     slug = client.post(API, json=_payload(project), headers=auth).json()["slug"]
 
     stem, _, suffix = slug.rpartition("-")
-    assert stem == "shipping-herald-v2"
+    assert stem == "shipping-pulse-v2"
     assert len(suffix) == 6 and int(suffix, 16) >= 0
 
 
@@ -90,8 +90,8 @@ def test_the_retry_does_not_re_run_the_count_query(client, auth, project, db, co
             project_id=project.id,
             content_type=ContentType.ANNOUNCEMENT,
             status=ContentStatus.DRAFT,
-            title="Shipping Herald v2",
-            slug="shipping-herald-v2-2",
+            title="Shipping Pulse v2",
+            slug="shipping-pulse-v2-2",
             body_markdown="x",
         )
     )
@@ -100,7 +100,7 @@ def test_the_retry_does_not_re_run_the_count_query(client, auth, project, db, co
 
     slug = client.post(API, json=_payload(project), headers=auth).json()["slug"]
 
-    assert slug != "shipping-herald-v2-3", "the retry counted instead of randomising"
+    assert slug != "shipping-pulse-v2-3", "the retry counted instead of randomising"
 
 
 def test_the_body_survives_the_rollback_and_retry(client, auth, project, collide_once):
@@ -116,7 +116,7 @@ def test_the_body_survives_the_rollback_and_retry(client, auth, project, collide
 def test_an_uncontested_create_keeps_the_plain_slug(client, auth, project):
     resp = client.post(API, json=_payload(project), headers=auth)
 
-    assert resp.json()["slug"] == "shipping-herald-v2"
+    assert resp.json()["slug"] == "shipping-pulse-v2"
 
 
 # --------------------------------------------------------------------------- #

@@ -1,4 +1,4 @@
-"""Herald FastAPI application entrypoint."""
+"""Pulse FastAPI application entrypoint."""
 from __future__ import annotations
 
 import logging
@@ -49,7 +49,7 @@ MAX_BODY_BYTES = 1 * 1024 * 1024
 
 #: How deeply a request body may nest arrays and objects.
 #:
-#: Herald's deepest real payload is a handful of levels — a content create with
+#: Pulse's deepest real payload is a handful of levels — a content create with
 #: a nested settings object and a list of tags — so 32 is far above anything the
 #: API asks for and far below anything that hurts.
 #:
@@ -255,7 +255,7 @@ def docs_enabled() -> bool:
     """Whether to publish /docs, /redoc and /openapi.json.
 
     On in development, off in production. The schema is a complete map of the
-    API — every route, every field, every enum — and Herald's is served from the
+    API — every route, every field, every enum — and Pulse's is served from the
     same origin as the SPA, so leaving it up hands an anonymous visitor the
     inventory of what to try. ``DEBUG=true`` overrides, for the case where
     production is what needs poking at.
@@ -379,7 +379,7 @@ def create_app() -> FastAPI:
     # this cannot happen on: the router's PATCH, the passage editor, the
     # publisher settling a queue row and the autopilot all commit a ``Content``,
     # and any of them can lose the race. Left to the catch-all above it would be
-    # a 500 — "something failed inside Herald", quote the request id — for a
+    # a 500 — "something failed inside Pulse", quote the request id — for a
     # perfectly ordinary outcome the caller can act on by reloading.
     #
     # 409 rather than 412: no precondition was sent, so none failed. The
@@ -509,7 +509,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(SecurityHeadersMiddleware)
 
-    # No allow_credentials: Herald authenticates with a bearer token the SPA
+    # No allow_credentials: Pulse authenticates with a bearer token the SPA
     # holds and sends explicitly, never with a cookie. Allowing credentialed
     # cross-origin requests would ask browsers to attach ambient credentials to
     # them — the precondition for CSRF — and buy nothing, since there are none

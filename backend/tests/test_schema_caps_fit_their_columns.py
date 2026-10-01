@@ -1,6 +1,6 @@
 """A request schema may not accept more than the column behind it can hold.
 
-This is a bug class the suite is structurally blind to. Herald runs on
+This is a bug class the suite is structurally blind to. Pulse runs on
 PostgreSQL and tests on SQLite, and the two do not agree about what ``VARCHAR(n)``
 means: PostgreSQL refuses an over-long value with ``StringDataRightTruncation``,
 SQLite stores it and says nothing. So a ``max_length`` wider than its column is

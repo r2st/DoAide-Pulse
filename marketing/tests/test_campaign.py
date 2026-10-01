@@ -3,7 +3,7 @@
 The runner's one promise is idempotence — "running it twice creates nothing
 twice, and running it after editing an article body updates the piece rather
 than duplicating it". Most of what is here is that promise held to, because the
-ways it breaks are all quiet: a second run that wipes a field Herald generated,
+ways it breaks are all quiet: a second run that wipes a field Pulse generated,
 a drift report that never converges, a duplicate created because the title moved.
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import campaign
 import pytest
 from conftest import PLAN, write_plan
-from fake_herald import FakeHerald
+from fake_herald import FakePulse
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def plan(plan_path):
 
 @pytest.fixture
 def herald():
-    return FakeHerald()
+    return FakePulse()
 
 
 def sync(client, plan, *, dry_run=False):
@@ -88,7 +88,7 @@ def test_the_part_marker_goes_in_the_title_but_the_series_name_does_not(plan):
     """60 characters is the search-snippet budget; the series name is not worth it."""
     assert plan.title(plan.articles[0]) == "Where ITC Leaks (Part 1)"
     assert plan.title(plan.articles[1]) == "Matching With Tolerances (Part 2)"
-    assert plan.title(plan.articles[2]) == "Herald Ships"
+    assert plan.title(plan.articles[2]) == "Pulse Ships"
 
 
 # -- project sync ----------------------------------------------------------- #
@@ -97,7 +97,7 @@ def test_the_part_marker_goes_in_the_title_but_the_series_name_does_not(plan):
 def test_projects_are_created_when_absent(herald, plan):
     ids = campaign.sync_projects(herald, plan, dry_run=False)
     assert set(ids) == {"gstbot", "herald"}
-    assert {p["name"] for p in herald.projects} == {"GSTBot", "Herald"}
+    assert {p["name"] for p in herald.projects} == {"GSTBot", "Pulse"}
 
 
 def test_a_second_sync_creates_nothing(herald, plan):
@@ -179,14 +179,14 @@ def test_an_edited_body_updates_the_piece_rather_than_duplicating_it(herald, pla
 def test_a_second_run_does_not_wipe_what_herald_generated(herald, plan):
     """The regression: an undeclared field was sent as "" on every run.
 
-    ``launch`` names no excerpt and no meta description, so Herald writes both
+    ``launch`` names no excerpt and no meta description, so Pulse writes both
     from the body. Sending them back empty does not mean "no excerpt" — it means
-    "replace the one Herald wrote with nothing", which is an idempotent sync
+    "replace the one Pulse wrote with nothing", which is an idempotent sync
     destroying data it did not author.
     """
     ids = sync(herald, plan)
     generated = herald._row(ids["launch"])["excerpt"]
-    assert generated  # Herald filled it in
+    assert generated  # Pulse filled it in
 
     sync(herald, plan)
 
@@ -224,7 +224,7 @@ def test_a_published_piece_is_left_alone(herald, plan):
 def test_drift_herald_will_never_accept_is_reported_once_not_forever(
     herald, plan_dir, capsys
 ):
-    """Nine keywords, and Herald stores eight. Silence here is an endless loop.
+    """Nine keywords, and Pulse stores eight. Silence here is an endless loop.
 
     Every run computes drift, PATCHes, gets the capped list back, and reports an
     update — for good. The runner cannot fix the plan, but it can say which
@@ -239,7 +239,7 @@ def test_drift_herald_will_never_accept_is_reported_once_not_forever(
     sync(herald, plan)
 
     out = capsys.readouterr().out
-    assert "Herald normalised keywords" in out
+    assert "Pulse normalised keywords" in out
     assert "reconciliation" in out
 
 
@@ -362,7 +362,7 @@ def test_a_start_in_the_past_is_refused_before_anything_is_written():
 
 
 def test_a_naive_start_is_compared_against_utc():
-    """Herald reads a naive timestamp as UTC, so the check must too."""
+    """Pulse reads a naive timestamp as UTC, so the check must too."""
     naive_future = datetime.now(UTC).replace(tzinfo=None) + timedelta(days=2)
     campaign._check_schedule_args(args(start=naive_future))
 
@@ -395,7 +395,7 @@ def test_status_reports_what_is_scheduled(herald, plan, capsys):
 
 
 def test_status_lists_each_project_once_rather_than_once_per_article(herald, plan):
-    """The N+1: a twelve-article campaign asked Herald for the same list twelve times."""
+    """The N+1: a twelve-article campaign asked Pulse for the same list twelve times."""
     sync(herald, plan)
     herald.calls.clear()
 

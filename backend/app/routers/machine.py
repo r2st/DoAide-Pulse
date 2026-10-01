@@ -5,7 +5,7 @@ for two reasons. The first is that the two halves authenticate differently —
 minting a credential is something a person does with a session token, using one
 is something a build server does with the credential — and a module holding both
 is a module where a route can pick up the wrong security scheme by sitting in
-the wrong half of the file. The second is mechanical: Herald's route sweeps
+the wrong half of the file. The second is mechanical: Pulse's route sweeps
 enumerate one ``router`` per module in this package, so a second router beside
 the first would be a set of endpoints no sweep examines. Endpoints reachable
 with a leaked credential are the last ones that should be invisible to the

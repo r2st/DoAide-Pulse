@@ -1,6 +1,6 @@
 """Authentication routes: register + login (JWT).
 
-Registration is closed by default — Herald is single-user and the account comes
+Registration is closed by default — Pulse is single-user and the account comes
 from ``python -m app.seed``. Every route here is rate limited: they are the only
 endpoints reachable without a bearer token. See :mod:`app.ratelimit`.
 
@@ -115,7 +115,7 @@ def register(
 ) -> User:
     """Register a user, if this instance is accepting registrations.
 
-    Closed by default — Herald is single-user and the account normally comes
+    Closed by default — Pulse is single-user and the account normally comes
     from ``python -m app.seed``. When it is open, an invite token may be
     required; see :func:`_assert_registration_allowed` for the three
     configurations and why the ambiguous one fails closed in production.
@@ -360,7 +360,7 @@ def confirm_password_reset(
 
     Every access token issued before this call stops working, which is what
     makes "reset the password to lock someone out" true rather than merely
-    plausible. Herald's JWTs are stateless and there is no revocation list, so
+    plausible. Pulse's JWTs are stateless and there is no revocation list, so
     the mechanism is a timestamp on the user row and a comparison against the
     token's ``iat`` — see :attr:`app.models.user.User.tokens_valid_from`.
     """

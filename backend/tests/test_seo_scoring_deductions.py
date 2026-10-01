@@ -13,8 +13,8 @@ from app.services import seo
 
 GOOD_BODY = "\n\n".join(
     [
-        "# Herald ships scheduling",
-        "Herald scheduling now picks a slot for every platform you have "
+        "# Pulse ships scheduling",
+        "Pulse scheduling now picks a slot for every platform you have "
         "connected, and this opening paragraph is long enough to count as a "
         "real one.",
         "## What scheduling changes",
@@ -24,9 +24,9 @@ GOOD_BODY = "\n\n".join(
 )
 
 GOOD = {
-    "title": "Herald ships scheduling",
+    "title": "Pulse ships scheduling",
     "body_markdown": GOOD_BODY,
-    "meta_description": "Herald scheduling now picks a slot on every platform "
+    "meta_description": "Pulse scheduling now picks a slot on every platform "
     "you have connected, one per platform.",
     "keywords": ["scheduling"],
     "cover_image_url": "https://example.com/cover.png",
@@ -44,14 +44,14 @@ def test_a_clean_piece_scores_at_the_top():
 
 
 def test_a_title_past_the_search_result_cut_off_costs_five_points():
-    long_title = "Herald ships scheduling " + "and more things besides " * 5
+    long_title = "Pulse ships scheduling " + "and more things besides " * 5
 
     assert len(long_title) > seo.TITLE_MAX
     assert _score(title=long_title) == 95
 
 
 def test_the_same_long_title_is_reported_as_a_warning_with_its_length():
-    long_title = "Herald ships scheduling " + "and more things besides " * 5
+    long_title = "Pulse ships scheduling " + "and more things besides " * 5
 
     issues = seo.audit(**{**GOOD, "title": long_title})
 
@@ -99,7 +99,7 @@ def test_a_focus_keyword_that_is_only_whitespace_matches_nothing():
 
 def test_an_edited_post_carries_its_modified_date():
     raw = seo.build_json_ld(
-        title="Herald ships scheduling",
+        title="Pulse ships scheduling",
         body_markdown=GOOD_BODY,
         meta_description="Scheduling, now built in.",
         url="https://example.com/scheduling",
@@ -112,7 +112,7 @@ def test_an_edited_post_carries_its_modified_date():
 
 def test_an_unedited_post_carries_no_modified_date():
     raw = seo.build_json_ld(
-        title="Herald ships scheduling",
+        title="Pulse ships scheduling",
         body_markdown=GOOD_BODY,
         meta_description="Scheduling, now built in.",
         url="https://example.com/scheduling",
@@ -124,25 +124,25 @@ def test_an_unedited_post_carries_no_modified_date():
 
 def test_a_publisher_logo_is_nested_under_the_publisher_not_the_article():
     raw = seo.build_json_ld(
-        title="Herald ships scheduling",
+        title="Pulse ships scheduling",
         body_markdown=GOOD_BODY,
         meta_description="Scheduling, now built in.",
         url="https://example.com/scheduling",
-        publisher_name="Herald",
+        publisher_name="Pulse",
         publisher_logo_url="https://example.com/logo.png",
     )
 
     schema = json.loads(raw)
     assert schema["publisher"] == {
         "@type": "Organization",
-        "name": "Herald",
+        "name": "Pulse",
         "logo": {"@type": "ImageObject", "url": "https://example.com/logo.png"},
     }
 
 
 def test_a_logo_with_no_publisher_to_hang_it_on_is_dropped():
     raw = seo.build_json_ld(
-        title="Herald ships scheduling",
+        title="Pulse ships scheduling",
         body_markdown=GOOD_BODY,
         meta_description="Scheduling, now built in.",
         url="https://example.com/scheduling",

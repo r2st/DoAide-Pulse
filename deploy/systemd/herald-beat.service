@@ -1,5 +1,5 @@
 [Unit]
-Description=Herald Celery beat (autopilot scan, publish sweep, metrics poll)
+Description=Pulse Celery beat (autopilot scan, publish sweep, metrics poll)
 Documentation=https://github.com/r2st/Herald
 After=network.target redis-server.service herald-worker.service
 Wants=redis-server.service

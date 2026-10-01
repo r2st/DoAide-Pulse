@@ -113,7 +113,7 @@ describe("service health", () => {
  * cannot show you the key it holds, so what it *can* show — connected or
  * needing a reconnect, which handle it authenticated as, what the platform
  * said when it last refused — is the whole of the operator's read on whether
- * publishing will work tonight. And "Connect" on a platform Herald has no
+ * publishing will work tonight. And "Connect" on a platform Pulse has no
  * adapter for, or a Disconnect that goes through without a confirm, are both
  * failures the health panel above says nothing about.
  */

@@ -9,7 +9,7 @@ downloading a response in full and discarding it.
 On the HEAD that starts every check, that costs nothing: there is no body. The
 GET is the one that mattered, and the reason it exists is what makes it sharp:
 it is a retry for hosts that answer 403/405/501 to HEAD, so the responses
-Herald actually ends up downloading are exactly the ones it did not choose.
+Pulse actually ends up downloading are exactly the ones it did not choose.
 Everything about the size is somebody else's decision — the URL comes out of a
 user's document, the host decides what to send, and :func:`check` runs
 ``link_check_max_urls`` of them concurrently inside a request a person is

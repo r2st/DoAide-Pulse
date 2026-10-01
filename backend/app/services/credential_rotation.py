@@ -8,7 +8,7 @@ row under the head of the list.
 
 Three tables hold something encrypted, and all three matter equally:
 
-* ``platform_connections.encrypted_credentials`` — the API tokens Herald
+* ``platform_connections.encrypted_credentials`` — the API tokens Pulse
   publishes with. Losing these stops publishing until a human goes and fetches
   new ones from each platform.
 * ``webhooks.encrypted_secret`` — what outbound deliveries are signed with.

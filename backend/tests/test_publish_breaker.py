@@ -42,11 +42,11 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
         tags=["python"],
     )
     db.add(row)
@@ -354,7 +354,7 @@ def test_one_accounts_bad_afternoon_does_not_park_anothers_queue(
 
     A rate limit is charged against an API key, so it is one account's fact. A
     breaker keyed on the platform alone would let one busy account park every
-    other account's posts — a cross-tenant denial of service Herald would be
+    other account's posts — a cross-tenant denial of service Pulse would be
     doing to itself.
     """
     adapter = publishing_service.publishers.get_adapter(Platform.DEVTO)
@@ -434,11 +434,11 @@ def test_a_piece_held_by_the_breaker_is_not_called_failed(
     held_content = Content(
         project_id=content.project_id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.1",
+        title="Pulse 1.1",
         slug="herald-1-1",
         body_markdown="## Also out\n\n" + ("word " * 200),
-        excerpt="Herald 1.1 is out.",
-        meta_description="Herald 1.1 is out.",
+        excerpt="Pulse 1.1 is out.",
+        meta_description="Pulse 1.1 is out.",
         status=ContentStatus.APPROVED,
         tags=["python"],
     )

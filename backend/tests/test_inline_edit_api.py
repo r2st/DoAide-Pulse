@@ -46,7 +46,7 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.FEATURE_SPOTLIGHT,
-        title="How Herald publishes",
+        title="How Pulse publishes",
         slug="how-herald-publishes",
         body_markdown=BODY,
         excerpt="One row per platform.",

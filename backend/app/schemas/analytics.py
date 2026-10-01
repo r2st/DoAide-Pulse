@@ -149,7 +149,7 @@ class PublishedPointOut(BaseModel):
 
     Distinct from :class:`TimelinePointOut`, which counts *publications*: a
     piece cross-posted to five platforms is five there and one here. That is
-    the difference between "how much did Herald send" and "how much did I
+    the difference between "how much did Pulse send" and "how much did I
     publish", and they are different charts.
     """
 
@@ -175,7 +175,7 @@ class GenerationCostPointOut(BaseModel):
     calls: int
     total_tokens: int = Field(
         description=(
-            "Tokens, which is what cost means here — Herald runs on free tiers "
+            "Tokens, which is what cost means here — Pulse runs on free tiers "
             "where quota is the scarce thing and there is no price table to "
             "multiply by."
         )

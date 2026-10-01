@@ -26,11 +26,11 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.TUTORIAL,
-        title="Shipping Herald 1.0",
+        title="Shipping Pulse 1.0",
         slug="shipping-herald-1-0",
         body_markdown="## It shipped\n\n" + ("word " * 50),
-        excerpt="Herald 1.0 shipped today.",
-        meta_description="Herald 1.0 shipped today.",
+        excerpt="Pulse 1.0 shipped today.",
+        meta_description="Pulse 1.0 shipped today.",
         cover_image_url="https://example.com/cover.png",
         tags=["python"],
     )

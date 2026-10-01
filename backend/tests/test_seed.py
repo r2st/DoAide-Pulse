@@ -37,13 +37,13 @@ def _projects(db) -> dict[str, Project]:
 def test_seed_registers_every_spec(db, run_seed):
     run_seed()
     projects = _projects(db)
-    assert set(projects) == {"herald", "gstbot", "caflow"}
+    assert set(projects) == {"pulse", "gstbot", "caflow"}
 
 
 @pytest.mark.parametrize(
     ("slug", "repo"),
     [
-        ("herald", "r2st/Herald"),
+        ("pulse", "r2st/Herald"),
         ("gstbot", "r2st/GSTBot"),
         ("caflow", "r2st/CAFlow"),
     ],
@@ -87,7 +87,7 @@ def test_seed_is_idempotent(db, run_seed):
 
 
 def test_seed_adds_new_specs_to_an_existing_account(db, run_seed):
-    """The path a live database takes: user and Herald exist, the rest do not."""
+    """The path a live database takes: user and Pulse exist, the rest do not."""
     run_seed()
     db.expire_all()
     for slug in ("gstbot", "caflow"):
@@ -96,7 +96,7 @@ def test_seed_adds_new_specs_to_an_existing_account(db, run_seed):
 
     run_seed()
     db.expire_all()
-    assert set(_projects(db)) == {"herald", "gstbot", "caflow"}
+    assert set(_projects(db)) == {"pulse", "gstbot", "caflow"}
     assert len(list(db.scalars(select(User)))) == 1
 
 

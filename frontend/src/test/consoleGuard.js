@@ -5,7 +5,7 @@
  * the same reason. React reports the things it cannot throw over — an update
  * outside `act`, a key missing from a list, a controlled input that went
  * uncontrolled, a router behaviour about to change under you — by writing to
- * the console, where a green suite scrolls straight past them. Herald's own
+ * the console, where a green suite scrolls straight past them. Pulse's own
  * source calls neither method, so anything arriving here came from React, the
  * router or a library, and is worth reading.
  *
@@ -13,7 +13,7 @@
  * would be louder, but React calls it *during a render*, where a throw can be
  * swallowed by whatever is between it and the runner — an error boundary above
  * the component under test, most of all — and vanish in exactly the case the
- * guard was installed for. Herald now has boundaries at the root, on every
+ * guard was installed for. Pulse now has boundaries at the root, on every
  * route and around a few sections (`components/ErrorBoundary.jsx`), so that is
  * no longer hypothetical. Recording always survives; `release()` hands the
  * messages back and the caller fails the test with them.

@@ -1,6 +1,6 @@
 """Whether a failure is worth trying again, in one place.
 
-Herald already knows the answer per domain, and each domain says it in its own
+Pulse already knows the answer per domain, and each domain says it in its own
 vocabulary: :class:`app.services.llm_router.LLMError` carries a ``retryable``
 flag, :mod:`app.services.publishers.base` splits the same question into three
 exception classes, ``github_client`` into two more, and the task layer restates
@@ -83,7 +83,7 @@ class ErrorClass(StrEnum):
 #: of ``CredentialError`` is still a credential problem), and a dict keyed by
 #: type would only match the exact class.
 _BY_TYPE: tuple[tuple[type[BaseException], ErrorClass], ...] = (
-    # --- Herald's own vocabulary -------------------------------------------
+    # --- Pulse's own vocabulary -------------------------------------------
     # The two specific ones come before their shared base, which is the arm
     # that would otherwise answer for them.
     (CredentialError, ErrorClass.PERMANENT),

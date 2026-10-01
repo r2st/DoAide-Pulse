@@ -1,10 +1,10 @@
-"""What Herald does with malformed answers from the services it does not own.
+"""What Pulse does with malformed answers from the services it does not own.
 
 Three sources, one rule: a bad answer from outside must degrade to a smaller
 correct result, never to a corrupted one and never to a traceback.
 
-* **A user's own ``sitemap.xml``.** The one file Herald rewrites in a repository
-  somebody else owns. Anything in it Herald does not recognise has to survive
+* **A user's own ``sitemap.xml``.** The one file Pulse rewrites in a repository
+  somebody else owns. Anything in it Pulse does not recognise has to survive
   untouched or be skipped — never silently reshaped, because the diff lands in
   the user's git history under their name.
 * **GitHub's JSON.** Timestamps in particular: a field that does not parse is a
@@ -64,7 +64,7 @@ def test_a_foreign_element_among_the_urls_is_skipped_not_read_as_one():
 def test_fields_the_sitemap_spec_does_not_define_are_dropped():
     """Only the known per-entry fields are carried forward.
 
-    Writing back an element Herald does not understand risks putting it in the
+    Writing back an element Pulse does not understand risks putting it in the
     wrong place in the document, which is worse than losing it.
     """
     parsed = _parse_urlset(
@@ -125,10 +125,10 @@ def request_() -> PublishRequest:
     return PublishRequest(
         title="Automating developer marketing",
         slug="automating",
-        body_markdown="## Why\n\nHerald writes the posts.\n",
-        excerpt="Herald writes the posts.",
-        meta_description="Herald automates developer marketing end to end.",
-        project_name="Herald",
+        body_markdown="## Why\n\nPulse writes the posts.\n",
+        excerpt="Pulse writes the posts.",
+        meta_description="Pulse automates developer marketing end to end.",
+        project_name="Pulse",
     )
 
 

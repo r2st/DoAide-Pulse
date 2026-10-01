@@ -84,11 +84,11 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.listProjects.mockResolvedValue([{ id: 1, name: "Herald" }]);
+  api.listProjects.mockResolvedValue([{ id: 1, name: "Pulse" }]);
   api.templateBuiltins.mockResolvedValue(BUILTINS);
   stage([template()]);
   api.previewTemplate.mockResolvedValue({
-    title: "Herald — week of 30 July 2026",
+    title: "Pulse — week of 30 July 2026",
     body: "## What shipped\n\nTemplates landed.",
     missing: [],
     filled: ["summary"],
@@ -369,7 +369,7 @@ describe("using one", () => {
     const [id, payload] = api.previewTemplate.mock.calls.at(-1);
     expect(id).toBe(1);
     expect(payload.values.summary).toBe("Templates landed.");
-    expect(await screen.findByText("Herald — week of 30 July 2026")).toBeInTheDocument();
+    expect(await screen.findByText("Pulse — week of 30 July 2026")).toBeInTheDocument();
   });
 
   it("waits for a required blank before it will write anything", async () => {
@@ -403,7 +403,7 @@ describe("using one", () => {
     // it. A draft filed under the wrong project is only visible once it is
     // written, and moving it afterwards is not something this UI offers.
     api.listProjects.mockResolvedValue([
-      { id: 1, name: "Herald" },
+      { id: 1, name: "Pulse" },
       { id: 2, name: "Second" },
     ]);
     api.useTemplate.mockResolvedValue({ id: 42 });
@@ -532,7 +532,7 @@ describe("what a card says about a template", () => {
   it("names the project a template usually writes for", async () => {
     renderPage();
 
-    expect(await screen.findByText(/usually Herald/)).toBeInTheDocument();
+    expect(await screen.findByText(/usually Pulse/)).toBeInTheDocument();
   });
 
   it("says nothing about a project when the template has no default", async () => {
@@ -813,7 +813,7 @@ describe("the editor, on the parts the live check does not cover", () => {
     const user = userEvent.setup();
     api.updateTemplate.mockResolvedValue(template());
     api.listProjects.mockResolvedValue([
-      { id: 1, name: "Herald" },
+      { id: 1, name: "Pulse" },
       { id: 2, name: "Beacon" },
     ]);
     renderPage();
@@ -896,7 +896,7 @@ describe("the use dialog, beyond the happy path", () => {
     const user = userEvent.setup();
     api.listProjects.mockResolvedValue([
       { id: 2, name: "Beacon" },
-      { id: 1, name: "Herald" },
+      { id: 1, name: "Pulse" },
     ]);
     renderPage();
 
@@ -910,7 +910,7 @@ describe("the use dialog, beyond the happy path", () => {
     stage([template({ default_project_id: null })]);
     api.listProjects.mockResolvedValue([
       { id: 2, name: "Beacon" },
-      { id: 1, name: "Herald" },
+      { id: 1, name: "Pulse" },
     ]);
     renderPage();
 

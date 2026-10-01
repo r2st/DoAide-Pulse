@@ -1,9 +1,9 @@
-"""The shapes Herald puts in a webhook body.
+"""The shapes Pulse puts in a webhook body.
 
 Written by hand rather than dumped from the response schemas, and kept in their
 own module rather than beside whichever service happens to emit them. Both
 choices are the same choice: a webhook payload is a published contract with code
-Herald cannot see, so it should change when somebody decides it changes — not
+Pulse cannot see, so it should change when somebody decides it changes — not
 when a router's response model gains a field, and not differently in two places
 because two services grew their own copy.
 """

@@ -19,7 +19,7 @@ import pytest
 
 from app.config import Settings
 
-#: Repo root — tests/ -> backend/ -> Herald/
+#: Repo root — tests/ -> backend/ -> Pulse/
 _ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
 
 
@@ -42,13 +42,13 @@ def test_the_example_exists_and_parses():
     assert _ENV_EXAMPLE.is_file(), f"{_ENV_EXAMPLE} is missing"
     values = _example_values()
     assert values, "parsed nothing out of .env.example"
-    assert values["APP_NAME"] == "Herald"
+    assert values["APP_NAME"] == "Pulse"
 
 
 def test_debug_is_off_in_the_example():
     """The one that was actually wrong.
 
-    ``DEBUG=true`` in production reopens /docs and, worse, takes Herald's
+    ``DEBUG=true`` in production reopens /docs and, worse, takes Pulse's
     catch-all 500 handler out of circuit so Starlette answers unhandled
     exceptions with a traceback page — source lines and frame locals to whoever
     triggered it. It gains nothing here: /docs is already served whenever
@@ -71,7 +71,7 @@ def test_copying_the_example_unedited_cannot_start_in_production():
     """The backstop for everything this file does not think to check.
 
     If someone copies the example, sets ENVIRONMENT=production and edits nothing
-    else, Herald must refuse to boot. The placeholder JWT secret is what makes
+    else, Pulse must refuse to boot. The placeholder JWT secret is what makes
     that true, and it is worth pinning: a well-meaning change to a "nicer"
     default secret would turn a loud failure into a silent one.
     """

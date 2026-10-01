@@ -7,7 +7,7 @@ the code called ``as_aware``, which labels a naive value and leaves an aware one
 exactly as it found it — offset and all.
 
 Nothing produced a shifted value on purpose. ``published_at`` is written by
-``utcnow()``, and Herald pins the database session's zone to UTC at connect time
+``utcnow()``, and Pulse pins the database session's zone to UTC at connect time
 (``app.database._connect_options``, added when this was found). But that is one
 libpq parameter standing between a correct publishing rhythm and one silently
 off by the server's offset, on a path where being wrong is invisible: a learned

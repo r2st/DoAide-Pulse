@@ -494,7 +494,7 @@ def utc_day(value: datetime) -> str:
     """Which UTC day a stored timestamp falls on, as the bucket key for it.
 
     ``value.date()`` is the date *in whatever zone the value carries*, and a
-    ``timestamptz`` arrives in the database session's zone. Herald pins that to
+    ``timestamptz`` arrives in the database session's zone. Pulse pins that to
     UTC at connect time (:func:`app.database._connect_options`), which is the
     real fix; this is the same statement made where the buckets are built, so a
     reading cannot be filed under a day the labels do not contain.
@@ -527,7 +527,7 @@ def window_start(days: int) -> datetime:
     way), so this only ever adds the readings the first bucket was already
     claiming to count.
 
-    UTC because that is the only clock Herald stores anything in — see
+    UTC because that is the only clock Pulse stores anything in — see
     :mod:`app.services.cadence`; the frontend renders these dates as given.
     """
     return (utcnow() - timedelta(days=days)).replace(
@@ -596,7 +596,7 @@ def published_series(
     Counts **content**, not publications — the difference is the whole reason
     this sits beside :func:`timeline` rather than replacing it. A piece
     cross-posted to five platforms is five rows in ``Publication`` and one
-    thing the author wrote; ``timeline`` answers "how much did Herald send"
+    thing the author wrote; ``timeline`` answers "how much did Pulse send"
     (five) and this answers "how much did I publish" (one). Charting the first
     as the second makes a quiet week with a wide cross-post look like a busy
     one.
@@ -653,7 +653,7 @@ def generation_cost_trend(db: Session, *, days: int = 30) -> list[dict]:
     the question it answers ("is generation getting more expensive") is a
     dashboard question, and the caveat travels with it into the schema.
 
-    "Cost" is tokens. Herald runs on free tiers where the scarce thing is
+    "Cost" is tokens. Pulse runs on free tiers where the scarce thing is
     quota rather than money, and there is no price table to multiply by — a
     currency figure here would be invented. ``calls`` sits beside the tokens
     because the two move independently: a day whose token count doubled because
@@ -961,7 +961,7 @@ def read_time(db: Session, user_id: int) -> dict:
     """How long this user's posts are, and whether the long ones pay off.
 
     Two questions, one query. The first is descriptive — how much reading has
-    Herald actually published. The second is the one worth acting on: a piece's
+    Pulse actually published. The second is the one worth acting on: a piece's
     reading time is known before it goes out, so if the twelve-minute tutorials
     consistently out-earn the two-minute announcements per view, that is a
     commissioning decision rather than a post-hoc observation.

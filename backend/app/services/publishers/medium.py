@@ -7,7 +7,7 @@ Implemented against Medium's documented Publishing API (integration tokens,
 tokens in 2023 and the API is no longer actively maintained. Tokens created
 before then still work, which is why this adapter exists and is wired up — but a
 new account cannot get one. The connection flow surfaces :attr:`caveat` so
-nobody discovers that after writing a post. Nothing else in Herald depends on
+nobody discovers that after writing a post. Nothing else in Pulse depends on
 Medium working; a failed publication is per-platform (see the ``publications``
 table), so the same piece still goes out everywhere else.
 

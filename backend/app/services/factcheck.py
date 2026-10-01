@@ -16,15 +16,15 @@ gate passed the piece: the JSON parsed, the body was long enough, the SEO score
 was fine, no link was dead, and every character in it is ASCII.
 
 **The discriminator is grounding, not spelling.** A product name is a fact about
-the world that Herald either has on file or does not. So the gate builds a
-vocabulary out of everything Herald actually knows about the project — its
+the world that Pulse either has on file or does not. So the gate builds a
+vocabulary out of everything Pulse actually knows about the project — its
 brief, its keywords and stack, the commits or feed entries that prompted the
 piece, and (only when something looks unsupported, see
 :func:`app.services.content_pipeline.generate_and_route`) the repo's README —
 and reports the name-shaped tokens in the copy that appear in none of it.
 
 **What counts as name-shaped** is deliberately narrow, because "capitalized word
-Herald has not seen before" is most of the English language. Three arms, and a
+Pulse has not seen before" is most of the English language. Three arms, and a
 claim carries the name of the one that fired so a reviewer knows what they are
 looking at:
 
@@ -49,7 +49,7 @@ looking at:
     A capitalized word in a phrase that asserts it is *part of the product*:
     "integration with X", "the X inbox", "X integration", "powered by X". The
     frame is what separates "the Teppil inbox" from every other capitalized word
-    in a paragraph — a name Herald has never heard of is unremarkable until the
+    in a paragraph — a name Pulse has never heard of is unremarkable until the
     copy claims the product ships it.
 
 ``hyphen``
@@ -144,8 +144,8 @@ def prose(markdown: str) -> str:
 #: punctuation that lives *inside* names — ``Node.js``, ``add-on``, ``O'Reilly``.
 _VOCAB_WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9]*(?:[-‐‑'’.][A-Za-z0-9]+)*")
 
-#: Trailing possessive, dropped before normalising so ``Herald's`` grounds
-#: against ``Herald``.
+#: Trailing possessive, dropped before normalising so ``Pulse's`` grounds
+#: against ``Pulse``.
 _POSSESSIVE = re.compile(r"['’]s$", re.I)
 
 _STRIP_FROM_KEY = re.compile(r"[-‐‑'’.\s]+")
@@ -156,7 +156,7 @@ def normalize(token: str) -> str:
 
     Case, internal punctuation and the possessive all vary freely between a
     project's brief and the copy written from it — ``Node.js`` / ``nodejs``,
-    ``add-on`` / ``addon``, ``Herald's`` / ``Herald``. Folding them away is what
+    ``add-on`` / ``addon``, ``Pulse's`` / ``Pulse``. Folding them away is what
     makes grounding a lookup rather than a guess.
     """
     folded = unicodedata.normalize("NFKC", token)
@@ -206,7 +206,7 @@ def project_vocabulary(
     signal: TriggerSignal | None = None,
     extra: Any = None,
 ) -> frozenset[str]:
-    """Everything Herald knows about *project*, as a grounding set.
+    """Everything Pulse knows about *project*, as a grounding set.
 
     The same facts the prompt was built from (:meth:`Project.brief`) plus the
     event that prompted it, which is the half that matters most: a piece written

@@ -1,8 +1,8 @@
 """``webhooks.verify`` against input chosen by whoever is calling.
 
 The function has two callers with very different threat models. Outbound, it is
-documentation-as-code: Herald never receives its own webhooks, and the header it
-checks is one Herald just produced. Inbound, it is the *only* thing standing in
+documentation-as-code: Pulse never receives its own webhooks, and the header it
+checks is one Pulse just produced. Inbound, it is the *only* thing standing in
 front of ``POST /triggers/inbound/{token}`` — an unauthenticated endpoint whose
 signature header is attacker-controlled, byte for byte.
 

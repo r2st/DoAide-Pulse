@@ -121,7 +121,7 @@ def test_the_feed_client_never_follows_a_redirect():
     """A 3xx can move a validated public URL to somewhere inside the network."""
     with feeds._client() as client:
         assert client.follow_redirects is False
-        assert "Herald" in client.headers["User-Agent"]
+        assert "Pulse" in client.headers["User-Agent"]
 
 
 def test_a_transport_failure_is_reported_as_a_feed_error_not_an_httpx_one():

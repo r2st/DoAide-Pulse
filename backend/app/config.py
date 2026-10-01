@@ -48,14 +48,14 @@ class Settings(BaseSettings):
     )
 
     # ---- App ----
-    app_name: str = "Herald"
+    app_name: str = "Pulse"
     environment: str = "development"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: str = "http://localhost:5173,http://localhost:3000"
     frontend_url: str = "http://localhost:5173"
     # Where this API is reachable from the outside, without the ``/api/v1``
-    # prefix. Only needed for URLs Herald hands to somebody else's system — an
+    # prefix. Only needed for URLs Pulse hands to somebody else's system — an
     # inbound trigger's webhook URL is pasted into GitHub or Zapier, so a
     # localhost default would be worse than useless. Blank means "same origin as
     # the frontend", which is true in production (Caddy proxies both) and false
@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     bcrypt_rounds: int = 12
 
     # ---- Registration ----
-    # Herald is a single-user product: the account is created once by
+    # Pulse is a single-user product: the account is created once by
     # ``python -m app.seed``. An open /auth/register on a public box lets anyone
     # sign up and spend the shared free-tier LLM quota, so it is closed unless
     # explicitly opened.
@@ -125,7 +125,7 @@ class Settings(BaseSettings):
     # while it could still open.
     preview_link_retention_days: int = 90
 
-    # ---- SMTP (password reset mail — the only mail Herald sends) ----
+    # ---- SMTP (password reset mail — the only mail Pulse sends) ----
     # With SMTP_HOST blank the reset link is written to the log instead of sent.
     # That is a deliberate fallback for a self-hosted single-user install, not a
     # stub: `journalctl -u herald-api` is a workable way to collect your own
@@ -146,7 +146,7 @@ class Settings(BaseSettings):
     # production, so the effective limit is doubled). Point it at
     # ``redis://localhost:6379/3`` to share one counter across workers.
     rate_limit_storage_uri: str = ""
-    # Herald sits behind Caddy, so ``request.client.host`` is always the proxy.
+    # Pulse sits behind Caddy, so ``request.client.host`` is always the proxy.
     # With this on, the *rightmost* X-Forwarded-For entry is used instead — the
     # one Caddy appended, i.e. the peer it actually saw. A client-supplied
     # header lands to the left of it and so cannot be used to dodge a limit.
@@ -191,7 +191,7 @@ class Settings(BaseSettings):
     # is a handful of calls, so this caps one account at a small fraction of it.
     rate_limit_repo_scan: str = "60/hour;500/day"
     # The link checker fans one request out to `link_check_max_urls` outbound
-    # requests from Herald's own address. Limited so a document full of links
+    # requests from Pulse's own address. Limited so a document full of links
     # cannot be replayed into an outbound-traffic amplifier.
     rate_limit_link_check: str = "60/hour;500/day"
     # Mailing the digest on demand spends the install's single SMTP account —
@@ -200,7 +200,7 @@ class Settings(BaseSettings):
     # enough to get the domain filed as a sender nobody asked for.
     rate_limit_digest_send: str = "10/hour;30/day"
     # A webhook ping and a trigger check are both synchronous outbound requests
-    # made from Herald's address on the caller's say-so, which is the link
+    # made from Pulse's address on the caller's say-so, which is the link
     # checker's problem in a different shape. A trigger check is the sharper of
     # the two: on a GitHub trigger it spends the install's single GITHUB_TOKEN,
     # so leaving it unlimited was a way around `rate_limit_repo_scan`.
@@ -249,7 +249,7 @@ class Settings(BaseSettings):
     # disables the bound and restores the multi-minute kernel default.
     db_connect_timeout_seconds: float = 5.0
     # Log any statement that takes at least this long, with its duration. The
-    # three timeouts above are all ceilings — they say what Herald refuses to
+    # three timeouts above are all ceilings — they say what Pulse refuses to
     # wait for, and by the time one fires the request is already lost. This is
     # the other half: the query that takes four seconds every time, succeeds,
     # and is therefore invisible to every one of them.
@@ -282,7 +282,7 @@ class Settings(BaseSettings):
     # long-form tutorials and comparisons rather than a 280-character tweet.
     openrouter_long_form_model: str = "openai/gpt-oss-120b:free"
     openrouter_app_url: str = "https://herald.local"
-    openrouter_app_title: str = "Herald"
+    openrouter_app_title: str = "Pulse"
 
     # ---- AI fallback providers ---------------------------------------------
     # Tried in order after OpenRouter. All speak the OpenAI chat-completions
@@ -810,7 +810,7 @@ class Settings(BaseSettings):
         """Refuse to start in production with a placeholder or weak JWT secret.
 
         Not being the default was never the same thing as being strong. This
-        signs every session token Herald issues, with HMAC-SHA256 by default,
+        signs every session token Pulse issues, with HMAC-SHA256 by default,
         and RFC 7518 §3.2 requires a key at least as long as the hash output —
         256 bits — for exactly one reason: anyone holding a single issued token
         can brute-force a shorter key offline, and the key is what the whole
@@ -828,7 +828,7 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"JWT_SECRET must be at least {_MIN_JWT_SECRET_BYTES} bytes in "
                 "production — a shorter key can be recovered offline from any "
-                'token Herald has issued. Generate one with: python -c '
+                'token Pulse has issued. Generate one with: python -c '
                 '"import secrets; print(secrets.token_urlsafe(48))"'
             )
         return v
@@ -877,7 +877,7 @@ class Settings(BaseSettings):
         if not keys:
             raise ValueError(
                 "TOKEN_ENCRYPTION_KEY must be set in production — without it "
-                "Herald cannot store a platform credential, and any credential "
+                "Pulse cannot store a platform credential, and any credential "
                 f"already stored is read back in the clear; {generate}"
             )
         from cryptography.fernet import Fernet
@@ -935,7 +935,7 @@ class Settings(BaseSettings):
 
     @property
     def api_base_url(self) -> str:
-        """Absolute base for URLs Herald gives to other systems, no trailing slash."""
+        """Absolute base for URLs Pulse gives to other systems, no trailing slash."""
         return (self.public_api_url or self.frontend_url).rstrip("/")
 
     @property

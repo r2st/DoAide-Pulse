@@ -39,13 +39,13 @@ function draw() {
   );
 }
 
-const PROJECT = { id: 1, name: "Herald", repo_full_name: "r2st/Herald" };
+const PROJECT = { id: 1, name: "Pulse", repo_full_name: "r2st/Herald" };
 
 function item(overrides = {}) {
   return {
     id: 1,
     title: "A retry budget that outlasts the outage",
-    project_name: "Herald",
+    project_name: "Pulse",
     content_type: "changelog",
     word_count: 812,
     read_minutes: 4,
@@ -70,7 +70,7 @@ describe("loading and empty states", () => {
 
     expect(screen.getByText("Content")).toBeInTheDocument();
     // Let the (unrelated) project list finish loading within `act`.
-    await screen.findByRole("option", { name: "Herald" });
+    await screen.findByRole("option", { name: "Pulse" });
   });
 
   it("offers to register a project when there are none at all", async () => {

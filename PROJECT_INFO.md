@@ -1,9 +1,9 @@
-# Herald — PROJECT_INFO
+# Pulse — PROJECT_INFO
 
 **Marketing automation for developers: watches your project repos, drafts blog and social copy when something ships, publishes it on a schedule, and tracks what got read.**
 
 - **Repo:** https://github.com/r2st/Herald · branch `main`
-- **Local path:** `Products/Herald`
+- **Local path:** `Products/Pulse`
 
 ## Tech stack
 
@@ -34,7 +34,7 @@ Full detail: [`deploy/DEPLOYMENT.md`](deploy/DEPLOYMENT.md), [`deploy/Caddyfile.
 
 ## SSH key
 
-`../GoSumo/keys/hetzner_deploy_ed25519` — Herald has no key of its own; it reuses the
+`../GoSumo/keys/hetzner_deploy_ed25519` — Pulse has no key of its own; it reuses the
 shared Hetzner deploy key kept in the GoSumo project.
 
 ```bash
@@ -84,7 +84,7 @@ curl https://herald.doaide.com/api/v1/health   # also lists configured LLM provi
 ## Related projects
 
 - [`../TalentPing`](../TalentPing) — same Hetzner box, same LLM fallback pattern, shares the Groq key
-- [`../GoSumo`](../GoSumo) — same box; **owns the SSH deploy key Herald uses**
+- [`../GoSumo`](../GoSumo) — same box; **owns the SSH deploy key Pulse uses**
 - [`../Documedic`](../Documedic), [`../HomeNex`](../HomeNex) — same box
 - `knol/memorylayer` — backs the `*.doaide.com` estate and the shared Caddy container
 - `~/projects/PROJECT-INDEX.md`, `~/projects/keys/KEYS_INDEX.md` — estate-wide index

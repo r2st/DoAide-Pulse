@@ -1,6 +1,6 @@
 """The trail from a request to the work it caused, across two processes.
 
-Herald's API is already traceable in-process: ``RequestIDMiddleware`` mints an
+Pulse's API is already traceable in-process: ``RequestIDMiddleware`` mints an
 id, returns it as ``X-Request-ID``, and ``RequestIDFilter`` stamps it on every
 line written while that request is being served. The trail ended at
 ``.delay()`` — the request returned in milliseconds and the publishing happened
@@ -42,8 +42,8 @@ from app.tasks.observability import REQUEST_ID_HEADER
 
 #: A task that exists only to be traced. Named outside the ``app.tasks.``
 #: namespace on purpose: ``tests/test_celery_app.py`` sweeps the registry for
-#: that prefix and holds every match to Herald's own invariants, and this is not
-#: one of Herald's tasks.
+#: that prefix and holds every match to Pulse's own invariants, and this is not
+#: one of Pulse's tasks.
 TASK_NAME = "tests.observability.noisy"
 
 logger = logging.getLogger("app.demo")
@@ -142,7 +142,7 @@ def test_a_task_that_dispatches_a_task_keeps_the_one_id():
 
     Without this, a publish sweep started by a request would break the chain at
     its first hop and every row it dispatched would get a fresh trail — which is
-    the shape of nearly all of Herald's work.
+    the shape of nearly all of Pulse's work.
     """
     sweep = _Task(**{REQUEST_ID_HEADER: "req-from-api"})
     observability._task_started(task_id="sweep-id", task=sweep)
@@ -307,7 +307,7 @@ def _connected(signal) -> set:
 
 
 def _herald_stream(root: logging.Logger) -> StringIO:
-    """Configure logging and point Herald's own handler at a buffer."""
+    """Configure logging and point Pulse's own handler at a buffer."""
     configure_logging(level="INFO")
     stream = StringIO()
     for handler in root.handlers:

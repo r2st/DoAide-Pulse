@@ -87,7 +87,7 @@ def build_email(raw_token: str) -> tuple[str, str]:
     """Subject and plain-text body for the reset message."""
     minutes = settings.password_reset_token_ttl_minutes
     body = (
-        "Someone asked to reset the password for your Herald account.\n\n"
+        "Someone asked to reset the password for your Pulse account.\n\n"
         f"{reset_link(raw_token)}\n\n"
         f"The link works once and expires in {minutes} minutes.\n"
         "If this wasn't you, nothing has changed and you can ignore this email.\n"

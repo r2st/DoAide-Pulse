@@ -1,10 +1,10 @@
 """Turn a long-form piece into ready-to-paste social snippets.
 
-Herald already builds a Twitter thread and a LinkedIn post at publish time
+Pulse already builds a Twitter thread and a LinkedIn post at publish time
 (``TwitterAdapter.build_thread`` / ``LinkedInAdapter.build_commentary``) — but
 those are mechanical: the thread is the body cut into paragraph-sized chunks,
 and the LinkedIn post is just the excerpt. Neither adapter can actually publish
-yet (both need an OAuth flow Herald doesn't have), so today that text is
+yet (both need an OAuth flow Pulse doesn't have), so today that text is
 invisible to a user who would happily copy-paste it by hand.
 
 This module asks a model to do better than paragraph-splitting — one idea per

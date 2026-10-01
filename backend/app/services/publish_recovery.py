@@ -1,6 +1,6 @@
 """Re-arming publications whose reason for failing has since stopped being true.
 
-Herald's retry story is otherwise complete, and deliberately so. A blip is
+Pulse's retry story is otherwise complete, and deliberately so. A blip is
 retried in-process by :meth:`app.services.publishers.base.Adapter._request`; a
 failure that outlives that is parked by :func:`app.services.publishing_service._fail`
 and re-armed by the beat sweep until ``publish_max_retries`` is spent; a rate
@@ -14,7 +14,7 @@ connects an account. But it is permanent *given a state*, and the state is one a
 person changes later, somewhere else entirely: they open Settings and connect
 Dev.to. Nothing joined those two facts up. The publication stayed ``failed``,
 the piece stayed ``failed``, and the only route back was a human noticing and
-clicking Retry once per platform per piece — for work Herald had already written,
+clicking Retry once per platform per piece — for work Pulse had already written,
 approved and queued.
 
 That gap is what put ten pieces in ``failed`` on production. Every one of them

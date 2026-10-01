@@ -1,6 +1,6 @@
 """projects.auto_headline_winner
 
-Per-project opt-in to Herald swapping in the best-performing past headline on
+Per-project opt-in to Pulse swapping in the best-performing past headline on
 its own. Defaults to false for every existing row, and deliberately: a title
 changing under the author without their say-so is startling, and the
 measurement carries a known bias toward whichever headline was live when the

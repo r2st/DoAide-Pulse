@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Herald — deploy to the Hetzner box.
+# Pulse — deploy to the Hetzner box.
 #
 #   ./deploy/deploy.sh            # build, sync, migrate, restart
 #   ./deploy/deploy.sh --no-build # skip the frontend build (backend-only change)
@@ -116,4 +116,4 @@ echo "health check never came up — journalctl -u herald-api -n 50" >&2
 exit 1
 REMOTE_SCRIPT
 
-echo "==> done: https://herald.doaide.com"
+echo "==> done: https://pulse.doaide.com"

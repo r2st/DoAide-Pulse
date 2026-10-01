@@ -36,7 +36,7 @@ export const UNROUTED = "unrouted";
  * The distinct platforms present, in a stable order, for the filter row.
  *
  * Built from what is actually on the calendar rather than from every platform
- * Herald supports: a chip that filters a month down to nothing is a control
+ * Pulse supports: a chip that filters a month down to nothing is a control
  * that only ever disappoints. Content scheduled before it was routed anywhere
  * has no platform at all and is offered under its own value — it is the set
  * most worth finding, since those are the pieces that will not go anywhere

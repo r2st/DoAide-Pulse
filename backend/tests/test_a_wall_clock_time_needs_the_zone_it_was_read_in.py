@@ -1,8 +1,8 @@
 """Scheduling for "09:00 local" rather than for an instant somebody computed.
 
-Everything Herald stores is UTC and that is not in question here. The question
+Everything Pulse stores is UTC and that is not in question here. The question
 is what a client is allowed to *send*, and the answer used to be: an instant, or
-a naive wall-clock time that Herald would read as UTC. Neither expresses the
+a naive wall-clock time that Pulse would read as UTC. Neither expresses the
 thing a person setting a date actually means.
 
 A browser can resolve "09:00 on 5 November in Berlin" to an offset — but it
@@ -91,8 +91,8 @@ def piece(db, project) -> Content:
         content_type=ContentType.ANNOUNCEMENT,
         title="Timezones land",
         slug="timezones-land",
-        body_markdown="Herald reads a wall clock in the zone you meant.",
-        excerpt="Herald reads a wall clock in the zone you meant.",
+        body_markdown="Pulse reads a wall clock in the zone you meant.",
+        excerpt="Pulse reads a wall clock in the zone you meant.",
         status=ContentStatus.DRAFT,
     )
     db.add(row)
@@ -334,7 +334,7 @@ def test_the_publish_endpoint_refuses_a_zone_it_cannot_resolve(
     client, auth, piece, devto
 ):
     """A typo'd zone is a 422 — the same answer a time in the past gets, and for
-    the same reason: the caller has named a moment Herald cannot act on."""
+    the same reason: the caller has named a moment Pulse cannot act on."""
     resp = client.post(
         f"/api/v1/content/{piece.id}/publish",
         json={

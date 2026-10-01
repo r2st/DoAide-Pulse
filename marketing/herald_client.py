@@ -1,6 +1,6 @@
-"""A thin client for the Herald HTTP API.
+"""A thin client for the Pulse HTTP API.
 
-Herald disables ``/openapi.json`` and ``/docs`` in production, so this module
+Pulse disables ``/openapi.json`` and ``/docs`` in production, so this module
 doubles as the written-down contract for the endpoints the campaign runner
 uses. Everything here maps one-to-one onto a route under
 ``backend/app/routers/`` — no logic lives in this file that is not about
@@ -22,10 +22,10 @@ import httpx
 DEFAULT_BASE_URL = "https://herald.doaide.com/api/v1"
 
 
-class HeraldError(RuntimeError):
+class PulseError(RuntimeError):
     """An API call that came back with a non-2xx status.
 
-    Carries the parsed ``detail`` where Herald sent one, because that string is
+    Carries the parsed ``detail`` where Pulse sent one, because that string is
     almost always the actionable part — "Not connected to: devto" is a fix, and
     "400 Bad Request" is not.
     """
@@ -36,8 +36,8 @@ class HeraldError(RuntimeError):
         self.detail = detail
 
 
-class HeraldClient:
-    """Authenticated session against one Herald instance."""
+class PulseClient:
+    """Authenticated session against one Pulse instance."""
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class HeraldClient:
     # Plumbing                                                          #
     # ----------------------------------------------------------------- #
 
-    def __enter__(self) -> HeraldClient:
+    def __enter__(self) -> PulseClient:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -72,14 +72,14 @@ class HeraldClient:
 
     def _headers(self) -> dict[str, str]:
         if not self._token:
-            raise HeraldError("GET", self.base_url, 401, "not logged in")
+            raise PulseError("GET", self.base_url, 401, "not logged in")
         return {"Authorization": f"Bearer {self._token}"}
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         url = f"{self.base_url}{path}"
         response = self._http.request(method, url, headers=self._headers(), **kwargs)
         if response.status_code >= 400:
-            raise HeraldError(method, url, response.status_code, _detail(response))
+            raise PulseError(method, url, response.status_code, _detail(response))
         if response.status_code == 204 or not response.content:
             return None
         return response.json()
@@ -93,7 +93,7 @@ class HeraldClient:
         url = f"{self.base_url}/auth/login"
         response = self._http.post(url, data={"username": email, "password": password})
         if response.status_code >= 400:
-            raise HeraldError("POST", url, response.status_code, _detail(response))
+            raise PulseError("POST", url, response.status_code, _detail(response))
         self._token = response.json()["access_token"]
 
     def login_from_env(self, base_url_env: str = "HERALD_BASE_URL") -> None:
@@ -174,7 +174,7 @@ class HeraldClient:
     ) -> list[dict]:
         """Put a piece on the calendar.
 
-        ``optimize`` and ``scheduled_for`` are mutually exclusive — Herald
+        ``optimize`` and ``scheduled_for`` are mutually exclusive — Pulse
         rejects both together. With ``optimize`` each platform gets its own
         slot, which is what staggers a cross-post instead of firing every copy
         into every feed in the same second.
@@ -236,7 +236,7 @@ class HeraldClient:
 
 
 def _detail(response: httpx.Response) -> str:
-    """The ``detail`` string Herald sends, or the raw body if it sent none."""
+    """The ``detail`` string Pulse sends, or the raw body if it sent none."""
     try:
         body = response.json()
     except ValueError:
@@ -246,4 +246,4 @@ def _detail(response: httpx.Response) -> str:
     return str(body)[:500]
 
 
-__all__ = ["HeraldClient", "HeraldError", "DEFAULT_BASE_URL"]
+__all__ = ["PulseClient", "PulseError", "DEFAULT_BASE_URL"]

@@ -7,7 +7,7 @@ and telling them which of their guesses was once real is telling them too much.
 
 It was also the *only* record of the decision, and that is the part that was
 wrong. The operator reading the journal is not the person holding the token, and
-"CI stopped publishing on Tuesday" had no answer anywhere in Herald: an expired
+"CI stopped publishing on Tuesday" had no answer anywhere in Pulse: an expired
 key, a rotated one whose grace window has closed and a deactivated account are
 the same silent 401, and none of them touches ``last_used_at`` — :func:`touch`
 stamps only keys that were *accepted*, on purpose, so that an audit of the

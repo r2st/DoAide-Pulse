@@ -19,7 +19,7 @@ import {
 const KIND_LABELS = { github: "GitHub", rss: "RSS", webhook: "Webhook", schedule: "Schedule" };
 
 /**
- * Everything that can make Herald write, and whether it is working.
+ * Everything that can make Pulse write, and whether it is working.
  *
  * The page is organised by trigger rather than by project because the question
  * it exists to answer is "why hasn't this fired?" — and the answer is nearly
@@ -600,7 +600,7 @@ function ConfigField({ field, value, onChange }) {
 /**
  * The signing secret, shown exactly once.
  *
- * Herald stores it encrypted and has no endpoint that returns it again, so this
+ * Pulse stores it encrypted and has no endpoint that returns it again, so this
  * dialog is the only chance to copy it. Saying so plainly is the difference
  * between a rotation and a support question.
  */
@@ -651,7 +651,7 @@ function SecretDialog({ trigger, onClose }) {
         </div>
         <div className="mt-1.5 space-y-1.5 text-xs text-ink-400">
           <p>
-            Send as <code>X-Herald-Signature</code>:
+            Send as <code>X-Pulse-Signature</code>:
           </p>
           <pre className="overflow-x-auto rounded border border-line bg-canvas px-2.5 py-1.5 font-mono text-[11px] text-ink-700">
             t=&lt;unix seconds&gt;,v1=HMAC_SHA256(secret, &quot;&lt;t&gt;.&lt;raw body&gt;&quot;)

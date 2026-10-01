@@ -37,11 +37,11 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
-        excerpt="Herald 1.0 is out.",
-        meta_description="Herald 1.0 is out.",
+        excerpt="Pulse 1.0 is out.",
+        meta_description="Pulse 1.0 is out.",
     )
     db.add(row)
     db.commit()
@@ -362,7 +362,7 @@ def test_an_announced_outage_parks_the_row_until_the_platform_is_back(
 
 
 def test_an_announced_outage_is_still_capped(db, content, connected, monkeypatch):
-    """A platform is allowed to say "next week"; Herald is not allowed to wait.
+    """A platform is allowed to say "next week"; Pulse is not allowed to wait.
 
     ``_defer``'s cap is what stops a hostile or mistaken header parking a row
     past the point anybody is still watching for it.

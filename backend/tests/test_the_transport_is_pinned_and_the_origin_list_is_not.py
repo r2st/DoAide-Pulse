@@ -1,6 +1,6 @@
 """Two headers whose comments promised more than the code delivered.
 
-``test_cors.py`` already pins the headers Herald has always sent. This file
+``test_cors.py`` already pins the headers Pulse has always sent. This file
 covers the two that were missing or wrong, and the CORS allow-list, which had
 nothing stopping a development value from being deployed.
 
@@ -8,7 +8,7 @@ nothing stopping a development value from being deployed.
 these, but defence-in-depth means the app should not rely on that" — and then
 set every header in that list *except* HSTS. So the one header the comment named
 was the one the app did not send, and the whole policy rested on a ``header``
-block in a shared Caddyfile that Herald does not own.
+block in a shared Caddyfile that Pulse does not own.
 
 It cannot simply be sent unconditionally, which is presumably how it came to be
 left out. A browser ignores HSTS on a plain-HTTP response, so emitting it always
@@ -231,7 +231,7 @@ def test_filtering_everything_is_allowed_to_leave_nothing():
 def test_herald_sets_no_cookies_at_all(client):
     """There is no cookie to add flags to, and that is the property to keep.
 
-    Herald authenticates with a bearer token the SPA holds and sends
+    Pulse authenticates with a bearer token the SPA holds and sends
     explicitly. No cookie means no ambient credential, which is what makes the
     CORS policy's missing ``allow-credentials`` sufficient rather than merely
     tidy — and it is why there is no CSRF token anywhere in the tree.

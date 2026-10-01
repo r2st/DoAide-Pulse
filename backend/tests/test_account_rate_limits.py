@@ -10,7 +10,7 @@ It is not, for six endpoints. Writing a piece, refreshing ideas, repurposing,
 rewriting a passage and drafting headlines each turn into an LLM call against a
 free-tier quota that is metered *per day* and shared by every account on the
 install; a repo scan spends the install's single GitHub token; a link check
-fans one request out to ``link_check_max_urls`` outbound requests from Herald's
+fans one request out to ``link_check_max_urls`` outbound requests from Pulse's
 own address. None of those budgets belong to the caller, which is the whole
 reason a caller cannot be left to decide how much of one to use.
 
@@ -111,7 +111,7 @@ def test_an_unusable_token_falls_back_to_the_address(header):
 
 
 def test_a_forged_token_cannot_spend_another_accounts_budget():
-    """The bucket is only ever named by a token Herald actually signed."""
+    """The bucket is only ever named by a token Pulse actually signed."""
     forged = {"Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiI3In0.nope"}
     assert account_key(_FakeRequest(forged)) != "user:7"
 
@@ -133,7 +133,7 @@ _COSTLY_CALLS = (
     # Mail goes out through the install's single SMTP identity: one budget and
     # one sending reputation, shared by every account here.
     "digest.send(",
-    # Both of these make a synchronous outbound request from Herald's own
+    # Both of these make a synchronous outbound request from Pulse's own
     # address because the caller asked them to — the link checker's problem in
     # a different shape. `triggers.check` is the sharper one: against a GitHub
     # trigger it spends the install's single GITHUB_TOKEN, so leaving it
@@ -145,7 +145,7 @@ _COSTLY_CALLS = (
     # request the ping is, reached from the settings page. Two things make it
     # the sharper of the pair. `PUT /settings/connections` verifies credentials
     # taken *from the request body*, so unlimited it answers "is this token
-    # good?" for any token at all, at Herald's address rather than the
+    # good?" for any token at all, at Pulse's address rather than the
     # caller's. And `GitAdapter._token` falls back to the install's shared
     # GITHUB_TOKEN when the connection carries none, which is the
     # `rate_limit_repo_scan` budget again — the second way around it, after
@@ -228,7 +228,7 @@ def test_the_costly_endpoints_are_the_ones_expected():
         "/templates/{template_id}/use",
         # Not model spend — the other two shared budgets. Mailing the digest
         # goes out through the install's one SMTP identity; the ping and the
-        # trigger check are synchronous outbound requests from Herald's own
+        # trigger check are synchronous outbound requests from Pulse's own
         # address, and a GitHub trigger check spends the same single token
         # `/projects/{id}/scan` is limited to protect.
         "/analytics/digest/send",

@@ -1,6 +1,6 @@
 """The logs a production box actually gets.
 
-Herald configured no logging at all, which under uvicorn is not the same as
+Pulse configured no logging at all, which under uvicorn is not the same as
 taking Python's defaults. Uvicorn puts handlers on ``uvicorn``, ``uvicorn.error``
 and ``uvicorn.access`` and leaves the root logger empty, so every ``app.*``
 logger propagated to nothing and fell through to :data:`logging.lastResort` — a
@@ -56,7 +56,7 @@ def pristine_logging():
 
 
 def _capture(root: logging.Logger) -> StringIO:
-    """Point Herald's handler at a buffer instead of stdout."""
+    """Point Pulse's handler at a buffer instead of stdout."""
     stream = StringIO()
     for handler in root.handlers:
         if getattr(handler, "name", None) == "herald":
@@ -134,7 +134,7 @@ def test_a_record_with_no_request_id_still_formats(pristine_logging):
     """``%(request_id)s`` on a library's record must not raise.
 
     Everything logs through the root handler, including code that has never
-    heard of Herald. A formatter that raised on those would turn an unrelated
+    heard of Pulse. A formatter that raised on those would turn an unrelated
     warning into a logging failure inside whatever was serving the request.
     """
     configure_logging(level="INFO")

@@ -20,13 +20,13 @@ def adapter() -> HashnodeAdapter:
 def request_() -> PublishRequest:
     return PublishRequest(
         title="Automating developer marketing",
-        body_markdown="## Why\n\nHerald watches your repos and writes the posts.",
-        excerpt="Herald watches your repos.",
-        meta_description="Herald automates developer marketing end to end.",
+        body_markdown="## Why\n\nPulse watches your repos and writes the posts.",
+        excerpt="Pulse watches your repos.",
+        meta_description="Pulse automates developer marketing end to end.",
         tags=["python", "automation"],
         canonical_url="https://herald.example.com/blog/automating",
         project_url="https://herald.example.com",
-        project_name="Herald",
+        project_name="Pulse",
     )
 
 

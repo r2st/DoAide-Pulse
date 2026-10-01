@@ -1,6 +1,6 @@
 """A warning must fail the run, in both places that configure the suite.
 
-Herald tracks FastAPI, Starlette, SQLAlchemy and PyJWT closely, and the way any
+Pulse tracks FastAPI, Starlette, SQLAlchemy and PyJWT closely, and the way any
 of those tells you a call is about to stop working is a warning on the run that
 uses it. Both config files used to open with ``ignore::DeprecationWarning``, so
 that notice went to ``/dev/null`` for however many releases it took for the
@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-#: tests/ -> backend/ -> Herald/
+#: tests/ -> backend/ -> Pulse/
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _PYPROJECT = _REPO_ROOT / "backend" / "pyproject.toml"
 _PYTEST_INI = _REPO_ROOT / "pytest.ini"

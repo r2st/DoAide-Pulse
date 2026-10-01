@@ -1,4 +1,4 @@
-"""Project registry: register what Herald should write about."""
+"""Project registry: register what Pulse should write about."""
 from __future__ import annotations
 
 import logging
@@ -39,7 +39,7 @@ def _unique_slug(db: Session, user_id: int, name: str, *, exclude_id: int | None
     """A slug unique within this user's projects.
 
     Scoped per user rather than globally: two people registering a project
-    called "Herald" should both get ``herald``.
+    called "Pulse" should both get ``herald``.
     """
     base = slugify(name)
     candidate = base
@@ -195,7 +195,7 @@ def create_project(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectOut:
-    """Add a project for Herald to write about.
+    """Add a project for Pulse to write about.
 
     The slug is derived from the name and made unique within the account; it is
     not settable, because it appears in the public feed URL and a user-chosen
@@ -303,11 +303,11 @@ def delete_project(
     """Delete a project, its content, its triggers and its publication history.
 
     This one really deletes. Content already live on a platform stays live —
-    Herald cannot unpublish it, and this removes only Herald's record of it.
+    Pulse cannot unpublish it, and this removes only Pulse's record of it.
     """
     project = owned_project(project_id, db, user)
     # Counted *before* the delete and logged before the commit: this is the one
-    # endpoint in Herald whose effect cannot be inspected afterwards. The cascade
+    # endpoint in Pulse whose effect cannot be inspected afterwards. The cascade
     # removes the content, the publication history and the triggers, so once it
     # has run there is nothing left to ask what it took — and the posts it was
     # the only record of are still live on the platforms. Two COUNTs against a
@@ -446,11 +446,11 @@ def project_feed(
     """
     # Joined to the owner rather than fetched by id, because a deactivated
     # account must not still be publishing. Deactivation is how an account is
-    # switched off in Herald: its tokens stop working, its sweeps skip it, its
+    # switched off in Pulse: its tokens stop working, its sweeps skip it, its
     # inbound webhooks write nothing, its approved content is not released, its
-    # preview links stop resolving. This feed was the last thing Herald kept
-    # doing on a switched-off account's behalf — on Herald's own domain, from
-    # Herald's own render of the project's metadata, to every subscriber on a
+    # preview links stop resolving. This feed was the last thing Pulse kept
+    # doing on a switched-off account's behalf — on Pulse's own domain, from
+    # Pulse's own render of the project's metadata, to every subscriber on a
     # timer, with no expiry to run out the way a preview link's does.
     #
     # A join and not a walk through ``project.user``: the owner decides whether
@@ -458,7 +458,7 @@ def project_feed(
     # endpoint whose query count is pinned (``test_n_plus_one``).
     #
     # ``Project.is_active`` is deliberately *not* checked. Pausing a project
-    # stops Herald writing new pieces for it; it is not a request to retract
+    # stops Pulse writing new pieces for it; it is not a request to retract
     # the feed of what it already published, and the owner is still signed in
     # and able to say so directly.
     project = db.scalar(
@@ -521,11 +521,11 @@ def project_feed(
     #
     # ``atom:link rel="self"`` is the feed telling a subscriber where the feed
     # is, which makes it the same kind of value as the webhook URL in
-    # ``app.routers.triggers`` — a URL Herald hands to somebody else's system —
+    # ``app.routers.triggers`` — a URL Pulse hands to somebody else's system —
     # and ``api_base_url`` is what this codebase already uses for those. The
     # request URL is not that value for two separate reasons:
     #
-    # * **The scheme is the proxy's, not the app's.** Herald runs behind Caddy,
+    # * **The scheme is the proxy's, not the app's.** Pulse runs behind Caddy,
     #   which terminates TLS and forwards plain HTTP to a bridge address.
     #   Uvicorn only honours ``X-Forwarded-Proto`` from ``forwarded_allow_ips``,
     #   which does not include that address, so ``request.url.scheme`` is

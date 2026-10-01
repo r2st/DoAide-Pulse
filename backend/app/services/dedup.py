@@ -1,4 +1,4 @@
-"""Has Herald already written this?
+"""Has Pulse already written this?
 
 Two different questions, asked at two different moments, and the difference
 between them is the whole design.
@@ -37,7 +37,7 @@ pieces with different titles and near-identical bodies are a real failure and a
 much harder question — a body comparison would have to be robust to a
 rewritten intro and a reordered section list, which is a similarity problem this
 module's four lines of Jaccard are not the answer to. Titles are where the
-duplication Herald actually produces shows up, because the title is generated
+duplication Pulse actually produces shows up, because the title is generated
 from the same brief that produced the last one.
 """
 from __future__ import annotations
@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 #: Words carrying no subject, dropped before two headlines are compared. Short
 #: and deliberately so: this is not a stemmer, it is the handful of words that
-#: differ between two phrasings of the same idea ("How to deploy Herald *to*
+#: differ between two phrasings of the same idea ("How to deploy Pulse *to*
 #: production" against the same headline with *into*) and never distinguish two
 #: real ones.
 STOPWORDS = frozenset({
@@ -73,7 +73,7 @@ STOPWORDS = frozenset({
 })
 
 #: Possessives and the ``'s`` contraction, dropped before tokenizing so
-#: "Herald's caching layer" and "the caching layer in Herald" reduce to the same
+#: "Pulse's caching layer" and "the caching layer in Pulse" reduce to the same
 #: words. Curly apostrophes included: the model emits them and a user typing a
 #: headline on a Mac gets them by autocorrect.
 _POSSESSIVE = re.compile(r"['’]s\b|['’]")
@@ -85,7 +85,7 @@ _TOKEN = re.compile(r"[0-9a-z]+(?:[.\-][0-9a-z]+)*")
 
 #: How much of two headlines' subject matter must coincide before the second is
 #: taken as a restatement of the first. Tuned against the pair this has to keep
-#: *apart*: "Getting started with Herald" and "Getting started with Herald Pro"
+#: *apart*: "Getting started with Pulse" and "Getting started with Pulse Pro"
 #: share three of four significant words — 0.75 — and are two different pieces.
 SIMILARITY_THRESHOLD = 0.8
 
@@ -134,7 +134,7 @@ MAX_STORED_COMMITS = 20
 
 #: How much of a sha is stored. Seven is what a human reads and what git itself
 #: abbreviates to; the full forty would quadruple the column for no more
-#: distinguishing power at Herald's scale. Compared against other stored shas
+#: distinguishing power at Pulse's scale. Compared against other stored shas
 #: only, never against GitHub, so the abbreviation is consistent on both sides.
 _SHA_PREFIX = 7
 

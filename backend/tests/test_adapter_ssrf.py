@@ -2,7 +2,7 @@
 
 Three platforms are "tell me where your server is": WordPress, Mastodon and a
 self-hosted Bluesky PDS. Their base URL arrives from a settings form, and
-Herald's own process is what opens it — so ``http://169.254.169.254/`` typed
+Pulse's own process is what opens it — so ``http://169.254.169.254/`` typed
 into the Site URL box is a request for the cloud metadata endpoint made by
 something that can reach it, and the reply comes back to the caller inside the
 error message. The other seven adapters point at a constant in the source and

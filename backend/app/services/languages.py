@@ -1,13 +1,13 @@
-"""The languages Herald will translate a piece into, and what each is spelled with.
+"""The languages Pulse will translate a piece into, and what each is spelled with.
 
-Herald writes English. Everything downstream of the generator was built on that
+Pulse writes English. Everything downstream of the generator was built on that
 assumption, and most of it is right to be — the SEO scorer's readability
 formulas are calibrated on English, the loanword list in :mod:`app.services.ai`
 is an *English* loanword list. Translation does not change any of that; it adds
 a second artefact beside the piece, in a language this module has to be able to
 name.
 
-Naming it is not decoration. Two of Herald's gates ask "is this text spelled in
+Naming it is not decoration. Two of Pulse's gates ask "is this text spelled in
 characters it has no business containing", and the answer depends entirely on
 what language the text is supposed to be in. ``génère`` is a corrupted
 ``generate`` in an English body and an ordinary verb in a French one; ``рынок``
@@ -34,7 +34,7 @@ So each entry here carries the two facts the gates need:
     is still worth a reviewer's glance.
 
 The list is deliberately short. Each language on it is one somebody can plausibly
-publish into, and adding one is a decision to claim Herald's output in it is
+publish into, and adding one is a decision to claim Pulse's output in it is
 good enough to go out under the user's name — not a data-entry exercise. The
 right way to grow it is one language at a time, with somebody who reads it
 looking at the result.
@@ -45,7 +45,7 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Final
 
-#: The language Herald generates in, and the one every piece is authored in.
+#: The language Pulse generates in, and the one every piece is authored in.
 #: Named rather than written as ``"en"`` at eleven call sites, because half of
 #: those are comparisons that mean "is this the original" rather than "is this
 #: English", and the two questions only happen to have the same answer today.
@@ -54,7 +54,7 @@ SOURCE_LANGUAGE: Final = "en"
 
 @dataclass(frozen=True)
 class Language:
-    """One language Herald can produce a translation in."""
+    """One language Pulse can produce a translation in."""
 
     code: str
     #: The name in English, for the API and the picker.
@@ -182,9 +182,9 @@ def normalize(code: str | None) -> str | None:
     """Canonicalise a language tag, or ``None`` if it names nothing supported.
 
     Accepts the regional forms a browser sends — ``fr-CA``, ``pt_BR``, ``EN`` —
-    and answers with the base language, because that is the granularity Herald
+    and answers with the base language, because that is the granularity Pulse
     translates at. A caller asking for ``pt-BR`` gets Portuguese and is not told
-    it asked for something Herald does not have: the alternative is a 422 on the
+    it asked for something Pulse does not have: the alternative is a 422 on the
     one header every browser fills in automatically.
 
     Returning ``None`` rather than raising, because both callers want to make

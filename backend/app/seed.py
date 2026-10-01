@@ -1,6 +1,6 @@
-"""Seed a fresh database with an account and the projects Herald promotes.
+"""Seed a fresh database with an account and the projects Pulse promotes.
 
-Herald promoting Herald is the point: the first thing you see after signing in
+Pulse promoting Pulse is the point: the first thing you see after signing in
 is a real project you can generate a post about, rather than an empty state and
 a form. The same registry carries the other products in the estate — a project
 row with a ``repo_url`` is all the autopilot needs to start watching a repo (see
@@ -59,7 +59,7 @@ class ProjectSpec:
     target_audience: str
     keywords: list[str]
     tone: Tone
-    #: Off for Herald itself, draft for the rest. Never ``AUTO`` from a seed:
+    #: Off for Pulse itself, draft for the rest. Never ``AUTO`` from a seed:
     #: a fresh install publishing to a real account unattended is a nasty
     #: surprise, and the flip to auto belongs to whoever is watching the queue.
     autopilot_mode: AutopilotMode
@@ -67,9 +67,9 @@ class ProjectSpec:
 
 
 HERALD = ProjectSpec(
-    name="Herald",
+    name="Pulse",
     description=(
-        "Herald is an AI-powered marketing automation tool for developers who "
+        "Pulse is an AI-powered marketing automation tool for developers who "
         "ship more than they write about. It watches your project repos, drafts "
         "blog posts and social copy when something meaningful lands, runs them "
         "past you, and publishes to Dev.to, Medium and the rest on a schedule — "
@@ -105,18 +105,18 @@ HERALD = ProjectSpec(
     ideas=[
         (
             ContentType.HOW_TO,
-            "Automate your project's blog posts with Herald",
+            "Automate your project's blog posts with Pulse",
             "The core use case, and the one people search for.",
         ),
         (
             ContentType.FEATURE_SPOTLIGHT,
-            "How Herald keeps one flaky LLM from breaking your content pipeline",
+            "How Pulse keeps one flaky LLM from breaking your content pipeline",
             "The provider chain and circuit breaker are genuinely unusual — worth "
             "a post of their own.",
         ),
         (
             ContentType.COMPARISON,
-            "Herald vs Buffer vs writing it yourself",
+            "Pulse vs Buffer vs writing it yourself",
             "Comparison posts convert, and the honest answer here is interesting.",
         ),
     ],
@@ -349,7 +349,7 @@ def seed(email: str | None = None, password: str | None = None) -> None:
         if user is None:
             user = User(
                 email=email,
-                full_name="Herald Developer",
+                full_name="Pulse Developer",
                 hashed_password=hash_password(password),
             )
             db.add(user)

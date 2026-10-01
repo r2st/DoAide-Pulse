@@ -1,11 +1,11 @@
-"""A piece in another language, and how much Herald trusts it.
+"""A piece in another language, and how much Pulse trusts it.
 
 A translation is stored beside the piece rather than as a piece of its own, and
 that is the whole design decision. The alternative — copy the row, set a
 ``language`` column, let it drift — gives you two rows that were the same
 article on Tuesday and are two different articles by Friday, each with its own
 publications, its own metrics and its own answer to "how did the launch post
-do". Herald already made this choice once, in the first line of
+do". Pulse already made this choice once, in the first line of
 :mod:`app.models.content`: content is stored once and adapted per platform at
 publish time, "so that a post that goes to Dev.to and LinkedIn is genuinely the
 same piece rather than two divergent copies". A language is another axis of the

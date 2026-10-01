@@ -207,7 +207,7 @@ def test_a_settled_piece_can_still_be_published_again(db, client, auth, piece, c
     """``failed`` is not a dead end: re-publishing re-arms the row and the piece.
 
     Scheduled rather than immediate so the assertion is about the queue state
-    and not about whether a platform Herald cannot reach in tests answers.
+    and not about whether a platform Pulse cannot reach in tests answers.
     """
     connect(Platform.DEVTO)
     _pub(db, piece, Platform.DEVTO, PublicationStatus.FAILED, error="nope")

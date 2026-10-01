@@ -14,7 +14,7 @@ an archived piece as well — the endpoints cannot cover the row a worker was
 already holding when the piece was archived, and that window is as long as an
 HTTP call to a platform.
 
-Anything already live stays live: Herald cannot unpublish, and rewriting a
+Anything already live stays live: Pulse cannot unpublish, and rewriting a
 published row would only lose the record of where the post is.
 """
 from __future__ import annotations
@@ -106,7 +106,7 @@ def test_archiving_takes_a_pending_publication_too(db, client, auth, piece):
 
 
 def test_archiving_leaves_a_published_copy_alone(db, client, auth, piece):
-    """Herald cannot unpublish, and the row is the record of where the post is."""
+    """Pulse cannot unpublish, and the row is the record of where the post is."""
     live = _pub(db, piece, Platform.DEVTO, PublicationStatus.PUBLISHED)
     _pub(
         db,

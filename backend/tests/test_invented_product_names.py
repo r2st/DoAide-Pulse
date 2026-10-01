@@ -1,4 +1,4 @@
-"""A product Herald has never heard of holds a piece back.
+"""A product Pulse has never heard of holds a piece back.
 
 The third kind of corruption, and the only one that survives every gate the
 other two built. ``test_garbled_text_gate`` covers the sampler slipping a
@@ -51,7 +51,7 @@ ABOUT_SPECIFIC = "aboutSPECIFIC"
 INVOICES_ISC = "invoicesISC"
 FOR_EDITOR = "forEditor"
 
-#: What Herald knows about the project every unit test below is written against.
+#: What Pulse knows about the project every unit test below is written against.
 KNOWN = factcheck.vocabulary(
     "TalentPing",
     "AI recruiting autopilot with automated outreach, follow-ups, ATS boards, "
@@ -139,7 +139,7 @@ def test_the_ones_nothing_had_noticed(sentence, name):
     ],
 )
 def test_a_third_party_brand_is_not_a_splice(sentence):
-    """A capitalized name Herald has not been told about is a brand, not a slip.
+    """A capitalized name Pulse has not been told about is a brand, not a slip.
 
     Six of the thirteen rows an unrestricted `fused` arm flagged across the
     production corpus were this — a real product named once, in passing, that no
@@ -329,7 +329,7 @@ def test_a_project_with_empty_columns_builds_a_vocabulary(db, project):
     project.target_audience = ""
     db.commit()
 
-    assert "herald" in factcheck.project_vocabulary(project)
+    assert "pulse" in factcheck.project_vocabulary(project)
 
 
 @pytest.mark.parametrize(
@@ -337,7 +337,7 @@ def test_a_project_with_empty_columns_builds_a_vocabulary(db, project):
     [
         ("Node.js", "nodejs"),
         ("add-on", "addon"),
-        ("Herald's", "Herald"),
+        ("Pulse's", "Pulse"),
         ("PostgreSQL", "postgresql"),
     ],
 )
@@ -394,8 +394,8 @@ def test_the_limit_caps_the_list_from_the_top():
 # --------------------------------------------------------------------------- #
 
 _CLEAN_BODY = (
-    "## Retries in Herald\n\n"
-    "Retries in Herald are the part people ask about first. "
+    "## Retries in Pulse\n\n"
+    "Retries in Pulse are the part people ask about first. "
     + "The retry path is careful about retries and about what a retry costs. " * 45
 )
 
@@ -418,11 +418,11 @@ def auto_project(db, project, connect, monkeypatch):
 
 def _generated(**overrides) -> GeneratedContent:
     base = {
-        "title": "Retries in Herald",
+        "title": "Retries in Pulse",
         "body_markdown": _CLEAN_BODY,
         "excerpt": "How retries work.",
         "meta_description": (
-            "How retries work in Herald, why a retry never double-posts, and "
+            "How retries work in Pulse, why a retry never double-posts, and "
             "what the backoff actually does when a platform is down."
         ),
         "keywords": ["retries"],
@@ -491,7 +491,7 @@ def test_an_invented_product_in_the_meta_description_goes_to_review(
     writes(
         _generated(
             meta_description=(
-                f"How retries work in Herald, and how the {TEPPIL} inbox keeps "
+                f"How retries work in Pulse, and how the {TEPPIL} inbox keeps "
                 "every reply on one thread for the whole team to read."
             )
         )
@@ -519,7 +519,7 @@ def test_the_claim_and_its_sentence_are_banked_on_the_row(db, auto_project, writ
 def test_the_names_are_banked_even_when_the_gate_is_off(
     db, auto_project, writes, monkeypatch
 ):
-    """The switch is about whether Herald acts on this, not whether it looks.
+    """The switch is about whether Pulse acts on this, not whether it looks.
 
     A piece that auto-publishes with a name nothing supports is still a piece
     somebody will want to find later, and the row is the only place that record
@@ -570,13 +570,13 @@ def test_the_readme_is_not_fetched_for_a_clean_piece(db, auto_project, writes, m
 def test_a_name_the_readme_supports_is_not_a_claim(db, auto_project, writes, monkeypatch):
     """The false positive the arm exists to remove.
 
-    A real module named in the repo and in no Herald column would otherwise hold
+    A real module named in the repo and in no Pulse column would otherwise hold
     every piece that mentions it, for ever.
     """
     monkeypatch.setattr(
         github_client,
         "fetch_readme",
-        lambda full_name: "# Herald\n\nShips with the Teppil inbox for replies.",
+        lambda full_name: "# Pulse\n\nShips with the Teppil inbox for replies.",
     )
     writes(
         _generated(

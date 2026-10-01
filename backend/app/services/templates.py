@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 #: for the built-ins; a declared variable is a bare identifier.
 PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}")
 
-#: Namespaces Herald fills in. A declared variable may not use these names.
+#: Namespaces Pulse fills in. A declared variable may not use these names.
 BUILTIN_NAMESPACES = ("project", "date", "signal")
 
 #: Every built-in, with the one-line description the UI lists them by. Kept

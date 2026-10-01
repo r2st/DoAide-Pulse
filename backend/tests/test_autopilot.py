@@ -1,7 +1,7 @@
 """The repo monitor and the decisions it makes.
 
 GitHub is stubbed out with fabricated activity, so what is under test is the
-policy — when Herald writes, when it stays quiet, and what it does with the
+policy — when Pulse writes, when it stays quiet, and what it does with the
 watermark — rather than the HTTP client. The stub itself is the ``stub_github``
 fixture in ``conftest.py``, shared with the other modules that scan a repo.
 """
@@ -131,10 +131,10 @@ def _modest_generation(monkeypatch):
         autopilot_tasks.content_generator,
         "generate",
         lambda project, content_type, **kw: GeneratedContent(
-            title="Herald 1.2.0 is out",
+            title="Pulse 1.2.0 is out",
             body_markdown="## What changed\n\n" + ("Real prose. " * 200),
-            excerpt="Herald 1.2.0 is out.",
-            meta_description="Herald 1.2.0 is out, with a faster publish sweep.",
+            excerpt="Pulse 1.2.0 is out.",
+            meta_description="Pulse 1.2.0 is out, with a faster publish sweep.",
             keywords=["herald"],
             tags=["python"],
             confidence=0.2,
@@ -189,10 +189,10 @@ def _confident_generation(monkeypatch, body: str):
         autopilot_tasks.content_generator,
         "generate",
         lambda project, content_type, **kw: GeneratedContent(
-            title="Herald 1.2.0 is out",
+            title="Pulse 1.2.0 is out",
             body_markdown=body,
-            excerpt="Herald 1.2.0 is out.",
-            meta_description="Herald 1.2.0 is out, with a faster publish sweep.",
+            excerpt="Pulse 1.2.0 is out.",
+            meta_description="Pulse 1.2.0 is out, with a faster publish sweep.",
             keywords=["herald"],
             tags=["python"],
             confidence=0.95,

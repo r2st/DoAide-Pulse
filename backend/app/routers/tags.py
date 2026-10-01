@@ -5,7 +5,7 @@ Three endpoints, and the third is the one with teeth.
 ``GET /tags`` counts the account's tags into a tree. ``POST
 /tags/suggest/{content_id}`` proposes tags for one piece, ranked against that
 same tree. ``POST /tags/rename`` moves a tag — and its subtree — across every
-piece that carries it, which is the only write in Herald that acts on rows
+piece that carries it, which is the only write in Pulse that acts on rows
 named by a *string* rather than by id. That is why it has a dry run, why the
 dry run is documented before the write, and why the response says which pieces
 were merged rather than merely renamed.

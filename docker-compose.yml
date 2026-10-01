@@ -1,4 +1,4 @@
-# Herald — local/prod-ish stack: Postgres + Redis + API + Celery worker + beat.
+# Pulse — local/prod-ish stack: Postgres + Redis + API + Celery worker + beat.
 #
 # The worker and beat are separate services on purpose. Beat only decides *when*
 # something should run and publishes a message; running it inside a worker means

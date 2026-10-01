@@ -314,7 +314,7 @@ describe("what a platform tile says about the connection", () => {
     expect(await screen.findByText("reconnect")).toBeInTheDocument();
   });
 
-  it("marks an adapter Herald has not written as not built, whatever the key says", async () => {
+  it("marks an adapter Pulse has not written as not built, whatever the key says", async () => {
     // `implemented` wins over the connection: a stored credential for an
     // adapter that does not exist is not a working connection, and saying
     // "connected" would send someone hunting for a bug in the credential.

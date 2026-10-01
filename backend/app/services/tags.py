@@ -4,7 +4,7 @@
 model and edited by hand. That is enough for one project and stops being enough
 at about the point a person has three: ``release``, ``releases``, ``Release``
 and ``product-release`` all exist, all mean the same thing, and nothing in
-Herald could see that they did — the column has no vocabulary, only values.
+Pulse could see that they did — the column has no vocabulary, only values.
 
 This module adds the two things that turn a pile of strings into a taxonomy,
 and deliberately does not add a table.
@@ -16,7 +16,7 @@ filtering, tagged ``guides`` (see :func:`expand`), and a tree can be drawn from
 the strings alone. Storing it as one string rather than a parent pointer is what
 keeps this a change to a JSON column instead of a migration, a join, and a
 second source of truth about which tags exist — and the platforms take a flat
-string either way, so a hierarchy Herald cannot flatten on the way out is a
+string either way, so a hierarchy Pulse cannot flatten on the way out is a
 hierarchy that breaks publishing.
 
 **Suggestion from the account's own vocabulary.** :func:`suggest` reads the
@@ -70,7 +70,7 @@ SEGMENT_MAX_LENGTH = 24
 #:
 #: Hyphens rather than deletion, unlike ``normalize_tags``, which has to satisfy
 #: Dev.to's alphanumeric-only rule and so turns ``release notes`` into
-#: ``releasenotes``. That rule belongs to the wire format, not to Herald's own
+#: ``releasenotes``. That rule belongs to the wire format, not to Pulse's own
 #: vocabulary: two words run together are unreadable in a facet list, and the
 #: adapter still gets its stripped form because it still calls its own
 #: normaliser on whatever is stored.
@@ -158,7 +158,7 @@ def segments(tag: str) -> list[str]:
 def leaf(tag: str) -> str:
     """The last level of *tag* — what a platform should be given.
 
-    ``guides/deployment/docker`` is ``docker``. The parents are Herald's filing
+    ``guides/deployment/docker`` is ``docker``. The parents are Pulse's filing
     system and mean nothing on Dev.to, where the visible tag list is the reader's
     only navigation and ``guidesdeploymentdocker`` is not a tag anybody follows.
     """

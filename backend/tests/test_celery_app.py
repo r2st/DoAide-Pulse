@@ -100,7 +100,7 @@ def test_every_registered_task_offers_both_ways_to_run_it():
     calls ``.delay`` first and falls back to calling the task inline when the
     broker refuses, so a task missing either one breaks the fallback rather than
     the happy path — the harder failure to see."""
-    assert HERALD_TASKS, "no Herald tasks registered; the imports above went stale"
+    assert HERALD_TASKS, "no Pulse tasks registered; the imports above went stale"
     for name, obj in HERALD_TASKS:
         assert callable(getattr(obj, "delay", None)), f"{name} cannot be dispatched"
         assert callable(obj), f"{name} cannot be run inline"

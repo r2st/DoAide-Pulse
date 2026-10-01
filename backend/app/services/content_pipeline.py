@@ -99,7 +99,7 @@ class RoutedContent:
     #: it scored — see :func:`app.services.seo.blocking_issues`.
     seo_errors: list[str] = field(default_factory=list)
     #: What the model spliced into the copy, which holds a piece back the same
-    #: way: runs from a script Herald never writes in
+    #: way: runs from a script Pulse never writes in
     #: (:func:`app.services.ai.stray_script_runs`) followed by words carrying a
     #: letter that is not theirs (:func:`app.services.ai.stray_letter_splices`).
     garbled_runs: list[str] = field(default_factory=list)
@@ -145,7 +145,7 @@ def _unsupported_claims(
     activity: Any = None,
     signal: TriggerSignal | None = None,
 ) -> list[factcheck.Claim]:
-    """Product names in *text* that nothing Herald knows about *project* supports.
+    """Product names in *text* that nothing Pulse knows about *project* supports.
 
     Two passes, and the second one is why this is a function rather than two
     lines inline. The first grounds the copy against what is already in the
@@ -156,7 +156,7 @@ def _unsupported_claims(
     Only a piece that *fails* that pass is worth a network call, and then the
     README is the right thing to fetch: it is the project describing itself, in
     its own vocabulary, including the feature names that live nowhere in
-    Herald's columns. A piece naming a real module that the brief never
+    Pulse's columns. A piece naming a real module that the brief never
     mentioned is exactly the false positive this removes, and it is paid for
     once, by the pieces that earned it.
 
@@ -291,7 +291,7 @@ def generate_and_route(
     # exactly the wrong place — a piece with no meta description loses fifteen
     # points for it and five for the cover image an automated piece never has,
     # scoring 70 against a `< 70` threshold. It passed by a rounding of the
-    # deductions, and Herald auto-published, under the user's name, a post whose
+    # deductions, and Pulse auto-published, under the user's name, a post whose
     # own SEO panel led with "No meta description". See `seo.blocking_issues`.
     #
     # Asked even when `auto` is already false so the reason is banked on the row
@@ -317,7 +317,7 @@ def generate_and_route(
     # the SEO errors are: the reviewer should see every reason, and these runs
     # are the only one that tells them *where* to edit.
     #
-    # Both halves of it. `stray_script_runs` reads the scripts Herald never
+    # Both halves of it. `stray_script_runs` reads the scripts Pulse never
     # writes in; `stray_letter_splices` reads the ranges that gate exempts on
     # purpose — Greek, and the Latin supplements that make `résumé` legal — where
     # the same slip produces a word rather than a run. Two of the pieces that
@@ -368,7 +368,7 @@ def generate_and_route(
     # reason as the gates above, and computed even when the gate is switched
     # off: a name nothing supports is the single most useful thing a reviewer
     # can be handed about an automated piece, and the switch is about whether
-    # Herald *acts* on it, not about whether the reviewer gets to see it.
+    # Pulse *acts* on it, not about whether the reviewer gets to see it.
     unsupported = _unsupported_claims(project, checked, activity=activity, signal=signal)
     if auto and unsupported and settings.factcheck_enabled:
         auto = False
@@ -381,7 +381,7 @@ def generate_and_route(
 
     # A fifth gate, and the only one that reads the piece against the *other*
     # pieces rather than against itself. Everything above asks whether this
-    # article is sound; this asks whether it is the second copy of one Herald
+    # article is sound; this asks whether it is the second copy of one Pulse
     # already wrote for the same project.
     #
     # It runs here, after the generation, because for the autopilot path the
@@ -416,10 +416,10 @@ def generate_and_route(
     # sentence of transition between them — the two things a model writes when
     # the brief is thin. See :mod:`app.services.quality`.
     #
-    # Herald already measures exactly this, and already refuses on it: it is the
+    # Pulse already measures exactly this, and already refuses on it: it is the
     # DRAFT→REVIEW floor a human hits when they submit a piece by hand. So the
     # gate a *person* has to clear to ask for a reviewer was stricter than the
-    # one Herald cleared to publish under that person's name unread. This closes
+    # one Pulse cleared to publish under that person's name unread. This closes
     # that, at its own threshold — see
     # ``settings.autopilot_auto_publish_min_quality`` for why the two numbers
     # are separate and why this one is higher.
@@ -625,7 +625,7 @@ class _Destinations:
 
 
 def publishable_destinations(project: Project) -> _Destinations:
-    """The autopilot destinations Herald can actually post to.
+    """The autopilot destinations Pulse can actually post to.
 
     ``autopilot_platforms`` is a plain JSON column. Values written before the
     schema validators existed can name a platform with no finished adapter, and

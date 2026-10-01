@@ -5,7 +5,7 @@ provider answering at all. The first is a finished piece of work that happens to
 be poor — store the template, move on. The second is work that never started,
 and the commits that would have been written about are still waiting.
 
-Getting this wrong is expensive and silent: the free-tier keys Herald runs on
+Getting this wrong is expensive and silent: the free-tier keys Pulse runs on
 exhaust their daily quota most days, and the old behaviour stored a template,
 advanced the watermark past the commits, and spent the day's content budget
 doing it. Nothing failed loudly, and those commits never got a real post —

@@ -1,4 +1,4 @@
-"""User (the developer whose projects Herald promotes)."""
+"""User (the developer whose projects Pulse promotes)."""
 from __future__ import annotations
 
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
@@ -38,7 +38,7 @@ class User(Base, TimestampMixin):
     #: password changes, which is what makes a reset actually end the other
     #: sessions rather than only stopping the next sign-in.
     #:
-    #: Herald's JWTs are stateless and there is no revocation list, so without
+    #: Pulse's JWTs are stateless and there is no revocation list, so without
     #: this a user who resets because their account was compromised leaves the
     #: attacker's token working for the rest of its lifetime — the reset reads
     #: as "you are locked out" and means nothing of the sort. One column and one

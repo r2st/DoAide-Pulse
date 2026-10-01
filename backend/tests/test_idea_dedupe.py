@@ -54,12 +54,12 @@ def _headlines(db, project) -> list[str]:
 
 def test_the_same_headline_twice_is_banked_once(db, project):
     """The LLM-outage case, which is exact repetition by the hour."""
-    _bank(db, project, "What's new in Herald")
-    banked = _bank(db, project, "What's new in Herald")
+    _bank(db, project, "What's new in Pulse")
+    banked = _bank(db, project, "What's new in Pulse")
     db.commit()
 
     assert banked == []
-    assert _headlines(db, project) == ["What's new in Herald"]
+    assert _headlines(db, project) == ["What's new in Pulse"]
 
 
 def test_a_repeated_headline_inside_one_batch_is_banked_once(db, project):
@@ -72,17 +72,17 @@ def test_a_repeated_headline_inside_one_batch_is_banked_once(db, project):
 
 
 def test_punctuation_and_case_do_not_make_a_new_idea(db, project):
-    _bank(db, project, "What's New In Herald!")
-    _bank(db, project, "what's new in herald")
+    _bank(db, project, "What's New In Pulse!")
+    _bank(db, project, "what's new in pulse")
     db.commit()
 
     assert len(_headlines(db, project)) == 1
 
 
 def test_a_possessive_is_not_a_different_subject(db, project):
-    """"Herald's caching layer" and "the caching layer in Herald" are one piece."""
-    _bank(db, project, "Herald's caching layer")
-    _bank(db, project, "The caching layer in Herald")
+    """"Pulse's caching layer" and "the caching layer in Pulse" are one piece."""
+    _bank(db, project, "Pulse's caching layer")
+    _bank(db, project, "The caching layer in Pulse")
     db.commit()
 
     assert len(_headlines(db, project)) == 1
@@ -94,8 +94,8 @@ def test_a_version_number_is_not_split_into_digits(db, project):
     Split on the dot, "2.0" and "3.0" both contribute a "0" and the two release
     announcements start to look like the same idea.
     """
-    assert content_generator._idea_tokens("Herald 2.0 is out") == frozenset(
-        {"herald", "2.0", "out"}
+    assert content_generator._idea_tokens("Pulse 2.0 is out") == frozenset(
+        {"pulse", "2.0", "out"}
     )
 
 
@@ -122,16 +122,16 @@ def test_a_rephrasing_with_different_filler_words_is_the_same_idea(db, project):
     This is what the scan-over-overlapping-commits case actually looks like: the
     model is not deterministic, so the second telling is never byte-identical.
     """
-    _bank(db, project, "How to deploy Herald to production")
-    _bank(db, project, "How to deploy Herald into production")
+    _bank(db, project, "How to deploy Pulse to production")
+    _bank(db, project, "How to deploy Pulse into production")
     db.commit()
 
     assert len(_headlines(db, project)) == 1
 
 
 def test_word_order_does_not_make_a_new_idea(db, project):
-    _bank(db, project, "Caching and retries in Herald")
-    _bank(db, project, "Retries and caching in Herald")
+    _bank(db, project, "Caching and retries in Pulse")
+    _bank(db, project, "Retries and caching in Pulse")
     db.commit()
 
     assert len(_headlines(db, project)) == 1
@@ -143,7 +143,7 @@ def test_word_order_does_not_make_a_new_idea(db, project):
 
 
 def test_two_genuinely_different_ideas_are_both_kept(db, project):
-    _bank(db, project, "How retries work in Herald")
+    _bank(db, project, "How retries work in Pulse")
     _bank(db, project, "Scheduling posts across five platforms")
     db.commit()
 
@@ -153,12 +153,12 @@ def test_two_genuinely_different_ideas_are_both_kept(db, project):
 def test_one_extra_significant_word_is_a_different_piece(db, project):
     """The pair `IDEA_SIMILARITY_THRESHOLD` is tuned against.
 
-    "Getting started with Herald" and "Getting started with Herald Pro" share
+    "Getting started with Pulse" and "Getting started with Pulse Pro" share
     three significant words of four — 0.75 — and are two different articles. A
     looser threshold merges them and the second never gets written.
     """
-    _bank(db, project, "Getting started with Herald")
-    _bank(db, project, "Getting started with Herald Pro")
+    _bank(db, project, "Getting started with Pulse")
+    _bank(db, project, "Getting started with Pulse Pro")
     db.commit()
 
     assert len(_headlines(db, project)) == 2
@@ -166,8 +166,8 @@ def test_one_extra_significant_word_is_a_different_piece(db, project):
 
 def test_two_releases_are_two_announcements(db, project):
     """`_fallback_ideas` builds these from the tag, and the tags differ."""
-    _bank(db, project, "Herald 2.0 is out")
-    _bank(db, project, "Herald 3.0 is out")
+    _bank(db, project, "Pulse 2.0 is out")
+    _bank(db, project, "Pulse 3.0 is out")
     db.commit()
 
     assert len(_headlines(db, project)) == 2
@@ -196,7 +196,7 @@ def test_an_idea_already_written_up_does_not_block_a_new_one(db, project):
     used = ContentIdea(
         project_id=project.id,
         content_type=ContentType.FEATURE_SPOTLIGHT,
-        headline="What's new in Herald",
+        headline="What's new in Pulse",
         rationale="",
         source={},
         used_content_id=4242,
@@ -204,7 +204,7 @@ def test_an_idea_already_written_up_does_not_block_a_new_one(db, project):
     db.add(used)
     db.commit()
 
-    banked = _bank(db, project, "What's new in Herald")
+    banked = _bank(db, project, "What's new in Pulse")
     db.commit()
 
     assert len(banked) == 1
@@ -222,9 +222,9 @@ def test_another_projects_ideas_do_not_block_this_ones(db, project, user):
     )
     db.add(other)
     db.commit()
-    _bank(db, other, "What's new in Herald")
+    _bank(db, other, "What's new in Pulse")
 
-    banked = _bank(db, project, "What's new in Herald")
+    banked = _bank(db, project, "What's new in Pulse")
     db.commit()
 
     assert len(banked) == 1
@@ -237,9 +237,9 @@ def test_another_projects_ideas_do_not_block_this_ones(db, project, user):
 
 def test_the_surviving_row_keeps_its_original_rationale_and_source(db, project):
     """The first telling stands; the repeat is dropped, not merged over it."""
-    _bank(db, project, "What's new in Herald", source={"kind": "autopilot"})
+    _bank(db, project, "What's new in Pulse", source={"kind": "autopilot"})
     db.commit()
-    _bank(db, project, "What's new in Herald", source={"kind": "manual_refresh"})
+    _bank(db, project, "What's new in Pulse", source={"kind": "manual_refresh"})
     db.commit()
 
     row = db.query(ContentIdea).filter(ContentIdea.project_id == project.id).one()
@@ -251,12 +251,12 @@ def test_repeating_does_not_keep_an_idea_permanently_unprunable(db, project):
     would make the most-repeated idea the last one ever deleted — the same bug
     upside down.
     """
-    _bank(db, project, "What's new in Herald")
+    _bank(db, project, "What's new in Pulse")
     db.commit()
     row = db.query(ContentIdea).filter(ContentIdea.project_id == project.id).one()
     first_seen = row.created_at
 
-    _bank(db, project, "What's new in Herald")
+    _bank(db, project, "What's new in Pulse")
     db.commit()
     db.refresh(row)
 

@@ -23,7 +23,7 @@ that reads it and every publish that flattens it to plain text once per
 platform — inside a Celery task with a soft time limit.
 
 A generation reaching either cap is a malfunction rather than an unusually
-thorough article: the longest shape Herald asks for is a 1200-word tutorial, and
+thorough article: the longest shape Pulse asks for is a 1200-word tutorial, and
 the token budget derived from that cannot produce thirty thousand words. So the
 caps here are not an opinion about length. They are where a runaway completion
 stops being stored whole — the same judgement ``Idea.__post_init__`` and
@@ -137,10 +137,10 @@ def test_the_tag_cap_is_the_one_the_api_enforces():
 
 def _generated(**overrides) -> GeneratedContent:
     fields = {
-        "title": "Retries in Herald",
+        "title": "Retries in Pulse",
         "body_markdown": "## Retries\n\nA paragraph about the retry path.",
-        "excerpt": "How Herald retries.",
-        "meta_description": "How Herald retries a failed publish.",
+        "excerpt": "How Pulse retries.",
+        "meta_description": "How Pulse retries a failed publish.",
         "keywords": ["retries"],
         "tags": ["python"],
     }

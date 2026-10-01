@@ -30,7 +30,7 @@ function content(overrides = {}) {
   return {
     id: 3,
     project_id: 7,
-    project_name: "Herald",
+    project_name: "Pulse",
     title: "Saved title",
     body_markdown: "Saved body",
     excerpt: "Saved excerpt",
@@ -452,7 +452,7 @@ describe("auto-save", () => {
 
   it("treats a 2xx with no piece in it as a save that did not land", async () => {
     // `lib/api` answers `null` for a body it cannot parse — a gateway timeout
-    // page, a proxy's error HTML, anything that is not Herald talking. That is
+    // page, a proxy's error HTML, anything that is not Pulse talking. That is
     // the right reading there, and this is what happened to it here: `null`
     // went into state, the next render read `draftFrom(null).title`, and the
     // editor disappeared into its error boundary — taking the author's unsaved
@@ -1022,7 +1022,7 @@ describe("the header line", () => {
   });
 
   it("names the model that wrote it, and says nothing when a person did", async () => {
-    // Herald's own output and something typed by hand read identically once
+    // Pulse's own output and something typed by hand read identically once
     // saved; the byline is the only thing that distinguishes them.
     api.getContent.mockResolvedValue(
       content({ generated_by_model: "claude-opus-5" }),

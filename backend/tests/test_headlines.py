@@ -16,7 +16,7 @@ def _content(db, project, **overrides) -> Content:
     defaults = dict(
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
-        title="Herald ships bulk operations",
+        title="Pulse ships bulk operations",
         slug="herald-ships-bulk-operations",
         excerpt="Approve, reject or publish many drafts in one call.",
         focus_keyword="bulk content operations",
@@ -64,7 +64,7 @@ def test_uses_ai_variants_when_the_chain_succeeds(project, db, stub_llm):
     stub_llm["payload"] = {
         "variants": [
             "Bulk Content Ops: Approve, Reject or Publish in One Click",
-            "How Herald Handles Bulk Approvals",
+            "How Pulse Handles Bulk Approvals",
             "Why We Added Bulk Content Operations",
         ]
     }
@@ -80,7 +80,7 @@ def test_uses_ai_variants_when_the_chain_succeeds(project, db, stub_llm):
 def test_dedupes_and_drops_a_reasoning_leak(project, db, stub_llm):
     stub_llm["payload"] = {
         "variants": [
-            "Herald ships bulk operations",  # identical to the current title
+            "Pulse ships bulk operations",  # identical to the current title
             "We need to write a headline about this feature first.",  # reasoning leak
             "Bulk Approvals, Explained",
             "Bulk Approvals, Explained",  # duplicate within the response
@@ -113,7 +113,7 @@ def test_a_maximum_length_title_never_comes_back_as_its_own_variant(project, db)
     fallback is not allowed to do. The prefix templates still have something to
     say, so the list stays useful rather than going empty.
     """
-    title = ("Herald ships bulk operations and this headline keeps going " * 6)[:300]
+    title = ("Pulse ships bulk operations and this headline keeps going " * 6)[:300]
     assert len(title) == 300
     content = _content(db, project, title=title, slug="a-very-long-title")
 

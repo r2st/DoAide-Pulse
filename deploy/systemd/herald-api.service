@@ -1,5 +1,5 @@
 [Unit]
-Description=Herald API (FastAPI/uvicorn)
+Description=Pulse API (FastAPI/uvicorn)
 Documentation=https://github.com/r2st/Herald
 # Bound to the Docker bridge gateway so Caddy (in a container) can reach it
 # while the public internet cannot — hence the docker ordering.

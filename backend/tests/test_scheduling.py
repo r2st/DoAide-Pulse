@@ -31,8 +31,8 @@ def piece(db, project) -> Content:
         content_type=ContentType.ANNOUNCEMENT,
         title="Scheduling lands",
         slug="scheduling-lands",
-        body_markdown="Herald can now put a piece on the calendar.",
-        excerpt="Herald can now put a piece on the calendar.",
+        body_markdown="Pulse can now put a piece on the calendar.",
+        excerpt="Pulse can now put a piece on the calendar.",
     )
     db.add(row)
     db.commit()

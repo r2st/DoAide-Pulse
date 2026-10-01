@@ -86,7 +86,7 @@ def get_current_user(
     if cutoff is not None:
         minted = issued_at(claims)
         # No ``iat`` means the token cannot be shown to postdate the reset.
-        # Herald always mints one, so this is a token from somewhere else.
+        # Pulse always mints one, so this is a token from somewhere else.
         if minted is None:
             raise _credentials_exc
         # Compared strictly, with no tolerance window. Both sides carry
@@ -122,7 +122,7 @@ def owned_project(project_id: int, db: Session, user: User) -> Project:
 #: to say which of the two it meant — or, worse, would not. Separate headers
 #: make "is this request a machine or a person?" answerable before anything is
 #: parsed. ``auto_error=False`` so a missing header reaches the dependency and
-#: gets Herald's own message rather than FastAPI's.
+#: gets Pulse's own message rather than FastAPI's.
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 _api_key_exc = HTTPException(

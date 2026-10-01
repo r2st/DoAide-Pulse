@@ -409,7 +409,7 @@ def test_a_restore_does_not_touch_the_queue(client, auth, db, piece):
 def test_a_published_piece_refuses_a_restore(client, auth, db, piece):
     """The same refusal, in the same words, that PATCH gives for the same reason.
 
-    Changing the text here would make Herald disagree with what a reader can see
+    Changing the text here would make Pulse disagree with what a reader can see
     without changing anything a reader can see.
     """
     version = piece.version
@@ -429,7 +429,7 @@ def test_an_archived_piece_that_went_out_refuses_a_restore_too(
     client, auth, db, piece
 ):
     """The freeze follows the rows, not the column. Archiving a published
-    piece and restoring an old version of it would rewrite Herald's copy of a
+    piece and restoring an old version of it would rewrite Pulse's copy of a
     post that is still up — the two-call edit the PATCH's freeze is closed
     against, reached through the history sidebar instead."""
     version = piece.version

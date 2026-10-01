@@ -21,7 +21,7 @@ export default function PreviewPage() {
       <div className="mx-auto max-w-2xl">
         <div className="mb-8 flex items-center gap-2 text-ink-400">
           <Logo className="h-5 w-5" />
-          <span className="eyebrow">Herald preview</span>
+          <span className="eyebrow">Pulse preview</span>
         </div>
 
         {/* The shape the article arrives in: a line of meta, then the body in

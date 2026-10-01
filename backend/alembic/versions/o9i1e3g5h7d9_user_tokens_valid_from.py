@@ -1,7 +1,7 @@
 """users.tokens_valid_from
 
 The cutoff that makes a password reset end the sessions that were already open.
-Herald's access tokens are stateless JWTs with no revocation list, so before
+Pulse's access tokens are stateless JWTs with no revocation list, so before
 this a reset changed what the *next* sign-in needed and nothing else: somebody
 resetting because their account had been taken left the attacker's bearer token
 working for the rest of its lifetime.

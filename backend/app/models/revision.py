@@ -6,7 +6,7 @@ save landing on top of somebody else's is refused. What it has never been is a
 *history*. The counter went from 4 to 5 and the text that was version 4 is gone
 — which makes "revert to what it said this morning" a feature request rather
 than an edge case, and makes the conflict machinery a strictly worse deal than
-it looks: Herald can tell you somebody overwrote your paragraph, and cannot show
+it looks: Pulse can tell you somebody overwrote your paragraph, and cannot show
 you what it said.
 
 A revision is a snapshot of the fields a human edits, taken *before* the write
@@ -28,7 +28,7 @@ columns in the first place. See :func:`app.services.revisions.restore`.
 storing patches, and every other property is better: a row can be read without
 replaying the ones before it, a corrupted row costs one revision rather than all
 of them after it, and the retention sweep can drop the oldest without rewriting
-the youngest. Herald's bodies are a few kilobytes and capped at
+the youngest. Pulse's bodies are a few kilobytes and capped at
 :data:`app.models.content.BODY_MARKDOWN_MAX_LENGTH`; the patch-chain version of
 this trades a real operational hazard for a saving nobody would notice.
 
@@ -70,7 +70,7 @@ class RevisionSource(str, Enum):
 
     A history is worth much more when each entry says who moved it, because the
     question a user actually asks is "when did my subheading disappear" and the
-    answer is usually a machine. Herald writes a piece from several directions —
+    answer is usually a machine. Pulse writes a piece from several directions —
     a person in the editor, the repurposer, a restore — and telling them apart
     is the difference between a list of timestamps and an account of what
     happened.
@@ -93,8 +93,8 @@ class RevisionSource(str, Enum):
         return {
             "edit": "Edited",
             "restore": "Restored an earlier version",
-            "generation": "Rewritten by Herald",
-            "system": "Changed by Herald",
+            "generation": "Rewritten by Pulse",
+            "system": "Changed by Pulse",
         }[self.value]
 
 

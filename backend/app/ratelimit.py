@@ -21,9 +21,9 @@ meant to make visible, since the limit is only ever added by someone who
 remembers the endpoint is public.
 
 **Cost.** Audience was once the *only* ground, on the reasoning that a caller
-who has authenticated is a caller Herald has already decided to trust. That
+who has authenticated is a caller Pulse has already decided to trust. That
 holds for reads. It does not hold for the handful of endpoints where one
-request spends something Herald cannot make more of:
+request spends something Pulse cannot make more of:
 
 * the writing endpoints — ``/content/generate``, ``/content/ideas/{id}/write``,
   ``/content/{id}/repurpose``, ``/content/{id}/edit``,
@@ -32,11 +32,11 @@ request spends something Herald cannot make more of:
   per day and shared by every account on the install, so one client in a retry
   loop does not degrade its own service, it ends everyone's until midnight.
   :mod:`app.services.llm_router` handles an upstream *saying* no; nothing
-  handled Herald asking that many times in the first place.
+  handled Pulse asking that many times in the first place.
 * ``/projects/{id}/scan`` spends the install's GitHub API quota, which is one
   budget for all users and answers 403 to everybody once it is gone.
 * ``/content/{id}/links`` fans one request out to ``link_check_max_urls``
-  outbound requests, from Herald's address, to hosts named in the document.
+  outbound requests, from Pulse's address, to hosts named in the document.
 
 These are bucketed per *account* rather than per address — see
 :func:`account_key`. Bucketing an authenticated endpoint by IP gets it wrong in

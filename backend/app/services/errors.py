@@ -7,7 +7,7 @@ endpoint's reply, an RSS parser's complaint about a feed. Any of them can be a
 megabyte of someone else's HTML, and all of them are written on *every* failed
 attempt and rendered straight into a list view.
 
-Bounding lives here, in a module that imports nothing of Herald's own, because
+Bounding lives here, in a module that imports nothing of Pulse's own, because
 the four places that record a failure are spread across a router, two services
 and the publishing pipeline — and ``publishing_service`` already imports
 ``webhooks``, so the helper cannot live there without the reverse import
@@ -65,7 +65,7 @@ def redact(error: str, secrets: Iterable[object]) -> str:
     written by somebody else, and some APIs validate by echoing: *"invalid
     api_key: ghp_…"*.
 
-    Herald then stores the whole thing in ``Publication.error`` /
+    Pulse then stores the whole thing in ``Publication.error`` /
     ``PlatformConnection.last_error`` — ``Text`` columns, in plaintext, right
     next to ``encrypted_credentials`` — writes it again on every attempt, and
     renders it in the publications list. The token is encrypted at rest and

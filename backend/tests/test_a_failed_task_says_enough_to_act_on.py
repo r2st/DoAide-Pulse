@@ -226,7 +226,7 @@ def test_a_retry_whose_reason_is_not_an_exception_is_survived(caplog):
 
 
 def test_an_oversized_argument_does_not_go_into_the_journal_whole(caplog):
-    """Herald's tasks take row ids, so the cap is generous for every real call
+    """Pulse's tasks take row ids, so the cap is generous for every real call
     and a bound on the one that isn't — a failure is logged once per attempt,
     and an unbounded argument is written to disk each time."""
     task = _run("run-10")

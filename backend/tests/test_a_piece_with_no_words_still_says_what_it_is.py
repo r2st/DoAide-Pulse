@@ -1,6 +1,6 @@
 """A body that is all images flattens to nothing, and LinkedIn posted the nothing.
 
-Herald stores one body in Markdown and adapts it per platform. Every adapter
+Pulse stores one body in Markdown and adapts it per platform. Every adapter
 that needs plain text gets there through
 :func:`app.services.publishers.formatting.to_plain_text`, which renders the
 Markdown and takes the text out of the result — and an ``<img>`` has no text in
@@ -45,14 +45,14 @@ IMAGES_ONLY = (
 
 def _request(**overrides) -> PublishRequest:
     fields = {
-        "title": "How Herald retries a failed publish",
+        "title": "How Pulse retries a failed publish",
         "body_markdown": IMAGES_ONLY,
         "excerpt": "",
         "meta_description": "",
         "tags": ["python", "devtools"],
         "canonical_url": "https://herald.example.com/blog/retries",
         "project_url": "https://herald.example.com",
-        "project_name": "Herald",
+        "project_name": "Pulse",
     }
     fields.update(overrides)
     return PublishRequest(**fields)
@@ -78,7 +78,7 @@ def test_a_body_of_images_flattens_to_nothing():
 
 def test_linkedin_leads_with_the_title_when_there_is_no_text():
     commentary = LinkedInAdapter().build_commentary(_request())
-    assert commentary.startswith("How Herald retries a failed publish")
+    assert commentary.startswith("How Pulse retries a failed publish")
 
 
 def test_linkedin_does_not_open_with_blank_lines():
@@ -97,14 +97,14 @@ def test_linkedin_still_carries_the_link_and_the_hashtags():
 def test_linkedin_still_prefers_the_excerpt_when_there_is_one():
     """The fallback is a last resort, not a new first choice."""
     commentary = LinkedInAdapter().build_commentary(
-        _request(excerpt="Backoff, budgets, and when Herald gives up.")
+        _request(excerpt="Backoff, budgets, and when Pulse gives up.")
     )
-    assert commentary.startswith("Backoff, budgets, and when Herald gives up.")
+    assert commentary.startswith("Backoff, budgets, and when Pulse gives up.")
 
 
 def test_linkedin_still_prefers_the_body_over_the_title():
     commentary = LinkedInAdapter().build_commentary(
-        _request(body_markdown="## Retries\n\nHerald parks a failed publish.")
+        _request(body_markdown="## Retries\n\nPulse parks a failed publish.")
     )
     assert commentary.startswith("Retries")
 
@@ -113,7 +113,7 @@ def test_linkedin_still_prefers_the_body_over_the_title():
 def test_every_way_of_writing_an_empty_body_still_says_something(body):
     """Whitespace, nothing at all, and markup that renders to nothing."""
     commentary = LinkedInAdapter().build_commentary(_request(body_markdown=body))
-    assert commentary.startswith("How Herald retries a failed publish")
+    assert commentary.startswith("How Pulse retries a failed publish")
 
 
 # --------------------------------------------------------------------------- #
@@ -159,13 +159,13 @@ def test_prose_and_a_link_are_still_separated():
 
 def test_mastodon_leads_with_the_title_when_there_is_no_text():
     status = MastodonAdapter().build_status(_request())
-    assert status.startswith("How Herald retries a failed publish")
+    assert status.startswith("How Pulse retries a failed publish")
     assert len(status) <= formatting.MASTODON_LIMIT
 
 
 def test_bluesky_leads_with_the_title_when_there_is_no_text():
     text = BlueskyAdapter().build_text(_request())
-    assert text.startswith("How Herald retries a failed publish")
+    assert text.startswith("How Pulse retries a failed publish")
     assert len(text) <= formatting.BLUESKY_LIMIT
 
 

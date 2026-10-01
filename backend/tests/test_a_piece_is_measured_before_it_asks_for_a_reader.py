@@ -27,7 +27,7 @@ from app.services import quality
 # --------------------------------------------------------------------------- #
 
 PLAIN = (
-    "Herald reads your commits. It writes a post about them. A human reads the "
+    "Pulse reads your commits. It writes a post about them. A human reads the "
     "post before it goes out.\n\n"
     "The post lands in the review queue. You approve it or you do not. Nothing "
     "is published behind your back.\n"
@@ -95,11 +95,11 @@ def test_the_ease_scale_does_not_run_off_either_end():
 def test_a_body_too_short_to_measure_says_so_rather_than_scoring_zero():
     """A tweet is not badly written. It is unmeasurable, which is different.
 
-    Herald writes social posts from the same pipeline as articles, so if the
+    Pulse writes social posts from the same pipeline as articles, so if the
     absence of a reading ease were scored as a bad one, every tweet in the
     install would sit below any threshold worth setting.
     """
-    measured = quality.readability("Herald 1.0 is out today.")
+    measured = quality.readability("Pulse 1.0 is out today.")
 
     assert measured.words < quality.MIN_WORDS_FOR_READABILITY
     assert measured.reading_ease is None
@@ -118,9 +118,9 @@ def test_the_missing_readability_weight_goes_to_the_code_component():
     the code are the same fact.
     """
     short = quality.report(
-        title="Herald 1.0",
-        body_markdown="Herald 1.0 is out today. It writes your changelog.",
-        meta_description="Herald 1.0 is out today, and it writes your changelog for you.",
+        title="Pulse 1.0",
+        body_markdown="Pulse 1.0 is out today. It writes your changelog.",
+        meta_description="Pulse 1.0 is out today, and it writes your changelog for you.",
         keywords=["herald"],
         focus_keyword="herald",
         slug="herald-1-0",
@@ -196,12 +196,12 @@ def test_an_indented_list_is_not_a_code_block():
 
 
 def test_an_ordinary_post_clears_the_shipped_floor():
-    """The floor has to let through the thing Herald writes all day."""
+    """The floor has to let through the thing Pulse writes all day."""
     report = quality.report(
         title="Platform latency, recorded",
         body_markdown=PLAIN,
         meta_description=(
-            "Herald now records how long each platform API call takes, so a "
+            "Pulse now records how long each platform API call takes, so a "
             "slow destination shows up in the metrics."
         ),
         keywords=["latency", "metrics"],

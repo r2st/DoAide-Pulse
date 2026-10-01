@@ -60,14 +60,14 @@ def _piece(
 
 def test_stopwords_and_possessives_fall_out():
     """Two phrasings of one idea reduce to the same words."""
-    assert dedup.tokens("Herald's caching layer") == dedup.tokens(
-        "the caching layer in Herald"
+    assert dedup.tokens("Pulse's caching layer") == dedup.tokens(
+        "the caching layer in Pulse"
     )
 
 
 def test_a_curly_apostrophe_is_the_same_as_a_straight_one():
     """The model emits them and a Mac produces them by autocorrect."""
-    assert dedup.tokens("Herald’s caching") == dedup.tokens("Herald's caching")
+    assert dedup.tokens("Pulse’s caching") == dedup.tokens("Pulse's caching")
 
 
 @pytest.mark.parametrize("headline", ["2.0", "double-post"])
@@ -94,14 +94,14 @@ def test_an_empty_headline_has_no_tokens(value):
 def test_the_pair_the_threshold_was_tuned_to_keep_apart():
     """The comment on ``SIMILARITY_THRESHOLD``, as an assertion.
 
-    "Getting started with Herald" and "Getting started with Herald Pro" share
+    "Getting started with Pulse" and "Getting started with Pulse Pro" share
     three significant words of four — 0.75 — and are two different pieces. This
     is the pair the 0.8 exists for, and a well-meant loosening to 0.7 makes
-    Herald stop writing about a new product because it already wrote about the
+    Pulse stop writing about a new product because it already wrote about the
     old one.
     """
-    existing = dedup.tokens("Getting started with Herald")
-    assert not dedup.is_restatement("Getting started with Herald Pro", existing)
+    existing = dedup.tokens("Getting started with Pulse")
+    assert not dedup.is_restatement("Getting started with Pulse Pro", existing)
 
 
 def test_a_rephrasing_is_caught():
@@ -111,8 +111,8 @@ def test_a_rephrasing_is_caught():
     generator actually produces: the same brief comes back with the same nouns
     and a different sentence around them.
     """
-    existing = dedup.tokens("How to deploy Herald to production")
-    assert dedup.is_restatement("Deploy Herald in production", existing)
+    existing = dedup.tokens("How to deploy Pulse to production")
+    assert dedup.is_restatement("Deploy Pulse in production", existing)
 
 
 def test_a_reworded_verb_is_not_caught_because_this_is_not_a_stemmer():
@@ -122,22 +122,22 @@ def test_a_reworded_verb_is_not_caught_because_this_is_not_a_stemmer():
     verb scores below the threshold and is written twice. The module says as
     much — its four lines of Jaccard are deliberately not a stemmer — and the
     cost of the miss is one duplicate parked in review, against the cost of
-    stemming, which is "Getting started with Herald" swallowing "Herald Pro".
+    stemming, which is "Getting started with Pulse" swallowing "Pulse Pro".
 
     If a stemmer is ever added, this test fails and should be deleted. That is
     the intent: the failure is the notification.
     """
-    existing = dedup.tokens("How to deploy Herald to production")
-    assert not dedup.is_restatement("Deploying Herald into production", existing)
+    existing = dedup.tokens("How to deploy Pulse to production")
+    assert not dedup.is_restatement("Deploying Pulse into production", existing)
 
 
 def test_an_exact_repeat_is_a_restatement():
-    existing = dedup.tokens("Caching in Herald explained")
-    assert dedup.is_restatement("Caching in Herald explained", existing)
+    existing = dedup.tokens("Caching in Pulse explained")
+    assert dedup.is_restatement("Caching in Pulse explained", existing)
 
 
 def test_two_unrelated_headlines_are_not():
-    existing = dedup.tokens("Caching in Herald explained")
+    existing = dedup.tokens("Caching in Pulse explained")
     assert not dedup.is_restatement("Announcing the new calendar view", existing)
 
 
@@ -161,8 +161,8 @@ def test_a_one_word_headline_is_compared_exactly(candidate, existing_title, expe
 
 def test_nothing_is_a_restatement_of_nothing():
     """Both directions — an empty candidate and an empty stored title."""
-    assert not dedup.is_restatement("", dedup.tokens("Caching in Herald"))
-    assert not dedup.is_restatement("Caching in Herald", frozenset())
+    assert not dedup.is_restatement("", dedup.tokens("Caching in Pulse"))
+    assert not dedup.is_restatement("Caching in Pulse", frozenset())
 
 
 # --------------------------------------------------------------------------- #
@@ -256,10 +256,10 @@ def test_a_commit_set_that_is_not_covered_is_not_a_duplicate(db, project):
 
 def test_a_restated_title_is_found(db, project):
     """The check that saves the publish, asked after the model has answered."""
-    stored = _piece(db, project, title="How to deploy Herald to production")
+    stored = _piece(db, project, title="How to deploy Pulse to production")
 
     assert (
-        dedup.duplicate_of(db, project.id, title="Deploy Herald in production")
+        dedup.duplicate_of(db, project.id, title="Deploy Pulse in production")
         == stored.id
     )
 
@@ -272,20 +272,20 @@ def test_commits_are_answered_before_titles(db, project):
     match on the title.
     """
     by_shas = _piece(db, project, title="Completely unrelated wording", shas=["aaa1111"])
-    _piece(db, project, title="Caching in Herald explained")
+    _piece(db, project, title="Caching in Pulse explained")
 
     found = dedup.duplicate_of(
-        db, project.id, title="Caching in Herald explained", shas=["aaa1111"]
+        db, project.id, title="Caching in Pulse explained", shas=["aaa1111"]
     )
     assert found == by_shas.id
 
 
 def test_a_piece_outside_the_window_is_not_compared(db, project, monkeypatch):
-    """Old enough and Herald is allowed to write about it again."""
+    """Old enough and Pulse is allowed to write about it again."""
     monkeypatch.setattr(settings, "dedup_window_days", 30)
-    _piece(db, project, title="Caching in Herald explained", age_days=45)
+    _piece(db, project, title="Caching in Pulse explained", age_days=45)
 
-    assert dedup.duplicate_of(db, project.id, title="Caching in Herald explained") is None
+    assert dedup.duplicate_of(db, project.id, title="Caching in Pulse explained") is None
 
 
 def test_another_project_is_not_compared(db, project, user):
@@ -314,19 +314,19 @@ def test_an_archived_piece_still_counts_as_a_duplicate(db, project):
     """
     from app.models.content import ContentStatus
 
-    stored = _piece(db, project, title="Caching in Herald explained")
+    stored = _piece(db, project, title="Caching in Pulse explained")
     stored.status = ContentStatus.ARCHIVED
     db.commit()
 
     assert (
-        dedup.duplicate_of(db, project.id, title="Caching in Herald explained")
+        dedup.duplicate_of(db, project.id, title="Caching in Pulse explained")
         == stored.id
     )
 
 
 def test_asking_nothing_finds_nothing(db, project):
     """No title and no shas is not a question, and must not match everything."""
-    _piece(db, project, title="Caching in Herald explained")
+    _piece(db, project, title="Caching in Pulse explained")
 
     assert dedup.duplicate_of(db, project.id) is None
     assert dedup.duplicate_of(db, project.id, title="   ") is None

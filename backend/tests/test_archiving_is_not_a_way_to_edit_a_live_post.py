@@ -1,7 +1,7 @@
 """The edit freeze asked the status column, and the column stops saying it first.
 
 ``PATCH /content/{id}`` refuses to edit a published piece, and says why: the
-edit "would not change what is live on the platforms". Herald cannot rewrite a
+edit "would not change what is live on the platforms". Pulse cannot rewrite a
 post on Dev.to, so letting its own copy drift from the one people are reading
 would leave every screen that renders a title — analytics, the digest, headline
 performance — describing a post by a headline that was never on it.

@@ -49,7 +49,7 @@ function content(overrides = {}) {
   return {
     id: 3,
     project_id: 7,
-    project_name: "Herald",
+    project_name: "Pulse",
     title: "Saved title",
     body_markdown: "Saved body",
     excerpt: "Saved excerpt",
@@ -539,7 +539,7 @@ describe("the publish dialog", () => {
 
   it("shows an unfinished adapter rather than hiding it, with the reason", async () => {
     // Hiding it makes the list look arbitrary — a user who expects Medium and
-    // does not see it assumes Herald is broken.
+    // does not see it assumes Pulse is broken.
     await openDialog({}, [platform("medium", { implemented: false })]);
 
     expect(screen.getByText("Adapter not finished")).toBeInTheDocument();

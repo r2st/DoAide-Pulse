@@ -14,7 +14,7 @@ def _publishable(platform: Platform) -> Platform:
     """Refuse a platform whose adapter is not finished.
 
     The ``Platform`` enum is the vocabulary; the adapter registry is what says
-    whether Herald can actually post somewhere (see
+    whether Pulse can actually post somewhere (see
     :mod:`app.services.publishers`). ``POST /content/{id}/publish`` has always
     checked the registry and answered 400 with the list of destinations that
     work, but the two *standing* settings — the autopilot's destinations and the
@@ -63,7 +63,7 @@ class ProjectBase(BaseModel):
     auto_canonical: bool = True
     #: Which destination counts as the original. ``None`` = first to publish wins.
     canonical_platform: Platform | None = None
-    #: Let Herald swap in the best-performing past headline unattended. Off by
+    #: Let Pulse swap in the best-performing past headline unattended. Off by
     #: default — see ``Project.auto_headline_winner`` for why.
     auto_headline_winner: bool = False
     #: Webhook once a published piece passes this many total interactions.

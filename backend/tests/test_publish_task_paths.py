@@ -45,7 +45,7 @@ def _task_session(db, monkeypatch):
 def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
-        title="Herald 1.0",
+        title="Pulse 1.0",
         slug="herald-1-0",
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,

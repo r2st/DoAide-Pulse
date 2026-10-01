@@ -1,7 +1,7 @@
 """Every paginated endpoint must bound ``limit`` at both ends.
 
 ``GET /content`` bounded only the top of the range. A negative ``limit`` reached
-SQLAlchemy's ``.limit()`` verbatim, and the two databases Herald runs on read it
+SQLAlchemy's ``.limit()`` verbatim, and the two databases Pulse runs on read it
 differently: SQLite treats ``LIMIT -1`` as "no limit" and hands back the whole
 table — past the 500 cap the parameter exists to enforce — while Postgres
 refuses it and the request becomes a 500. Neither is what ``le=500`` was for.

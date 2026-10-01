@@ -39,8 +39,8 @@ export default function Shell({ children }) {
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-line bg-canvas md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <Logo className="h-8 w-8 shrink-0" title="Herald" />
-          <span className="font-display text-xl text-ink-900">Herald</span>
+          <Logo className="h-8 w-8 shrink-0" title="Pulse" />
+          <span className="font-display text-xl text-ink-900">Pulse</span>
         </div>
 
         <nav aria-label="Main" className="flex-1 space-y-0.5 px-3 py-2">
@@ -68,8 +68,8 @@ export default function Shell({ children }) {
       {/* Mobile header */}
       <header className="fixed inset-x-0 top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-canvas/95 px-4 backdrop-blur-xl md:hidden">
         <div className="flex items-center gap-2.5">
-          <Logo className="h-7 w-7 shrink-0" title="Herald" />
-          <span className="font-display text-lg text-ink-900">Herald</span>
+          <Logo className="h-7 w-7 shrink-0" title="Pulse" />
+          <span className="font-display text-lg text-ink-900">Pulse</span>
         </div>
         <button
           className="btn-quiet -mr-1"
@@ -125,7 +125,7 @@ export default function Shell({ children }) {
         </main>
 
         <footer className="border-t border-line py-4 text-center text-xs text-ink-400">
-          Herald by{" "}
+          Pulse by{" "}
           <a
             href="https://doaide.com"
             className="underline-offset-4 hover:text-ink-500 hover:underline"

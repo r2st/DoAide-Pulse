@@ -3,17 +3,17 @@
 Three things here are load-bearing, and each exists because the naive version is
 wrong in a way that only shows up in production.
 
-**The URL is not trusted.** It is typed by a user into a box, and Herald's
+**The URL is not trusted.** It is typed by a user into a box, and Pulse's
 server is what opens it. ``http://169.254.169.254/`` is a valid URL, and a
 webhook pointed at it is a request for the cloud metadata endpoint delivered by
 a process that can reach it. So the host is resolved and checked against
 loopback, private and link-local space — at creation *and* again at delivery,
 because DNS can change between the two — and redirects are not followed at all.
-A 3xx is recorded as a failure with the reason, which is honest: Herald cannot
+A 3xx is recorded as a failure with the reason, which is honest: Pulse cannot
 tell a legitimate redirect from one that has just moved the target inside the
 network.
 
-**The signature is over a timestamp too.** ``X-Herald-Signature: t=…,v1=…`` is
+**The signature is over a timestamp too.** ``X-Pulse-Signature: t=…,v1=…`` is
 HMAC-SHA256 over ``{timestamp}.{body}``, which lets a receiver reject a replay
 of a body it has already seen. Signing the body alone would authenticate the
 payload without saying anything about when it was sent.
@@ -61,20 +61,20 @@ logger = logging.getLogger(__name__)
 #: ``t=<unix seconds>,v1=<hex hmac>``. The scheme is Stripe's, and deliberately
 #: so — it is the one every webhook-receiving library already knows how to
 #: verify, and inventing a private format would only mean nobody verifies at all.
-SIGNATURE_HEADER = "X-Herald-Signature"
-EVENT_HEADER = "X-Herald-Event"
-DELIVERY_HEADER = "X-Herald-Delivery"
+SIGNATURE_HEADER = "X-Pulse-Signature"
+EVENT_HEADER = "X-Pulse-Event"
+DELIVERY_HEADER = "X-Pulse-Delivery"
 
 #: The id of whatever caused this delivery — the API request, or the sweep that
 #: re-armed it — so a receiver debugging "you sent me something wrong" can quote
-#: an id that appears in Herald's own journal. Outside the signature on purpose:
+#: an id that appears in Pulse's own journal. Outside the signature on purpose:
 #: :func:`sign` covers the timestamp and the body, and widening it to a header
 #: would break every receiver already verifying deliveries.
 #:
 #: Distinct from ``X-Request-ID``, which the API *returns* on its own responses.
 #: This is the same value travelling in the other direction, and naming it apart
 #: keeps a receiver's own request id from being overwritten by ours.
-CORRELATION_HEADER = "X-Herald-Request-ID"
+CORRELATION_HEADER = "X-Pulse-Request-ID"
 
 #: The prefix a signature's version field carries.
 SIGNATURE_VERSION = "v1"
@@ -84,7 +84,7 @@ _HEX = re.compile(r"[0-9a-fA-F]{64}")
 
 
 class WebhookUrlError(ValueError):
-    """The endpoint URL is one Herald will not call."""
+    """The endpoint URL is one Pulse will not call."""
 
 
 def generate_secret() -> str:
@@ -126,7 +126,7 @@ def validate_url(url: str) -> str:
 
     unreachable = link_check.unreachable_reason(candidate)
     if unreachable:
-        raise WebhookUrlError(f"Herald will not call that URL — {unreachable}")
+        raise WebhookUrlError(f"Pulse will not call that URL — {unreachable}")
     return candidate
 
 
@@ -143,7 +143,7 @@ def sign(secret: str, timestamp: int, body: str) -> str:
 def verify(secret: str, header: str, body: str, *, tolerance_seconds: int = 300) -> bool:
     """Whether *header* is a valid, recent signature for *body*.
 
-    Used two ways. Herald never receives its own webhooks, so for the *outbound*
+    Used two ways. Pulse never receives its own webhooks, so for the *outbound*
     scheme this exists to make the contract executable — the test suite verifies
     what a receiver would, and anyone writing a handler can read one function
     instead of inferring the scheme from a docstring. But it is also what
@@ -176,7 +176,7 @@ def verify(secret: str, header: str, body: str, *, tolerance_seconds: int = 300)
 
 
 #: What GitHub signs its deliveries with, and the two headers that come with it.
-#: A different scheme from Herald's own, and it has to be: GitHub decides the
+#: A different scheme from Pulse's own, and it has to be: GitHub decides the
 #: format of the requests GitHub sends, and a push event is the single most
 #: likely thing anybody points ``POST /triggers/inbound/{token}`` at.
 #:
@@ -236,7 +236,7 @@ def replay_nonce(*, delivery_id: str = "", signature: str = "") -> str | None:
     the honest answer for an unsigned request with no delivery id, and the case
     the caller must not silently treat as deduplicated.
 
-    **Why a signed request needs this at all.** ``verify`` bounds a Herald-signed
+    **Why a signed request needs this at all.** ``verify`` bounds a Pulse-signed
     request to a five-minute window, and ``verify_github`` bounds one not at all.
     Inside that window — or, for GitHub, forever — the identical bytes verify
     identically, every time. ``POST /triggers/inbound/{token}`` answers a
@@ -271,7 +271,7 @@ def replay_nonce(*, delivery_id: str = "", signature: str = "") -> str | None:
 
 
 def envelope(event: WebhookEvent, data: dict[str, Any]) -> dict[str, Any]:
-    """The body Herald POSTs, minus the delivery id it gains on insert."""
+    """The body Pulse POSTs, minus the delivery id it gains on insert."""
     return {
         "event": event.value,
         "created_at": utcnow().isoformat(),
@@ -405,7 +405,7 @@ def claim(db: Session, delivery: WebhookDelivery) -> bool:
 
     Both duplicates POST the same body under the same delivery id and the same
     signature — indistinguishable, at the receiver, from the retry that id is
-    meant to let it collapse. A receiver that dedupes on ``X-Herald-Delivery``
+    meant to let it collapse. A receiver that dedupes on ``X-Pulse-Delivery``
     is unharmed. One that acts on arrival, which is the reason the header is
     documented rather than assumed, announces twice.
 
@@ -505,7 +505,7 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
         timestamp = int(utcnow().timestamp())
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": f"Herald/0.1 webhooks (+{settings.openrouter_app_url})",
+            "User-Agent": f"Pulse/0.1 webhooks (+{settings.openrouter_app_url})",
             EVENT_HEADER: delivery.event.value,
             DELIVERY_HEADER: str(delivery.id),
             CORRELATION_HEADER: request_id_var.get(),
@@ -542,11 +542,11 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
 
         if response.is_redirect:
             # See the module docstring: a redirect could be a move or could be a way
-            # back inside the network, and Herald cannot tell which.
+            # back inside the network, and Pulse cannot tell which.
             _record_failure(
                 db,
                 delivery,
-                f"Returned {response.status_code} — Herald does not follow webhook "
+                f"Returned {response.status_code} — Pulse does not follow webhook "
                 "redirects. Point the webhook at the final URL.",
                 terminal=True,
             )
@@ -646,7 +646,7 @@ def _record_skipped(db: Session, delivery: WebhookDelivery, reason: str) -> None
     and can trip the breaker — so routing a skip through it would count "we
     chose not to send" as evidence that the endpoint is broken, and a user who
     disabled an endpoint with four deliveries in backoff would find it disabled
-    a second time, by Herald, on re-enabling. Nothing on the endpoint moves
+    a second time, by Pulse, on re-enabling. Nothing on the endpoint moves
     here; only the delivery is closed, with a reason the log shows.
     """
     delivery.status = DeliveryStatus.FAILED

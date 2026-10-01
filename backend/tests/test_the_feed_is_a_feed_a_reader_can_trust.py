@@ -8,7 +8,7 @@ of which were true of the bytes production served and of nothing the suite ran.
 **The dates said "zone unknown".** ``format_datetime`` writes ``+0000`` for an
 aware datetime and ``-0000`` for a naive one, and RFC 5322 §3.3 makes those
 different claims: the first is "this instant, in UTC", the second is "the local
-zone is not being disclosed". Every timestamp Herald writes is UTC, so the
+zone is not being disclosed". Every timestamp Pulse writes is UTC, so the
 spelling was decided entirely by whether the driver returned the column with its
 offset attached — PostgreSQL does, SQLite does not. The feed therefore said one
 thing in production and the other under the tests that were checking it.
@@ -191,7 +191,7 @@ def test_an_item_carries_a_title_a_link_and_a_guid(client, db, project):
     assert item.find("title").text == "Released"
     assert item.find("link").text == "https://dev.to/herald/released"
     guid = item.find("guid")
-    # isPermaLink=false: the guid is Herald's own identifier, not a URL. A
+    # isPermaLink=false: the guid is Pulse's own identifier, not a URL. A
     # reader that took it for one would fetch a page that does not exist.
     assert guid.attrib["isPermaLink"] == "false"
     assert guid.text
@@ -267,7 +267,7 @@ def test_the_feed_is_capped_rather_than_growing_with_the_archive(
     ("title", "why"),
     [
         ("Ünïcödé & emoji 🎉", "non-ASCII survives the declared encoding"),
-        ("Herald <1.0> & \"friends\"", "markup characters are escaped, not stripped"),
+        ("Pulse <1.0> & \"friends\"", "markup characters are escaped, not stripped"),
         ("A title with\ta tab", "whitespace XML can carry is kept"),
     ],
 )

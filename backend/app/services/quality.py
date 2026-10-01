@@ -44,7 +44,7 @@ from app.services import seo
 #: The formula divides by the sentence count and by the word count, so a
 #: two-sentence social post produces a number with the precision of a
 #: measurement and the stability of a coin toss — re-word one clause of a
-#: tweet and the "reading ease" moves thirty points. Herald writes tweets and
+#: tweet and the "reading ease" moves thirty points. Pulse writes tweets and
 #: LinkedIn posts from the same pipeline as articles, so this is the common
 #: case rather than an edge one, and the honest answer for those is that the
 #: piece has no reading ease. See :class:`Readability`, whose fields are
@@ -273,7 +273,7 @@ def code_points(ratio: float) -> int:
 
 @dataclass(frozen=True)
 class QualityReport:
-    """One piece measured every way Herald measures a piece deterministically."""
+    """One piece measured every way Pulse measures a piece deterministically."""
 
     score: int
     seo_score: int
@@ -316,7 +316,7 @@ def report(
     :data:`CODE_WEIGHT`, and they always sum to one. When a piece is too short
     to have a reading ease the readability weight moves to the code component
     rather than the component being scored zero — a two-line social post is not
-    a badly written one, and scoring the absence would put every tweet Herald
+    a badly written one, and scoring the absence would put every tweet Pulse
     writes below any threshold worth setting. Where it moves *to* is the part
     that took a bug to get right; the comment on that branch has it.
 

@@ -1,4 +1,4 @@
-"""The trigger HTTP surface, including the one public endpoint Herald exposes."""
+"""The trigger HTTP surface, including the one public endpoint Pulse exposes."""
 from __future__ import annotations
 
 import json
@@ -218,7 +218,7 @@ def test_posting_to_the_inbound_url_writes_a_piece(client, auth, project, db):
 
 
 def test_the_inbound_endpoint_needs_no_bearer_token(client, project, db, auth):
-    """The sender is a CI job or a zap. It has a URL and no Herald account."""
+    """The sender is a CI job or a zap. It has a URL and no Pulse account."""
     created = _create(client, auth, project).json()
     token = db.get(Trigger, created["id"]).token
 

@@ -22,7 +22,7 @@ two spaces and the empty body, which is every article with a fenced code block
 in it. A backfill that disagrees with the write path is worse than no backfill:
 it is wrong quietly, and only for the old rows.
 
-Chunked by id, one UPDATE per row within a chunk. Herald's content table is
+Chunked by id, one UPDATE per row within a chunk. Pulse's content table is
 per-account and small; correctness of the count matters more here than the
 number of round trips in a migration that runs once.
 

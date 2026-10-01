@@ -1,10 +1,10 @@
-"""How much of a provider's answer Herald is willing to hold in memory.
+"""How much of a provider's answer Pulse is willing to hold in memory.
 
 Every request out of :mod:`app.services.llm_router` bounds itself on the way
 *out* — ``max_tokens``, and the largest budget anything here asks for is a
 long-form article's ~8,000. Nothing bounded the way in. ``httpx.post`` returns
 only once the whole body is buffered, so the size of the reply was decided
-entirely by the far end and Herald's first opportunity to have an opinion about
+entirely by the far end and Pulse's first opportunity to have an opinion about
 it was after it had already paid: ``resp.json()`` on whatever arrived, and the
 ``_short()`` clip that trims a body for a log line runs on a string that is
 already in memory.
@@ -14,7 +14,7 @@ That matters here more than it looks. The base URLs are settings
 every Celery generation task ends up in, and production runs two workers on a
 box with 4 GB shared with five other applications. A provider having a bad day —
 a proxy answering a completion with an HTML error page, a compat layer that
-loops — is not something Herald can fix from here. What it can do is stop
+loops — is not something Pulse can fix from here. What it can do is stop
 reading.
 
 Same rule and same mechanism as :data:`app.services.feeds.MAX_FEED_BYTES` and

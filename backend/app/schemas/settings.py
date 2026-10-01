@@ -78,7 +78,7 @@ class CredentialFieldOut(BaseModel):
 
 
 class PlatformCapability(BaseModel):
-    """What Herald can do with a platform, and what it needs to do it."""
+    """What Pulse can do with a platform, and what it needs to do it."""
 
     platform: str
     display_name: str

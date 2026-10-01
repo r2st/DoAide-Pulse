@@ -1,11 +1,11 @@
 """Making a headline swap reach the reader.
 
-:func:`app.services.headlines.apply_headline` changes Herald's copy of a
+:func:`app.services.headlines.apply_headline` changes Pulse's copy of a
 title. That is half the operation. The other half — telling the destinations
 that are already carrying the piece — is this module, and without it the whole
 headline feature measures something that never happened: readers keep seeing
 the headline the post went out with, while the engagement they generate is
-credited to the new one that only exists in Herald's database.
+credited to the new one that only exists in Pulse's database.
 
 Not every destination can be told, and pretending otherwise is the failure
 mode worth naming. A Bluesky post has no title. A sent Buttondown issue is in

@@ -1,6 +1,6 @@
 """Per-project API keys: the credential a machine uses instead of a password.
 
-Everything else in Herald authenticates with a bearer token minted by
+Everything else in Pulse authenticates with a bearer token minted by
 ``POST /auth/login``. That token is deliberately short-lived, it is tied to a
 *person*, and it is invalidated wholesale when that person resets their
 password — all correct for a browser, and all wrong for the CI job that wants
@@ -164,7 +164,7 @@ class ApiKey(Base, TimestampMixin):
         """Whether this key carries *scope*.
 
         Compares against the stored strings rather than coercing them back to
-        enum members: a scope this Herald no longer defines must read as absent,
+        enum members: a scope this Pulse no longer defines must read as absent,
         not raise ``ValueError`` deep inside an auth dependency.
         """
         return scope.value in (self.scopes or [])

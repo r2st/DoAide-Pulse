@@ -111,12 +111,12 @@ class Digest:
         """
         if self.published:
             return (
-                f"Herald: {len(self.published)} published, "
+                f"Pulse: {len(self.published)} published, "
                 f"{self.movement.views:,} views this week"
             )
         if self.movement.views:
-            return f"Herald: {self.movement.views:,} views this week"
-        return "Herald: this week needs you"
+            return f"Pulse: {self.movement.views:,} views this week"
+        return "Pulse: this week needs you"
 
     def as_dict(self) -> dict:
         """The wire shape of a digest, for the preview endpoint and the renderer.
@@ -196,7 +196,7 @@ def _gains(
     Two queries rather than one, and the reason is that ``content_metrics`` only
     ever grows. Reading every snapshot the user has ever had and discarding all
     but the last one before the window made the weekly digest cost proportional
-    to how long they had been using Herald — a year of polling every published
+    to how long they had been using Pulse — a year of polling every published
     post, loaded into memory, to answer a question about fourteen days. The
     first query is bounded by the two windows being compared; the second fetches
     exactly one baseline row per publication that appears in them.
@@ -483,7 +483,7 @@ def render_text(digest: Digest) -> str:
     lines = [
         f"Hello {digest.name},",
         "",
-        f"Herald, {digest.since:%d %b} to {digest.until:%d %b}.",
+        f"Pulse, {digest.since:%d %b} to {digest.until:%d %b}.",
         "",
         f"  Views       {digest.movement.views:,}{_change_line(digest.movement)}",
         f"  Clicks      {digest.movement.clicks:,}",
@@ -526,7 +526,7 @@ def render_text(digest: Digest) -> str:
                 + (f" on {when:%d %b %H:%M} UTC" if when else "")
             )
 
-    lines += ["", "— Herald", settings.frontend_url]
+    lines += ["", "— Pulse", settings.frontend_url]
     return "\n".join(lines)
 
 
@@ -544,7 +544,7 @@ def render_html(digest: Digest) -> str:
         '<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
         'max-width:600px;margin:0 auto;color:#1c1c1e;line-height:1.5">',
         f"<p>Hello {esc(digest.name)},</p>",
-        f"<p style=\"color:#6b7280\">Herald, {digest.since:%d %b} to "
+        f"<p style=\"color:#6b7280\">Pulse, {digest.since:%d %b} to "
         f"{digest.until:%d %b}.</p>",
         '<p style="font-size:15px">'
         f"<strong style=\"font-size:22px\">{digest.movement.views:,}</strong> views"
@@ -605,7 +605,7 @@ def render_html(digest: Digest) -> str:
         parts.append("</ul>")
 
     parts.append(
-        f'<p style="color:#6b7280;font-size:13px">— Herald &middot; '
+        f'<p style="color:#6b7280;font-size:13px">— Pulse &middot; '
         f'<a href="{esc(settings.frontend_url)}">{esc(settings.frontend_url)}</a></p>'
         "</div>"
     )

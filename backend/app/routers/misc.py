@@ -81,7 +81,7 @@ def _check_workers() -> _Probe | None:
     accepts everything whether or not anything is draining it, so a worker that
     was OOM-killed or never came back from a deploy leaves every probe here
     green while nothing publishes, no repo is scanned, no trigger fires and no
-    webhook is delivered — Herald's entire product runs in that process.
+    webhook is delivered — Pulse's entire product runs in that process.
 
     This is deliberately *not* on the public ``/health``. Two reasons, and each
     would be enough:
@@ -241,7 +241,7 @@ def health_detail(
         # response body. It is also the failure with the least else to find it —
         # the worker fleet being gone means no task writes a line either, so a
         # journal covering the whole outage held nothing about it at all, and the
-        # one moment Herald *knew* went unrecorded.
+        # one moment Pulse *knew* went unrecorded.
         #
         # Not folded into ``healthy`` (see below), so this is deliberately not
         # the 503 branch's line: an operator grepping for why publishing stopped

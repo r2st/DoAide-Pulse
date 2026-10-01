@@ -51,7 +51,7 @@ def smtp(monkeypatch):
     monkeypatch.setattr(settings, "smtp_port", 587)
     monkeypatch.setattr(settings, "smtp_user", "herald@example.com")
     monkeypatch.setattr(settings, "smtp_password", "app-password")
-    monkeypatch.setattr(settings, "smtp_from", "Herald <herald@example.com>")
+    monkeypatch.setattr(settings, "smtp_from", "Pulse <herald@example.com>")
     return _FakeSMTP
 
 
@@ -75,7 +75,7 @@ def test_starttls_then_login_then_send(smtp, monkeypatch):
         "quit",
     ]
     assert session.message["To"] == "dev@example.com"
-    assert session.message["From"] == "Herald <herald@example.com>"
+    assert session.message["From"] == "Pulse <herald@example.com>"
     assert session.message["Subject"] == "Reset"
     assert session.message.get_content().strip() == "link"
 

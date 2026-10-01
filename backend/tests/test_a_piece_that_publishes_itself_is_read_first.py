@@ -1,6 +1,6 @@
 """The gate on the prose, which is the one the auto-publish path did not have.
 
-Herald's auto-publish path had six gates before this one, and none of them read
+Pulse's auto-publish path had six gates before this one, and none of them read
 the words. Confidence is the model's own opinion; ``seo.seo_score`` and
 ``seo.blocking_issues`` read the envelope; ``ai.stray_script_runs`` reads the
 characters; ``factcheck`` reads the claims; ``dedup`` reads the piece against
@@ -8,10 +8,10 @@ its siblings. A fluent, well-structured, correctly-tagged four hundred words of
 subordinate clauses at a reading ease of 20 clears every one of them and
 publishes itself under the user's name.
 
-Herald already measures exactly that, and already refuses on it — it is the
+Pulse already measures exactly that, and already refuses on it — it is the
 DRAFT→REVIEW floor a *human* hits when they submit a piece by hand
 (``content_quality_min_score``). So the gate a person had to clear to ask for a
-reviewer's attention was stricter than the one Herald cleared to publish
+reviewer's attention was stricter than the one Pulse cleared to publish
 unread. These tests pin the gate that closes it, and the two things about it
 that are easy to get wrong: it holds a piece back rather than discarding it,
 and it banks its reasons whether or not it fired.
@@ -44,7 +44,7 @@ DENSE_BODY = "## Overview\n\n" + (
 
 #: The same envelope, written for a reader.
 CLEAR_BODY = "## Overview\n\n" + (
-    "Herald watches your repo. When you ship, it writes the post. "
+    "Pulse watches your repo. When you ship, it writes the post. "
     "You review it, or you let it go out on its own. "
     "The draft lands in the queue in about a minute. "
     "Most teams edit the title and publish. "
@@ -53,10 +53,10 @@ CLEAR_BODY = "## Overview\n\n" + (
 
 def _payload(body):
     return {
-        "title": "Herald ships marketing automation",
+        "title": "Pulse ships marketing automation",
         "body_markdown": body,
-        "excerpt": "Herald writes the posts about the projects you ship.",
-        "meta_description": "Herald automates developer marketing end to end, "
+        "excerpt": "Pulse writes the posts about the projects you ship.",
+        "meta_description": "Pulse automates developer marketing end to end, "
         "from repo watch to published post.",
         "keywords": ["marketing automation", "devtools"],
         "tags": ["python", "fastapi"],
@@ -119,9 +119,9 @@ def test_the_dense_body_is_the_thing_no_other_gate_objects_to():
     reads: unreadable prose in a structurally complete piece.
     """
     report = quality.report(
-        title="Herald ships marketing automation",
+        title="Pulse ships marketing automation",
         body_markdown=DENSE_BODY,
-        meta_description="Herald automates developer marketing end to end, "
+        meta_description="Pulse automates developer marketing end to end, "
         "from repo watch to published post.",
         keywords=["marketing automation", "devtools"],
         focus_keyword="marketing automation",
@@ -136,9 +136,9 @@ def test_the_dense_body_is_the_thing_no_other_gate_objects_to():
 
 def test_the_clear_body_clears_the_floor():
     report = quality.report(
-        title="Herald ships marketing automation",
+        title="Pulse ships marketing automation",
         body_markdown=CLEAR_BODY,
-        meta_description="Herald automates developer marketing end to end, "
+        meta_description="Pulse automates developer marketing end to end, "
         "from repo watch to published post.",
         keywords=["marketing automation", "devtools"],
         focus_keyword="marketing automation",
@@ -261,7 +261,7 @@ def test_a_floor_of_zero_turns_the_gate_off(db, auto_project, writes, monkeypatc
 def test_the_score_is_still_banked_when_the_gate_is_off(
     db, auto_project, writes, monkeypatch
 ):
-    """Switching the gate off is about whether Herald *acts* on the score, not
+    """Switching the gate off is about whether Pulse *acts* on the score, not
     about whether the reviewer gets to see it — the same rule ``factcheck_enabled``
     follows."""
     monkeypatch.setattr(

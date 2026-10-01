@@ -47,8 +47,8 @@ GUJARATI = "ંગ્ર"
 # Long enough to clear the word floor and to keep the foreign share far under
 # `_MULTILINGUAL_SHARE`, so what each test injects is the only thing wrong.
 _BODY = (
-    "## Retries in Herald\n\n"
-    "Retries in Herald are the part people ask about first. "
+    "## Retries in Pulse\n\n"
+    "Retries in Pulse are the part people ask about first. "
     + "The retry path is careful about retries and about what a retry costs. " * 45
 )
 
@@ -121,7 +121,7 @@ def test_the_limit_caps_the_list():
 
 def test_typography_is_not_a_stray_run():
     """Every one of these models emits these, and they are correct."""
-    text = "Herald’s retries — which never double-post … are careful."
+    text = "Pulse’s retries — which never double-post … are careful."
 
     assert ai.stray_script_runs(text) == []
 
@@ -141,13 +141,13 @@ def test_text_written_in_another_script_is_not_contaminated_by_one():
     """A translation is not a glitch, and this is the wrong gate to fail it at."""
     hindi = " ".join([DEVANAGARI] * 20)
 
-    assert ai.stray_script_runs(f"{hindi} Herald retries.") == []
+    assert ai.stray_script_runs(f"{hindi} Pulse retries.") == []
 
 
 def test_the_share_is_measured_over_the_whole_text_not_per_run():
     """A single long foreign passage is intentional; a sprinkle is not."""
     sprinkled = f"{_BODY} time {CYRILLIC}."
-    written = " ".join([CYRILLIC] * 40) + " Herald."
+    written = " ".join([CYRILLIC] * 40) + " Pulse."
 
     assert ai.stray_script_runs(sprinkled) == [CYRILLIC]
     assert ai.stray_script_runs(written) == []
@@ -172,11 +172,11 @@ def auto_project(db, project, connect, monkeypatch):
 
 def _generated(**overrides) -> GeneratedContent:
     base = {
-        "title": "Retries in Herald",
+        "title": "Retries in Pulse",
         "body_markdown": _BODY,
         "excerpt": "How retries work.",
         "meta_description": (
-            "How retries work in Herald, why a retry never double-posts, and "
+            "How retries work in Pulse, why a retry never double-posts, and "
             "what the backoff actually does when a platform is down."
         ),
         "keywords": ["retries"],
@@ -218,7 +218,7 @@ def test_a_clean_piece_still_auto_publishes(db, auto_project, writes):
 def test_a_garbled_body_goes_to_review_instead_of_publishing(
     db, auto_project, writes
 ):
-    """The bug. Herald published six of these under the user's name."""
+    """The bug. Pulse published six of these under the user's name."""
     writes(_generated(body_markdown=f"{_BODY} selects a publish time {CYRILLIC}."))
 
     routed = _route(db, auto_project)
@@ -229,14 +229,14 @@ def test_a_garbled_body_goes_to_review_instead_of_publishing(
 
 def test_a_garbled_title_goes_to_review(db, auto_project, writes):
     """The title is the worst place for one and the most visible."""
-    writes(_generated(title=f"Retries in Herald {CJK_SPECIFY}"))
+    writes(_generated(title=f"Retries in Pulse {CJK_SPECIFY}"))
 
     assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
 
 
 def test_a_garbled_meta_description_goes_to_review(db, auto_project, writes):
     """Not derived from the body on every path, so it is checked on its own."""
-    writes(_generated(meta_description=f"How retries work in Herald {DEVANAGARI}."))
+    writes(_generated(meta_description=f"How retries work in Pulse {DEVANAGARI}."))
 
     assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
 
@@ -356,8 +356,8 @@ def test_the_gate_does_not_fire_on_a_clean_piece_with_typography(
     """The false positive that would matter most: it would hold back everything."""
     writes(
         _generated(
-            title="Herald’s retries — explained",
-            body_markdown=f"{_BODY} Herald’s retries — never double-post…",
+            title="Pulse’s retries — explained",
+            body_markdown=f"{_BODY} Pulse’s retries — never double-post…",
         )
     )
 
@@ -494,7 +494,7 @@ def test_a_lone_greek_letter_is_a_symbol_not_a_splice():
 
 
 def test_typography_is_not_a_splice():
-    text = f"{_BODY} Herald’s retries — which never double-post … are careful."
+    text = f"{_BODY} Pulse’s retries — which never double-post … are careful."
 
     assert ai.stray_letter_splices(text) == []
 
@@ -555,7 +555,7 @@ def test_a_spliced_body_goes_to_review_instead_of_publishing(db, auto_project, w
 
 
 def test_a_spliced_title_goes_to_review(db, auto_project, writes):
-    writes(_generated(title="Retries in Herald, démontrated"))
+    writes(_generated(title="Retries in Pulse, démontrated"))
 
     assert _route(db, auto_project).status == content_pipeline.QUEUED_FOR_REVIEW
 
@@ -570,7 +570,7 @@ def test_a_spliced_meta_description_goes_to_review(db, auto_project, writes):
     writes(
         _generated(
             meta_description=(
-                "How retries work in Herald, why a retry never double-posts, and "
+                "How retries work in Pulse, why a retry never double-posts, and "
                 "what the tört backoff does when a platform is down."
             )
         )

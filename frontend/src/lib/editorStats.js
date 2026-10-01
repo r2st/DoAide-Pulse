@@ -5,7 +5,7 @@
 // the SEO checks grade, what the read-time analytics aggregate, and what the
 // "6 min read" byline on a published piece says. A counter that drifted from
 // them while you typed would be describing a different document than the one
-// Herald is about to publish — and the drift would only surface after saving,
+// Pulse is about to publish — and the drift would only surface after saving,
 // which is the worst moment to learn the number moved.
 //
 // The server (app/models/content.py):

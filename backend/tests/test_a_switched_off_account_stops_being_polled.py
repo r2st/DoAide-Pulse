@@ -1,6 +1,6 @@
 """Deactivating an account stops the background work that holds its keys.
 
-Deactivation is Herald's off switch, and the codebase is unusually consistent
+Deactivation is Pulse's off switch, and the codebase is unusually consistent
 about what it means: the account's tokens stop working
 (:func:`app.deps.get_current_user`), its preview links stop resolving
 (:func:`app.services.preview_links.resolve`), its inbound webhooks write nothing
@@ -22,7 +22,7 @@ ordinary "stale row" bug:
   account — that gate was there. But ``due_publications`` selects on status and
   time alone, so a row armed while the account was live outlived the switch-off:
   a piece scheduled for next Tuesday went out on Tuesday, to a platform, on
-  behalf of an account Herald had been told to stop. Deactivating mid-flight is
+  behalf of an account Pulse had been told to stop. Deactivating mid-flight is
   not an exotic case — it is what you do first when an account is compromised or
   its owner has left.
 
@@ -115,7 +115,7 @@ def test_a_deactivated_account_does_not_reach_the_platform(db, armed, user):
 
     assert reached == [], (
         "a deactivated account published to a platform, under its own stored "
-        "credentials, after Herald was told to switch it off"
+        "credentials, after Pulse was told to switch it off"
     )
 
 

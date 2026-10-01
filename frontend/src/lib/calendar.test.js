@@ -18,7 +18,7 @@ function entry(overrides = {}) {
     publication_id: 1,
     title: "A post",
     project_id: 1,
-    project_name: "Herald",
+    project_name: "Pulse",
     content_type: "announcement",
     platform: "devto",
     status: "scheduled",
