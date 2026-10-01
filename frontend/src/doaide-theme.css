@@ -1,6 +1,10 @@
 /*
- * DoAide Global Theme v2.0
- * Dark theme with gold accents — uniform across all DoAide products
+ * DoAide Global Theme v3.0
+ * Dark theme with gold accents — canonical version for all DoAide products.
+ *
+ * Products: Desk · Herald · 409A · AutoApply · Realty
+ * Fonts: Schibsted Grotesk (UI) · Instrument Serif (display) · IBM Plex Mono (data)
+ * Accent: Gold #F0B429
  */
 @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Schibsted+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -51,10 +55,13 @@ body {
 ::-webkit-scrollbar-track { background: var(--doaide-bg); }
 ::-webkit-scrollbar-thumb { background: var(--doaide-border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--doaide-border-light); }
-
 ::selection { background-color: var(--doaide-gold) !important; color: var(--doaide-text-on-gold) !important; }
 
 .doaide-gold { color: var(--doaide-gold); }
 .doaide-gold-bg { background-color: var(--doaide-gold); color: var(--doaide-text-on-gold); }
 .doaide-surface { background-color: var(--doaide-surface); }
-.doaide-card { background-color: var(--doaide-surface); border: 1px solid var(--doaide-border); border-radius: var(--doaide-radius-lg); }
+.doaide-card {
+  background-color: var(--doaide-surface);
+  border: 1px solid var(--doaide-border);
+  border-radius: var(--doaide-radius-lg);
+}

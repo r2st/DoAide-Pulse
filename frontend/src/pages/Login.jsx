@@ -71,7 +71,7 @@ export default function Login() {
             </svg>
 
             <h1 className="login-title">
-              DoAide <span className="login-title-accent">Pulse</span>
+              DoAide <span className="login-title-accent">Herald</span>
             </h1>
             <p className="login-subtitle">
               Your digital robot for newsletters.

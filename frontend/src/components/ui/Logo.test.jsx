@@ -1,7 +1,7 @@
 /**
  * The mark, and the one decision it makes: whether it is a picture or noise.
  *
- * It appears twice next to the word "Pulse" — in the sidebar and on the
+ * It appears twice next to the word "Herald" — in the sidebar and on the
  * preview page — where announcing it would make a screen reader say the name
  * twice, and once on the sign-in page where it is the only thing naming the
  * product. `title` is what tells the two apart, and it is the kind of prop
@@ -28,12 +28,12 @@ describe("without a title", () => {
 
 describe("with a title", () => {
   it("becomes an image with that accessible name", () => {
-    render(<Logo title="Pulse" />);
-    expect(screen.getByRole("img", { name: "Pulse" })).toBeInTheDocument();
+    render(<Logo title="Herald" />);
+    expect(screen.getByRole("img", { name: "Herald" })).toBeInTheDocument();
   });
 
   it("is no longer hidden", () => {
-    const { container } = render(<Logo title="Pulse" />);
+    const { container } = render(<Logo title="Herald" />);
     expect(container.querySelector("svg")).not.toHaveAttribute("aria-hidden");
   });
 });

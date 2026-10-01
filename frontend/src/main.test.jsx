@@ -98,7 +98,7 @@ describe("what the outermost boundary is outside of", () => {
     await whileCaught(boot);
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText("Pulse failed to start")).toBeInTheDocument();
+    expect(screen.getByText("Herald failed to start")).toBeInTheDocument();
     expect(screen.queryByText("the application")).not.toBeInTheDocument();
   });
 
@@ -108,7 +108,7 @@ describe("what the outermost boundary is outside of", () => {
     await whileCaught(boot);
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText("Pulse failed to start")).toBeInTheDocument();
+    expect(screen.getByText("Herald failed to start")).toBeInTheDocument();
   });
 
   it("offers the only recovery there is left at this level", async () => {

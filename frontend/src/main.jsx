@@ -15,7 +15,7 @@ import "./index.css";
 // this level, so its fallback's "Try again" is the whole offer.
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <ErrorBoundary title="Pulse failed to start" section="root">
+    <ErrorBoundary title="Herald failed to start" section="root">
       <BrowserRouter future={ROUTER_FUTURE}>
         <ToastProvider>
           <AuthProvider>

@@ -39,8 +39,8 @@ export default function Shell({ children }) {
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col border-r border-line bg-canvas md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5">
-          <Logo className="h-8 w-8 shrink-0" title="Pulse" />
-          <span className="font-display text-xl text-ink-900">Pulse</span>
+          <Logo className="h-8 w-8 shrink-0" title="Herald" />
+          <span className="font-display text-xl text-ink-900">Herald</span>
         </div>
 
         <nav aria-label="Main" className="flex-1 space-y-0.5 px-3 py-2">
@@ -68,8 +68,8 @@ export default function Shell({ children }) {
       {/* Mobile header */}
       <header className="fixed inset-x-0 top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-canvas/95 px-4 backdrop-blur-xl md:hidden">
         <div className="flex items-center gap-2.5">
-          <Logo className="h-7 w-7 shrink-0" title="Pulse" />
-          <span className="font-display text-lg text-ink-900">Pulse</span>
+          <Logo className="h-7 w-7 shrink-0" title="Herald" />
+          <span className="font-display text-lg text-ink-900">Herald</span>
         </div>
         <button
           className="btn-quiet -mr-1"
@@ -124,16 +124,19 @@ export default function Shell({ children }) {
           </div>
         </main>
 
-        <footer className="border-t border-line py-4 text-center text-xs text-ink-400">
-          Pulse by{" "}
-          <a
-            href="https://doaide.com"
-            className="underline-offset-4 hover:text-ink-500 hover:underline"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            DoAide
-          </a>
+        <footer className="border-t border-line px-4 py-4 text-center">
+          <div className="mb-2 flex flex-wrap justify-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.14em]">
+            <a href="https://desk.doaide.com" target="_blank" rel="noopener noreferrer" className="text-ink-400/60 hover:text-brand-500">Desk</a>
+            <span className="text-brand-500">Herald</span>
+            <a href="https://409.doaide.com" target="_blank" rel="noopener noreferrer" className="text-ink-400/60 hover:text-brand-500">409A</a>
+            <a href="https://job.doaide.com" target="_blank" rel="noopener noreferrer" className="text-ink-400/60 hover:text-brand-500">AutoApply</a>
+            <a href="https://homenex.doaide.com" target="_blank" rel="noopener noreferrer" className="text-ink-400/60 hover:text-brand-500">Realty</a>
+          </div>
+          <p className="text-xs text-ink-400/40">
+            ©{" "}{new Date().getFullYear()}{" "}
+            <a href="https://doaide.com" className="hover:text-ink-500 hover:underline underline-offset-4" target="_blank" rel="noopener noreferrer">DoAide</a>
+            {" "}· AI tools for small businesses
+          </p>
         </footer>
       </div>
     </div>
