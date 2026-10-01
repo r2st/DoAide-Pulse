@@ -1640,7 +1640,7 @@ def revoke_preview_link(
     link_id: RowId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> Response:
+) -> None:
     """Stop a link working. The row stays, so the view count survives it.
 
     404 covers both halves of the path: no such piece, and no such link on
@@ -1654,7 +1654,6 @@ def revoke_preview_link(
     if link is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
     preview_links.revoke(db, link)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # --------------------------------------------------------------------------- #
