@@ -84,7 +84,15 @@ def publish_one(publication_id: int) -> dict:
         ).rowcount
         db.commit()
 
-        publication = db.get(Publication, publication_id)
+        publication = db.scalar(
+            select(Publication)
+            .where(Publication.id == publication_id)
+            .options(
+                joinedload(Publication.content)
+                .joinedload(Content.project)
+                .joinedload(Project.user)
+            )
+        )
         if publication is None:
             logger.warning("publish_one: publication %s is gone", publication_id)
             return {"publication_id": publication_id, "status": "missing"}

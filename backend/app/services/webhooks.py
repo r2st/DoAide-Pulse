@@ -31,6 +31,7 @@ import json
 import logging
 import re
 import secrets
+import time
 from datetime import timedelta
 from typing import Any
 
@@ -317,7 +318,11 @@ def emit(
         for delivery in deliveries:
             db.refresh(delivery)
     except Exception:  # pragma: no cover - defensive
-        logger.exception("failed to queue webhook deliveries for %s", event)
+        logger.exception(
+            "failed to queue webhook deliveries for %s (user_id=%s)",
+            event,
+            user_id,
+        )
         db.rollback()
         return []
 
@@ -507,6 +512,7 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
             SIGNATURE_HEADER: sign(secret, timestamp, body),
         }
 
+        started = time.monotonic()
         try:
             with _http_client() as client:
                 response = client.post(url, content=body.encode("utf-8"), headers=headers)
@@ -520,6 +526,14 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
             logger.exception("unexpected error delivering webhook %s", delivery.id)
             _record_failure(db, delivery, f"Unexpected error: {exc}")
             return delivery
+        finally:
+            duration_ms = (time.monotonic() - started) * 1000
+            logger.debug(
+                "webhook %s delivery %s POST took %.0fms",
+                delivery.webhook_id,
+                delivery.id,
+                duration_ms,
+            )
 
         delivery.response_status = response.status_code
         if 200 <= response.status_code < 300:

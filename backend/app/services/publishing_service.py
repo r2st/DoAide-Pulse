@@ -878,9 +878,10 @@ def execute(db: Session, publication: Publication) -> Publication:
     if not was_published and content.status == ContentStatus.PUBLISHED:
         _notify_published(db, content, publication)
     logger.info(
-        "published content %s to %s: %s",
+        "published content %s to %s in %dms: %s",
         content.id,
         publication.platform.value,
+        publication.duration_ms or 0,
         result.external_url,
     )
     return publication
@@ -1297,11 +1298,13 @@ def _fail(db: Session, publication: Publication, error: str, *, terminal: bool) 
     # the attempt — leaving the row ``publishing`` with nothing behind it, to
     # be reclaimed and charged a second time for the same failure.
     _commit_outcome(db, publication, _record)
+    duration = publication.duration_ms
     logger.warning(
-        "publication %s to %s failed (%s): %s",
+        "publication %s to %s failed (%s, %s): %s",
         publication.id,
         publication.platform.value,
         "terminal" if terminal else f"attempt {publication.attempts}",
+        f"{duration}ms" if duration else "no duration",
         error,
     )
     if terminal:

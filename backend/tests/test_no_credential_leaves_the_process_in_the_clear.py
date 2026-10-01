@@ -492,10 +492,10 @@ def test_a_platform_that_echoes_the_token_on_a_metrics_poll_is_not_logged_in_the
     db.add(publication)
     db.commit()
 
-    def echoes(self, external_id, credentials):
+    def echoes(external_id, credentials):
         raise raised(secret)
 
-    monkeypatch.setattr(type(get_adapter(Platform.DEVTO)), "fetch_metrics", echoes)
+    monkeypatch.setattr(get_adapter(Platform.DEVTO), "fetch_metrics", echoes)
 
     with caplog.at_level(logging.DEBUG):
         metric = publishing_service.collect_metrics(db, publication)

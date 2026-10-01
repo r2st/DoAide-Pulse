@@ -372,7 +372,9 @@ class Content(Base, TimestampMixin):
     scheduled_for: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), index=True
     )
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
 
     #: When this piece's engagement first crossed its project's threshold and a
     #: ``content.engagement_threshold`` webhook went out. ``NULL`` means it has
