@@ -325,24 +325,22 @@ def dashboard(
         .join(Project, Project.id == Content.project_id)
         .where(Project.user_id == user.id, Content.status == ContentStatus.REVIEW)
     ) or 0
-    failed = list(
-        db.scalars(
-            select(Publication)
-            .join(Content, Content.id == Publication.content_id)
-            .join(Project, Project.id == Content.project_id)
-            .where(
-                Project.user_id == user.id,
-                Publication.status == PublicationStatus.FAILED,
-            )
-            .order_by(Publication.updated_at.desc())
-            .limit(5)
+    failed = db.execute(
+        select(
+            Publication.id,
+            Publication.content_id,
+            Publication.platform,
+            Publication.error,
         )
-    )
-    # One column off the piece — its title. ``joinedload(Publication.content)``
-    # brought back the whole entity to read it: five article bodies and four
-    # JSON columns each, next to the eight below, on the page every session
-    # opens first. The join is already visiting ``content`` for the filter, so
-    # naming the column costs nothing and loads no relationship to suppress.
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(
+            Project.user_id == user.id,
+            Publication.status == PublicationStatus.FAILED,
+        )
+        .order_by(Publication.updated_at.desc())
+        .limit(5)
+    ).all()
     scheduled = db.execute(
         select(
             Publication.id,
