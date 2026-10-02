@@ -2503,10 +2503,15 @@ def retry_publication(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
         )
-    if publication.status == PublicationStatus.PUBLISHED:
+    if publication.status not in RETRYABLE:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Already published — retrying would post it twice.",
+            detail=(
+                "Already published — retrying would post it twice."
+                if publication.status == PublicationStatus.PUBLISHED
+                else f"Publication is {publication.status.value} — only failed "
+                "or cancelled publications can be retried."
+            ),
         )
     # The third arming path, and the one that was missing this. ``_queue_publish``
     # states the invariant it keeps — "an archived piece has nothing armed, ever"
