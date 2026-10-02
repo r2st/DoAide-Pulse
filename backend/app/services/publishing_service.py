@@ -155,8 +155,16 @@ def _arm(
             publication = Publication(content_id=content.id, platform=platform)
             db.add(publication)
             content.publications.append(publication)
-        elif publication.status == PublicationStatus.PUBLISHED:
-            # Already live. Re-queueing would double-post.
+        elif publication.status in (
+            PublicationStatus.PUBLISHED,
+            PublicationStatus.PUBLISHING,
+        ):
+            # Already live, or a worker has claimed it and is mid-flight.
+            # Re-queueing a live row would double-post; re-arming one a
+            # worker holds would overwrite the claim and leave the worker's
+            # outcome — success or failure — writing back over whatever this
+            # call set. The calendar's reschedule guards against PUBLISHING
+            # for the same reason; this is the path it missed.
             out.append(publication)
             continue
 

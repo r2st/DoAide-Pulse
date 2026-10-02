@@ -358,3 +358,114 @@ def test_a_publish_error_during_a_metrics_poll_is_swallowed(db, project, monkeyp
     )
 
     assert publishing_service.collect_metrics(db, publication) is None
+
+
+# --------------------------------------------------------------------------- #
+# PUBLISHING guard — _arm, _schedulable_platforms, and schedule slot loop      #
+# --------------------------------------------------------------------------- #
+
+
+def test_arm_does_not_overwrite_a_publishing_publication(db, project):
+    """A publication a worker has atomically claimed (PUBLISHING) must not be
+    re-armed by a concurrent queue or schedule call — that would overwrite the
+    claim and leave the worker's outcome writing back over whatever _arm set."""
+    content = _content(db, project)
+    pub = _publication(
+        db, content, platform=Platform.DEVTO, status=PublicationStatus.PUBLISHING
+    )
+    db.commit()
+
+    result = publishing_service._arm(
+        db,
+        content,
+        [Platform.DEVTO],
+        schedule={},
+        scheduled_for=None,
+        as_draft=False,
+    )
+
+    assert len(result) == 1
+    assert result[0].id == pub.id
+    assert result[0].status == PublicationStatus.PUBLISHING
+
+
+def test_arm_does_not_overwrite_a_published_publication(db, project):
+    """Same guard for PUBLISHED — re-arming would double-post."""
+    content = _content(db, project)
+    pub = _publication(
+        db, content, platform=Platform.DEVTO, status=PublicationStatus.PUBLISHED
+    )
+    db.commit()
+
+    result = publishing_service._arm(
+        db,
+        content,
+        [Platform.DEVTO],
+        schedule={},
+        scheduled_for=None,
+        as_draft=False,
+    )
+
+    assert len(result) == 1
+    assert result[0].id == pub.id
+    assert result[0].status == PublicationStatus.PUBLISHED
+
+
+def test_arm_re_arms_a_failed_publication(db, project):
+    """A FAILED row is the normal retry path — _arm must reset it."""
+    content = _content(db, project)
+    _publication(
+        db, content, platform=Platform.DEVTO, status=PublicationStatus.FAILED
+    )
+    db.commit()
+
+    result = publishing_service._arm(
+        db,
+        content,
+        [Platform.DEVTO],
+        schedule={},
+        scheduled_for=None,
+        as_draft=False,
+    )
+
+    assert len(result) == 1
+    assert result[0].status == PublicationStatus.PENDING
+
+
+def test_schedulable_platforms_excludes_publishing(db, project):
+    """_schedulable_platforms must not return a platform whose publication is
+    mid-flight — moving it would overwrite the worker's claim."""
+    from app.routers.content import _schedulable_platforms
+
+    content = _content(db, project)
+    _publication(
+        db, content, platform=Platform.DEVTO, status=PublicationStatus.PUBLISHING
+    )
+    _publication(
+        db, content, platform=Platform.HASHNODE, status=PublicationStatus.SCHEDULED
+    )
+    db.commit()
+
+    platforms = _schedulable_platforms(content)
+
+    assert Platform.DEVTO not in platforms
+    assert Platform.HASHNODE in platforms
+
+
+def test_schedulable_platforms_excludes_published(db, project):
+    """Already-live platforms are not schedulable either."""
+    from app.routers.content import _schedulable_platforms
+
+    content = _content(db, project)
+    _publication(
+        db, content, platform=Platform.DEVTO, status=PublicationStatus.PUBLISHED
+    )
+    _publication(
+        db, content, platform=Platform.HASHNODE, status=PublicationStatus.PENDING
+    )
+    db.commit()
+
+    platforms = _schedulable_platforms(content)
+
+    assert Platform.DEVTO not in platforms
+    assert Platform.HASHNODE in platforms

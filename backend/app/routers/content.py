@@ -2228,13 +2228,15 @@ def publish_content(
 def _schedulable_platforms(content: Content) -> list[Platform]:
     """The platforms this piece is queued for and could still be moved.
 
-    Anything already live is excluded: its time is not in the future any more,
-    and rescheduling it would only mean posting it twice.
+    Anything already live or mid-flight is excluded: a live row's time is not
+    in the future any more, and a row a worker has claimed is about to produce
+    an outcome that would overwrite whatever this call set.
     """
+    _NOT_SCHEDULABLE = {PublicationStatus.PUBLISHED, PublicationStatus.PUBLISHING}
     return [
         p.platform
         for p in content.publications
-        if p.status != PublicationStatus.PUBLISHED
+        if p.status not in _NOT_SCHEDULABLE
     ]
 
 
@@ -2353,9 +2355,10 @@ def schedule_content(
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
     if slots:
+        _SKIP = {PublicationStatus.PUBLISHED, PublicationStatus.PUBLISHING}
         per_platform = {slot.platform: slot.when for slot in slots}
         for publication in publications:
-            if publication.status == PublicationStatus.PUBLISHED:
+            if publication.status in _SKIP:
                 continue
             publication.scheduled_for = per_platform.get(
                 publication.platform, publication.scheduled_for
