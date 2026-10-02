@@ -347,7 +347,7 @@ def test_a_publication_belonging_to_another_piece_is_a_404_not_a_retry(
 def test_a_cancelled_publication_can_be_re_armed_the_same_way(
     client, auth, content, failed_publication, db, monkeypatch, state
 ):
-    """Only PUBLISHED is special; everything else is retryable."""
+    """Both stopped statuses are retryable."""
     failed_publication.status = state
     db.commit()
     dispatched: list[int] = []
@@ -359,3 +359,28 @@ def test_a_cancelled_publication_can_be_re_armed_the_same_way(
 
     assert resp.status_code == 200, resp.text
     assert dispatched == [failed_publication.id]
+
+
+@pytest.mark.parametrize(
+    "state",
+    [PublicationStatus.PUBLISHING, PublicationStatus.PENDING, PublicationStatus.SCHEDULED],
+)
+def test_retrying_a_publication_still_in_flight_is_refused(
+    client, auth, content, failed_publication, db, monkeypatch, state
+):
+    """Re-arming a row a worker is actively publishing would cause duplicates."""
+    failed_publication.status = state
+    db.commit()
+
+    def fail(ids):  # pragma: no cover
+        raise AssertionError("an in-flight row must never be re-dispatched")
+
+    monkeypatch.setattr(content_router, "_dispatch", fail)
+
+    resp = client.post(
+        f"{API}/{content.id}/retry/{failed_publication.id}", headers=auth
+    )
+
+    assert resp.status_code == 409
+    db.refresh(failed_publication)
+    assert failed_publication.status == state
