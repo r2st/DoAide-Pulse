@@ -144,7 +144,10 @@ class BodySizeLimitMiddleware:
                     )
                     return {"type": "http.disconnect"}
                 if depth is not None and depth.feed(body) > MAX_JSON_DEPTH:
-                    rejection = (400, "Request body nested too deeply")
+                    rejection = (
+                        400,
+                        f"Request body nested too deeply (limit is {MAX_JSON_DEPTH} levels)",
+                    )
                     return {"type": "http.disconnect"}
             return message
 
