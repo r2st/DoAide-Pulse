@@ -76,6 +76,14 @@ class ProjectBase(BaseModel):
     #: ``utm_campaign``. Blank falls back to the project slug.
     utm_campaign: str = Field(default="", max_length=120)
 
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("A project needs a name.")
+        return name
+
     @field_validator("tech_stack", "keywords")
     @classmethod
     def _clean_list(cls, values: list[str]) -> list[str]:

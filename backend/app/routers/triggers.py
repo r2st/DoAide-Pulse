@@ -365,6 +365,13 @@ def rotate_secret(
     trigger.encrypted_secret = _stored(secret)
     db.commit()
     db.refresh(trigger)
+    logger.info(
+        "trigger %s (%s/%s) secret rotated by user %s",
+        trigger.id,
+        kind.value,
+        trigger.name,
+        user.id,
+    )
     return TriggerCreated(**_to_out(trigger).model_dump(), secret=secret)
 
 
