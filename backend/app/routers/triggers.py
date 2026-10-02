@@ -25,7 +25,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.database import get_db
-from app.deps import ListOffset, RowId, get_current_user, owned_project
+from app.deps import ListOffset, QueryRowId, RowId, get_current_user, owned_project
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
 from app.models.user import User
 from app.ratelimit import account_key, limiter
@@ -157,7 +157,7 @@ def list_kinds(request: Request, response: Response) -> list[TriggerKindOut]:
 )
 def list_triggers(
     response: Response,
-    project_id: int | None = Query(default=None),
+    project_id: QueryRowId | None = Query(default=None),
     # MAX_TRIGGERS_PER_PROJECT bounds this per project, but nothing bounds
     # projects per account, so the unnarrowed listing was 20 x however many
     # projects the caller had made. Same contract as /triggers/{id}/events

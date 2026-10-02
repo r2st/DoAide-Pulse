@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.translation import TranslationStatus
 from app.services import languages
@@ -36,7 +36,7 @@ class LanguageOut(BaseModel):
 
 
 class TranslationRequestIn(BaseModel):
-    """Ask for a piece to be translated into one language."""
+    model_config = ConfigDict(extra="forbid")
 
     language: str = Field(
         description=(

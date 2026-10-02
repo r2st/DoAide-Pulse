@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db, refresh_all
-from app.deps import RowId, get_current_user
+from app.deps import QueryRowId, RowId, get_current_user
 from app.models.content import Content, ContentStatus
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
@@ -31,7 +31,7 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
 def get_calendar(
     start: datetime | None = None,
     end: datetime | None = None,
-    project_id: int | None = None,
+    project_id: QueryRowId | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> CalendarOut:

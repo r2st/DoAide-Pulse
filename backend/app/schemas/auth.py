@@ -1,10 +1,12 @@
 """Auth-related schemas."""
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=200)
@@ -19,10 +21,14 @@ class Token(BaseModel):
 
 
 class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
 
 
 class PasswordResetConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     token: str = Field(min_length=16, max_length=256)
     #: Same floor as registration — a reset must not be a way around it.
     new_password: str = Field(min_length=8, max_length=128)
@@ -47,7 +53,7 @@ class UserOut(BaseModel):
 
 
 class PreferencesUpdate(BaseModel):
-    """The account preferences a user can change. PATCH semantics."""
+    model_config = ConfigDict(extra="forbid")
 
     full_name: str | None = Field(default=None, max_length=200)
     weekly_digest_enabled: bool | None = None

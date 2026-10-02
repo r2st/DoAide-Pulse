@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import ListOffset, RowId, get_current_user
+from app.deps import ROW_ID_MAX, ListOffset, RowId, get_current_user
 from app.models.content import Content
 from app.models.revision import ContentRevision
 from app.models.user import User
@@ -134,6 +134,7 @@ def diff_revision(
     against: int | None = Query(
         default=None,
         ge=1,
+        le=ROW_ID_MAX,
         description=(
             "The version to compare against. Omit to compare with the piece as "
             "it stands now, which is what the history sidebar asks for."

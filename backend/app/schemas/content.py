@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.content import (
     BODY_MARKDOWN_MAX_LENGTH,
@@ -135,7 +135,7 @@ def _settable_status(value: ContentStatus | None) -> ContentStatus | None:
 
 
 class GenerateRequest(BaseModel):
-    """Ask the engine for a new draft."""
+    model_config = ConfigDict(extra="forbid")
 
     project_id: int
     content_type: ContentType = ContentType.FEATURE_SPOTLIGHT
@@ -147,7 +147,7 @@ class GenerateRequest(BaseModel):
 
 
 class ContentCreate(BaseModel):
-    """Write a piece by hand, without the generator."""
+    model_config = ConfigDict(extra="forbid")
 
     project_id: int
     content_type: ContentType = ContentType.FEATURE_SPOTLIGHT
@@ -176,6 +176,8 @@ class ContentCreate(BaseModel):
 
 
 class ContentUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str | None = Field(default=None, min_length=1, max_length=TITLE_MAX_LENGTH)
     body_markdown: str | None = Field(default=None, max_length=BODY_MARKDOWN_MAX_LENGTH)
     excerpt: str | None = Field(default=None, max_length=1000)
@@ -350,7 +352,7 @@ class ContentDetail(ContentOut):
 
 
 class PublishRequestIn(BaseModel):
-    """Queue a piece for one or more platforms."""
+    model_config = ConfigDict(extra="forbid")
 
     platforms: list[Platform] = Field(min_length=1)
     #: ``None`` publishes as soon as a worker picks it up.
@@ -519,15 +521,7 @@ class RepurposeOut(BaseModel):
 
 
 class InlineEditIn(BaseModel):
-    """One passage of a draft, and what to do to it.
-
-    ``selection`` is the passage itself rather than a pair of offsets. Offsets
-    would be smaller to send and impossible to validate: the editor's copy of
-    the body drifts from the stored one the moment anything is typed, and a
-    stale offset pair silently edits the wrong paragraph. The text is checked
-    against the stored body before any model call, so the failure is a 422 the
-    author can act on rather than a replacement for something else.
-    """
+    model_config = ConfigDict(extra="forbid")
 
     selection: str = Field(
         min_length=inline_edit.MIN_SELECTION_CHARS,
@@ -569,7 +563,7 @@ class HeadlineVariantsOut(BaseModel):
 
 
 class HeadlineApplyIn(BaseModel):
-    """Swap the live headline. Allowed even on published content."""
+    model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
 
@@ -645,7 +639,7 @@ class HeadlineWinnerOut(BaseModel):
 
 
 class BulkContentIn(BaseModel):
-    """A batch of pieces to act on from the review queue."""
+    model_config = ConfigDict(extra="forbid")
 
     content_ids: list[int] = Field(min_length=1, max_length=100)
     dry_run: bool = Field(
@@ -745,7 +739,7 @@ class RetryResultOut(BaseModel):
 
 
 class ArchiveOldIn(BaseModel):
-    """Which old pieces to archive."""
+    model_config = ConfigDict(extra="forbid")
 
     older_than_days: int = Field(
         ge=1,
@@ -789,7 +783,7 @@ class ArchiveOldOut(BaseModel):
 
 
 class ContentStatusIn(BaseModel):
-    """Move one piece to a named status."""
+    model_config = ConfigDict(extra="forbid")
 
     status: ContentStatus = Field(
         description=(
@@ -805,10 +799,8 @@ class ContentStatusIn(BaseModel):
 
 
 class ScheduleContentIn(BaseModel):
-    """Put a piece on the calendar, or move the one that is already there."""
+    model_config = ConfigDict(extra="forbid")
 
-    #: Where it should go. Omitted means "the platforms it is already queued
-    #: for", which is what a plain reschedule wants.
     platforms: list[Platform] | None = Field(default=None, min_length=1)
     #: When. Required unless ``optimize`` is set, and refused if both are.
     scheduled_for: datetime | None = None
@@ -830,12 +822,12 @@ class SlotOut(BaseModel):
 
 
 class ScheduleUpdate(BaseModel):
-    """Drag-and-drop on the calendar lands here."""
+    model_config = ConfigDict(extra="forbid")
 
     scheduled_for: datetime | None = None
     timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
     #: Optional: move only this publication rather than the whole piece.
-    publication_id: int | None = None
+    publication_id: int | None = Field(default=None, le=2**31 - 1)
 
 
 class CalendarEntry(BaseModel):
@@ -863,7 +855,7 @@ class CalendarOut(BaseModel):
 
 
 class PreviewLinkCreate(BaseModel):
-    """How long the link should live. Omitted means the configured default."""
+    model_config = ConfigDict(extra="forbid")
 
     ttl_hours: int | None = Field(default=None, gt=0)
 

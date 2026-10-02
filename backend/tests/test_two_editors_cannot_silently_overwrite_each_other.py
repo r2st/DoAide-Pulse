@@ -104,9 +104,11 @@ def test_a_save_that_changes_nothing_does_not_bump_the_version(client, auth, pie
 
 
 def test_the_version_is_not_something_a_client_may_set(client, auth, piece):
-    """``ContentUpdate`` has no ``version`` field, so sending one is ignored
-    rather than obeyed — the count is the database's, not the caller's."""
-    assert _patch(client, auth, piece, version=99, title="Nice try").json()["version"] == 2
+    """``ContentUpdate`` forbids extra fields, so sending ``version`` is a 422
+    rather than silently accepted — the count is the database's, not the
+    caller's."""
+    resp = _patch(client, auth, piece, version=99, title="Nice try")
+    assert resp.status_code == 422
 
 
 # --------------------------------------------------------------------------- #

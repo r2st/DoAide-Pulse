@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.platform_connection import ConnectionStatus
 from app.models.publication import Platform
@@ -20,6 +20,8 @@ from app.services import languages
 
 
 class ConnectionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     platform: Platform
     #: Keys match the adapter's ``credential_fields``. Validated against them by
     #: the router, so a typo is rejected rather than silently stored.

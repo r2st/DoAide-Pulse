@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.deps import ListOffset, RowId, get_current_user, owned_project
+from app.deps import ListOffset, QueryRowId, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentStatus, unique_content_slug
 from app.models.project import Project
 from app.models.template import ContentTemplate, TemplateMode
@@ -148,7 +148,7 @@ def list_builtins(
 )
 def list_templates(
     response: Response,
-    project_id: int | None = Query(default=None),
+    project_id: QueryRowId | None = Query(default=None),
     include_bodies: bool = Query(
         default=False,
         description="Carry each template's body_template, as this used to.",

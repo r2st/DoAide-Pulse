@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -132,7 +132,7 @@ def list_translations(
 )
 def get_translation(
     content_id: RowId,
-    language: str,
+    language: str = Path(max_length=16),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> TranslationDetail:
@@ -238,7 +238,7 @@ def translate_content(
 )
 def delete_translation(
     content_id: RowId,
-    language: str,
+    language: str = Path(max_length=16),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> None:
