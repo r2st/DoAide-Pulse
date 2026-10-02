@@ -43,6 +43,7 @@ vi.mock("./pages/Calendar", () => ({ default: () => <p>page: Calendar</p> }));
 vi.mock("./pages/ContentEditor", () => ({ default: () => <p>page: ContentEditor</p> }));
 vi.mock("./pages/ContentList", () => ({ default: () => <p>page: ContentList</p> }));
 vi.mock("./pages/Dashboard", () => ({ default: () => <p>page: Dashboard</p> }));
+vi.mock("./pages/LandingPage", () => ({ default: () => <p>page: LandingPage</p> }));
 vi.mock("./pages/Login", () => ({ default: () => <p>page: Login</p> }));
 vi.mock("./pages/PreviewPage", () => ({ default: () => <p>page: PreviewPage</p> }));
 vi.mock("./pages/Projects", () => ({ default: () => <p>page: Projects</p> }));
@@ -77,7 +78,7 @@ async function draw(path) {
 
 /** Every path that requires a session, and the page it renders. */
 const PROTECTED = [
-  ["/", "Dashboard"],
+  ["/dashboard", "Dashboard"],
   ["/projects", "Projects"],
   ["/content", "ContentList"],
   ["/content/42", "ContentEditor"],
@@ -89,8 +90,9 @@ const PROTECTED = [
   ["/settings", "Settings"],
 ];
 
-/** The two that render without a session, and without the chrome. */
+/** The ones that render without a session, and without the chrome. */
 const PUBLIC = [
+  ["/", "LandingPage"],
   ["/login", "Login"],
   ["/preview/abc123", "PreviewPage"],
 ];
@@ -104,7 +106,7 @@ describe("the route table", () => {
     // A guard on the guards below, which are parametrised over these lists: a
     // route added to App.jsx and not to one of them is a route nothing here
     // checks, and the file would stay green while covering less of the table.
-    expect(PROTECTED.length + PUBLIC.length).toBe(12);
+    expect(PROTECTED.length + PUBLIC.length).toBe(13);
   });
 
   it.each(PROTECTED)("renders %s as the %s page", async (path, name) => {

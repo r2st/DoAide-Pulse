@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 import Logo from "./ui/Logo";
 
 const TABS = [
-  { to: "/", label: "Dashboard", icon: DashboardIcon, end: true },
+  { to: "/dashboard", label: "Dashboard", icon: DashboardIcon, end: true },
   { to: "/projects", label: "Projects", icon: ProjectsIcon },
   { to: "/triggers", label: "Triggers", icon: TriggersIcon },
   { to: "/templates", label: "Templates", icon: TemplatesIcon },

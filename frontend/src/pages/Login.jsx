@@ -13,7 +13,7 @@ export default function Login() {
 
   const isSignUp = mode === "signup";
 
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function onSubmit(event) {
     event.preventDefault();
