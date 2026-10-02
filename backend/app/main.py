@@ -113,7 +113,10 @@ class BodySizeLimitMiddleware:
                 await _respond(scope, send, 400, "Invalid Content-Length header")
                 return
             if length > MAX_BODY_BYTES:
-                await _respond(scope, send, 413, "Request body too large")
+                await _respond(
+                    scope, send, 413,
+                    f"Request body too large (limit is {MAX_BODY_BYTES // 1024} KB)",
+                )
                 return
 
         read = 0
@@ -135,7 +138,10 @@ class BodySizeLimitMiddleware:
                 body = message.get("body", b"")
                 read += len(body)
                 if read > MAX_BODY_BYTES:
-                    rejection = (413, "Request body too large")
+                    rejection = (
+                        413,
+                        f"Request body too large (limit is {MAX_BODY_BYTES // 1024} KB)",
+                    )
                     return {"type": "http.disconnect"}
                 if depth is not None and depth.feed(body) > MAX_JSON_DEPTH:
                     rejection = (400, "Request body nested too deeply")
