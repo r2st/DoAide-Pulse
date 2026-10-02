@@ -55,7 +55,7 @@ def test_production_debug_still_returns_a_clean_500(
         response = client.get("/__boom")
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "Internal server error"}
+    assert "Something went wrong on our end" in response.json()["detail"]
     # Nothing of the exception reaches the caller — not the message, not the
     # frames, not the module that raised.
     assert BOOM not in response.text
@@ -84,7 +84,7 @@ def test_production_without_debug_returns_a_clean_500(exploding_client, monkeypa
         response = client.get("/__boom")
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "Internal server error"}
+    assert "Something went wrong on our end" in response.json()["detail"]
     assert BOOM not in response.text
 
 
@@ -111,7 +111,7 @@ def test_development_without_debug_returns_a_clean_500(exploding_client, monkeyp
         response = client.get("/__boom")
 
     assert response.status_code == 500
-    assert response.json() == {"detail": "Internal server error"}
+    assert "Something went wrong on our end" in response.json()["detail"]
     assert BOOM not in response.text
 
 

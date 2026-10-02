@@ -119,7 +119,7 @@ def test_an_unhandled_exception_becomes_a_flat_500_with_nothing_in_it(
         resp = client.get("/_raises_for_this_test")
 
     assert resp.status_code == 500
-    assert resp.json() == {"detail": "Internal server error"}
+    assert "Something went wrong on our end" in resp.json()["detail"]
     assert "postgresql" not in resp.text
     assert "RuntimeError" not in resp.text
 

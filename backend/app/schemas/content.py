@@ -536,7 +536,9 @@ class InlineEditIn(BaseModel):
     @classmethod
     def _not_only_whitespace(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("select some text to edit")
+            raise ValueError(
+                "selection is blank — highlight the passage you want to edit"
+            )
         return v
 
 

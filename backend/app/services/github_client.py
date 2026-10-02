@@ -280,7 +280,11 @@ def _get(path: str, *, params: dict | None = None) -> httpx.Response:
     if resp.status_code == 404:
         raise GitHubNotFound(f"GitHub has no {path} — check the repo URL")
     if resp.status_code >= 400:
-        raise GitHubError(f"GitHub returned {resp.status_code} for {path}")
+        raise GitHubError(
+            f"GitHub returned {resp.status_code} for {path}. "
+            "If this keeps happening, check that the repo URL is correct "
+            "and that the token has read access to it."
+        )
     return resp
 
 

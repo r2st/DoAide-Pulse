@@ -163,7 +163,7 @@ def test_a_missing_connection_is_still_a_404_not_a_429(client, auth, stub_devto)
     """
     resp = client.post(VERIFY, headers=auth)
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Not connected"
+    assert "is not connected" in resp.json()["detail"]
     assert stub_devto == []
 
 

@@ -671,7 +671,9 @@ def _ingest(db: Session, token: str, raw: bytes, headers: _InboundHeaders) -> di
         # Same answer for "no such token" and "deactivated": a caller holding a
         # URL should not be able to learn that it once existed.
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Unknown trigger"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active trigger matches this URL. Check the webhook URL "
+            "in your sender's configuration, or re-enable the trigger in Pulse.",
         )
 
     if len(raw) > MAX_INBOUND_BYTES:
@@ -694,7 +696,9 @@ def _ingest(db: Session, token: str, raw: bytes, headers: _InboundHeaders) -> di
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or invalid signature",
+            detail="This trigger requires a valid signature. Send an "
+            "X-Pulse-Signature header (HMAC-SHA256 with the trigger's secret) "
+            "or an X-Hub-Signature-256 header (GitHub webhook format).",
         )
 
     body_text = raw.decode("utf-8", errors="replace")
@@ -754,5 +758,6 @@ def _stored(secret: str) -> str:
         # Production without TOKEN_ENCRYPTION_KEY. Refusing matches what the
         # outbound webhook and platform-credential paths do, for the same reason.
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not encrypt the trigger secret for storage: {exc}",
         ) from exc

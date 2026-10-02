@@ -964,7 +964,10 @@ def get_public_preview(
     """
     content = preview_links.resolve(db, token)
     if content is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preview link not found — it may have been revoked or expired.",
+        )
     return PublicPreviewOut(
         title=content.title,
         body_markdown=content.body_markdown,
@@ -1652,7 +1655,10 @@ def revoke_preview_link(
         None,
     )
     if link is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preview link not found for this piece.",
+        )
     preview_links.revoke(db, link)
 
 
@@ -2020,7 +2026,8 @@ def approve_content(
     content = _owned_content(content_id, db, user)
     if content.status == ContentStatus.PUBLISHED:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Already published"
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is already published — approving it again has no effect."
         )
     previous_status = content.status
     content.status = ContentStatus.APPROVED

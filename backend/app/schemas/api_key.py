@@ -19,7 +19,11 @@ from app.services.api_keys import MAX_EXPIRY_DAYS, MAX_GRACE_HOURS
 
 def _validate_scopes(scopes: list[ApiKeyScope]) -> list[ApiKeyScope]:
     if not scopes:
-        raise ValueError("Grant at least one scope.")
+        raise ValueError(
+            "Grant at least one scope. Available: "
+            + ", ".join(s.value for s in ALL_SCOPES)
+            + "."
+        )
     # Deduplicated and ordered here as well as in the service, so the 422 a
     # client gets for a bad scope and the shape it gets back for a good one are
     # both decided at the edge.

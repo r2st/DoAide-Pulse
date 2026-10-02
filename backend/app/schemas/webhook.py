@@ -15,7 +15,11 @@ from app.models.webhook import SUBSCRIBABLE_EVENTS, DeliveryStatus, WebhookEvent
 
 def _validate_events(events: list[WebhookEvent]) -> list[WebhookEvent]:
     if not events:
-        raise ValueError("Subscribe to at least one event")
+        raise ValueError(
+            "Subscribe to at least one event. Available: "
+            + ", ".join(e.value for e in SUBSCRIBABLE_EVENTS)
+            + "."
+        )
     unsupported = [e.value for e in events if e not in SUBSCRIBABLE_EVENTS]
     if unsupported:
         raise ValueError(
