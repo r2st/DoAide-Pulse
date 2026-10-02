@@ -35,7 +35,7 @@ function Loading() {
 function Protected({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <Loading />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/" replace />;
   return (
     <Shell>
       <RouteErrorBoundary title="This page stopped working" section="page">

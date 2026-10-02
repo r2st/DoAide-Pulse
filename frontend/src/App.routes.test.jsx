@@ -145,7 +145,7 @@ describe("what needs a session", () => {
 
     await draw(path);
 
-    expect(screen.getByText("page: Login")).toBeInTheDocument();
+    expect(screen.getByText("page: LandingPage")).toBeInTheDocument();
   });
 
   it.each(PROTECTED)("waits rather than redirecting from %s mid-check", async (path) => {
@@ -157,7 +157,7 @@ describe("what needs a session", () => {
     await draw(path);
 
     expect(screen.getByText("Loading")).toBeInTheDocument();
-    expect(screen.queryByText("page: Login")).not.toBeInTheDocument();
+    expect(screen.queryByText("page: LandingPage")).not.toBeInTheDocument();
   });
 
   it.each(PUBLIC)("does not gate %s behind one", async (path, name) => {
