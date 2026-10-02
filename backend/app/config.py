@@ -277,10 +277,13 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # The workhorse: fast and cheap enough to draft a post per repo push.
-    openrouter_model: str = "openai/gpt-oss-20b:free"
+    # Previously ``openai/gpt-oss-20b:free``, which OpenRouter removed from
+    # its free tier in Sep 2026.
+    openrouter_model: str = "qwen/qwen3.8-27b:free"
     # The bigger free model, used when a piece needs the extra headroom —
     # long-form tutorials and comparisons rather than a 280-character tweet.
-    openrouter_long_form_model: str = "openai/gpt-oss-120b:free"
+    # Previously ``openai/gpt-oss-120b:free`` (also removed from free tier).
+    openrouter_long_form_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
     openrouter_app_url: str = "https://herald.local"
     openrouter_app_title: str = "Pulse"
 
@@ -301,7 +304,10 @@ class Settings(BaseSettings):
 
     groq_api_key: str = ""
     groq_base_url: str = "https://api.groq.com/openai/v1"
-    groq_model: str = "llama-3.3-70b-versatile"
+    # Previously ``llama-3.3-70b-versatile``, which Groq moved to
+    # enterprise-only in 2026. ``openai/gpt-oss-20b`` is cheap ($0.075/M
+    # input) and the fastest model on the platform at ~1000 t/s.
+    groq_model: str = "openai/gpt-oss-20b"
 
     cerebras_api_key: str = ""
     cerebras_base_url: str = "https://api.cerebras.ai/v1"
@@ -311,7 +317,7 @@ class Settings(BaseSettings):
     # comma-separated. Worth setting on the free tiers, where the quota is per
     # model rather than per key: a second model on a key that has exhausted its
     # first is a request that succeeds, and moving providers is not.
-    openrouter_fallback_models: str = ""
+    openrouter_fallback_models: str = "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-lightning:free"
     gemini_fallback_models: str = ""
     groq_fallback_models: str = ""
     cerebras_fallback_models: str = ""
