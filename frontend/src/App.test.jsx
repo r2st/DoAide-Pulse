@@ -104,15 +104,12 @@ describe("the gate", () => {
     expect(screen.getByText("Loading")).toBeInTheDocument();
   });
 
-  it("sends a signed-out visitor to the login page", async () => {
+  it("sends a signed-out visitor to the landing page", async () => {
     signedIn({ user: null, loading: false });
 
-    // Login is mocked to throw, so its boundary's fallback is the proof that
-    // the redirect happened and the login route rendered.
-    await whileCaught(() => draw("/dashboard"));
+    await draw("/dashboard");
 
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByText("login exploded")).toBeInTheDocument();
+    expect(screen.getByText("landing")).toBeInTheDocument();
   });
 });
 

@@ -1,12 +1,13 @@
 /**
- * Sign-in and sign-up share one page and one submit handler; the only branch
- * is which `useAuth` method gets called and which fields are visible.
+ * Auth form behaviour on the landing page: sign-in and sign-up share one
+ * split-panel page with tab switching. The only branch is which `useAuth`
+ * method gets called and which fields are visible.
  */
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import Login from "./Login";
+import LandingPage from "./LandingPage";
 import { useAuth } from "../hooks/useAuth";
 import { ROUTER_FUTURE } from "../lib/routerFuture";
 
@@ -15,7 +16,7 @@ vi.mock("../hooks/useAuth", () => ({ useAuth: vi.fn() }));
 function draw() {
   return render(
     <MemoryRouter future={ROUTER_FUTURE}>
-      <Login />
+      <LandingPage />
     </MemoryRouter>,
   );
 }
@@ -84,7 +85,7 @@ describe("switching to sign up", () => {
     const user = userEvent.setup();
     draw();
 
-    await user.click(screen.getByRole("button", { name: "Create one" }));
+    await user.click(screen.getByRole("tab", { name: "Create account" }));
 
     expect(screen.getByLabelText(/^Name/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
@@ -93,7 +94,7 @@ describe("switching to sign up", () => {
   it("submits to register with the optional name, not login", async () => {
     const user = userEvent.setup();
     draw();
-    await user.click(screen.getByRole("button", { name: "Create one" }));
+    await user.click(screen.getByRole("tab", { name: "Create account" }));
 
     await user.type(screen.getByLabelText("Email"), "new@example.com");
     await user.type(screen.getByLabelText(/^Name/), "Ada Lovelace");
@@ -107,7 +108,7 @@ describe("switching to sign up", () => {
   it("sends null rather than an empty string for a blank name", async () => {
     const user = userEvent.setup();
     draw();
-    await user.click(screen.getByRole("button", { name: "Create one" }));
+    await user.click(screen.getByRole("tab", { name: "Create account" }));
 
     await user.type(screen.getByLabelText("Email"), "new@example.com");
     await user.type(screen.getByLabelText("Password"), "hunter22222");
@@ -126,30 +127,27 @@ describe("switching to sign up", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     await screen.findByText("Incorrect email or password");
 
-    await user.click(screen.getByRole("button", { name: "Create one" }));
+    await user.click(screen.getByRole("tab", { name: "Create account" }));
 
     expect(screen.queryByText("Incorrect email or password")).not.toBeInTheDocument();
   });
 
   it("toggles back to signing in, taking the name field with it", async () => {
-    // The toggle is one button whose meaning inverts, so the return trip is a
-    // different arm from the outbound one. Someone who clicks "Create one" by
-    // mistake has no other way back.
     const user = userEvent.setup();
     draw();
 
-    await user.click(screen.getByRole("button", { name: "Create one" }));
+    await user.click(screen.getByRole("tab", { name: "Create account" }));
     expect(screen.getByLabelText(/Name/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await user.click(screen.getByRole("tab", { name: "Sign in" }));
 
     expect(screen.queryByLabelText(/Name/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create one" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Create account" })).toBeInTheDocument();
   });
 });
 
 describe("already signed in", () => {
-  it("redirects away from the login page", () => {
+  it("redirects away from the landing page", () => {
     useAuth.mockReturnValue({ user: { id: 1, email: "you@example.com" }, login, register });
     draw();
 
