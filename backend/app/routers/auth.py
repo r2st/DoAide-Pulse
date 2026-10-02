@@ -231,7 +231,11 @@ def login(
         )
     if not user.is_active:
         _refused(request, f"user {user.id} is deactivated")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Contact the administrator "
+            "to reactivate it.",
+        )
     logger.info("login ok for user %s from %s", user.id, client_key(request))
     return Token(access_token=create_access_token(user.id))
 

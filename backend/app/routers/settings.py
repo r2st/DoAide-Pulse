@@ -151,18 +151,29 @@ def upsert_connection(
     try:
         display_name = adapter.verify(credentials)
     except NotImplementedAdapter as exc:
-        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"{adapter.display_name} publishing is not available yet. {exc}",
+        ) from exc
     except CredentialError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{adapter.display_name} rejected the credentials: {exc}",
+        ) from exc
     except PublishError as exc:
         # The platform is having a bad day — the credentials might be fine.
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"{adapter.display_name} is not responding — the credentials "
+            f"may be fine but could not be verified right now. {exc}",
+        ) from exc
 
     try:
         encrypted = encrypt_credentials(credentials)
     except CredentialEncryptionError as exc:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not encrypt credentials for storage: {exc}",
         ) from exc
 
     connection = db.scalar(
@@ -225,7 +236,8 @@ def verify_connection(
     )
     if connection is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Not connected"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{platform.value} is not connected. Add it in Settings first.",
         )
 
     adapter = publishers.get_adapter(platform)
@@ -287,7 +299,8 @@ def delete_connection(
     )
     if connection is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Not connected"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{platform.value} is not connected — nothing to disconnect.",
         )
     logger.warning(
         "user %s disconnected %s — every queued publication for it now fails "

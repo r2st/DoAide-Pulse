@@ -363,7 +363,10 @@ def create_app() -> FastAPI:
         # id at all. The id is in the log line above either way — but a 500 the
         # caller cannot quote back is the one error where that matters most.
         return JSONResponse(
-            {"detail": "Internal server error"},
+            {
+                "detail": "Something went wrong on our end. If this keeps "
+                f"happening, quote request id {request_id} when reporting it."
+            },
             status_code=500,
             headers={"X-Request-ID": request_id},
         )

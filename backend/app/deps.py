@@ -67,7 +67,8 @@ ListOffset = Annotated[int, Query(ge=0, le=ROW_ID_MAX)]
 
 _credentials_exc = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="Could not validate credentials",
+    detail="Token is invalid, expired, or was revoked by a password reset. "
+    "Sign in again to get a new one.",
     headers={"WWW-Authenticate": "Bearer"},
 )
 

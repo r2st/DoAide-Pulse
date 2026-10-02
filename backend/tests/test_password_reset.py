@@ -281,7 +281,7 @@ def test_a_reset_stops_the_tokens_that_were_already_out(client, user, auth, outb
 
     refused = client.get("/api/v1/auth/me", headers=auth)
     assert refused.status_code == 401
-    assert refused.json()["detail"] == "Could not validate credentials"
+    assert "invalid, expired, or was revoked" in refused.json()["detail"]
 
 
 def test_the_reset_does_not_lock_out_the_person_who_did_it(client, user, outbox):
