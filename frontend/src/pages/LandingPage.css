@@ -426,7 +426,7 @@
   font-size: 12px;
 }
 
-/* ── Responsive ── */
+/* ── Responsive: tablet ── */
 @media (max-width: 900px) {
   .landing-header {
     padding: 16px 20px;
@@ -473,13 +473,100 @@
   }
 }
 
-@media (max-width: 480px) {
-  .landing-pipeline-connector {
-    min-width: 10px;
+/* ── Responsive: mobile ── */
+@media (max-width: 768px) {
+  .landing-root {
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
-  .landing-pipeline-label {
-    font-size: 9px;
+  .landing-header {
+    padding: 12px 16px;
+  }
+
+  .landing-hero-robot-wrap,
+  .landing-pipeline,
+  .landing-typewriter-wrap,
+  .landing-subtitle {
+    display: none;
+  }
+
+  .landing-main {
+    flex-direction: column;
+    padding: 0 16px 16px;
+    gap: 12px;
+    text-align: center;
+    flex: unset;
+  }
+
+  .landing-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .landing-title {
+    font-size: 1.5rem;
+    margin: 0;
+  }
+
+  .landing-right {
+    width: 100%;
+    max-width: none;
+  }
+
+  .landing-auth-card {
+    border-radius: 16px;
+  }
+
+  .landing-auth-form {
+    padding: 16px;
+  }
+
+  .landing-auth-tab {
+    padding: 12px 0;
+    font-size: 13px;
+  }
+
+  .landing-field {
+    margin-bottom: 12px;
+  }
+
+  .landing-input {
+    padding: 9px 12px;
+    font-size: 13px;
+  }
+
+  .landing-submit {
+    padding: 9px 16px;
+    font-size: 13px;
+  }
+
+  .landing-footer {
+    padding: 12px 16px;
+    margin-top: auto;
+  }
+
+  .landing-footer-products {
+    gap: 4px 10px;
+    margin-bottom: 8px;
+  }
+
+  .landing-footer-link {
+    font-size: 10px;
+  }
+
+  .landing-footer-bottom {
+    gap: 8px;
+  }
+
+  .landing-footer-home,
+  .landing-footer-copy {
+    font-size: 10px;
+  }
+
+  .landing-particles {
+    display: none;
   }
 }
 
