@@ -161,14 +161,26 @@ def test_the_latest_metric_subquery_is_scoped_to_the_user(
 
 
 def test_every_caller_of_the_subquery_gets_the_scoped_one(db, user, mine, stranger, sql_log):
-    """``overview`` builds it six times; one unscoped rebuild undoes the fix."""
+    """``overview`` computes the subquery once and shares it; it must be scoped."""
     sql_log.clear()
     analytics_service.overview(db, user.id)
 
     grouping = _latest_metric_subqueries(sql_log)
-    assert len(grouping) >= 4, f"expected several, got {len(grouping)}"
+    assert len(grouping) >= 1, f"expected at least one, got {len(grouping)}"
     unscoped = [s for s in grouping if "projects.user_id" not in s]
     assert not unscoped, "\n".join(s[:200] for s in unscoped)
+
+
+def test_overview_runs_the_latest_metric_subquery_once(db, user, mine, stranger, sql_log):
+    """The 4-table-join GROUP BY must run once, not once per sub-function."""
+    sql_log.clear()
+    analytics_service.overview(db, user.id)
+
+    grouping = _latest_metric_subqueries(sql_log)
+    assert len(grouping) == 1, (
+        f"overview should compute the latest-metric subquery exactly once, "
+        f"got {len(grouping)}"
+    )
 
 
 def test_scoping_the_subquery_did_not_change_a_single_number(db, user, mine, stranger):

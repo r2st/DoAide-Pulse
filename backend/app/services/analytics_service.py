@@ -198,6 +198,110 @@ def _latest_metrics(db: Session, user_id: int) -> list[tuple[Publication, Conten
     )
 
 
+@dataclass(frozen=True)
+class _OverviewRow:
+    """One (publication, latest-metric) pair enriched with content metadata.
+
+    Built once by :func:`_overview_metrics` and consumed by the sub-functions
+    that :func:`overview` calls, so the expensive 4-table-join GROUP BY in
+    :func:`_latest_metric_subquery` runs once per page load instead of six
+    times.
+    """
+
+    publication: Publication
+    metric: ContentMetric
+    content_id: int
+    content_type: ContentType
+    project_id: int
+    word_count: int
+
+
+def _overview_metrics(db: Session, user_id: int) -> list[_OverviewRow]:
+    """Everything ``overview()``'s sub-functions need, in one query.
+
+    Each sub-function used to call :func:`_latest_metric_subquery` on its own
+    — the same 4-table join and GROUP BY, six times per overview page load.
+    This runs it once and attaches the three Content columns the sub-functions
+    read from their own separate queries.
+    """
+    latest = _latest_metric_subquery(user_id)
+    rows = db.execute(
+        select(
+            Publication,
+            ContentMetric,
+            Content.id.label("cid"),
+            Content.content_type,
+            Content.project_id,
+            Content.word_count,
+        )
+        .join(ContentMetric, ContentMetric.publication_id == Publication.id)
+        .join(latest, latest.c.metric_id == ContentMetric.id)
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id)
+    ).all()
+    return [
+        _OverviewRow(
+            publication=pub,
+            metric=metric,
+            content_id=cid,
+            content_type=ct,
+            project_id=pid,
+            word_count=wc,
+        )
+        for pub, metric, cid, ct, pid, wc in rows
+    ]
+
+
+def _totals_from_cached(
+    db: Session,
+    user_id: int,
+    cached: list[_OverviewRow],
+) -> Totals:
+    """Derive :func:`totals` from a pre-fetched metrics set, no subquery."""
+    base = (
+        select(Content.id, Content.status)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id)
+    )
+    content_sub = base.subquery()
+    counts = db.execute(
+        select(
+            func.count().label("total"),
+            func.count()
+            .filter(content_sub.c.status == ContentStatus.PUBLISHED)
+            .label("published"),
+        ).select_from(content_sub)
+    ).one()
+    content_count = counts.total or 0
+    published_count = counts.published or 0
+    if content_count == 0:
+        return Totals()
+
+    pub_count = db.scalar(
+        select(func.count())
+        .select_from(Publication)
+        .join(content_sub, content_sub.c.id == Publication.content_id)
+        .where(Publication.status == PublicationStatus.PUBLISHED)
+    ) or 0
+
+    bucket = _blank_metrics()
+    for row in cached:
+        if row.publication.status == PublicationStatus.PUBLISHED:
+            _accumulate(bucket, row.metric)
+    return Totals(
+        content_count=content_count,
+        published_count=published_count,
+        publication_count=pub_count,
+        views=bucket["views"],
+        reads=bucket["reads"],
+        clicks=bucket["clicks"],
+        engagement=bucket["engagement"],
+        reads_reported=bucket["reads_reported"],
+        clicks_reported=bucket["clicks_reported"],
+    )
+
+
 def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Totals:
     """Headline numbers for the dashboard.
 
@@ -274,6 +378,20 @@ def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Total
     )
 
 
+def _by_content_type_from_cached(cached: list[_OverviewRow]) -> list[dict]:
+    """Derive :func:`by_content_type` from a pre-fetched metrics set."""
+    buckets: dict[ContentType, dict] = defaultdict(
+        lambda: {"published": 0, "with_views": 0, **_blank_metrics()}
+    )
+    for row in cached:
+        bucket = buckets[row.content_type]
+        bucket["published"] += 1
+        _accumulate(bucket, row.metric)
+        if row.metric.views is not None:
+            bucket["with_views"] += 1
+    return _format_content_type_buckets(buckets)
+
+
 def by_content_type(db: Session, user_id: int) -> list[dict]:
     """Which content types actually perform, best first.
 
@@ -301,6 +419,12 @@ def by_content_type(db: Session, user_id: int) -> list[dict]:
         if metric.views is not None:
             bucket["with_views"] += 1
 
+    return _format_content_type_buckets(buckets)
+
+
+def _format_content_type_buckets(
+    buckets: dict[ContentType, dict],
+) -> list[dict]:
     out = [
         {
             "content_type": ct.value,
@@ -318,6 +442,35 @@ def by_content_type(db: Session, user_id: int) -> list[dict]:
         for ct, data in buckets.items()
     ]
     return sorted(out, key=lambda d: d["views"], reverse=True)
+
+
+def _by_platform_from_cached(
+    db: Session, user_id: int, cached: list[_OverviewRow]
+) -> list[dict]:
+    """Derive :func:`by_platform` from a pre-fetched metrics set."""
+    stats: dict[Platform, dict] = defaultdict(
+        lambda: {"published": 0, "failed": 0, **_blank_metrics()}
+    )
+    platform_counts = db.execute(
+        select(
+            Publication.platform,
+            Publication.status,
+            func.count().label("cnt"),
+        )
+        .join(Content, Content.id == Publication.content_id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id)
+        .group_by(Publication.platform, Publication.status)
+    ).all()
+    for platform, pub_status, cnt in platform_counts:
+        bucket = stats[platform]
+        if pub_status == PublicationStatus.PUBLISHED:
+            bucket["published"] += cnt
+        elif pub_status == PublicationStatus.FAILED:
+            bucket["failed"] += cnt
+    for row in cached:
+        _accumulate(stats[row.publication.platform], row.metric)
+    return _format_platform_stats(stats)
 
 
 def by_platform(db: Session, user_id: int) -> list[dict]:
@@ -353,6 +506,10 @@ def by_platform(db: Session, user_id: int) -> list[dict]:
     for publication, metric in _latest_metrics(db, user_id):
         _accumulate(stats[publication.platform], metric)
 
+    return _format_platform_stats(stats)
+
+
+def _format_platform_stats(stats: dict[Platform, dict]) -> list[dict]:
     out = [
         {
             "platform": platform.value,
@@ -362,14 +519,40 @@ def by_platform(db: Session, user_id: int) -> list[dict]:
             "reads": data["reads"],
             "clicks": data["clicks"],
             "engagement": data["engagement"],
-            # The comparison worth making across platforms is not the raw view
-            # count — Dev.to will always beat Mastodon on that — but what a view
-            # is worth once you have it.
             **_rates(data),
         }
         for platform, data in stats.items()
     ]
     return sorted(out, key=lambda d: d["views"], reverse=True)
+
+
+def _by_project_from_cached(
+    db: Session, user_id: int, cached: list[_OverviewRow]
+) -> list[dict]:
+    """Derive :func:`by_project` from a pre-fetched metrics set."""
+    projects = list(db.scalars(select(Project).where(Project.user_id == user_id)))
+    index = {p.id: p for p in projects}
+    stats: dict[int, dict] = {
+        p.id: {"content": 0, "published": 0, "views": 0, "engagement": 0}
+        for p in projects
+    }
+    counted = db.execute(
+        select(
+            Content.project_id,
+            func.count(Content.id),
+            func.count(Content.id).filter(Content.status == ContentStatus.PUBLISHED),
+        )
+        .where(Content.project_id.in_(list(index) or [0]))
+        .group_by(Content.project_id)
+    ).all()
+    for project_id, total, published in counted:
+        stats[project_id]["content"] = total
+        stats[project_id]["published"] = published
+    for row in cached:
+        if row.project_id in stats:
+            stats[row.project_id]["views"] += row.metric.views or 0
+            stats[row.project_id]["engagement"] += row.metric.engagement
+    return _format_project_stats(stats, index)
 
 
 def by_project(db: Session, user_id: int) -> list[dict]:
@@ -412,6 +595,12 @@ def by_project(db: Session, user_id: int) -> list[dict]:
         stats[project_id]["views"] += metric.views or 0
         stats[project_id]["engagement"] += metric.engagement
 
+    return _format_project_stats(stats, index)
+
+
+def _format_project_stats(
+    stats: dict[int, dict], index: dict[int, Project]
+) -> list[dict]:
     out = [
         {
             "project_id": pid,
@@ -429,6 +618,39 @@ def by_project(db: Session, user_id: int) -> list[dict]:
 #: counters and is the better measure where it is reported, which is not
 #: everywhere — see :meth:`app.models.metrics.ContentMetric.engagement`.
 TOP_CONTENT_SORTS = ("views", "engagement", "clicks", "reads")
+
+
+def _top_content_from_cached(
+    db: Session,
+    cached: list[_OverviewRow],
+    *,
+    limit: int = 10,
+    sort: str = "views",
+) -> list[dict]:
+    """Derive :func:`top_content` from a pre-fetched metrics set."""
+    if sort not in TOP_CONTENT_SORTS:
+        raise ValueError(
+            f"cannot rank by {sort!r}; known: {', '.join(TOP_CONTENT_SORTS)}"
+        )
+    scores: dict[int, dict] = defaultdict(_blank_metrics)
+    for row in cached:
+        _accumulate(scores[row.content_id], row.metric)
+    if not scores:
+        return []
+    content_rows = {
+        r.id: r
+        for r in db.execute(
+            select(
+                Content.id,
+                Content.title,
+                Content.content_type,
+                Content.project_id,
+                Content.published_at,
+                Content.word_count,
+            ).where(Content.id.in_(scores))
+        )
+    }
+    return _format_top_content(scores, content_rows, limit=limit, sort=sort)
 
 
 def top_content(
@@ -473,6 +695,16 @@ def top_content(
             ).where(Content.id.in_(scores))
         )
     }
+    return _format_top_content(scores, content_rows, limit=limit, sort=sort)
+
+
+def _format_top_content(
+    scores: dict[int, dict],
+    content_rows: dict,
+    *,
+    limit: int,
+    sort: str,
+) -> list[dict]:
     out = [
         {
             "content_id": cid,
@@ -957,6 +1189,32 @@ def _band_for(read_minutes: int) -> str:
     return _LENGTH_BANDS[-1][0]  # pragma: no cover - the last band is open-ended
 
 
+def _read_time_from_cached(
+    db: Session, user_id: int, cached: list[_OverviewRow]
+) -> dict:
+    """Derive :func:`read_time` from a pre-fetched metrics set."""
+    counts = db.execute(
+        select(Content.id, Content.word_count, Content.status)
+        .join(Project, Project.id == Content.project_id)
+        .where(
+            Project.user_id == user_id,
+            or_(
+                Content.status == ContentStatus.PUBLISHED,
+                Content.publications.any(),
+            ),
+        )
+    ).all()
+    published = [
+        words for _, words, st in counts if st == ContentStatus.PUBLISHED
+    ]
+    minutes_of_content = {cid: read_minutes_for(words) for cid, words, _ in counts}
+    return _read_time_aggregate(
+        published,
+        minutes_of_content,
+        [(row.content_id, row.metric) for row in cached],
+    )
+
+
 def read_time(db: Session, user_id: int) -> dict:
     """How long this user's posts are, and whether the long ones pay off.
 
@@ -1014,6 +1272,14 @@ def read_time(db: Session, user_id: int) -> dict:
         .where(Project.user_id == user_id)
     ).all()
 
+    return _read_time_aggregate(published, minutes_of_content, list(rows))
+
+
+def _read_time_aggregate(
+    published: list[int],
+    minutes_of_content: dict[int, int],
+    rows: list[tuple[int, ContentMetric]],
+) -> dict:
     bands: dict[str, dict] = {
         name: {
             "publications": 0,
@@ -1028,7 +1294,7 @@ def read_time(db: Session, user_id: int) -> dict:
     reads_reported = 0
 
     for content_id, metric in rows:
-        minutes = minutes_of_content[content_id]
+        minutes = minutes_of_content.get(content_id, 1)
         bucket = bands[_band_for(minutes)]
         bucket["publications"] += 1
         bucket["read_minutes"] += minutes
@@ -1039,9 +1305,6 @@ def read_time(db: Session, user_id: int) -> dict:
             total_reads += metric.reads
             reads_reported += 1
             reader_minutes += metric.reads * minutes
-            # Per band as well as overall: where the output goes and where the
-            # attention goes are different distributions, and the gap between
-            # them is the interesting part.
             bucket["reader_minutes"] += metric.reads * minutes
 
     return {
@@ -1052,10 +1315,7 @@ def read_time(db: Session, user_id: int) -> dict:
         if published
         else None,
         "total_words": sum(published),
-        #: Reading time actually spent, as far as the platforms will say.
         "reader_minutes": reader_minutes,
-        #: How many publications contributed to it. Zero means no platform you
-        #: publish to reports reads — not that nobody read anything.
         "publications_reporting_reads": reads_reported,
         "read_rate": _rate(total_reads, total_views) if reads_reported else None,
         "by_length": [
@@ -1086,16 +1346,24 @@ def read_time(db: Session, user_id: int) -> dict:
 
 
 def overview(db: Session, user_id: int) -> dict:
-    """Everything the analytics page needs, in one round trip."""
+    """Everything the analytics page needs, in one round trip.
+
+    Fetches the latest-metric-per-publication set once and passes it to the
+    five sub-functions that used to compute it independently — six executions
+    of the same 4-table-join GROUP BY replaced by one.  ``timeline`` and
+    ``engagement_trend`` use different queries (windowed, not latest-only)
+    and are unaffected.
+    """
+    cached = _overview_metrics(db, user_id)
     return {
-        "totals": totals(db, user_id).to_dict(),
-        "by_content_type": by_content_type(db, user_id),
-        "by_platform": by_platform(db, user_id),
-        "by_project": by_project(db, user_id),
-        "top_content": top_content(db, user_id),
+        "totals": _totals_from_cached(db, user_id, cached).to_dict(),
+        "by_content_type": _by_content_type_from_cached(cached),
+        "by_platform": _by_platform_from_cached(db, user_id, cached),
+        "by_project": _by_project_from_cached(db, user_id, cached),
+        "top_content": _top_content_from_cached(db, cached),
         "timeline": timeline(db, user_id),
         "engagement_trend": engagement_trend(db, user_id),
-        "read_time": read_time(db, user_id),
+        "read_time": _read_time_from_cached(db, user_id, cached),
     }
 
 
