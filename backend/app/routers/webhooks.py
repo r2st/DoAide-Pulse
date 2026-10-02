@@ -273,6 +273,10 @@ def rotate_secret(
     webhook.encrypted_secret = _stored(secret)
     db.commit()
     db.refresh(webhook)
+    logger.info(
+        "webhook %s secret rotated by user %s",
+        webhook.id, user.id,
+    )
     return WebhookCreated(**WebhookOut.model_validate(webhook).model_dump(), secret=secret)
 
 

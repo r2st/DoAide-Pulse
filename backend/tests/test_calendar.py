@@ -304,9 +304,9 @@ def test_calendar_filters_by_project(client, auth, db, project):
     resp = client.get(f"/api/v1/calendar?project_id={project.id}", headers=auth)
     assert len(resp.json()["entries"]) == 1
 
-    # Wrong project_id → empty
+    # Wrong project_id → 404 (ownership check)
     resp = client.get("/api/v1/calendar?project_id=9999", headers=auth)
-    assert len(resp.json()["entries"]) == 0
+    assert resp.status_code == 404
 
 
 def test_a_publication_with_no_time_at_all_is_not_on_the_calendar(

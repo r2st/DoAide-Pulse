@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import QueryRowId, RowId, get_current_user
+from app.deps import QueryRowId, RowId, get_current_user, owned_project
 from app.models.content import Content
 from app.models.project import Project
 from app.models.user import User
@@ -56,7 +56,7 @@ router = APIRouter(prefix="/tags", tags=["tags"])
     "",
     response_model=TagTreeOut,
     summary="Every tag this account uses, as a tree",
-    responses=errors(*AUTHENTICATED),
+    responses=errors(*OWNED),
 )
 def tag_tree(
     project_id: QueryRowId | None = Query(
@@ -89,6 +89,8 @@ def tag_tree(
     every count here is a floor — worth checking before planning a rename
     against it.
     """
+    if project_id is not None:
+        owned_project(project_id, db, user)
     return TagTreeOut(**tag_service.tree(
         db, user.id, project_id=project_id, limit=limit
     ).as_dict())
@@ -143,6 +145,7 @@ def rename_tag(
         .order_by(Content.id)
     )
     if payload.project_id is not None:
+        owned_project(payload.project_id, db, user)
         query = query.where(Content.project_id == payload.project_id)
 
     changed: list[int] = []

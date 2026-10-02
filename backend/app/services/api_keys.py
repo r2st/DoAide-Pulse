@@ -368,6 +368,10 @@ def rotate(
 
     if grace_hours == 0:
         key.revoked_at = moment
+        logger.info(
+            "api key %s rotated and revoked immediately (project %s)",
+            key.prefix, key.project_id,
+        )
     else:
         # An expiry, not a revocation: the old key is still a working
         # credential until the window closes, and ``is_usable`` reads the two
@@ -377,6 +381,10 @@ def rotate(
         # Never *extends* a life. A key already dated to die inside the window
         # keeps its own date.
         key.expires_at = window if current is None or current > window else current
+        logger.info(
+            "api key %s rotated with %dh grace (project %s)",
+            key.prefix, grace_hours, key.project_id,
+        )
 
     db.commit()
     db.refresh(replacement)

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db, refresh_all
-from app.deps import QueryRowId, RowId, get_current_user
+from app.deps import QueryRowId, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentStatus
 from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/calendar", tags=["calendar"])
     "",
     response_model=CalendarOut,
     summary="Scheduled and published items in a date window",
-    responses=errors(status.HTTP_400_BAD_REQUEST, *AUTHENTICATED),
+    responses=errors(status.HTTP_400_BAD_REQUEST, *OWNED),
 )
 def get_calendar(
     start: datetime | None = None,
@@ -86,6 +86,7 @@ def get_calendar(
         )
     )
     if project_id is not None:
+        owned_project(project_id, db, user)
         query = query.where(Content.project_id == project_id)
 
     entries: list[CalendarEntry] = []
