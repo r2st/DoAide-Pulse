@@ -28,6 +28,10 @@ class ContentMetric(Base):
         # The metrics dashboard queries "all snapshots for publication X, ordered
         # by time". This composite index covers it without a filesort.
         Index("ix_content_metrics_pub_captured", "publication_id", "captured_at"),
+        # _latest_metric_subquery() does MAX(id) GROUP BY publication_id on every
+        # analytics page load. (publication_id, id DESC) lets PostgreSQL satisfy
+        # that with a backwards index-only scan instead of a full-table grouping.
+        Index("ix_content_metrics_pub_latest", "publication_id", "id", postgresql_using="btree"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
