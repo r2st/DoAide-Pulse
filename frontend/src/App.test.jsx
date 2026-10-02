@@ -35,6 +35,10 @@ vi.mock("./pages/Dashboard", () => ({
   },
 }));
 
+vi.mock("./pages/LandingPage", () => ({
+  default: () => <p>landing</p>,
+}));
+
 vi.mock("./pages/Projects", () => ({
   default: () => <p>the projects page</p>,
 }));
@@ -95,7 +99,7 @@ describe("the gate", () => {
   it("holds a protected route until the session resolves", async () => {
     signedIn({ user: null, loading: true });
 
-    await draw("/");
+    await draw("/dashboard");
 
     expect(screen.getByText("Loading")).toBeInTheDocument();
   });
@@ -105,7 +109,7 @@ describe("the gate", () => {
 
     // Login is mocked to throw, so its boundary's fallback is the proof that
     // the redirect happened and the login route rendered.
-    await whileCaught(() => draw("/"));
+    await whileCaught(() => draw("/dashboard"));
 
     expect(screen.getByRole("alert")).toBeInTheDocument();
     expect(screen.getByText("login exploded")).toBeInTheDocument();
@@ -114,7 +118,7 @@ describe("the gate", () => {
 
 describe("a page that throws", () => {
   it("leaves the navigation standing, so there is a way out of it", async () => {
-    await whileCaught(() => draw("/"));
+    await whileCaught(() => draw("/dashboard"));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       /this page stopped working/i,
@@ -125,13 +129,13 @@ describe("a page that throws", () => {
   });
 
   it("keeps the error's message, so the fallback is worth screenshotting", async () => {
-    await whileCaught(() => draw("/"));
+    await whileCaught(() => draw("/dashboard"));
 
     expect(screen.getByText("dashboard exploded")).toBeInTheDocument();
   });
 
   it("recovers as soon as the user navigates away from it", async () => {
-    await whileCaught(() => draw("/"));
+    await whileCaught(() => draw("/dashboard"));
 
     await clickNav("Projects");
 

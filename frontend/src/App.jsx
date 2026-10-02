@@ -7,6 +7,7 @@ import Calendar from "./pages/Calendar";
 import ContentEditor from "./pages/ContentEditor";
 import ContentList from "./pages/ContentList";
 import Dashboard from "./pages/Dashboard";
+import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
 import PreviewPage from "./pages/PreviewPage";
 import Projects from "./pages/Projects";
@@ -72,6 +73,14 @@ export default function App() {
   return (
     <Routes>
       <Route
+        path="/"
+        element={
+          <Unshelled section="landing">
+            <LandingPage />
+          </Unshelled>
+        }
+      />
+      <Route
         path="/login"
         element={
           <Unshelled section="login">
@@ -90,7 +99,7 @@ export default function App() {
       />
 
       <Route
-        path="/"
+        path="/dashboard"
         element={
           <Protected>
             <Dashboard />
@@ -171,7 +180,7 @@ export default function App() {
         }
       />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
