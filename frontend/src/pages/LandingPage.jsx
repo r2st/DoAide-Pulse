@@ -233,7 +233,7 @@ export default function LandingPage() {
         <a href="https://doaide.com" className="landing-brand">
           <RobotFace size={28} color={ACCENT} />
           <span className="landing-brand-text">
-            Do<em>Aide</em>
+            DoAide <em>Pulse</em>
           </span>
         </a>
       </header>

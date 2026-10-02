@@ -78,7 +78,10 @@
 .landing-header {
   position: relative;
   z-index: 10;
-  padding: 20px 32px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 20px 24px;
   opacity: 0;
   animation: landing-fade-in 0.6s ease forwards;
 }
@@ -97,8 +100,9 @@
 }
 
 .landing-brand-text {
-  font-size: 18px;
-  font-weight: 600;
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 24px;
+  font-weight: 400;
   letter-spacing: -0.3px;
 }
 
