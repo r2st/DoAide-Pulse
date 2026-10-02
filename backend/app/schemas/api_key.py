@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.api_key import ALL_SCOPES, ApiKeyScope
 from app.models.content import ContentType
@@ -28,6 +28,8 @@ def _validate_scopes(scopes: list[ApiKeyScope]) -> list[ApiKeyScope]:
 
 
 class ApiKeyCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project_id: int
     name: str = Field(min_length=1, max_length=120)
     scopes: list[ApiKeyScope]
@@ -38,11 +40,7 @@ class ApiKeyCreate(BaseModel):
 
 
 class ApiKeyRotate(BaseModel):
-    """How long the key being replaced keeps working.
-
-    Zero is the default because the urgent reason to rotate is a leak, and the
-    urgent answer is "the old one stops now". A planned rotation says so.
-    """
+    model_config = ConfigDict(extra="forbid")
 
     grace_hours: int = Field(default=0, ge=0, le=MAX_GRACE_HOURS)
 
@@ -123,7 +121,7 @@ class MachineContentOut(BaseModel):
 
 
 class MachineIdeaCreate(BaseModel):
-    """An idea filed by a machine — a CI job noticing something worth writing."""
+    model_config = ConfigDict(extra="forbid")
 
     headline: str = Field(min_length=3, max_length=300)
     rationale: str = Field(default="", max_length=2000)

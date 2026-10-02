@@ -19,7 +19,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.content import ContentType
 from app.models.template import TemplateMode
@@ -43,7 +43,7 @@ MAX_TEMPLATES_PER_USER = 100
 
 
 class TemplateVariable(BaseModel):
-    """One declared blank in a template."""
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=60)
     #: What the form calls it. Falls back to the name.
@@ -74,6 +74,8 @@ class TemplateVariable(BaseModel):
 
 
 class TemplateBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=500)
     mode: TemplateMode = TemplateMode.LITERAL
@@ -131,13 +133,7 @@ class TemplateCreate(TemplateBase):
 
 
 class TemplateUpdate(BaseModel):
-    """Every field optional, but the placeholder check needs the whole template.
-
-    So this carries no validator of its own: the router merges the patch onto
-    the stored row and re-validates the result as a :class:`TemplateCreate`.
-    Validating the patch alone would pass a body that references a variable the
-    same request just deleted.
-    """
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
@@ -184,7 +180,7 @@ class BuiltinOut(BaseModel):
 
 
 class RenderRequest(BaseModel):
-    """Fill a template in without keeping the result."""
+    model_config = ConfigDict(extra="forbid")
 
     values: dict[str, Any] = Field(default_factory=dict)
     #: Which project's facts fill ``{{project.*}}``. Falls back to the

@@ -1,7 +1,7 @@
 """Tag schemas: the tree, the suggestions, and the rename."""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.limits import Tag as TagValue
 from app.services import tags as tag_service
@@ -69,7 +69,7 @@ class TagSuggestionOut(BaseModel):
 
 
 class TagRenameIn(BaseModel):
-    """Rename a tag across the account, or merge it into another."""
+    model_config = ConfigDict(extra="forbid")
 
     old: TagValue = Field(description="The tag to move. Its subtree moves with it.")
     new: TagValue = Field(

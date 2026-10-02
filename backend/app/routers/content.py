@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session, defer, joinedload, selectinload
 
 from app.config import settings
 from app.database import get_db, refresh_all
-from app.deps import ListOffset, RowId, get_current_user, owned_project
+from app.deps import ListOffset, QueryRowId, RowId, get_current_user, owned_project
 from app.models.content import Content, ContentIdea, ContentStatus, ContentType, unique_content_slug
 from app.models.mixins import utcnow
 from app.models.preview_link import PreviewLink
@@ -448,7 +448,7 @@ def _commit_content(db: Session, content: Content) -> None:
 )
 def list_content(
     response: Response,
-    project_id: int | None = None,
+    project_id: QueryRowId | None = None,
     status_filter: ContentStatus | None = Query(default=None, alias="status"),
     content_type: ContentType | None = None,
     # ``ge=1`` as well as ``le``: every other paginated endpoint here bounds

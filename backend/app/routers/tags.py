@@ -33,7 +33,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import RowId, get_current_user
+from app.deps import QueryRowId, RowId, get_current_user
 from app.models.content import Content
 from app.models.project import Project
 from app.models.user import User
@@ -59,7 +59,7 @@ router = APIRouter(prefix="/tags", tags=["tags"])
     responses=errors(*AUTHENTICATED),
 )
 def tag_tree(
-    project_id: int | None = Query(
+    project_id: QueryRowId | None = Query(
         default=None, description="Count only one project's content."
     ),
     limit: int = Query(

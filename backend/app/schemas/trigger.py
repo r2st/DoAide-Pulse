@@ -16,7 +16,7 @@ import re
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.content import ContentType
 from app.models.trigger import TriggerEventStatus, TriggerKind
@@ -186,6 +186,8 @@ def validate_config(kind: TriggerKind, config: dict[str, Any] | None) -> dict[st
 
 
 class TriggerCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     project_id: int
     kind: TriggerKind
     name: str = Field(default="", max_length=120)
@@ -199,18 +201,7 @@ class TriggerCreate(BaseModel):
 
 
 class TriggerUpdate(BaseModel):
-    """Every field optional — this is a PATCH.
-
-    ``config`` is replaced wholesale rather than merged. A merge cannot express
-    "remove this setting", and a half-updated config is harder to reason about
-    than one the client sends complete.
-
-    There is deliberately no ``config`` validator here. Kind-aware validation
-    needs the stored row to know *which* kind's rules apply, so the router calls
-    :func:`validate_config` itself once it has loaded the trigger; the annotation
-    below is what rejects a non-object, and it does so before any validator of
-    ours would run.
-    """
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, max_length=120)
     config: dict[str, Any] | None = None

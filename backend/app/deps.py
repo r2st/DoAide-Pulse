@@ -46,6 +46,17 @@ ROW_ID_MAX = 2**31 - 1
 #: something the 404 deliberately does not.
 RowId = Annotated[int, Path(le=ROW_ID_MAX)]
 
+#: A query parameter naming a row by its primary key.
+#:
+#: The same bound as :data:`RowId`, for the same reason — ``int`` in a query
+#: signature means a Python int with no width, so a value past 2^31-1 reaches
+#: the driver and raises ``NumericValueOutOfRange`` as a 500. Several routers
+#: accept ``project_id``, ``publication_id`` and ``against`` as query
+#: parameters, and every one of them ends up in a ``WHERE`` against an
+#: ``Integer`` column. ``RowId`` does not cover these because it is built on
+#: :class:`Path`; this is the ``Query`` counterpart.
+QueryRowId = Annotated[int, Query(le=ROW_ID_MAX)]
+
 #: How far a listing may be paged into.
 #:
 #: ``offset`` had a floor and no ceiling, and it reaches the database as a

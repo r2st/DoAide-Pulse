@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.project import AutopilotMode, Tone
 from app.models.publication import Platform
@@ -93,20 +93,7 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
-    """Register a project.
-
-    The platform validators live here and on :class:`ProjectUpdate` rather than
-    on :class:`ProjectBase`, so they guard the two *inbound* shapes only.
-    :class:`ProjectOut` also derives from the base, and a project that stored an
-    unfinished platform before this check existed must still be readable —
-    otherwise the one endpoint that would let the user fix it is the endpoint
-    that 500s.
-
-    The two list fields are redeclared here for exactly that reason. Their
-    per-entry bounds are new, so rows written before them exist; putting the
-    bound on the base would make reading one an error rather than a thing the
-    user could go and shorten.
-    """
+    model_config = ConfigDict(extra="forbid")
 
     tech_stack: list[TechStackEntry] = Field(default=[], max_length=25)
     keywords: list[Keyword] = Field(default=[], max_length=25)
@@ -126,7 +113,7 @@ class ProjectCreate(ProjectBase):
 
 
 class ProjectUpdate(BaseModel):
-    """Every field optional — PATCH semantics."""
+    model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=5000)

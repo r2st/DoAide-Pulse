@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.deps import ListOffset, RowId, get_current_user, owned_project
+from app.deps import ListOffset, QueryRowId, RowId, get_current_user, owned_project
 from app.models.api_key import ALL_SCOPES, ApiKey, ApiKeyScope
 from app.models.user import User
 from app.ratelimit import limiter
@@ -101,7 +101,7 @@ def list_scopes(request: Request, response: Response) -> list[ApiKeyScopeOut]:
 )
 def list_api_keys(
     response: Response,
-    project_id: int | None = Query(default=None),
+    project_id: QueryRowId | None = Query(default=None),
     include_revoked: bool = Query(default=False),
     limit: int = Query(default=100, ge=1, le=500),
     offset: ListOffset = 0,

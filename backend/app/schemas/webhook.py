@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.webhook import SUBSCRIBABLE_EVENTS, DeliveryStatus, WebhookEvent
 
@@ -28,6 +28,8 @@ def _validate_events(events: list[WebhookEvent]) -> list[WebhookEvent]:
 
 
 class WebhookCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     url: str = Field(min_length=8, max_length=700)
     events: list[WebhookEvent]
     description: str = Field(default="", max_length=200)
@@ -36,7 +38,7 @@ class WebhookCreate(BaseModel):
 
 
 class WebhookUpdate(BaseModel):
-    """Every field optional — this is a PATCH."""
+    model_config = ConfigDict(extra="forbid")
 
     url: str | None = Field(default=None, min_length=8, max_length=700)
     events: list[WebhookEvent] | None = None
