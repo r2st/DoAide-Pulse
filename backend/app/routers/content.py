@@ -63,6 +63,7 @@ from app.schemas.content import (
     PreviewLinkOut,
     PublicationOut,
     PublicPreviewOut,
+    PublicationSkipOut,
     PublishRequestIn,
     QualityOut,
     RepurposeOut,
@@ -2604,7 +2605,7 @@ def retry_content(
         )
 
     retried: list[int] = []
-    skipped: list[BulkFailureOut] = []
+    skipped: list[PublicationSkipOut] = []
     to_dispatch: list[int] = []
     for publication in content.publications:
         if publication.status in RETRYABLE:
@@ -2613,8 +2614,8 @@ def retry_content(
             retried.append(publication.id)
             continue
         skipped.append(
-            BulkFailureOut(
-                content_id=publication.id,
+            PublicationSkipOut(
+                publication_id=publication.id,
                 reason=(
                     "Already published"
                     if publication.status == PublicationStatus.PUBLISHED

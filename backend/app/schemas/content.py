@@ -716,6 +716,13 @@ class BulkResultOut(BaseModel):
         )
 
 
+class PublicationSkipOut(BaseModel):
+    """One publication that a piece-level retry left alone, and why."""
+
+    publication_id: int
+    reason: str
+
+
 class RetryResultOut(BaseModel):
     """What a piece-level retry re-armed.
 
@@ -729,7 +736,7 @@ class RetryResultOut(BaseModel):
     retried: list[int] = Field(
         default=[], description="Publication ids put back in the queue."
     )
-    skipped: list[BulkFailureOut] = Field(
+    skipped: list[PublicationSkipOut] = Field(
         default=[],
         description=(
             "Publications left alone, with the reason — already published, or "
