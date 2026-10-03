@@ -194,7 +194,7 @@ def test_an_unreachable_feed_becomes_a_feed_error_naming_the_cause():
         feeds.fetch("https://example.com/feed.xml", client=client)
 
     assert "Could not reach that feed" in str(excinfo.value)
-    assert "ConnectError" in str(excinfo.value)
+    assert "Could not connect to the server" in str(excinfo.value)
 
 
 def test_a_caller_supplied_client_is_left_open_for_reuse():
