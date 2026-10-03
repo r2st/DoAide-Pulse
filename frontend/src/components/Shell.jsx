@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
@@ -53,6 +53,9 @@ export default function Shell({ children }) {
           <div className="mb-3 truncate font-mono text-[11px] text-ink-400">
             {user?.email}
           </div>
+          <div className="mb-3">
+            <ThemeToggle />
+          </div>
           <button
             className="w-full rounded-lg border border-line px-3 py-2 text-xs text-ink-500 transition-colors hover:border-line-strong hover:text-ink-900"
             onClick={() => {
@@ -104,15 +107,18 @@ export default function Shell({ children }) {
               {tab.label}
             </MobileTab>
           ))}
-          <button
-            className="mt-1 block w-full rounded-md px-3 py-2.5 text-left text-sm text-ink-500 hover:bg-ink-400/10 hover:text-ink-900"
-            onClick={() => {
-              logout();
-              navigate("/login");
-            }}
-          >
-            Sign out
-          </button>
+          <div className="mt-2 flex items-center gap-3 border-t border-line px-3 py-2.5">
+            <ThemeToggle />
+            <button
+              className="ml-auto text-sm text-ink-500 hover:text-ink-900"
+              onClick={() => {
+                logout();
+                navigate("/login");
+              }}
+            >
+              Sign out
+            </button>
+          </div>
         </nav>
       )}
 
@@ -347,5 +353,83 @@ function SettingsIcon() {
       <circle cx="10" cy="10" r="3" />
       <path d="M10 1v2M10 17v2M3.5 3.5l1.4 1.4M15.1 15.1l1.4 1.4M1 10h2M17 10h2M3.5 16.5l1.4-1.4M15.1 4.9l1.4-1.4" />
     </svg>
+  );
+}
+
+function applyTheme(t) {
+  const dark =
+    t === "dark" ||
+    (t !== "light" && matchMedia("(prefers-color-scheme:dark)").matches);
+  document.documentElement.classList.toggle("dark", dark);
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", dark ? "#0A0A0B" : "#FFFFFF");
+  document
+    .querySelector('meta[name="color-scheme"]')
+    ?.setAttribute("content", dark ? "dark" : "light");
+}
+
+function ThemeToggle() {
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("pulse-theme") || "system",
+  );
+
+  const pick = useCallback((t) => {
+    setTheme(t);
+    localStorage.setItem("pulse-theme", t);
+    applyTheme(t);
+  }, []);
+
+  useEffect(() => {
+    if (theme !== "system") return;
+    const mq = matchMedia("(prefers-color-scheme:dark)");
+    const handler = () => applyTheme("system");
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, [theme]);
+
+  return (
+    <div
+      className="inline-flex gap-0.5 rounded-lg border border-line p-0.5"
+      role="radiogroup"
+      aria-label="Theme"
+    >
+      <ThemeBtn active={theme === "light"} onClick={() => pick("light")} label="Light">
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <circle cx="8" cy="8" r="3" />
+          <path d="M8 1.5v1.5M8 13v1.5M2.1 2.1l1.1 1.1M12.8 12.8l1.1 1.1M1.5 8H3M13 8h1.5M2.1 13.9l1.1-1.1M12.8 3.2l1.1-1.1" />
+        </svg>
+      </ThemeBtn>
+      <ThemeBtn active={theme === "system"} onClick={() => pick("system")} label="System">
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="2" width="12" height="9" rx="1.5" />
+          <path d="M5.5 14h5M8 11v3" />
+        </svg>
+      </ThemeBtn>
+      <ThemeBtn active={theme === "dark"} onClick={() => pick("dark")} label="Dark">
+        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13.5 9.4A5.5 5.5 0 116.6 2.5a4.5 4.5 0 006.9 6.9z" />
+        </svg>
+      </ThemeBtn>
+    </div>
+  );
+}
+
+function ThemeBtn({ active, onClick, label, children }) {
+  return (
+    <button
+      role="radio"
+      aria-checked={active}
+      aria-label={`${label} theme`}
+      className={[
+        "rounded-md p-1.5 transition-colors",
+        active
+          ? "bg-paper text-brand-500"
+          : "text-ink-400 hover:text-ink-700",
+      ].join(" ")}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }

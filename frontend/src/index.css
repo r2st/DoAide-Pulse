@@ -5,10 +5,6 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    color-scheme: dark;
-  }
-
   body {
     @apply bg-canvas font-sans text-[15px] text-ink-700 antialiased;
   }
