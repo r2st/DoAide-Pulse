@@ -404,7 +404,9 @@ def test_a_seed_with_no_password_given_generates_one_and_prints_it_once(
 
     seed_module.seed()
 
-    assert f"created user {SEED_EMAIL}" in logged
+    assert any(line.startswith("created user ") for line in logged)
+    assert not any(SEED_EMAIL in line for line in logged), \
+        "the email address must not appear in log lines"
     assert not any("password" in line.lower() for line in logged), \
         "the password must never appear in the logger"
 
