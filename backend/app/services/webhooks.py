@@ -54,7 +54,7 @@ from app.services.crypto import (
     decrypt_credentials,
     encrypt_credentials,
 )
-from app.services.errors import clip_error
+from app.services.errors import clip_error, friendly_network_error, sanitize_unexpected_error
 
 logger = logging.getLogger(__name__)
 
@@ -517,14 +517,14 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
             with _http_client() as client:
                 response = client.post(url, content=body.encode("utf-8"), headers=headers)
         except httpx.HTTPError as exc:
-            _record_failure(db, delivery, f"{type(exc).__name__}: {exc}")
+            _record_failure(db, delivery, friendly_network_error(exc))
             return delivery
         except Exception as exc:  # pragma: no cover - defensive
             # "Never raises" has to be true even when the failure is not one httpx
             # models: this runs inline inside a publish that has already succeeded,
             # and an exception here would undo a post that is already live.
             logger.exception("unexpected error delivering webhook %s", delivery.id)
-            _record_failure(db, delivery, f"Unexpected error: {exc}")
+            _record_failure(db, delivery, sanitize_unexpected_error(exc))
             return delivery
         finally:
             duration_ms = (time.monotonic() - started) * 1000

@@ -51,6 +51,7 @@ import httpx
 from app.config import settings
 from app.models.publication import Platform
 from app.services import link_check
+from app.services.errors import friendly_network_error
 
 logger = logging.getLogger(__name__)
 
@@ -543,7 +544,7 @@ class Adapter(ABC):
                     method, url, headers=headers, json_body=json_body, params=params
                 )
             except httpx.HTTPError as exc:
-                error = PublishError(f"{self.display_name} request failed: {exc}")
+                error = PublishError(f"{self.display_name}: {friendly_network_error(exc)}")
                 error.__cause__ = exc
             else:
                 failure = self._translate(response)

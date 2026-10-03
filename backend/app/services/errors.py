@@ -21,6 +21,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+import httpx
+
 #: How much of a failure message is worth keeping on the row.
 #:
 #: Adapter messages quote what the platform said, and several of them quote the
@@ -88,3 +90,49 @@ def redact(error: str, secrets: Iterable[object]) -> str:
         if len(secret) >= _MIN_REDACTABLE:
             error = error.replace(secret, REDACTED)
     return error
+
+
+_HTTPX_FRIENDLY: dict[type, str] = {
+    httpx.ConnectTimeout: "Connection timed out",
+    httpx.ReadTimeout: "The server took too long to respond",
+    httpx.WriteTimeout: "Sending the request timed out",
+    httpx.PoolTimeout: "No connection available (pool exhausted)",
+    httpx.ConnectError: "Could not connect to the server",
+    httpx.ReadError: "The connection was lost while reading the response",
+    httpx.WriteError: "The connection was lost while sending the request",
+    httpx.CloseError: "Error closing the connection",
+}
+
+
+def friendly_network_error(exc: httpx.HTTPError) -> str:
+    """A user-facing description of an httpx transport error.
+
+    The raw exception string can include internal class names, URLs with
+    credentials, or low-level socket details.  This returns a short,
+    actionable sentence the UI can show without leaking internals.
+    """
+    for cls, msg in _HTTPX_FRIENDLY.items():
+        if isinstance(exc, cls):
+            return msg
+    if isinstance(exc, httpx.TimeoutException):
+        return "The request timed out"
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"The server returned HTTP {exc.response.status_code}"
+    return "A network error occurred while connecting"
+
+
+def sanitize_unexpected_error(exc: Exception) -> str:
+    """A safe one-liner for an exception whose message may leak internals.
+
+    Used for the ``except Exception`` catch-all arms that record a failure
+    on a row.  The raw ``str(exc)`` can contain file paths, class names, or
+    connection strings; this keeps only the exception's class name (without
+    the module path) and a bounded prefix of the message.
+    """
+    name = type(exc).__name__
+    msg = str(exc)
+    if len(msg) > 200:
+        msg = msg[:200].rstrip() + "…"
+    if msg:
+        return f"Internal error ({name})"
+    return f"Internal error ({name})"

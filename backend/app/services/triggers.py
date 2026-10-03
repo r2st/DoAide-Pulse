@@ -38,7 +38,7 @@ from app.services.crypto import (
     decrypt_credentials,
     encrypt_credentials,
 )
-from app.services.errors import clip_error
+from app.services.errors import clip_error, sanitize_unexpected_error
 from app.services.signals import TriggerSignal
 
 logger = logging.getLogger(__name__)
@@ -488,7 +488,7 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
             db.rollback()
             logger.exception("trigger %s failed while writing: %s", trigger.id, exc)
             event.status = TriggerEventStatus.FAILED
-            event.detail = f"Generation failed: {exc}"
+            event.detail = f"Generation failed: {sanitize_unexpected_error(exc)}"
             db.commit()
             db.refresh(event)
             return event
@@ -681,15 +681,15 @@ def check(db: Session, trigger: Trigger) -> dict[str, Any]:
             # threshold that deactivates it, and the sweep saw the raise instead.
             db.rollback()
             logger.exception("trigger %s crashed: %s", trigger.id, exc)
-            _mark_checked(db, trigger, f"Unexpected error: {exc}")
-            return {"trigger_id": trigger.id, "status": "error", "error": str(exc)}
+            _mark_checked(db, trigger, sanitize_unexpected_error(exc))
+            return {"trigger_id": trigger.id, "status": "error", "error": sanitize_unexpected_error(exc)}
 
         _mark_checked(db, trigger)
         return {"trigger_id": trigger.id, **result}
     except Exception:
         db.rollback()
         logger.exception("trigger %s: post-check bookkeeping failed", trigger.id)
-        return {"trigger_id": trigger.id, "status": "error", "error": "bookkeeping failed"}
+        return {"trigger_id": trigger.id, "status": "error", "error": "Trigger check completed but results could not be saved. Try again shortly."}
 
 
 def _check_rss(db: Session, trigger: Trigger) -> dict[str, Any]:

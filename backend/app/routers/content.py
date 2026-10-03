@@ -1116,11 +1116,18 @@ def platform_checks(
                 for name in platforms.split(",")
                 if name.strip()
             ]
-        except ValueError as exc:
+        except ValueError:
+            valid = ", ".join(p.value for p in Platform)
+            bad = [
+                n.strip()
+                for n in platforms.split(",")
+                if n.strip() and n.strip().lower() not in Platform._value2member_map_
+            ]
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Unknown platform: {exc}",
-            ) from exc
+                detail=f"Unknown platform: {', '.join(bad)}. "
+                f"Valid platforms are: {valid}",
+            )
     else:
         wanted = platform_check.destinations_for(content)
 

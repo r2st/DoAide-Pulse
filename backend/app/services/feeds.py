@@ -39,6 +39,7 @@ from xml.parsers import expat
 import httpx
 
 from app.config import settings
+from app.services.errors import friendly_network_error
 from app.services.webhooks import WebhookUrlError, validate_url
 
 logger = logging.getLogger(__name__)
@@ -327,7 +328,7 @@ def fetch(url: str, *, client: httpx.Client | None = None) -> Feed:
     try:
         body = _read_capped(http, target)
     except httpx.HTTPError as exc:
-        raise FeedError(f"Could not reach that feed: {type(exc).__name__}: {exc}") from exc
+        raise FeedError(f"Could not reach that feed: {friendly_network_error(exc)}") from exc
     finally:
         if own_client:
             http.close()

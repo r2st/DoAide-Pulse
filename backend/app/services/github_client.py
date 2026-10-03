@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 import httpx
 
 from app.config import settings
+from app.services.errors import friendly_network_error
 from app.models.project import COMMIT_SHA_MAX_LENGTH, RELEASE_TAG_MAX_LENGTH
 
 logger = logging.getLogger(__name__)
@@ -264,7 +265,7 @@ def _get(path: str, *, params: dict | None = None) -> httpx.Response:
             follow_redirects=True,
         )
     except httpx.HTTPError as exc:
-        raise GitHubError(f"GitHub request to {path} failed: {exc}") from exc
+        raise GitHubError(f"GitHub is not reachable: {friendly_network_error(exc)}") from exc
 
     # 403 and 429 are how GitHub says no, and it says no for two unrelated
     # reasons that have to be told apart — see :func:`_rate_limit`.

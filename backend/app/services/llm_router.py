@@ -73,6 +73,7 @@ import httpx
 from app.config import settings
 from app.services import llm_usage
 from app.services.breaker import CircuitBreaker
+from app.services.errors import friendly_network_error
 
 logger = logging.getLogger(__name__)
 
@@ -611,7 +612,7 @@ def _call(
         # faster by moving on than by sleeping in front of a dead socket. The
         # in-process retry exists for the opposite case — a provider that is up
         # and answering, and has said to come back in a moment.
-        raise LLMError(f"{provider.name} request failed: {exc}") from exc
+        raise LLMError(f"{provider.name}: {friendly_network_error(exc)}") from exc
 
     if resp.status_code >= 400:
         raise _status_error(provider, resp)
