@@ -301,7 +301,7 @@ def test_a_connection_error_is_retried(db, webhook, endpoint):
     webhooks.deliver(db, delivery)
 
     assert delivery.status == DeliveryStatus.PENDING
-    assert "ConnectError" in delivery.error
+    assert "Could not connect to the server" in delivery.error
 
 
 @pytest.mark.parametrize("code", [400, 401, 403, 404, 422])

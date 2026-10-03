@@ -520,7 +520,7 @@ def test_a_generation_that_blows_up_lands_on_the_event_row(
 
     assert event is not None
     assert event.status == TriggerEventStatus.FAILED
-    assert "the model returned something unusable" in event.detail
+    assert "Internal error (RuntimeError)" in event.detail
     # The firing still counted — it happened, it just did not produce a piece.
     db.refresh(trigger)
     assert trigger.fire_count == 1
@@ -650,5 +650,5 @@ def test_a_poll_whose_commit_fails_still_records_the_error_on_the_trigger(
     assert result["status"] == "error"
     db.refresh(trigger)
     assert trigger.consecutive_failures == 1
-    assert "Unexpected error" in trigger.last_error
+    assert "Internal error (IntegrityError)" in trigger.last_error
     assert trigger.last_checked_at is not None
