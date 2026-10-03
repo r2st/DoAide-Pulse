@@ -46,10 +46,9 @@ def send(*, to: str, subject: str, body: str, html: str | None = None) -> bool:
     """
     if not configured():
         logger.warning(
-            "SMTP is not configured (SMTP_HOST is blank) — not sending %r to %s. "
+            "SMTP is not configured (SMTP_HOST is blank) — not sending %r. "
             "Check SMTP_HOST / SMTP_PORT settings.",
             subject,
-            to,
         )
         return False
 
@@ -80,10 +79,10 @@ def send(*, to: str, subject: str, body: str, html: str | None = None) -> bool:
     except (OSError, smtplib.SMTPException) as exc:
         # Includes auth failures, DNS, TLS and timeouts. The caller cannot act
         # on any of them and must not leak which one happened to the requester.
-        logger.error("SMTP send to %s failed: %s", to, exc)
+        logger.error("SMTP send failed: %s", exc)
         return False
 
-    logger.info("sent %r to %s", subject, to)
+    logger.info("sent %r", subject)
     return True
 
 

@@ -217,7 +217,7 @@ def _sync_one(
         adapter.update_title(request, credentials, publication.external_id)
     except PublishError as exc:
         _redact_credentials(exc, adapter, credentials)
-        logger.info(
+        logger.warning(
             "headline sync failed for publication %s on %s: %s",
             publication.id,
             platform.value,
