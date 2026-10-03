@@ -144,7 +144,7 @@ def test_an_unexpected_crash_is_reported_rather_than_raised(
         result = autopilot_tasks.scan_project(project.id)
 
     assert result["status"] == "error"
-    assert "nobody predicted this" in result["error"]
+    assert "Internal error (ValueError)" in result["error"]
     assert "crashed" in caplog.text
 
 
