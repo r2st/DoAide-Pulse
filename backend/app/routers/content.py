@@ -1650,11 +1650,8 @@ def revoke_preview_link(
     this piece.
     """
     content = _owned_content(content_id, db, user)
-    link = next(
-        (row for row in preview_links.list_for_content(db, content.id) if row.id == link_id),
-        None,
-    )
-    if link is None:
+    link = db.get(PreviewLink, link_id)
+    if link is None or link.content_id != content.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Preview link not found for this piece.",
