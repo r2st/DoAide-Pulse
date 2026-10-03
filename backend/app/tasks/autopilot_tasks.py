@@ -49,6 +49,7 @@ from app.models.project import AutopilotMode, Project, repo_full_name, scan_due
 from app.models.trigger import Trigger, TriggerKind
 from app.models.user import User
 from app.services import content_generator, content_pipeline, dedup, github_client
+from app.services.errors import sanitize_unexpected_error
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -178,7 +179,7 @@ def scan_project(project_id: int) -> dict:
         return {"project_id": project_id, "status": "timeout"}
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("autopilot crashed on project %s: %s", project_id, exc)
-        return {"project_id": project_id, "status": "error", "error": str(exc)}
+        return {"project_id": project_id, "status": "error", "error": sanitize_unexpected_error(exc)}
     finally:
         db.close()
 

@@ -20,6 +20,7 @@ from sqlalchemy.exc import OperationalError
 from app.database import SessionLocal
 from app.models.trigger import Trigger
 from app.services import triggers as trigger_service
+from app.services.errors import sanitize_unexpected_error
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ def check_trigger(trigger_id: int) -> dict:
         return {"trigger_id": trigger_id, "status": "timeout"}
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("trigger %s crashed: %s", trigger_id, exc)
-        return {"trigger_id": trigger_id, "status": "error", "error": str(exc)}
+        return {"trigger_id": trigger_id, "status": "error", "error": sanitize_unexpected_error(exc)}
     finally:
         db.close()
 
