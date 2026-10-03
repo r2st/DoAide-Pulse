@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
       content="DoAide Pulse — your digital robot for newsletters. Writes, schedules, publishes."
@@ -61,6 +61,9 @@
     />
   </head>
   <body>
+    <script>
+      (function(){var s=localStorage.getItem('pulse-theme');var d=s==='dark'||(s!=='light'&&matchMedia('(prefers-color-scheme:dark)').matches);if(d)document.documentElement.classList.add('dark');var m=document.querySelector('meta[name="theme-color"]');if(m)m.content=d?'#0A0A0B':'#FFFFFF';var c=document.querySelector('meta[name="color-scheme"]');if(c)c.content=d?'dark':'light'})();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
