@@ -896,19 +896,23 @@ def generation_cost_trend(db: Session, *, days: int = 30) -> list[dict]:
     when it finished. Every bucket in the window is present.
     """
     since = window_start(days)
+    day_col = func.date(LLMUsage.created_at).label("day")
     rows = db.execute(
         select(
-            LLMUsage.created_at,
-            LLMUsage.total_tokens,
-        ).where(LLMUsage.created_at >= since)
+            day_col,
+            func.count(LLMUsage.id).label("calls"),
+            func.coalesce(func.sum(LLMUsage.total_tokens), 0).label("tokens"),
+        )
+        .where(LLMUsage.created_at >= since)
+        .group_by(day_col)
     ).all()
 
-    tokens: dict[str, int] = defaultdict(int)
-    calls: dict[str, int] = defaultdict(int)
-    for created_at, total in rows:
-        bucket = utc_day(created_at)
-        calls[bucket] += 1
-        tokens[bucket] += int(total or 0)
+    tokens: dict[str, int] = {}
+    calls: dict[str, int] = {}
+    for day, day_calls, day_tokens in rows:
+        key = str(day)
+        calls[key] = day_calls
+        tokens[key] = int(day_tokens)
 
     start = since.date()
     out = []
