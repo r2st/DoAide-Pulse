@@ -897,8 +897,10 @@ def archive_old_content(
         )
 
     cutoff = utcnow() - timedelta(days=payload.older_than_days)
+    _ARCHIVE_BATCH_LIMIT = 5000
     query = (
         select(Content)
+        .options(defer(Content.body_markdown))
         .join(Project, Project.id == Content.project_id)
         .where(
             Project.user_id == user.id,
@@ -906,6 +908,7 @@ def archive_old_content(
             Content.created_at < cutoff,
         )
         .order_by(Content.id)
+        .limit(_ARCHIVE_BATCH_LIMIT)
     )
     if payload.project_id is not None:
         query = query.where(Content.project_id == payload.project_id)
