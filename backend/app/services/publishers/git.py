@@ -269,8 +269,9 @@ class GitAdapter(Adapter):
                 day=f"{now:%d}",
             )
         except (KeyError, IndexError) as exc:
+            bad = str(exc).strip("'\"")
             raise CredentialError(
-                f"'{template}' uses a placeholder this adapter does not provide: {exc}"
+                f"'{template}' uses a placeholder '{bad}' that this adapter does not provide"
             ) from exc
 
         # Check first, normalise second. Trimming leading "./" from a path that
@@ -774,7 +775,7 @@ class GitAdapter(Adapter):
         try:
             existing = base64.b64decode(encoded).decode("utf-8")
         except (ValueError, UnicodeDecodeError) as exc:
-            raise PublishError(f"{path} in {repo} is not UTF-8 Markdown: {exc}") from exc
+            raise PublishError(f"{path} in {repo} is not valid UTF-8 Markdown") from exc
 
         rewritten = self._retitle_front_matter(existing, request.title)
         if rewritten == existing:
