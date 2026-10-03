@@ -149,6 +149,24 @@ class TestNoRawExceptionInUnexpectedError:
         assert "postgresql://" not in msg
 
 
+class TestTaskResultErrors:
+    """Celery task result dicts must not leak raw exception messages."""
+
+    def test_trigger_task_result_sanitized(self):
+        exc = OSError("/var/run/pulse/db.sock: connection refused")
+        msg = sanitize_unexpected_error(exc)
+        assert "/var/run" not in msg
+        assert "connection refused" not in msg
+        assert "OSError" in msg
+
+    def test_autopilot_task_result_sanitized(self):
+        exc = RuntimeError("SELECT * FROM users WHERE password='hunter2'")
+        msg = sanitize_unexpected_error(exc)
+        assert "SELECT" not in msg
+        assert "hunter2" not in msg
+        assert "RuntimeError" in msg
+
+
 class TestPlatformEnumError:
     """``content.py`` used to expose ValueError internals from enum conversion."""
 
