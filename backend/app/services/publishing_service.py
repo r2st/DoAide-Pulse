@@ -39,7 +39,7 @@ from app.models.translation import ContentTranslation
 from app.models.webhook import WebhookEvent
 from app.services import languages, publishers, translation, utm, webhook_payloads, webhooks
 from app.services.crypto import CredentialEncryptionError, decrypt_credentials
-from app.services.errors import clip_error, redact
+from app.services.errors import clip_error, redact, sanitize_unexpected_error
 from app.services.publishers import breaker, formatting
 from app.services.publishers.base import (
     CredentialError,
@@ -841,7 +841,7 @@ def execute(db: Session, publication: Publication) -> Publication:
         return publication
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("unexpected error publishing %s", publication.id)
-        _fail(db, publication, f"Unexpected error: {exc}", terminal=True)
+        _fail(db, publication, sanitize_unexpected_error(exc), terminal=True)
         return publication
 
     # The route works. Discard whatever run of failures preceded this rather
