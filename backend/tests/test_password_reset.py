@@ -235,7 +235,7 @@ def test_reset_requests_are_rate_limited(client, user, outbox):
 
 
 def test_mailer_logs_the_link_when_smtp_is_unconfigured(client, user, caplog):
-    """The documented fallback for a self-hosted install with no mail server."""
+    """The log warns that SMTP is off but never includes the token."""
     assert mailer.configured() is False  # no SMTP_HOST in tests
 
     with caplog.at_level("WARNING"):
@@ -244,7 +244,7 @@ def test_mailer_logs_the_link_when_smtp_is_unconfigured(client, user, caplog):
 
     logged = "\n".join(record.getMessage() for record in caplog.records)
     assert "SMTP is not configured" in logged
-    assert "/reset-password?token=" in logged
+    assert "/reset-password?token=" not in logged
 
 
 def test_purge_expired_clears_spent_and_stale_rows(client, db, user, outbox):

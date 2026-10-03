@@ -1711,7 +1711,7 @@ def generate_content(
             )
         except github_client.GitHubError as exc:
             # A missing changelog is a thinner post, not a failed request.
-            logger.info("repo activity unavailable for project %s: %s", project.id, exc)
+            logger.warning("repo activity unavailable for project %s: %s", project.id, exc)
 
     generated = content_generator.generate(
         project,

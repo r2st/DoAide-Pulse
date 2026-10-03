@@ -325,7 +325,7 @@ def edit(
             purpose="inline_edit",
         )
     except ai.AIError as exc:
-        logger.info("inline edit (%s) failed: %s", operation.value, exc)
+        logger.warning("inline edit (%s) failed: %s", operation.value, exc)
         raise EditUnavailable(
             "No AI provider could be reached for this edit. Try again in a "
             "moment, or edit the passage by hand."
