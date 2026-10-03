@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /content
+Disallow: /settings
+Sitemap: https://pulse.doaide.com/sitemap.xml

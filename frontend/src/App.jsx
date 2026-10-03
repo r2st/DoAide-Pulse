@@ -3,10 +3,13 @@ import { ErrorFallback, RouteErrorBoundary } from "./components/ErrorBoundary";
 import Shell from "./components/Shell";
 import { useAuth } from "./hooks/useAuth";
 import Analytics from "./pages/Analytics";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
 import Calendar from "./pages/Calendar";
 import ContentEditor from "./pages/ContentEditor";
 import ContentList from "./pages/ContentList";
 import Dashboard from "./pages/Dashboard";
+import Embed from "./pages/Embed";
 import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
 import PreviewPage from "./pages/PreviewPage";
@@ -15,6 +18,9 @@ import Publish from "./pages/Publish";
 import Settings from "./pages/Settings";
 import Templates from "./pages/Templates";
 import Triggers from "./pages/Triggers";
+import SubjectLineTester from "./pages/tools/SubjectLineTester";
+import SendTimeOptimizer from "./pages/tools/SendTimeOptimizer";
+import NewsletterRoiCalculator from "./pages/tools/NewsletterRoiCalculator";
 
 function Loading() {
   return (
@@ -97,6 +103,13 @@ export default function App() {
           </Unshelled>
         }
       />
+
+      <Route path="/tools/subject-line-tester" element={<Unshelled section="tool"><SubjectLineTester /></Unshelled>} />
+      <Route path="/tools/send-time-optimizer" element={<Unshelled section="tool"><SendTimeOptimizer /></Unshelled>} />
+      <Route path="/tools/newsletter-roi-calculator" element={<Unshelled section="tool"><NewsletterRoiCalculator /></Unshelled>} />
+      <Route path="/blog" element={<Unshelled section="blog"><Blog /></Unshelled>} />
+      <Route path="/blog/:slug" element={<Unshelled section="blog"><BlogPost /></Unshelled>} />
+      <Route path="/embed" element={<Unshelled section="embed"><Embed /></Unshelled>} />
 
       <Route
         path="/dashboard"
