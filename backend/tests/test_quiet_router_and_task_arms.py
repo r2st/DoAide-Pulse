@@ -385,13 +385,13 @@ def test_a_spec_with_no_ideas_seeds_the_project_and_says_nothing(db, user, caplo
 
 
 def test_a_seed_with_no_password_given_generates_one_and_prints_it_once(
-    db, monkeypatch
+    db, monkeypatch, capsys
 ):
     """The generated-password path.
 
     Every existing seed test passes a password so the run is reproducible, so
-    the branch a real first install takes — generate one, log it once, never
-    store it anywhere else — had never run.
+    the branch a real first install takes — generate one, print it once to
+    stdout (never to the logger), never store it anywhere else — had never run.
     """
     monkeypatch.setattr(seed_module, "SessionLocal", TestSession)
     monkeypatch.delenv("SEED_PASSWORD", raising=False)
@@ -405,7 +405,10 @@ def test_a_seed_with_no_password_given_generates_one_and_prints_it_once(
     seed_module.seed()
 
     assert f"created user {SEED_EMAIL}" in logged
-    printed = [line for line in logged if "shown once" in line]
-    assert len(printed) == 1, "the generated password is announced exactly once"
-    # A generated password, not the empty string a missing env var would give.
+    assert not any("password" in line.lower() for line in logged), \
+        "the password must never appear in the logger"
+
+    stdout = capsys.readouterr().out
+    printed = [line for line in stdout.splitlines() if "shown once" in line]
+    assert len(printed) == 1, "the generated password is announced exactly once on stdout"
     assert printed[0].split("password: ")[1].split(" ")[0]

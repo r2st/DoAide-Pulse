@@ -47,10 +47,9 @@ def send(*, to: str, subject: str, body: str, html: str | None = None) -> bool:
     if not configured():
         logger.warning(
             "SMTP is not configured (SMTP_HOST is blank) — not sending %r to %s. "
-            "The message follows, so this link can still be used:\n%s",
+            "Check SMTP_HOST / SMTP_PORT settings.",
             subject,
             to,
-            body,
         )
         return False
 

@@ -828,7 +828,7 @@ Reply with exactly this JSON object:
             purpose="ideas",
         )
     except ai.AIError as exc:
-        logger.info("idea generation for project %s fell back: %s", project.id, exc)
+        logger.warning("idea generation for project %s fell back: %s", project.id, exc)
         return _fallback_ideas(project, activity, signal)[:limit]
 
     ideas: list[Idea] = []

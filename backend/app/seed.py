@@ -356,7 +356,7 @@ def seed(email: str | None = None, password: str | None = None) -> None:
             db.flush()
             logger.info("created user %s", email)
             if generated:
-                logger.info("  password: %s  (shown once — save it)", password)
+                print(f"  seed password: {password}  (shown once — save it)")  # noqa: T201 — stdout only, never logged
         else:
             logger.info("user %s already exists, leaving it alone", email)
 
