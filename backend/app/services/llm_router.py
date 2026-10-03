@@ -620,8 +620,9 @@ def _call(
     try:
         data = resp.json()
     except ValueError as exc:
+        content_type = resp.headers.get("content-type", "unknown")
         raise LLMError(
-            f"{provider.name} returned a body that is not JSON: {exc}"
+            f"{provider.name} returned a non-JSON response (content-type: {content_type})"
         ) from exc
 
     # OpenRouter (and Gemini's compat layer) report upstream errors as a 200
@@ -635,7 +636,9 @@ def _call(
         choice = data["choices"][0]
         message = choice["message"]
     except (KeyError, IndexError, TypeError) as exc:
-        raise LLMError(f"{provider.name} returned an unexpected payload: {exc}") from exc
+        raise LLMError(
+            f"{provider.name} returned a response that is missing expected fields"
+        ) from exc
 
     # Read once, used twice: the truncation warning below wants the reasoning
     # count out of it, and the caller wants the whole block for the usage table.
