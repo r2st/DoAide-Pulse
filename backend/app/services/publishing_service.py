@@ -1376,6 +1376,7 @@ def sync_content_status(content: Content) -> None:
             content.published_at = utcnow()
     elif all(p.is_terminal for p in publications):
         content.status = ContentStatus.FAILED
+        content.scheduled_for = None
     elif content.status == ContentStatus.FAILED:
         content.status = ContentStatus.APPROVED
 

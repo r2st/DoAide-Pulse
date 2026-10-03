@@ -95,6 +95,25 @@ def test_one_platform_still_in_flight_holds_the_verdict_open(db, piece, unfinish
     assert piece.published_at is None
 
 
+def test_failed_piece_clears_scheduled_for(db, piece):
+    """A piece that transitions to FAILED must not keep a stale planned date.
+
+    ``content.scheduled_for`` is what the calendar shows. A failed piece with
+    a future date looks scheduled to go out even though nothing will ever
+    publish it — and the cadence suggester declines to fill the slot it sits
+    on, so the failure blocks the calendar as well as misleading it.
+    """
+    from datetime import datetime, timezone
+
+    piece.scheduled_for = datetime(2099, 1, 1, tzinfo=timezone.utc)
+    _publish(db, piece, Platform.DEVTO, PublicationStatus.FAILED)
+
+    sync_content_status(piece)
+
+    assert piece.status == ContentStatus.FAILED
+    assert piece.scheduled_for is None
+
+
 def test_a_piece_with_no_publications_is_left_alone(db, piece):
     sync_content_status(piece)
 
