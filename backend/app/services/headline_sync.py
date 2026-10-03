@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from app.models.content import Content
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import publishers
+from app.services.errors import sanitize_unexpected_error
 from app.services.publishers.base import PublishError
 
 # Named imports rather than `publishing_service.<private>` at each call site, so
@@ -197,14 +198,12 @@ def _sync_one(
     adapter = publishers.get_adapter(platform)
     try:
         credentials = _credentials_for(db, user_id, platform)
-    except Exception as exc:
-        # Logged like the two arms below it, and for a better reason than
-        # symmetry: this is the arm that fires when the platform was
-        # disconnected or ``TOKEN_ENCRYPTION_KEY`` no longer decrypts the stored
-        # secret, which is the same cause for *every* destination at once and is
-        # nothing the platform did. The outcome is returned to a beat sweep that
-        # counts it and moves on, so without a line the whole sweep failing this
-        # way looked exactly like a sweep that found nothing to retitle.
+    except PublishError as exc:
+        # The platform was disconnected or the stored secret could not be
+        # decrypted — both arrive as a PublishError subclass with a user-safe
+        # message. The outcome is returned to a beat sweep that counts it and
+        # moves on, so without a line the whole sweep failing this way looked
+        # exactly like a sweep that found nothing to retitle.
         logger.warning(
             "headline sync for publication %s on %s could not read credentials: %s",
             publication.id,
@@ -212,6 +211,13 @@ def _sync_one(
             exc,
         )
         return SyncOutcome(publication.id, platform, FAILED, str(exc)[:300])
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception(
+            "headline sync for publication %s on %s: unexpected credential error",
+            publication.id,
+            platform.value,
+        )
+        return SyncOutcome(publication.id, platform, FAILED, sanitize_unexpected_error(exc))
 
     try:
         adapter.update_title(request, credentials, publication.external_id)
@@ -226,7 +232,7 @@ def _sync_one(
         return SyncOutcome(publication.id, platform, FAILED, str(exc)[:300])
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("headline sync errored for publication %s", publication.id)
-        return SyncOutcome(publication.id, platform, FAILED, str(exc)[:300])
+        return SyncOutcome(publication.id, platform, FAILED, sanitize_unexpected_error(exc))
 
     publication.live_title = request.title[:300]
     logger.info(

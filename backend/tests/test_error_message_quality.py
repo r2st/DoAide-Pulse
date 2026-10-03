@@ -167,6 +167,24 @@ class TestTaskResultErrors:
         assert "RuntimeError" in msg
 
 
+class TestHeadlineSyncErrors:
+    """headline_sync catch-all arms must not leak raw exception messages."""
+
+    def test_unexpected_credential_error_sanitized(self):
+        exc = OSError("could not connect to postgresql://user:pass@host:5432/db")
+        msg = sanitize_unexpected_error(exc)
+        assert "user:pass" not in msg
+        assert "postgresql://" not in msg
+        assert "OSError" in msg
+
+    def test_unexpected_sync_error_sanitized(self):
+        exc = RuntimeError("/opt/Herald/backend/app/services/publishers/git.py: no such file")
+        msg = sanitize_unexpected_error(exc)
+        assert "/opt/Herald" not in msg
+        assert "no such file" not in msg
+        assert "RuntimeError" in msg
+
+
 class TestPlatformEnumError:
     """``content.py`` used to expose ValueError internals from enum conversion."""
 
