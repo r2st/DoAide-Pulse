@@ -1384,12 +1384,30 @@ def overview(db: Session, user_id: int) -> dict:
     }
 
 
+def dashboard_summary(
+    db: Session, user_id: int
+) -> tuple[Totals, list[dict]]:
+    """Totals and per-project stats for the dashboard, one metric query.
+
+    The dashboard needs both :func:`totals` and :func:`by_project`, and each
+    runs the 4-table GROUP BY in :func:`_latest_metric_subquery` on its own.
+    This fetches the set once and derives both, the same pattern
+    :func:`overview` uses for the analytics page.
+    """
+    cached = _overview_metrics(db, user_id)
+    return (
+        _totals_from_cached(db, user_id, cached),
+        _by_project_from_cached(db, user_id, cached),
+    )
+
+
 __all__ = [
     "TOP_CONTENT_SORTS",
     "Totals",
     "by_content_type",
     "by_platform",
     "by_project",
+    "dashboard_summary",
     "engagement_trend",
     "generation_cost_trend",
     "overview",

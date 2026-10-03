@@ -318,7 +318,7 @@ def dashboard(
     Separate from ``/overview`` because the dashboard is loaded far more often
     and does not need the full per-type/per-platform breakdown.
     """
-    summary = analytics_service.totals(db, user.id)
+    summary, by_project_data = analytics_service.dashboard_summary(db, user.id)
 
     review_count = db.scalar(
         select(func.count(Content.id))
@@ -413,7 +413,7 @@ def dashboard(
             }
             for c in recent
         ],
-        "by_project": analytics_service.by_project(db, user.id),
+        "by_project": by_project_data,
         "timeline": analytics_service.timeline(db, user.id, days=14),
         # Capped tighter than the /alerts endpoint: this is the home page's
         # "what needs attention" column, not the full list.
