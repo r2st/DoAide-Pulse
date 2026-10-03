@@ -395,7 +395,10 @@ def retry_hold(content: Content, publication: Publication) -> datetime | None:
     return max(due, now) + timedelta(seconds=delay)
 
 
-def _credentials_for(db: Session, user_id: int, platform: Platform) -> dict:
+def _connection_for(
+    db: Session, user_id: int, platform: Platform
+) -> PlatformConnection:
+    """The user's active connection, fetched once per publish attempt."""
     connection = db.scalar(
         select(PlatformConnection).where(
             PlatformConnection.user_id == user_id,
@@ -404,10 +407,21 @@ def _credentials_for(db: Session, user_id: int, platform: Platform) -> dict:
     )
     if connection is None or connection.status != ConnectionStatus.CONNECTED:
         raise NotConnected(not_connected_error(platform))
+    return connection
+
+
+def _credentials_for(
+    db: Session,
+    user_id: int,
+    platform: Platform,
+    *,
+    connection: PlatformConnection | None = None,
+) -> dict:
+    if connection is None:
+        connection = _connection_for(db, user_id, platform)
     try:
         return decrypt_credentials(connection.encrypted_credentials)
     except CredentialEncryptionError as exc:
-        # A key change is a credential problem, not a transient one.
         raise CredentialError(str(exc)) from exc
 
 
@@ -436,7 +450,12 @@ def _redact_credentials(
 
 
 def _translation_for(
-    db: Session, user_id: int, platform: Platform, content: Content
+    db: Session,
+    user_id: int,
+    platform: Platform,
+    content: Content,
+    *,
+    connection: PlatformConnection | None = None,
 ) -> translation.PublishChoice:
     """Which text this destination should receive, and why.
 
@@ -452,12 +471,13 @@ def _translation_for(
     the place they will look when they do notice is the worker log for the
     publication that surprised them.
     """
-    connection = db.scalar(
-        select(PlatformConnection).where(
-            PlatformConnection.user_id == user_id,
-            PlatformConnection.platform == platform,
+    if connection is None:
+        connection = db.scalar(
+            select(PlatformConnection).where(
+                PlatformConnection.user_id == user_id,
+                PlatformConnection.platform == platform,
+            )
         )
-    )
     wanted = connection.language if connection is not None else None
     choice = translation.for_publishing(db, content, wanted)
     if wanted and languages.normalize(wanted) not in (None, languages.SOURCE_LANGUAGE):
@@ -472,14 +492,20 @@ def _translation_for(
 
 
 def _mark_connection_invalid(
-    db: Session, user_id: int, platform: Platform, error: str
+    db: Session,
+    user_id: int,
+    platform: Platform,
+    error: str,
+    *,
+    connection: PlatformConnection | None = None,
 ) -> None:
-    connection = db.scalar(
-        select(PlatformConnection).where(
-            PlatformConnection.user_id == user_id,
-            PlatformConnection.platform == platform,
+    if connection is None:
+        connection = db.scalar(
+            select(PlatformConnection).where(
+                PlatformConnection.user_id == user_id,
+                PlatformConnection.platform == platform,
+            )
         )
-    )
     if connection is not None:
         connection.status = ConnectionStatus.INVALID
         connection.last_error = clip_error(error)
@@ -722,15 +748,21 @@ def execute(db: Session, publication: Publication) -> Publication:
     publication.attempts += 1
     db.flush()
 
+    connection: PlatformConnection | None = None
     try:
-        credentials = _credentials_for(db, user_id, publication.platform)
+        connection = _connection_for(db, user_id, publication.platform)
+        credentials = _credentials_for(
+            db, user_id, publication.platform, connection=connection
+        )
         # Which language this destination wants, and whether there is a
         # translation fit to go out in it. Resolved here rather than when the
         # row was queued, because both halves of the answer move in between: a
         # translation queued as ready can be made stale by an edit, and one
         # queued as pending can have finished. The queue decides *that* a piece
         # publishes; this decides what text.
-        choice = _translation_for(db, user_id, publication.platform, content)
+        choice = _translation_for(
+            db, user_id, publication.platform, content, connection=connection
+        )
         # Bound to a name rather than built inline because the success path
         # below records ``request.title`` as the headline this destination now
         # shows — see ``publication.live_title``.
@@ -785,7 +817,9 @@ def execute(db: Session, publication: Publication) -> Publication:
         # Not counted either, for the same reason: a rejected token is this
         # connection's problem. The connection is marked invalid below, which is
         # the thing that actually stops the other rows trying.
-        _mark_connection_invalid(db, user_id, publication.platform, str(exc))
+        _mark_connection_invalid(
+            db, user_id, publication.platform, str(exc), connection=connection
+        )
         _fail(db, publication, str(exc), terminal=True)
         return publication
     except RateLimited as exc:
