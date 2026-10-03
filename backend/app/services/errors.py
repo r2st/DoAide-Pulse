@@ -126,13 +126,8 @@ def sanitize_unexpected_error(exc: Exception) -> str:
 
     Used for the ``except Exception`` catch-all arms that record a failure
     on a row.  The raw ``str(exc)`` can contain file paths, class names, or
-    connection strings; this keeps only the exception's class name (without
-    the module path) and a bounded prefix of the message.
+    connection strings; this returns only the exception's type name so the
+    operator can correlate with the log line (which has the full traceback)
+    without exposing internals to the UI.
     """
-    name = type(exc).__name__
-    msg = str(exc)
-    if len(msg) > 200:
-        msg = msg[:200].rstrip() + "…"
-    if msg:
-        return f"Internal error ({name})"
-    return f"Internal error ({name})"
+    return f"Internal error ({type(exc).__name__})"
