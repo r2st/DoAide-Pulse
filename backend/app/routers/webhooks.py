@@ -401,9 +401,9 @@ def _stored(secret: str) -> str:
     try:
         return webhooks.store_secret(secret)
     except CredentialEncryptionError as exc:
-        # Production without TOKEN_ENCRYPTION_KEY. Refusing is the same answer
-        # the platform-credential path gives, for the same reason.
+        logger.error("webhook secret encryption failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not encrypt the webhook secret for storage: {exc}",
+            detail="Could not encrypt the webhook secret for storage. "
+            "Check the server's encryption configuration.",
         ) from exc

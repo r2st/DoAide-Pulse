@@ -755,9 +755,9 @@ def _stored(secret: str) -> str:
     try:
         return trigger_service.store_secret(secret)
     except CredentialEncryptionError as exc:
-        # Production without TOKEN_ENCRYPTION_KEY. Refusing matches what the
-        # outbound webhook and platform-credential paths do, for the same reason.
+        logger.error("trigger secret encryption failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not encrypt the trigger secret for storage: {exc}",
+            detail="Could not encrypt the trigger secret for storage. "
+            "Check the server's encryption configuration.",
         ) from exc
