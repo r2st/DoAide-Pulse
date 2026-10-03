@@ -243,15 +243,10 @@ def delivery(db, webhook) -> WebhookDelivery:
     return row
 
 
-def test_a_vast_transport_error_is_clipped_on_both_rows(
+def test_a_vast_transport_error_becomes_a_friendly_message(
     db, webhook, delivery, monkeypatch
 ):
-    """The response-body path was already excerpted; this one was not.
-
-    An ``httpx`` failure message is built from whatever the client was handed —
-    a certificate chain, a proxy's reply, a redirect loop's worth of URLs — and
-    it is written to the delivery row *and* the endpoint summary.
-    """
+    """A huge raw httpx message is replaced by friendly_network_error, not stored raw."""
 
     def _explode(request):
         raise httpx.ConnectError(HUGE)
@@ -268,12 +263,12 @@ def test_a_vast_transport_error_is_clipped_on_both_rows(
 
     db.refresh(delivery)
     db.refresh(webhook)
-    assert len(delivery.error) == errors.MAX_ERROR_CHARS
-    assert len(webhook.last_error) == errors.MAX_ERROR_CHARS
-    assert webhook.last_error.endswith("…")
+    assert delivery.error == "Could not connect to the server"
+    assert webhook.last_error == "Could not connect to the server"
+    assert len(delivery.error) < errors.MAX_ERROR_CHARS
 
 
-def test_an_ordinary_transport_error_is_stored_whole(
+def test_an_ordinary_transport_error_is_stored_as_a_friendly_message(
     db, webhook, delivery, monkeypatch
 ):
     def _explode(request):
@@ -290,5 +285,5 @@ def test_an_ordinary_transport_error_is_stored_whole(
     webhooks.deliver(db, delivery)
 
     db.refresh(webhook)
-    assert "Name or service not known" in webhook.last_error
+    assert webhook.last_error == "Could not connect to the server"
     assert "…" not in webhook.last_error
