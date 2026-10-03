@@ -310,8 +310,8 @@ def test_an_unexpected_crash_is_caught_and_recorded_like_any_other_failure(
         result = triggers.check(db, trigger)
 
     assert result["status"] == "error"
-    assert "something nobody predicted" in result["error"]
-    assert "Unexpected error" in (trigger.last_error or "")
+    assert "Internal error (ZeroDivisionError)" in result["error"]
+    assert "Internal error (ZeroDivisionError)" in (trigger.last_error or "")
     assert "crashed" in caplog.text
 
 
