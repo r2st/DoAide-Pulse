@@ -844,21 +844,34 @@ def published_series(
     week in progress in either case.
     """
     since = window_start(days)
-    rows = db.execute(
-        select(Content.published_at)
-        .join(Project, Project.id == Content.project_id)
-        .where(
-            Project.user_id == user_id,
-            Content.status == ContentStatus.PUBLISHED,
-            Content.published_at.is_not(None),
-            Content.published_at >= since,
-        )
-    ).all()
-
-    key = utc_week if weekly else utc_day
-    counts: dict[str, int] = defaultdict(int)
-    for (published_at,) in rows:
-        counts[key(published_at)] += 1
+    if weekly:
+        base = db.execute(
+            select(Content.published_at)
+            .join(Project, Project.id == Content.project_id)
+            .where(
+                Project.user_id == user_id,
+                Content.status == ContentStatus.PUBLISHED,
+                Content.published_at.is_not(None),
+                Content.published_at >= since,
+            )
+        ).all()
+        counts: dict[str, int] = defaultdict(int)
+        for (published_at,) in base:
+            counts[utc_week(published_at)] += 1
+    else:
+        day_col = func.date(Content.published_at).label("day")
+        rows = db.execute(
+            select(day_col, func.count(Content.id).label("cnt"))
+            .join(Project, Project.id == Content.project_id)
+            .where(
+                Project.user_id == user_id,
+                Content.status == ContentStatus.PUBLISHED,
+                Content.published_at.is_not(None),
+                Content.published_at >= since,
+            )
+            .group_by(day_col)
+        ).all()
+        counts = {str(day): cnt for day, cnt in rows}
 
     start = since.date()
     if weekly:
