@@ -109,7 +109,9 @@ def test_credentials_that_cannot_be_encrypted_are_500_and_not_stored(
     resp = _connect(client, auth)
 
     assert resp.status_code == 500
-    assert "TOKEN_ENCRYPTION_KEY" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "encrypt" in detail.lower()
+    assert "TOKEN_ENCRYPTION_KEY" not in detail
     assert db.query(PlatformConnection).filter_by(user_id=user.id).count() == 0
 
 

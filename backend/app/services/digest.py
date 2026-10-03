@@ -636,7 +636,7 @@ def send(
     """
     digest = prebuilt if prebuilt is not None else build(db, user, now=now)
     if digest.is_empty:
-        logger.info("digest for %s skipped: nothing happened this week", user.email)
+        logger.info("digest for user %s skipped: nothing happened this week", user.id)
         return False
 
     return mailer.send(

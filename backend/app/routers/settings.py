@@ -171,9 +171,11 @@ def upsert_connection(
     try:
         encrypted = encrypt_credentials(credentials)
     except CredentialEncryptionError as exc:
+        logger.error("credential encryption failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not encrypt credentials for storage: {exc}",
+            detail="Could not encrypt credentials for storage. "
+            "Check the server's encryption configuration.",
         ) from exc
 
     connection = db.scalar(
