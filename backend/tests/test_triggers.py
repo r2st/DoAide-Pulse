@@ -535,7 +535,7 @@ def test_check_absorbs_a_mark_checked_failure(db, writing_project, monkeypatch):
     result = triggers.check(db, trigger)
 
     assert result["status"] == "error"
-    assert "bookkeeping" in result["error"]
+    assert "could not be saved" in result["error"]
 
 
 def test_fire_absorbs_a_record_failure(db, writing_project, monkeypatch):

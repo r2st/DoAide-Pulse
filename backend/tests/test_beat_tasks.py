@@ -120,7 +120,7 @@ def test_a_trigger_that_crashes_is_reported_not_raised(
 
     result = trigger_tasks.check_trigger(schedule_trigger.id)
     assert result["status"] == "error"
-    assert "exploded" in result["error"]
+    assert "Internal error (RuntimeError)" in result["error"]
 
 
 def test_a_trigger_that_times_out_says_so(db, schedule_trigger, monkeypatch):

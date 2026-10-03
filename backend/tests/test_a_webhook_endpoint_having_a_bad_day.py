@@ -172,16 +172,18 @@ def test_a_broken_transport_is_retried_rather_than_given_up_on(
 def test_the_failure_says_which_kind_it_was(db, webhook, failing, failure):
     """``last_error`` is what the user has to debug from.
 
-    "Delivery failed" would be true of all six and useful for none. The class
-    name is recorded precisely so an expired certificate and a slow endpoint are
-    not the same line in the UI.
+    "Delivery failed" would be true of all six and useful for none. Each
+    failure type produces a distinct friendly message so an expired certificate
+    and a slow endpoint are not the same line in the UI.
     """
+    from app.services.errors import friendly_network_error
+
     failing(failure)
     delivery = _delivery(db, webhook)
 
     webhooks.deliver(db, delivery)
 
-    assert type(failure).__name__ in delivery.error
+    assert delivery.error == friendly_network_error(failure)
 
 
 @pytest.mark.parametrize("failure", _FAILURES, ids=_IDS)
