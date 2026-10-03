@@ -776,8 +776,9 @@ def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
     :func:`window_start`.
     """
     since = window_start(days)
+    day_col = func.date(Publication.published_at).label("day")
     rows = db.execute(
-        select(Publication.published_at)
+        select(day_col, func.count(Publication.id).label("cnt"))
         .join(Content, Content.id == Publication.content_id)
         .join(Project, Project.id == Content.project_id)
         .where(
@@ -786,11 +787,10 @@ def timeline(db: Session, user_id: int, *, days: int = 30) -> list[dict]:
             Publication.published_at.is_not(None),
             Publication.published_at >= since,
         )
+        .group_by(day_col)
     ).all()
 
-    counts: dict[str, int] = defaultdict(int)
-    for (published_at,) in rows:
-        counts[utc_day(published_at)] += 1
+    counts: dict[str, int] = {str(day): cnt for day, cnt in rows}
 
     start = since.date()
     return [
