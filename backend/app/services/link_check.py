@@ -37,6 +37,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.config import settings
+from app.services.errors import friendly_network_error
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +259,7 @@ def check_url(url: str, *, client: httpx.Client) -> LinkStatus:
         return LinkStatus(
             url,
             UNKNOWN,
-            detail=f"Could not be reached ({type(exc).__name__}) — check it by hand.",
+            detail=f"{friendly_network_error(exc)} — check it by hand.",
         )
 
     code = response.status_code
