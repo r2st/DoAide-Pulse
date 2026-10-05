@@ -638,6 +638,14 @@ def bulk_approve_content(
                 BulkFailureOut(content_id=content_id, reason="Already published")
             )
             continue
+        if content.status == ContentStatus.FAILED:
+            failed.append(
+                BulkFailureOut(
+                    content_id=content_id,
+                    reason="Has failed publications — retry them or move to draft first",
+                )
+            )
+            continue
         succeeded.append(content_id)
         if payload.dry_run:
             continue
@@ -1889,6 +1897,16 @@ def update_content(
             "from Pulse, or unpublish it there first.",
         )
 
+    if (
+        content.status == ContentStatus.FAILED
+        and data.get("status") == ContentStatus.APPROVED
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece has failed publications. Retry the failed "
+            "publications or move it back to draft first.",
+        )
+
     # Read before anything is written, because the gate below asks what the
     # piece is moving *from* and the assignment loop is about to overwrite it.
     previous_status = content.status
@@ -2039,6 +2057,12 @@ def approve_content(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This piece is already published — approving it again has no effect."
+        )
+    if content.status == ContentStatus.FAILED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece has failed publications. Retry the failed "
+            "publications or move it back to draft first.",
         )
     previous_status = content.status
     content.status = ContentStatus.APPROVED
@@ -2681,6 +2705,12 @@ def set_content_status(
             status_code=status.HTTP_409_CONFLICT,
             detail="This piece is live on the platforms. Archive it to hide it "
             "from Pulse, or unpublish it there first.",
+        )
+    if content.status == ContentStatus.FAILED and new_status == ContentStatus.APPROVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece has failed publications. Retry the failed "
+            "publications or move it back to draft first.",
         )
 
     previous_status = content.status
