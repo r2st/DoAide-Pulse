@@ -18,7 +18,7 @@ import json
 import logging
 from dataclasses import dataclass, replace
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, defer
 from starlette.concurrency import run_in_threadpool
@@ -558,7 +558,7 @@ def get_trigger_event(
 async def inbound(
     request: Request,
     response: Response,
-    token: str,
+    token: str = Path(max_length=64),
     db: Session = Depends(get_db),
 ) -> dict:
     """Fire an inbound webhook trigger. **Unauthenticated** — see the module docstring.
