@@ -51,6 +51,7 @@ from app.models.content import Content
 from app.models.mixins import utcnow
 from app.models.translation import ContentTranslation, TranslationStatus
 from app.services import ai, languages
+from app.services.errors import sanitize_unexpected_error
 
 logger = logging.getLogger(__name__)
 
@@ -417,7 +418,7 @@ def translate(db: Session, content: Content, language: str) -> ContentTranslatio
         )
     except ai.AIError as exc:
         row.status = TranslationStatus.FAILED
-        row.error = str(exc)[:500]
+        row.error = sanitize_unexpected_error(exc)
         db.commit()
         logger.warning("translation of content %s into %s failed: %s", content.id, code, exc)
         raise TranslationUnavailable(
