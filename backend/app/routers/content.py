@@ -273,9 +273,12 @@ def _settle_status(db: Session, content: Content, previous: ContentStatus) -> No
         # stamped if the piece somehow never was.
         publishing_service.sync_content_status(content)
     if content.status in _NOT_GOING_OUT:
-        # Whether this call moved the piece there or it was there already: in
-        # both cases the queue must agree with the column.
-        publishing_service.cancel_armed(db, content)
+        reason = (
+            publishing_service.ARCHIVED_ERROR
+            if content.status == ContentStatus.ARCHIVED
+            else publishing_service.WITHDRAWN_ERROR
+        )
+        publishing_service.cancel_armed(db, content, reason=reason)
 
 
 def _assert_review_ready(
