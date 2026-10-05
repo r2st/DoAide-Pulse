@@ -78,10 +78,11 @@ def truncate_at_sentence(text: str, limit: int) -> str:
     kept: list[str] = []
     length = 0
     for sentence in _SENTENCE_END.split(text):
-        if length + len(sentence) + 1 > limit:
+        needed = len(sentence) if not kept else len(sentence) + 1
+        if length + needed > limit:
             break
         kept.append(sentence)
-        length += len(sentence) + 1
+        length += needed
     if kept:
         return " ".join(kept).strip()
 
