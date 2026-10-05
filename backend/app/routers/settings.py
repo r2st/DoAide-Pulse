@@ -156,16 +156,18 @@ def upsert_connection(
             detail=f"{adapter.display_name} publishing is not available yet. {exc}",
         ) from exc
     except CredentialError as exc:
+        safe = redact(str(exc), publishers.secret_values(adapter, credentials))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"{adapter.display_name} rejected the credentials: {exc}",
+            detail=f"{adapter.display_name} rejected the credentials: {safe}",
         ) from exc
     except PublishError as exc:
         # The platform is having a bad day — the credentials might be fine.
+        safe = redact(str(exc), publishers.secret_values(adapter, credentials))
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"{adapter.display_name} is not responding — the credentials "
-            f"may be fine but could not be verified right now. {exc}",
+            f"may be fine but could not be verified right now. {safe}",
         ) from exc
 
     try:
