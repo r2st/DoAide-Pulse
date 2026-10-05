@@ -1859,6 +1859,7 @@ def update_content(
     data = payload.model_dump(exclude_unset=True)
     reject_nulls(Content, data)
 
+    tz = data.pop("timezone", None)
     if "scheduled_for" in data:
         # The same rule every other writer of this column applies to it, for the
         # same reason. ``_queue_publish`` and the calendar's reschedule both run
@@ -1870,7 +1871,9 @@ def update_content(
         # 200 where ``POST /schedule`` answers 422 for the same value, and
         # ``release_approved`` then queued the piece for now.
         try:
-            data["scheduled_for"] = scheduling.normalize(data["scheduled_for"])
+            data["scheduled_for"] = scheduling.normalize(
+                data["scheduled_for"], tz=tz
+            )
         except scheduling.ScheduleError as exc:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

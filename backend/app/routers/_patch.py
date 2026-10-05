@@ -18,9 +18,6 @@ entirely on the column type, and neither outcome was acceptable:
 :func:`reject_nulls` turns both into a 422 naming the fields. The nullable set
 is derived from the mapper rather than listed, so a column that changes its
 nullability cannot leave a stale allow-list behind.
-
-:func:`app.routers.auth.update_me` predates this and hand-rolls the same check
-for its single ``NOT NULL`` column; its docstring has the argument in full.
 """
 from __future__ import annotations
 

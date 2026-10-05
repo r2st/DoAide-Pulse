@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 from app.models.content import Content
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import publishers
-from app.services.errors import sanitize_unexpected_error
+from app.services.errors import clip_error, sanitize_unexpected_error
 from app.services.publishers.base import PublishError
 
 # Named imports rather than `publishing_service.<private>` at each call site, so
@@ -210,7 +210,7 @@ def _sync_one(
             platform.value,
             exc,
         )
-        return SyncOutcome(publication.id, platform, FAILED, str(exc)[:300])
+        return SyncOutcome(publication.id, platform, FAILED, clip_error(str(exc)))
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception(
             "headline sync for publication %s on %s: unexpected credential error",
@@ -229,7 +229,7 @@ def _sync_one(
             platform.value,
             exc,
         )
-        return SyncOutcome(publication.id, platform, FAILED, str(exc)[:300])
+        return SyncOutcome(publication.id, platform, FAILED, clip_error(str(exc)))
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("headline sync errored for publication %s", publication.id)
         return SyncOutcome(publication.id, platform, FAILED, sanitize_unexpected_error(exc))

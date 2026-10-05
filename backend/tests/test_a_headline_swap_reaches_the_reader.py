@@ -31,9 +31,9 @@ from app.models.content import Content, ContentStatus, ContentType
 from app.models.metrics import ContentMetric
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import headline_sync, headlines, publishers
-from app.services.crypto import CredentialEncryptionError
 from app.services.publishers.base import (
     Adapter,
+    CredentialError,
     NotImplementedAdapter,
     PublishError,
     PublishRequest,
@@ -494,7 +494,7 @@ def test_an_encryption_key_that_no_longer_fits_is_reported_per_destination(
     db.commit()
 
     def unreadable(_db, _user_id, _platform):
-        raise CredentialEncryptionError("no key in TOKEN_ENCRYPTION_KEY decrypts this")
+        raise CredentialError("no key in TOKEN_ENCRYPTION_KEY decrypts this")
 
     monkeypatch.setattr(headline_sync, "_credentials_for", unreadable)
 

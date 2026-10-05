@@ -192,6 +192,7 @@ class ContentUpdate(BaseModel):
     content_type: ContentType | None = None
     status: ContentStatus | None = None
     scheduled_for: datetime | None = None
+    timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
 
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
     _check_canonical = field_validator("canonical_url")(_absolute_canonical_url)
