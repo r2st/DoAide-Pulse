@@ -35,6 +35,7 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.routers._patch import reject_nulls
 from app.ratelimit import client_key, limiter
 from app.schemas.auth import (
     MessageOut,
@@ -399,11 +400,7 @@ def update_me(
     an explicit null there is refused rather than written.
     """
     fields = payload.model_dump(exclude_unset=True)
-    if fields.get("weekly_digest_enabled", True) is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="weekly_digest_enabled must be true or false, not null.",
-        )
+    reject_nulls(User, fields)
     for field_, value in fields.items():
         setattr(current_user, field_, value)
     db.commit()
