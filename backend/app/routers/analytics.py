@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
 from app.deps import RowId, get_current_user
-from app.models.content import Content, ContentStatus
+from app.models.content import Content
 from app.models.project import Project
 from app.models.publication import Publication, PublicationStatus
 from app.models.user import User
@@ -318,13 +318,9 @@ def dashboard(
     Separate from ``/overview`` because the dashboard is loaded far more often
     and does not need the full per-type/per-platform breakdown.
     """
-    summary, by_project_data = analytics_service.dashboard_summary(db, user.id)
-
-    review_count = db.scalar(
-        select(func.count(Content.id))
-        .join(Project, Project.id == Content.project_id)
-        .where(Project.user_id == user.id, Content.status == ContentStatus.REVIEW)
-    ) or 0
+    summary, by_project_data, review_count = analytics_service.dashboard_summary(
+        db, user.id
+    )
     failed = db.execute(
         select(
             Publication.id,
