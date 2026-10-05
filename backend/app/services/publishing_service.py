@@ -1531,6 +1531,7 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
             publication.error = (
                 "The worker publishing this stopped before it finished — retrying."
             )
+            arming_approves(publication.content)
             sync_content_status(publication.content)
     if stuck:
         db.commit()
