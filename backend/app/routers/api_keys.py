@@ -203,6 +203,22 @@ def rotate_api_key(
     than a coordinated outage.
     """
     key = _owned_key(key_id, db, user)
+    if payload.grace_hours > 0:
+        live = (
+            db.scalar(
+                select(func.count(ApiKey.id)).where(
+                    ApiKey.project_id == key.project_id,
+                    ApiKey.revoked_at.is_(None),
+                )
+            )
+            or 0
+        )
+        if live >= MAX_KEYS_PER_PROJECT:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"At most {MAX_KEYS_PER_PROJECT} live keys per project. "
+                "Revoke an unused key first, or rotate with grace_hours=0.",
+            )
     try:
         replacement, token = api_keys.rotate(db, key, grace_hours=payload.grace_hours)
     except api_keys.ApiKeyError as exc:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -418,11 +419,17 @@ def create_app() -> FastAPI:
     # Request ID: every request gets a unique id for log correlation and
     # debugging. Returned in X-Request-ID so the frontend can quote it in
     # bug reports.
+    _REQUEST_ID_UNSAFE = re.compile(r"[^\x20-\x7E]")
+
     class RequestIDMiddleware(BaseHTTPMiddleware):
         async def dispatch(
             self, request: Request, call_next: RequestResponseEndpoint
         ) -> Response:
-            request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:12]
+            raw = request.headers.get("x-request-id") or ""
+            if raw:
+                request_id = _REQUEST_ID_UNSAFE.sub("", raw)[:64] or uuid.uuid4().hex[:12]
+            else:
+                request_id = uuid.uuid4().hex[:12]
             request.state.request_id = request_id
             # Also on the logging context, so the id reaches log lines written
             # by code that has no idea a request exists — which is most of the
