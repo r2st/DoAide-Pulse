@@ -589,41 +589,48 @@ class Adapter(ABC):
         answer ``302 → http://169.254.169.254/``, and the guard would have
         checked a host that never received the request.
         """
-        def call(target: str, follow: bool) -> httpx.Response:
+        if not self.user_supplied_host:
             return httpx.request(
                 method,
-                target,
+                url,
                 headers=headers,
                 json=json_body,
                 params=params,
                 timeout=settings.publish_timeout_seconds,
-                follow_redirects=follow,
+                follow_redirects=True,
             )
 
-        if not self.user_supplied_host:
-            return call(url, True)
-
         current = url
+        hop_method = method
+        hop_body = json_body
         for _ in range(_MAX_REDIRECTS):
             self._require_public_url(current)
-            response = call(current, False)
+            response = httpx.request(
+                hop_method,
+                current,
+                headers=headers,
+                json=hop_body,
+                params=params,
+                timeout=settings.publish_timeout_seconds,
+                follow_redirects=False,
+            )
             if not response.is_redirect:
                 return response
-            # httpx builds the next request even when it is not following, and
-            # it is the better source: it applies the method and body changes a
-            # 303 requires. Joining the header is the fallback for a transport
-            # that does not.
             following = response.next_request
             location = response.headers.get("location", "")
             if following is None and not location:
-                # A 3xx with nowhere to go. Hand it back and let _translate
-                # judge it rather than inventing a destination.
                 return response
-            current = (
-                str(following.url)
-                if following is not None
-                else str(httpx.URL(current).join(location))
-            )
+            if following is not None:
+                current = str(following.url)
+                hop_method = following.method
+                hop_body = None if hop_method != method else json_body
+            else:
+                current = str(httpx.URL(current).join(location))
+                # 303 See Other: switch to GET and drop the body regardless
+                # of the original method (RFC 9110 §15.4.4).
+                if response.status_code == 303:
+                    hop_method = "GET"
+                    hop_body = None
 
         raise PublishError(
             f"{self.display_name} redirected more than {_MAX_REDIRECTS} times — "
