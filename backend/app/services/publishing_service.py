@@ -286,8 +286,14 @@ ARCHIVED_ERROR = "This piece was archived before it went out."
 #: what the owner reads if they are ever switched back on.
 DEACTIVATED_ERROR = "The account was deactivated before this went out."
 
+#: A piece moved back to draft or review — not archived, just withdrawn from
+#: the queue while the author reworks it.
+WITHDRAWN_ERROR = "The piece was moved back before it went out."
 
-def cancel_armed(db: Session, content: Content) -> list[Publication]:
+
+def cancel_armed(
+    db: Session, content: Content, *, reason: str = ARCHIVED_ERROR
+) -> list[Publication]:
     """Take *content* off the queue: cancel what has not run, drop its date.
 
     Archiving a piece is the user saying it is not going out, and it was the one
@@ -315,7 +321,7 @@ def cancel_armed(db: Session, content: Content) -> list[Publication]:
     for publication in cancelled:
         publication.status = PublicationStatus.CANCELLED
         publication.scheduled_for = None
-        publication.error = ARCHIVED_ERROR
+        publication.error = reason
     content.scheduled_for = None
     db.flush()
     return cancelled
@@ -1525,6 +1531,7 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
             publication.error = (
                 "The worker publishing this stopped before it finished — retrying."
             )
+            sync_content_status(publication.content)
     if stuck:
         db.commit()
     # The other terminal path — ``_fail`` — fires this, and a publication that

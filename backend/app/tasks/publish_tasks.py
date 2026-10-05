@@ -432,7 +432,11 @@ def cancel_publication(publication_id: int) -> dict:
     db = SessionLocal()
     try:
         publication = db.get(Publication, publication_id)
-        if publication is None or publication.is_terminal:
+        if (
+            publication is None
+            or publication.is_terminal
+            or publication.status == PublicationStatus.PUBLISHING
+        ):
             return {"publication_id": publication_id, "cancelled": False}
         publication.status = PublicationStatus.CANCELLED
         publication.scheduled_for = None
