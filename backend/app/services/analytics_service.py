@@ -253,12 +253,8 @@ def _overview_metrics(db: Session, user_id: int) -> list[_OverviewRow]:
     ]
 
 
-def _totals_from_cached(
-    db: Session,
-    user_id: int,
-    cached: list[_OverviewRow],
-) -> Totals:
-    """Derive :func:`totals` from a pre-fetched metrics set, no subquery."""
+def _status_counts(db: Session, user_id: int) -> tuple[int, int, int]:
+    """(total, published, review) content counts for *user_id*, one query."""
     base = (
         select(Content.id, Content.status)
         .join(Project, Project.id == Content.project_id)
@@ -271,17 +267,39 @@ def _totals_from_cached(
             func.count()
             .filter(content_sub.c.status == ContentStatus.PUBLISHED)
             .label("published"),
+            func.count()
+            .filter(content_sub.c.status == ContentStatus.REVIEW)
+            .label("review"),
         ).select_from(content_sub)
     ).one()
-    content_count = counts.total or 0
-    published_count = counts.published or 0
-    if content_count == 0:
-        return Totals()
+    return (counts.total or 0, counts.published or 0, counts.review or 0)
 
+
+def _totals_from_cached(
+    db: Session,
+    user_id: int,
+    cached: list[_OverviewRow],
+) -> tuple[Totals, int]:
+    """Derive :func:`totals` from a pre-fetched metrics set, no subquery.
+
+    Returns ``(totals, review_count)``.  The review count piggybacks on the
+    same status-count query the totals need, so callers that want both do not
+    pay an extra round-trip.
+    """
+    content_count, published_count, review_count = _status_counts(db, user_id)
+    if content_count == 0:
+        return Totals(), review_count
+
+    user_content = (
+        select(Content.id)
+        .join(Project, Project.id == Content.project_id)
+        .where(Project.user_id == user_id)
+        .subquery()
+    )
     pub_count = db.scalar(
         select(func.count())
         .select_from(Publication)
-        .join(content_sub, content_sub.c.id == Publication.content_id)
+        .join(user_content, user_content.c.id == Publication.content_id)
         .where(Publication.status == PublicationStatus.PUBLISHED)
     ) or 0
 
@@ -299,7 +317,7 @@ def _totals_from_cached(
         engagement=bucket["engagement"],
         reads_reported=bucket["reads_reported"],
         clicks_reported=bucket["clicks_reported"],
-    )
+    ), review_count
 
 
 def totals(db: Session, user_id: int, *, project_id: int | None = None) -> Totals:
@@ -1046,7 +1064,7 @@ def _pre_window_readings(
 
 
 def _read_minutes_by_publication(
-    db: Session, user_id: int, since: datetime, content_of: dict[int, int]
+    db: Session, content_of: dict[int, int]
 ) -> dict[int, int]:
     """Reading time per publication, counting each piece exactly once.
 
@@ -1056,30 +1074,23 @@ def _read_minutes_by_publication(
     the counts are fetched keyed by *content* id and then spread back across the
     publications.
 
-    The ids come from a subquery repeating the caller's own predicate rather
-    than from an ``IN`` over ``content_of.values()``. It selects the same set
-    either way, but as a subquery the statement carries two bind parameters
-    instead of one per piece, and Postgres refuses a statement with more than
-    65535 of them.
+    The unique content ids are taken straight from *content_of* — one
+    ``SELECT … WHERE id IN (…)`` over the distinct set the caller already
+    knows, instead of a 4-table subquery that re-derived them.
     """
     if not content_of:
         return {}
-    in_window = (
-        select(Publication.content_id)
-        .join(ContentMetric, ContentMetric.publication_id == Publication.id)
-        .join(Content, Content.id == Publication.content_id)
-        .join(Project, Project.id == Content.project_id)
-        .where(Project.user_id == user_id, ContentMetric.captured_at >= since)
-        .distinct()
-    )
+    unique_content_ids = list(set(content_of.values()))
     minutes_of_content = {
         content_id: read_minutes_for(words)
         for content_id, words in db.execute(
-            select(Content.id, Content.word_count).where(Content.id.in_(in_window))
+            select(Content.id, Content.word_count).where(
+                Content.id.in_(unique_content_ids)
+            )
         )
     }
     return {
-        publication_id: minutes_of_content[content_id]
+        publication_id: minutes_of_content.get(content_id, 1)
         for publication_id, content_id in content_of.items()
     }
 
@@ -1141,7 +1152,7 @@ def engagement_trend(db: Session, user_id: int, *, days: int = 30) -> list[dict]
         series[metric.publication_id].append(metric)
         content_of[metric.publication_id] = content_id
 
-    read_minutes = _read_minutes_by_publication(db, user_id, since, content_of)
+    read_minutes = _read_minutes_by_publication(db, content_of)
 
     baselines = _pre_window_readings(db, since, list(series))
 
@@ -1373,7 +1384,7 @@ def overview(db: Session, user_id: int) -> dict:
     """
     cached = _overview_metrics(db, user_id)
     return {
-        "totals": _totals_from_cached(db, user_id, cached).to_dict(),
+        "totals": _totals_from_cached(db, user_id, cached)[0].to_dict(),
         "by_content_type": _by_content_type_from_cached(cached),
         "by_platform": _by_platform_from_cached(db, user_id, cached),
         "by_project": _by_project_from_cached(db, user_id, cached),
@@ -1386,18 +1397,20 @@ def overview(db: Session, user_id: int) -> dict:
 
 def dashboard_summary(
     db: Session, user_id: int
-) -> tuple[Totals, list[dict]]:
-    """Totals and per-project stats for the dashboard, one metric query.
+) -> tuple[Totals, list[dict], int]:
+    """Totals, per-project stats, and review count for the dashboard.
 
-    The dashboard needs both :func:`totals` and :func:`by_project`, and each
-    runs the 4-table GROUP BY in :func:`_latest_metric_subquery` on its own.
-    This fetches the set once and derives both, the same pattern
-    :func:`overview` uses for the analytics page.
+    The dashboard needs :func:`totals`, :func:`by_project`, and the review
+    count.  The review count piggybacks on the status-count query inside
+    ``_status_counts`` — the same query ``_totals_from_cached`` uses — so the
+    dashboard fires one ``SELECT COUNT(*)`` instead of two.
     """
     cached = _overview_metrics(db, user_id)
+    totals_result, review_count = _totals_from_cached(db, user_id, cached)
     return (
-        _totals_from_cached(db, user_id, cached),
+        totals_result,
         _by_project_from_cached(db, user_id, cached),
+        review_count,
     )
 
 
