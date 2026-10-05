@@ -11,6 +11,7 @@ from fastapi import (
     Depends,
     Header,
     HTTPException,
+    Path,
     Query,
     Request,
     Response,
@@ -964,9 +965,9 @@ def archive_old_content(
 )
 @limiter.limit(settings.rate_limit_public_read)
 def get_public_preview(
-    token: str,
     request: Request,
     response: Response,
+    token: str = Path(max_length=256),
     db: Session = Depends(get_db),
 ) -> PublicPreviewOut:
     """A reviewer's view of one draft, no bearer token required.
