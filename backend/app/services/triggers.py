@@ -351,18 +351,35 @@ def due_triggers(db: Session, *, limit: int = 200) -> list[Trigger]:
 # --------------------------------------------------------------------------- #
 
 
-def _daily_count(db: Session, project_id: int) -> int:
-    """Pieces this project has had written for it by a trigger in 24 hours."""
+def _daily_count(
+    db: Session, project_id: int, *, exclude_event_id: int | None = None
+) -> int:
+    """Pieces this project has had written for it by a trigger in 24 hours.
+
+    Counts both GENERATED events (completed) and RECEIVED events (in-flight).
+    Without RECEIVED, concurrent fires all see a count of zero and race past
+    the limit — the events are committed as RECEIVED before generation starts,
+    but the old query only counted GENERATED.
+
+    *exclude_event_id* keeps the caller's own event out of the count, since
+    that event was committed by ``record`` moments ago and has not generated
+    anything yet.
+    """
     since = utcnow() - timedelta(days=1)
+    conditions = [
+        Trigger.project_id == project_id,
+        TriggerEvent.created_at >= since,
+        TriggerEvent.status.in_(
+            (TriggerEventStatus.GENERATED, TriggerEventStatus.RECEIVED)
+        ),
+    ]
+    if exclude_event_id is not None:
+        conditions.append(TriggerEvent.id != exclude_event_id)
     return (
         db.scalar(
             select(func.count(TriggerEvent.id))
             .join(Trigger, Trigger.id == TriggerEvent.trigger_id)
-            .where(
-                Trigger.project_id == project_id,
-                TriggerEvent.created_at >= since,
-                TriggerEvent.status == TriggerEventStatus.GENERATED,
-            )
+            .where(*conditions)
         )
         or 0
     )
@@ -441,7 +458,7 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
                 "The project's autopilot is off, so the trigger was logged but "
                 "nothing was written.",
             )
-        if _daily_count(db, project.id) >= settings.trigger_daily_content_limit:
+        if _daily_count(db, project.id, exclude_event_id=event.id) >= settings.trigger_daily_content_limit:
             return _skip(
                 db,
                 event,

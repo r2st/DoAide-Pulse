@@ -382,7 +382,12 @@ def redeliver(
             status_code=status.HTTP_404_NOT_FOUND, detail="Delivery not found"
         )
 
-    webhooks.requeue(db, delivery)
+    try:
+        webhooks.requeue(db, delivery)
+    except webhooks.RequeueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
     webhooks.deliver(db, delivery)
     db.refresh(delivery)
     return WebhookDeliveryOut.model_validate(delivery)
