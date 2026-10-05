@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -51,6 +52,27 @@ from app.services import templates as template_service
 from app.services.templates import BUILTINS
 
 logger = logging.getLogger(__name__)
+
+_VALUE_ERROR_PREFIX = "Value error, "
+
+
+def _validation_detail(exc: ValidationError) -> str:
+    """The user-facing messages from a Pydantic ValidationError.
+
+    ``str(ValidationError)`` dumps the model class name, a Pydantic docs URL,
+    and the raw ``input_type`` — none of which a template author should see.
+    The ``.errors()`` list carries a ``msg`` per field that is already
+    human-readable; custom validators (``type='value_error'``) add a
+    ``"Value error, "`` prefix that is redundant with the message itself.
+    """
+    parts: list[str] = []
+    for err in exc.errors():
+        msg = err["msg"]
+        if msg.startswith(_VALUE_ERROR_PREFIX):
+            msg = msg[len(_VALUE_ERROR_PREFIX) :]
+        parts.append(msg)
+    return "; ".join(parts) if parts else "Invalid template data."
+
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -308,6 +330,11 @@ def update_template(
     }
     try:
         checked = TemplateCreate(**merged)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=_validation_detail(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
