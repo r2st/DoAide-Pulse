@@ -251,3 +251,44 @@ def test_verifying_another_users_connection_is_404(client, auth, db, adapter, mo
         == 404
     )
     assert client.delete("/api/v1/settings/connections/devto", headers=auth).status_code == 404
+
+
+# ---- Credential redaction ------------------------------------------------ #
+
+
+def test_upsert_redacts_echoed_credentials_from_credential_error(
+    client, auth, adapter, monkeypatch
+):
+    """A platform that echoes the API key in a 401 body must not leak it."""
+    secret = "ghp_s3cretToken1234567890abcdef"
+    monkeypatch.setattr(
+        adapter,
+        "verify",
+        _raises(CredentialError(f"invalid api_key: {secret}")),
+    )
+
+    resp = _connect(client, auth, key=secret)
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert secret not in detail
+    assert "[redacted]" in detail
+
+
+def test_upsert_redacts_echoed_credentials_from_publish_error(
+    client, auth, adapter, monkeypatch
+):
+    """Same guard for a 502-class failure whose body echoes the token."""
+    secret = "ghp_s3cretToken1234567890abcdef"
+    monkeypatch.setattr(
+        adapter,
+        "verify",
+        _raises(PublishError(f"returned 503: api_key={secret}")),
+    )
+
+    resp = _connect(client, auth, key=secret)
+
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert secret not in detail
+    assert "[redacted]" in detail
