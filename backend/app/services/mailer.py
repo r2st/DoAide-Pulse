@@ -79,10 +79,10 @@ def send(*, to: str, subject: str, body: str, html: str | None = None) -> bool:
     except (OSError, smtplib.SMTPException) as exc:
         # Includes auth failures, DNS, TLS and timeouts. The caller cannot act
         # on any of them and must not leak which one happened to the requester.
-        logger.error("SMTP send failed: %s", exc)
+        logger.error("SMTP send to=%s subject=%r failed: %s", to, subject, exc)
         return False
 
-    logger.info("sent %r", subject)
+    logger.info("sent %r to %s", subject, to)
     return True
 
 
