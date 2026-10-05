@@ -1973,6 +1973,8 @@ def update_content(
                 if data["scheduled_for"]
                 else PublicationStatus.PENDING
             )
+            publication.attempts = 0
+            publication.error = None
 
     # The queue agrees with the column, and the column with the rows that went
     # out — see :func:`_settle_status`. After the ``scheduled_for`` pass above,
