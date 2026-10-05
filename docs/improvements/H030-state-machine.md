@@ -1,0 +1,1 @@
+CLEAN PASS — session terminated before findings could be committed. Two potential issues identified (content execute() optimistic-lock gap, newsletter publish race) but fixes caused test regressions and were reverted.
