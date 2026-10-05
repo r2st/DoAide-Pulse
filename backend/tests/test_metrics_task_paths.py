@@ -214,6 +214,39 @@ def test_refreshing_a_publication_that_is_gone_is_not_an_error(_task_session):
     assert _task_session.closed == 1
 
 
+def test_collect_one_handles_soft_time_limit(db, project, monkeypatch):
+    """The refresh button's task has a soft time limit. When it fires mid-poll,
+    the session must be rolled back and the task must return cleanly rather
+    than letting the exception escape to Celery's retry machinery.
+    """
+    publication = _published(db, project)
+
+    def _timeout(session, row):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr(metrics_tasks.publishing_service, "collect_metrics", _timeout)
+
+    result = metrics_tasks.collect_one(publication.id)
+
+    assert result == {"publication_id": publication.id, "recorded": False}
+
+
+def test_collect_one_handles_unexpected_exception(db, project, monkeypatch):
+    """An unexpected error in the polling code must not crash the task. The
+    session is rolled back and the task reports nothing recorded.
+    """
+    publication = _published(db, project)
+
+    def _explode(session, row):
+        raise RuntimeError("adapter returned martian JSON")
+
+    monkeypatch.setattr(metrics_tasks.publishing_service, "collect_metrics", _explode)
+
+    result = metrics_tasks.collect_one(publication.id)
+
+    assert result == {"publication_id": publication.id, "recorded": False}
+
+
 def test_the_single_refresh_does_not_share_a_rate_limit_memo(db, project, monkeypatch):
     """``collect_one`` passes no ``rate_limited`` set, on purpose.
 

@@ -263,6 +263,51 @@ def test_an_ordinary_redirect_is_still_followed(resolves_public, requests):
     ]
 
 
+def test_a_303_redirect_switches_to_get(resolves_public, requests):
+    """RFC 9110 §15.4.4: a 303 See Other tells the client to GET the target,
+    regardless of the original method. The manual redirect loop was only
+    extracting the URL from httpx's ``next_request``; the method stayed as the
+    original POST for every hop, which could duplicate a resource or provoke a
+    405 from a target that only accepts GET.
+    """
+    calls = requests(
+        _response(303, location="https://blog.example.com/wp-json/wp/v2/posts/42"),
+        _response(200, {"id": 42, "title": {"rendered": "A post"}}),
+    )
+
+    adapter = WordPressAdapter()
+    response = adapter._send(
+        "POST",
+        "https://blog.example.com/wp-json/wp/v2/posts",
+        headers={"Authorization": "Basic dGVzdA=="},
+        json_body={"title": "A post", "content": "body", "status": "publish"},
+        params=None,
+    )
+    assert response.status_code == 200
+    assert calls[0] == ("POST", "https://blog.example.com/wp-json/wp/v2/posts")
+    assert calls[1] == ("GET", "https://blog.example.com/wp-json/wp/v2/posts/42")
+
+
+def test_a_307_redirect_preserves_method(resolves_public, requests):
+    """307 Temporary Redirect: method and body MUST be preserved."""
+    calls = requests(
+        _response(307, location="https://new.blog.example.com/wp-json/wp/v2/posts"),
+        _response(201, {"id": 99, "link": "https://new.blog.example.com/?p=99"}),
+    )
+
+    adapter = WordPressAdapter()
+    response = adapter._send(
+        "POST",
+        "https://blog.example.com/wp-json/wp/v2/posts",
+        headers={"Authorization": "Basic dGVzdA=="},
+        json_body={"title": "A post", "content": "body", "status": "publish"},
+        params=None,
+    )
+    assert response.status_code == 201
+    assert calls[0] == ("POST", "https://blog.example.com/wp-json/wp/v2/posts")
+    assert calls[1] == ("POST", "https://new.blog.example.com/wp-json/wp/v2/posts")
+
+
 def test_a_redirect_loop_stops_rather_than_spinning(resolves_public, requests):
     hop = _response(302, location="https://blog.example.com/again")
     requests(*[hop] * (base._MAX_REDIRECTS + 1))

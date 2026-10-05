@@ -191,5 +191,15 @@ def collect_one(publication_id: int) -> dict:
             return {"publication_id": publication_id, "recorded": False}
         metric = publishing_service.collect_metrics(db, publication)
         return {"publication_id": publication_id, "recorded": metric is not None}
+    except SoftTimeLimitExceeded:
+        db.rollback()
+        logger.warning("collect_one timed out for publication %s", publication_id)
+        return {"publication_id": publication_id, "recorded": False}
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "collect_one failed for publication %s", publication_id
+        )
+        return {"publication_id": publication_id, "recorded": False}
     finally:
         db.close()
