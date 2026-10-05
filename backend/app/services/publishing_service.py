@@ -515,6 +515,13 @@ def _mark_connection_invalid(
     if connection is not None:
         connection.status = ConnectionStatus.INVALID
         connection.last_error = clip_error(error)
+        logger.warning(
+            "connection %s for user %s on %s marked invalid: %s",
+            connection.id,
+            user_id,
+            platform.value,
+            clip_error(error),
+        )
 
 
 def build_request(
