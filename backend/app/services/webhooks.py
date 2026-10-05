@@ -715,12 +715,26 @@ def _backoff(attempt: int) -> float:
     return float(min(delay, settings.webhook_retry_max_backoff_seconds))
 
 
+class RequeueError(RuntimeError):
+    """Raised when a delivery cannot be requeued in its current state."""
+
+
 def requeue(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
     """Re-arm a finished delivery so it will be attempted again.
 
     The retry budget resets. This is a person saying "the endpoint is fixed
     now", which is exactly the information the automatic backoff does not have.
+
+    Only terminal deliveries (DELIVERED or FAILED) may be requeued. A PENDING
+    delivery may be mid-attempt — a worker that has already claimed it is
+    sending the POST right now — and resetting its state underneath that worker
+    causes a double-delivery and a corrupted attempt counter.
     """
+    if delivery.status == DeliveryStatus.PENDING:
+        raise RequeueError(
+            "This delivery is still being attempted. "
+            "Wait for it to finish before redelivering."
+        )
     delivery.status = DeliveryStatus.PENDING
     delivery.attempts = 0
     delivery.error = None
@@ -737,6 +751,7 @@ __all__ = [
     "DELIVERY_HEADER",
     "EVENT_HEADER",
     "SIGNATURE_HEADER",
+    "RequeueError",
     "WebhookUrlError",
     "claim",
     "deliver",
