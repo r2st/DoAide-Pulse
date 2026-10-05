@@ -254,11 +254,20 @@ def _trend(curves: list[velocity.Curve]) -> list[dict[str, Any]]:
     latest: dict[int, tuple[int, int]] = {}
     out: list[dict[str, Any]] = []
 
+    # Per-curve pointer: avoids re-scanning every point list from the start on
+    # each stamp.  Points are already sorted by hours, and stamps are sorted
+    # too, so each pointer only advances forward.
+    cursors: dict[int, int] = {curve.publication_id: 0 for curve in curves}
+
     for hours in stamps:
         for curve in curves:
-            due = [p for p in curve.points if round(p.hours, 2) <= hours]
-            if due:
-                latest[curve.publication_id] = (due[-1].views, due[-1].engagement)
+            pts = curve.points
+            idx = cursors[curve.publication_id]
+            while idx < len(pts) and round(pts[idx].hours, 2) <= hours:
+                idx += 1
+            cursors[curve.publication_id] = idx
+            if idx > 0:
+                latest[curve.publication_id] = (pts[idx - 1].views, pts[idx - 1].engagement)
         out.append(
             {
                 "hours": hours,

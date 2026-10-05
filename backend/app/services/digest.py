@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from html import escape
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -153,15 +153,18 @@ def _last_readings_before(
     The baseline the earliest reported window is measured against. Publications
     with nothing before *moment* are simply absent — a first appearance has no
     "before", which :func:`_gains` reads as "the whole first count was gained".
+
+    ``MAX(id)`` rather than ``MAX(captured_at)``: ids are monotonic and unique,
+    so this cannot tie — two polls in the same second can, and a tie here would
+    return duplicate rows for the same publication, double-counting its baseline
+    in ``_gains``.  The same reasoning
+    :func:`app.services.analytics_service._latest_metric_subquery` gives.
     """
     if not publication_ids:
         return {}
 
     newest = (
-        select(
-            ContentMetric.publication_id.label("publication_id"),
-            func.max(ContentMetric.captured_at).label("captured_at"),
-        )
+        select(func.max(ContentMetric.id).label("metric_id"))
         .where(
             ContentMetric.publication_id.in_(publication_ids),
             ContentMetric.captured_at < moment,
@@ -174,10 +177,7 @@ def _last_readings_before(
         for metric in db.scalars(
             select(ContentMetric).join(
                 newest,
-                and_(
-                    ContentMetric.publication_id == newest.c.publication_id,
-                    ContentMetric.captured_at == newest.c.captured_at,
-                ),
+                ContentMetric.id == newest.c.metric_id,
             )
         )
     }
