@@ -37,6 +37,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.models.content import read_minutes_for
 from app.models.publication import Platform
 from app.services import github_client, seo, social_cards
 from app.services.publishers import formatting
@@ -395,8 +396,7 @@ class GitAdapter(Adapter):
         # Reading time and word count — most blog themes display these.
         plain = seo.strip_markdown(request.body_markdown)
         word_count = len(plain.split())
-        reading_time = max(1, round(word_count / 238))  # avg adult: ~238 wpm
-        matter["readingTime"] = reading_time
+        matter["readingTime"] = read_minutes_for(word_count)
         matter["wordCount"] = word_count
 
         body = request.body_markdown.strip()
