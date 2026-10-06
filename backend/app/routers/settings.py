@@ -198,6 +198,12 @@ def upsert_connection(
 
     db.commit()
     db.refresh(connection)
+    logger.info(
+        "user %s connected %s (display=%s)",
+        user.id,
+        payload.platform.value,
+        display_name,
+    )
     return ConnectionOut.model_validate(connection)
 
 
@@ -253,6 +259,7 @@ def verify_connection(
     # remove. See ``publishing_service._redact_credentials`` for the same guard
     # on the publish path.
     credentials: dict = {}
+    previous_status = connection.status
     try:
         credentials = decrypt_credentials(connection.encrypted_credentials)
         connection.display_name = adapter.verify(credentials)
@@ -270,6 +277,22 @@ def verify_connection(
         # re-enter a working token.
         connection.last_error = clip_error(
             redact(str(exc), publishers.secret_values(adapter, credentials))
+        )
+
+    if connection.status != previous_status:
+        logger.warning(
+            "user %s connection %s status changed: %s -> %s",
+            user.id,
+            platform.value,
+            previous_status.value,
+            connection.status.value,
+        )
+    else:
+        logger.info(
+            "user %s verified %s: status=%s",
+            user.id,
+            platform.value,
+            connection.status.value,
         )
 
     db.commit()

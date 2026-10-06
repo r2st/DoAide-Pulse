@@ -27,10 +27,13 @@ one.
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -337,6 +340,12 @@ def optimal_slots(
                 seconds=settings.syndication_delay_seconds
             )
 
+    logger.info(
+        "optimal_slots: user=%s platforms=%s slots=%s",
+        user_id,
+        [p.value for p in ordered],
+        [(s.platform.value, s.when.isoformat()) for s in chosen],
+    )
     return sorted(chosen, key=lambda slot: slot.when)
 
 
