@@ -1558,22 +1558,36 @@ def reclaim_stuck(db: Session, *, now: datetime | None = None) -> int:
     return len(stuck)
 
 
+_DUE_PUBLICATIONS_LIMIT = 500
+
+
 def due_publications(db: Session, *, now: datetime | None = None) -> list[Publication]:
     """Publications a worker should pick up right now.
 
     Covers both "publish immediately" (``pending``) and "scheduled, and the time
     has come". Rows that have burned their retries are excluded by status.
+
+    Bounded to :data:`_DUE_PUBLICATIONS_LIMIT` and ordered so that the oldest
+    scheduled rows are picked up first. Pending rows (no ``scheduled_for``)
+    sort ahead of scheduled ones so they are never starved by a long backlog
+    of timed publications.
     """
     moment = now or utcnow()
     return list(
         db.scalars(
-            select(Publication).where(
+            select(Publication)
+            .where(
                 Publication.status.in_(
                     [PublicationStatus.PENDING, PublicationStatus.SCHEDULED]
                 ),
                 (Publication.scheduled_for.is_(None))
                 | (Publication.scheduled_for <= moment),
             )
+            .order_by(
+                Publication.scheduled_for.asc().nullsfirst(),
+                Publication.id,
+            )
+            .limit(_DUE_PUBLICATIONS_LIMIT)
         )
     )
 
@@ -1590,6 +1604,7 @@ def collect_metrics(
     *,
     user_id: int | None = None,
     rate_limited: set[RateLimitKey] | None = None,
+    commit: bool = True,
 ) -> ContentMetric | None:
     """Poll one published post for engagement. Returns the new row, or ``None``.
 
@@ -1676,7 +1691,8 @@ def collect_metrics(
         shares=snapshot.shares,
     )
     db.add(metric)
-    db.commit()
+    if commit:
+        db.commit()
     return metric
 
 
