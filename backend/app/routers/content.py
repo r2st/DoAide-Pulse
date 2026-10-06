@@ -606,10 +606,13 @@ def publication_queue(
     # No 404 and no 409: a piece that is missing, someone else's, or already
     # published comes back in `failed` with a reason. The batch answers 200
     # whatever the mix, because a partial success is the normal outcome.
-    responses=errors(*AUTHENTICATED),
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_health, key_func=account_key)
 def bulk_approve_content(
     payload: BulkContentIn,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> BulkResultOut:
@@ -696,10 +699,13 @@ def bulk_approve_content(
     "/bulk/reject",
     response_model=BulkResultOut,
     summary="Archive many pieces at once",
-    responses=errors(*AUTHENTICATED),
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_health, key_func=account_key)
 def bulk_reject_content(
     payload: BulkContentIn,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> BulkResultOut:
@@ -748,10 +754,13 @@ def bulk_reject_content(
     summary="Queue many pieces for the same platforms",
     # As on `/bulk/approve`: everything the single-item publish would raise as
     # a 400, 409 or 422 is recorded against the one piece it applies to.
-    responses=errors(*AUTHENTICATED),
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def bulk_publish_content(
     payload: BulkPublishIn,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> BulkResultOut:
@@ -807,10 +816,13 @@ def bulk_publish_content(
     "/bulk/retry",
     response_model=BulkResultOut,
     summary="Retry every stopped publication on many pieces",
-    responses=errors(*AUTHENTICATED),
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def bulk_retry_content(
     payload: BulkContentIn,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> BulkResultOut:
@@ -881,10 +893,13 @@ def bulk_retry_content(
     "/bulk/archive-old",
     response_model=ArchiveOldOut,
     summary="Archive pieces older than a given age",
-    responses=errors(*AUTHENTICATED),
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_health, key_func=account_key)
 def archive_old_content(
     payload: ArchiveOldIn,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ArchiveOldOut:
@@ -1351,11 +1366,14 @@ def generate_headline_variants(
     "/{content_id}/headlines/apply",
     response_model=ContentOut,
     summary="Swap in a headline",
-    responses=errors(*OWNED),
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def apply_content_headline(
     content_id: RowId,
     payload: HeadlineApplyIn,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ContentOut:
@@ -1483,10 +1501,13 @@ def content_headline_winner(
     "/{content_id}/headlines/auto-select",
     response_model=HeadlineWinnerOut,
     summary="Adopt the winning headline",
-    responses=errors(*OWNED),
+    responses=errors(*OWNED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_outbound_probe, key_func=account_key)
 def apply_headline_winner(
     content_id: RowId,
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> HeadlineWinnerOut:
