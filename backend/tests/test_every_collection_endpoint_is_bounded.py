@@ -39,8 +39,7 @@ FINITE_BY_CONSTRUCTION = {
         "one point per day, bounded by ?days — and fewer when ?weekly buckets "
         "them by seven"
     ),
-    ("GET", "/analytics/generation-cost"): "one point per day, bounded by ?days",
-    ("GET", "/analytics/platforms"): "one row per Platform, a closed enum",
+("GET", "/analytics/platforms"): "one row per Platform, a closed enum",
     ("GET", "/content/{content_id}/headlines/performance"): (
         "one window per headline test on a single piece, and a piece holds one "
         "headline_history capped by the headline service"
