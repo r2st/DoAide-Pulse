@@ -397,8 +397,9 @@ def test_a_reported_rate_of_zero_is_still_zero(client, auth, db, user, project):
 def test_no_analytics_endpoint_still_answers_an_untyped_object():
     """The gap this closes, asserted where it was: nine endpoints, no schema.
 
-    Thirteen now — the four dashboard endpoints (published series, top content,
-    platform breakdown, generation cost) were added after. The count is the
+    Twelve now — the three dashboard endpoints (published series, top content,
+    platform breakdown) were added after; generation-cost was removed (cross-
+    tenant leak — token spend is install-wide, served via /metrics). The count is the
     guard on the walk, so it moves when the surface does; what must not move is
     ``untyped``.
     """
@@ -420,7 +421,7 @@ def test_no_analytics_endpoint_still_answers_an_untyped_object():
         if "analytics" in (route.tags or [])
     ]
 
-    assert len(analytics_routes) == 13
+    assert len(analytics_routes) == 12
     untyped = [r.path for r in analytics_routes if r.response_model is None]
     assert untyped == []
 

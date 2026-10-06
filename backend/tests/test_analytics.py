@@ -325,3 +325,8 @@ def test_engagement_trend_days_out_of_range_is_rejected(client, auth):
     assert client.get(
         "/api/v1/analytics/engagement-trend?days=181", headers=auth
     ).status_code == 422
+
+
+def test_generation_cost_endpoint_removed(client, auth):
+    resp = client.get("/api/v1/analytics/generation-cost", headers=auth)
+    assert resp.status_code in (404, 405)

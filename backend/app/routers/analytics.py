@@ -19,7 +19,6 @@ from app.schemas.analytics import (
     DigestOut,
     DigestSendOut,
     EngagementTrendPointOut,
-    GenerationCostPointOut,
     OverviewOut,
     PlatformStatsOut,
     PublishedPointOut,
@@ -135,32 +134,6 @@ def platform_breakdown(
     """
     return analytics_service.by_platform(db, user.id)
 
-
-@router.get(
-    "/generation-cost",
-    response_model=list[GenerationCostPointOut],
-    summary="Token spend per day",
-    responses=errors(*AUTHENTICATED),
-)
-def generation_cost(
-    days: int = Query(default=30, ge=1, le=365),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> list[dict]:
-    """What generation has been costing, per day, in tokens.
-
-    **Install-wide, not scoped to the caller** — unlike every other endpoint in
-    this router. The usage table has no owner column, because the router that
-    writes it is a pure HTTP client that does not know whose request it is
-    serving; see :mod:`app.services.ops_metrics`. On the single-tenant
-    deployment Pulse ships as the distinction is invisible, and on a
-    multi-account one every caller sees the same series.
-
-    Bounded by ``LLM_USAGE_RETENTION_DAYS`` — ask for a longer window and the
-    early buckets read zero because the rows were purged, not because nothing
-    was generated.
-    """
-    return analytics_service.generation_cost_trend(db, days=days)
 
 
 @router.get(
