@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import DoAideFooter from "../components/DoAideFooter";
 import "./LandingPage.css";
 
 const ACCENT = "#F0B429";
@@ -329,6 +330,8 @@ export default function LandingPage() {
           </div>
         </div>
       </main>
+
+      <DoAideFooter />
 
       <footer className="landing-footer">
         <div className="landing-footer-products">
