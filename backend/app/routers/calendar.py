@@ -244,7 +244,7 @@ def reschedule(
     content = db.get(Content, content_id)
     if content is None or content.project.user_id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Content not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Content not found."
         )
 
     # Rescheduling is arming: the loop below puts every target back to
@@ -276,7 +276,7 @@ def reschedule(
     ]
     if payload.publication_id is not None and not targets:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found."
         )
 
     # PUBLISHING as well as PUBLISHED: a row a worker has already claimed is

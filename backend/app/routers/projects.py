@@ -467,7 +467,7 @@ def project_feed(
         .where(Project.id == project_id, User.is_active.is_(True))
     )
     if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     items = list(
         db.scalars(
@@ -515,7 +515,7 @@ def project_feed(
     if not items:
         # Same status and same detail as a project id that does not exist:
         # a caller must not be able to tell the two apart.
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
 
     # Built from configuration rather than from ``str(request.url)``.
     #

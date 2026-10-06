@@ -123,7 +123,7 @@ def _owned_content(content_id: RowId, db: Session, user: User) -> Content:
     content = db.get(Content, content_id)
     if content is None or content.project.user_id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Content not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Content not found."
         )
     return content
 
@@ -2552,7 +2552,7 @@ def retry_publication(
     publication = db.get(Publication, publication_id)
     if publication is None or publication.content_id != content.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found."
         )
     if publication.status not in RETRYABLE:
         raise HTTPException(
@@ -2804,7 +2804,7 @@ def write_from_idea(
         .execution_options(populate_existing=True)
     )
     if idea is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Idea not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Idea not found.")
     project = owned_project(idea.project_id, db, user)
 
     if idea.used_content_id is not None:

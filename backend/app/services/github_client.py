@@ -305,8 +305,10 @@ def _json(resp: httpx.Response, path: str) -> object:
         return resp.json()
     except ValueError as exc:
         content_type = resp.headers.get("content-type") or "no content-type"
+        logger.warning("GitHub non-JSON response for %s: %s", path, content_type)
         raise GitHubError(
-            f"GitHub returned a non-JSON body for {path} ({content_type})"
+            f"GitHub returned an unexpected response for {path}. "
+            "If this keeps happening, GitHub may be having issues."
         ) from exc
 
 

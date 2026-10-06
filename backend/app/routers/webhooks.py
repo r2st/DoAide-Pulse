@@ -70,7 +70,7 @@ def _owned(webhook_id: RowId, db: Session, user: User) -> Webhook:
     webhook = db.get(Webhook, webhook_id)
     if webhook is None or webhook.user_id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found."
         )
     return webhook
 
@@ -379,7 +379,7 @@ def redeliver(
     delivery = db.get(WebhookDelivery, delivery_id)
     if delivery is None or delivery.webhook_id != webhook.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Delivery not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Delivery not found."
         )
 
     try:

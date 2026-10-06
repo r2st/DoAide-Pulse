@@ -243,7 +243,7 @@ def suggest_tags(
     content = db.get(Content, content_id)
     if content is None or content.project.user_id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Content not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Content not found."
         )
     return [
         TagSuggestionOut(**s.as_dict())

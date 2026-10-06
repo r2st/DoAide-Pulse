@@ -66,7 +66,7 @@ def _owned_key(key_id: RowId, db: Session, user: User) -> ApiKey:
     key = db.get(ApiKey, key_id)
     if key is None or key.user_id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="API key not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="API key not found."
         )
     return key
 

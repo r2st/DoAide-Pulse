@@ -121,7 +121,7 @@ def owned_project(project_id: int, db: Session, user: User) -> Project:
     project = db.get(Project, project_id)
     if project is None or project.user_id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found."
         )
     return project
 

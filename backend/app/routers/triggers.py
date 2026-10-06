@@ -83,7 +83,7 @@ def _owned(trigger_id: RowId, db: Session, user: User) -> Trigger:
     trigger = db.get(Trigger, trigger_id)
     if trigger is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Trigger not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Trigger not found."
         )
     # Reuses the project guard so the "same status either way" reasoning in
     # ``deps.owned_project`` covers triggers too.
@@ -518,7 +518,7 @@ def get_trigger_event(
     )
     if event is None:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Trigger event not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Trigger event not found."
         )
     return _event_out(event, payload=True)
 

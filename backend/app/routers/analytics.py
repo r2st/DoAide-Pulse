@@ -218,7 +218,7 @@ def velocity_curve(
         # ownership filter is in the query, so "not yours" and "not there" are
         # indistinguishable from here, which is the intended behaviour.
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Publication not found."
         )
     curve = found[0]
     return {
