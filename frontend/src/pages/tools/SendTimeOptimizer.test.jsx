@@ -36,4 +36,22 @@ describe("SendTimeOptimizer", () => {
     wrap();
     expect(screen.getByTestId("heatmap")).toBeInTheDocument();
   });
+
+  it("wraps hours correctly for large negative offsets", async () => {
+    wrap();
+    await userEvent.selectOptions(screen.getByLabelText(/audience timezone/i), "PST");
+    const displays = screen.getAllByTestId("time-display");
+    for (const d of displays) {
+      expect(d.textContent).toMatch(/^\d{1,2}:\d{2}\s[AP]M$/);
+    }
+  });
+
+  it("wraps hours correctly for large positive offsets", async () => {
+    wrap();
+    await userEvent.selectOptions(screen.getByLabelText(/audience timezone/i), "AEST");
+    const displays = screen.getAllByTestId("time-display");
+    for (const d of displays) {
+      expect(d.textContent).toMatch(/^\d{1,2}:\d{2}\s[AP]M$/);
+    }
+  });
 });

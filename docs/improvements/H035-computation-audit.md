@@ -18,9 +18,10 @@ Every computation-heavy module in the backend:
 - **LLM usage:** `llm_usage.py` — average duration, daily token bucketing
 - **Triggers:** `triggers.py` — interval gating, whole-day comparison
 - **Formats:** `formats.py` — character-limit splitting
-- **Frontend (JSX):** no computation logic found
+- **Frontend lib:** `format.js` — relative time display, `editorStats.js` — word count and banker's rounding
+- **Frontend tools:** `SendTimeOptimizer.jsx` — timezone hour wrapping, `NewsletterRoiCalculator.jsx` — ROI funnel math
 
-**Currency math:** no currency handling exists in the codebase; all "cost" is expressed as token counts.
+**Currency math:** `NewsletterRoiCalculator.jsx` has USD revenue/cost calculations (presentation-only tool, not transactional).
 
 ## Findings
 
@@ -61,6 +62,65 @@ After:  max(1, round(36 / 24)) = max(1, 2) = 2     → "last 2 days"
 
 **Fix:** `int(window / 24) or 1` → `max(1, round(window / 24))`.
 
+### Finding 3: Timezone hour wrapping used single +24/-24 instead of modulo
+
+**File:** `frontend/src/pages/tools/SendTimeOptimizer.jsx:51`
+
+**Bug:** `adjustHour` shifted a base hour by a timezone offset and wrapped with `if (h < 0) h += 24; if (h >= 24) h -= 24`. A single correction only works when the shift is less than 24 hours. Although current offsets (IST to PST = -13.5h) stay within that range, a future timezone entry or a base hour near the boundary could produce a value below -24 or above 48 that the single correction would leave out of [0, 24).
+
+**Example:**
+```
+baseHour = 6, tz offset diff = -13.5
+h = 6 + (-13.5) = -7.5
+Before: h += 24 → 16.5  (correct by luck)
+
+baseHour = 6, hypothetical diff = -30
+h = 6 + (-30) = -24
+Before: h += 24 → 0, then h >= 24 check → no-op → 0  (correct by luck)
+
+h = 6 + (-31) = -25
+Before: h += 24 → -1 → still negative, not caught
+After:  ((-25 % 24) + 24) % 24 = 23
+```
+
+**Fix:** `if/else` wrapping → `((h % 24) + 24) % 24` (JavaScript-safe double-modulo).
+
+### Finding 4: `formatWhen` rounded hours/days up, producing "7d ago" at the calendar-date cutoff
+
+**File:** `frontend/src/lib/format.js:22-23`
+
+**Bug:** The relative time formatter used `Math.round(abs / 60)` for hours and `Math.round(abs / 1440)` for days. At 10079 minutes (~6d 23h 59m), `Math.round(10079 / 1440) = Math.round(6.999) = 7`, displaying "7d ago" — but the code switches to a calendar date at exactly 10080 minutes (7 days). The user would see "7d ago" for one minute, then abruptly switch to a calendar date the next minute. Using `Math.round` for hours also showed "2h ago" at 1h 31m.
+
+**Example:**
+```
+abs = 10079 minutes (6 days, 23 hours, 59 minutes)
+Before: Math.round(10079 / 1440) = 7 → "7d ago"
+After:  Math.floor(10079 / 1440) = 6 → "6d ago"
+
+abs = 119 minutes (1 hour, 59 minutes)
+Before: Math.round(119 / 60) = 2 → "2h ago"
+After:  Math.floor(119 / 60) = 1 → "1h ago"
+```
+
+**Impact:** Cosmetic — relative time labels overstated age by up to one unit near boundaries.
+
+**Fix:** `Math.round` → `Math.floor` for hour and day magnitudes.
+
+### Finding 5: ROI calculator allowed negative inputs, producing nonsensical results
+
+**File:** `frontend/src/pages/tools/NewsletterRoiCalculator.jsx:27-32`
+
+**Bug:** HTML `min={0}` attributes on number inputs do not prevent programmatic or typed-in negative values (the constraint is advisory and only enforced on form submission, not on `onChange`). Negative subscribers or rates flowed through the funnel math unclamped, producing negative opens, negative clicks, and misleading revenue figures.
+
+**Example:**
+```
+subscribers = -100, openRate = 35
+Before: opens = -100 * 0.35 = -35  → displayed as "-35" opens
+After:  safeSubs = max(0, -100) = 0 → opens = 0
+```
+
+**Fix:** Clamp all six inputs at computation time: `Math.max(0, ...)` for counts and costs, `Math.min(100, Math.max(0, ...))` for percentage rates. NaN values (from empty inputs) fall through to 0 via the `|| 0` guard.
+
 ## Areas Audited — No Issues Found
 
 | Area | What was checked |
@@ -84,15 +144,25 @@ After:  max(1, round(36 / 24)) = max(1, 2) = 2     → "last 2 days"
 | Trigger interval gating | `round(hours/24)` only reached when `hours % 24 == 0`; always exact |
 | LLM token chart | `tokens_per_call` guarded by `if day_calls` |
 | Float equality comparisons | None found in computation code |
+| `editorStats.js` `roundHalfToEven` | Exact halves at multiples of 110 are exactly representable in float64; nearest non-half values are ±1/220 ≈ 0.005 from 0.5, well outside epsilon risk |
+| `analytics.js` `comparePeriods` | Midpoint split uses `Math.floor(len / 2)`, correct for both even and odd series |
+| `readTime.js` `lengthPayoff` | Division by zero guarded by explicit `long === 0` check |
+| `calendar.js` date bucketing | Uses `localDayKey` with local getters, not `toISOString()` |
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
 | `backend/app/services/alerts.py` | `int(ratio * 100)` → `round(ratio * 100)`; `int(window / 24) or 1` → `max(1, round(window / 24))` |
-| `backend/tests/test_h035_computation.py` | 6 test cases covering both findings |
+| `backend/tests/test_h035_computation.py` | 6 test cases covering both backend findings |
+| `frontend/src/pages/tools/SendTimeOptimizer.jsx` | `if/else` hour wrapping → `((h % 24) + 24) % 24` |
+| `frontend/src/pages/tools/NewsletterRoiCalculator.jsx` | Clamp all six inputs with `Math.max(0, ...)` and rate cap at 100 |
+| `frontend/src/lib/format.js` | `Math.round` → `Math.floor` for hour and day magnitudes in `formatWhen` |
+| `frontend/src/pages/tools/SendTimeOptimizer.test.jsx` | 2 new tests for large positive/negative timezone offsets |
+| `frontend/src/pages/tools/NewsletterRoiCalculator.test.jsx` | 2 new tests for negative inputs and rates above 100 |
+| `frontend/src/lib/format.test.js` | 2 new tests for boundary rounding in `formatWhen` |
 
 ## Test Results
 
-- 6 new tests: all pass
-- 74 existing alert tests: all pass
+- **Backend:** 6 new tests pass; 74 existing alert tests pass
+- **Frontend:** 6 new tests pass; all existing tests pass (3 pre-existing failures in App.routes.test.jsx from jsdom matchMedia — unrelated)

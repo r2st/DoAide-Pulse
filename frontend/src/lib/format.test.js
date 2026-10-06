@@ -23,6 +23,18 @@ describe("formatWhen", () => {
     expect(formatWhen(old)).not.toContain("ago");
   });
 
+  it("never shows 7d right before the calendar-date cutoff", () => {
+    const almostSevenDays = new Date(Date.now() - (10079 * 60_000));
+    const label = formatWhen(almostSevenDays);
+    expect(label).not.toContain("7d");
+    expect(label).toContain("6d");
+  });
+
+  it("floors hours rather than rounding up to the next unit", () => {
+    const almostTwoHours = new Date(Date.now() - (119 * 60_000));
+    expect(formatWhen(almostTwoHours)).toBe("1h ago");
+  });
+
   it("reports minutes as minutes rather than rounding them to 0h", () => {
     expect(formatWhen(new Date(Date.now() - 25 * 60_000))).toBe("25m ago");
     expect(formatWhen(new Date(Date.now() + 5 * 60_000))).toBe("in 5m");
