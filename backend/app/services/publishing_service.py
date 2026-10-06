@@ -1678,7 +1678,7 @@ def collect_metrics(
         return None
     except PublishError as exc:
         _redact_credentials(exc, adapter, credentials)
-        logger.info("metrics poll for publication %s skipped: %s", publication.id, exc)
+        logger.warning("metrics poll for publication %s failed: %s", publication.id, exc)
         return None
 
     metric = ContentMetric(

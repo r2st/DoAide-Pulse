@@ -195,7 +195,9 @@ def evaluate(
             db.commit()
         except Exception:
             logger.exception(
-                "failed to latch engagement notification for content %s", content_id
+                "failed to latch engagement notification for content %s "
+                "(engagement=%d, threshold=%d)",
+                content_id, engagement, threshold,
             )
             db.rollback()
             continue

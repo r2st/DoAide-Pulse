@@ -151,9 +151,17 @@ def sync_title(db: Session, content: Content) -> list[SyncOutcome]:
             outcomes.append(outcome)
             if outcome.status == UPDATED:
                 db.commit()
-    except Exception:
+    except Exception as exc:
         db.rollback()
         logger.exception("headline sync crashed for content %s", content.id)
+        outcomes.append(
+            SyncOutcome(
+                publication_id=0,
+                platform=Platform.DEVTO,
+                status=FAILED,
+                detail=f"Sync crashed: {sanitize_unexpected_error(exc)}",
+            )
+        )
 
     return outcomes
 

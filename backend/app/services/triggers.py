@@ -525,10 +525,24 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
             routed.status,
         )
         return event
-    except Exception:
+    except Exception as exc:
         db.rollback()
         logger.exception("trigger %s: firing crashed", trigger.id)
-        return None
+        try:
+            ev = event
+        except UnboundLocalError:
+            return None
+        try:
+            ev.status = TriggerEventStatus.FAILED
+            ev.detail = f"Firing crashed: {sanitize_unexpected_error(exc)}"
+            db.commit()
+        except Exception:
+            logger.exception(
+                "trigger %s: could not mark event %s as failed either",
+                trigger.id,
+                ev.id,
+            )
+        return ev
 
 
 # --------------------------------------------------------------------------- #

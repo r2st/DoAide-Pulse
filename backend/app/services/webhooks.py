@@ -565,9 +565,16 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
             ),
         )
         return delivery
-    except Exception:
+    except Exception as exc:
         db.rollback()
         logger.exception("webhook delivery %s crashed", delivery.id)
+        try:
+            _record_failure(db, delivery, sanitize_unexpected_error(exc))
+        except Exception:
+            logger.exception(
+                "webhook delivery %s: could not record crash as failure either",
+                delivery.id,
+            )
         return delivery
 
 
