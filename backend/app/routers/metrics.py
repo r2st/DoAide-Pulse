@@ -21,12 +21,14 @@ spend and per-provider failure rates public.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.errors import AUTHENTICATED, errors
 from app.schemas.metrics import MetricsOut
 from app.services import ops_metrics
@@ -38,9 +40,12 @@ router = APIRouter(prefix="/metrics", tags=["metrics"])
     "",
     response_model=MetricsOut,
     summary="How the install is running",
-    responses=errors(*AUTHENTICATED),
+    responses=errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
 )
+@limiter.limit(settings.rate_limit_health)
 def metrics(
+    request: Request,
+    response: Response,
     hours: int = Query(
         default=24,
         ge=1,
@@ -63,5 +68,10 @@ def metrics(
     column and a circuit breaker is process state, neither of which can be
     attributed to an account. :mod:`app.services.ops_metrics` says why, and why
     the breaker block is one process's view rather than the install's.
+
+    Rate-limited at the same budget as the health probe: both are diagnostic
+    reads that aggregate across the deployment, and the queries behind
+    ``ops_metrics.build`` are the most expensive single-endpoint reads in the
+    tree.
     """
     return ops_metrics.build(db, user.id, hours=hours)

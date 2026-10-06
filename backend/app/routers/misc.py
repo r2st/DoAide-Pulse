@@ -216,10 +216,12 @@ def health(
             **_DEGRADED[status.HTTP_503_SERVICE_UNAVAILABLE],
             "model": HealthDetailOut,
         },
-        **errors(*AUTHENTICATED),
+        **errors(*AUTHENTICATED, status.HTTP_429_TOO_MANY_REQUESTS),
     },
 )
+@limiter.limit(settings.rate_limit_health)
 def health_detail(
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
