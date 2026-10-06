@@ -445,9 +445,12 @@ def create_app() -> FastAPI:
             response.headers["X-Request-ID"] = request_id
             return response
 
-    app.add_middleware(RequestIDMiddleware)
-
+    # Body-size first (innermost), then request-id outside it: a 413 from
+    # the body check now carries X-Request-ID for log correlation, and the
+    # request-id context var is set before the body middleware logs anything.
     app.add_middleware(BodySizeLimitMiddleware)
+
+    app.add_middleware(RequestIDMiddleware)
 
     # Security headers. Caddy already sets HSTS and some of these, but
     # defence-in-depth means the app should not rely on that.
@@ -537,7 +540,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "X-Request-ID", "If-Match"],
         # ETag is here because the SPA is a cross-origin caller in development
         # and a browser hides every response header not on this list. It carries
