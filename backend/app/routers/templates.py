@@ -85,7 +85,7 @@ def _owned(template_id: RowId, db: Session, user: User) -> ContentTemplate:
     template = db.get(ContentTemplate, template_id)
     if template is None or template.user_id != user.id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Template not found."
         )
     return template
 
@@ -336,8 +336,9 @@ def update_template(
             detail=_validation_detail(exc),
         ) from exc
     except ValueError as exc:
+        safe = str(exc) if len(str(exc)) < 300 else "Invalid template data."
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=safe
         ) from exc
 
     template.name = checked.name

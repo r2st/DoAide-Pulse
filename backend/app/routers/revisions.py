@@ -41,7 +41,7 @@ def _owned(content_id: RowId, db: Session, user: User) -> Content:
     """
     content = db.get(Content, content_id)
     if content is None or content.project.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Content not found.")
     return content
 
 

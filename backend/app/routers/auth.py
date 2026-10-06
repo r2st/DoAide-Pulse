@@ -143,7 +143,7 @@ def register(
     # and must not become a second account. See :mod:`app.services.accounts`.
     if accounts.email_taken(db, payload.email):
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+            status_code=status.HTTP_409_CONFLICT, detail="Email already registered."
         )
     user = User(
         email=accounts.normalize_email(payload.email),
@@ -161,7 +161,7 @@ def register(
         # response the user is meant to read as "pick another address".
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
+            detail="Email already registered.",
         ) from None
     db.refresh(user)
     # An account appearing on a single-user install is worth a line whatever
@@ -218,7 +218,7 @@ def login(
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Incorrect email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if user is None:
@@ -227,7 +227,7 @@ def login(
         _refused(request, "no such account")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Incorrect email or password.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
