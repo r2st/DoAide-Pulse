@@ -555,7 +555,8 @@ def test_fire_absorbs_a_record_failure(db, writing_project, monkeypatch):
 
 def test_fire_absorbs_a_skip_failure(db, project, monkeypatch):
     """``_skip`` is called outside the inner try/except. If its commit fails
-    the exception escaped the function, violating the never-raises contract."""
+    the exception escaped the function, violating the never-raises contract.
+    The event is marked FAILED so the firing is not lost."""
     project.is_active = False
     db.commit()
     trigger = _trigger(db, project, TriggerKind.WEBHOOK)
@@ -567,4 +568,6 @@ def test_fire_absorbs_a_skip_failure(db, project, monkeypatch):
 
     event = triggers.fire(db, trigger, signal)
 
-    assert event is None
+    assert event is not None
+    assert event.status == TriggerEventStatus.FAILED
+    assert "Firing crashed" in (event.detail or "")
