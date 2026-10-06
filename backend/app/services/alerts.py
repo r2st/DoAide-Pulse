@@ -118,7 +118,7 @@ def _underperformance(group: list[Curve], curve: Curve) -> Alert | None:
         platform=curve.platform,
         title=curve.title,
         message=(
-            f"{int(ratio * 100)}% of your usual first {int(window)} hours on "
+            f"{round(ratio * 100)}% of your usual first {int(window)} hours on "
             f"{curve.platform.value} — {observed:,} views against a median of "
             f"{expected:,.0f}. Worth trying a different headline while it is "
             f"still new."
@@ -143,7 +143,7 @@ def _stalled(curve: Curve, facts: velocity.StallFacts | None) -> Alert | None:
 
     peak = facts.peak_gain or 0
     recent = facts.recent_gain or 0
-    days = int(window / 24) or 1
+    days = max(1, round(window / 24))
     return Alert(
         kind="stalled",
         severity="info",
