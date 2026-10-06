@@ -247,7 +247,7 @@ def test_bulk_approving_an_archived_live_piece_restores_it_too(
     assert archived_live.status == ContentStatus.PUBLISHED
 
 
-@pytest.mark.parametrize("to", ["draft", "review", "approved"])
+@pytest.mark.parametrize("to", ["draft", "review"])
 def test_un_archiving_a_piece_that_never_went_out_goes_where_it_was_sent(
     client, auth, db, project, to
 ):
@@ -261,6 +261,24 @@ def test_un_archiving_a_piece_that_never_went_out_goes_where_it_was_sent(
     resp = _move(client, auth, piece, "patch", to)
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == to
+
+
+def test_un_archiving_a_piece_that_never_went_out_requires_draft_before_approve(
+    client, auth, db, project
+):
+    piece = _piece(
+        db,
+        project,
+        ContentStatus.ARCHIVED,
+        (Platform.DEVTO, PublicationStatus.CANCELLED),
+        (Platform.MEDIUM, PublicationStatus.FAILED),
+    )
+    resp = _move(client, auth, piece, "patch", "approved")
+    assert resp.status_code == 409
+    _move(client, auth, piece, "patch", "draft")
+    resp = _move(client, auth, piece, "patch", "approved")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "approved"
 
 
 def test_archiving_an_archived_piece_is_a_no_op(client, auth, db, archived_live):

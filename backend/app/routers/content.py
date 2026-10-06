@@ -647,6 +647,14 @@ def bulk_approve_content(
                 )
             )
             continue
+        if content.status == ContentStatus.ARCHIVED and not content.went_out:
+            failed.append(
+                BulkFailureOut(
+                    content_id=content_id,
+                    reason="Archived — take it out of the archive first",
+                )
+            )
+            continue
         succeeded.append(content_id)
         if payload.dry_run:
             continue
@@ -1911,6 +1919,17 @@ def update_content(
             "publications or move it back to draft first.",
         )
 
+    if (
+        content.status == ContentStatus.ARCHIVED
+        and data.get("status") == ContentStatus.APPROVED
+        and not content.went_out
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is archived. Take it out of the archive before "
+            "approving it.",
+        )
+
     # Read before anything is written, because the gate below asks what the
     # piece is moving *from* and the assignment loop is about to overwrite it.
     previous_status = content.status
@@ -2070,11 +2089,14 @@ def approve_content(
             detail="This piece has failed publications. Retry the failed "
             "publications or move it back to draft first.",
         )
+    if content.status == ContentStatus.ARCHIVED and not content.went_out:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is archived, which means it is not going out. "
+            "Take it out of the archive first.",
+        )
     previous_status = content.status
     content.status = ContentStatus.APPROVED
-    # An archived piece that went out comes back ``published``, not approved —
-    # see :func:`_settle_status`. ``release_approved`` then declines it, as it
-    # declines anything that is not approved.
     _settle_status(db, content, previous_status)
     db.commit()
     content_pipeline.release_approved(db, content)
@@ -2717,6 +2739,16 @@ def set_content_status(
             status_code=status.HTTP_409_CONFLICT,
             detail="This piece has failed publications. Retry the failed "
             "publications or move it back to draft first.",
+        )
+    if (
+        content.status == ContentStatus.ARCHIVED
+        and new_status == ContentStatus.APPROVED
+        and not content.went_out
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This piece is archived. Take it out of the archive before "
+            "approving it.",
         )
 
     previous_status = content.status
