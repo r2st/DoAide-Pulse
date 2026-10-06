@@ -17,6 +17,8 @@ from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
 
+_METRICS_BATCH_SIZE = 50
+
 
 @task(
     name="app.tasks.metrics_tasks.collect_all_metrics",
@@ -45,41 +47,26 @@ def collect_all_metrics() -> dict:
 
     db = SessionLocal()
     try:
+        # Commits no longer expire loaded objects. The sweep loads every
+        # publication in one query and then iterates them, committing batches
+        # of metrics along the way. Without this flag each commit expired the
+        # *next* iteration's publication, forcing a re-read of the row — one
+        # narrow SELECT per publication on the task whose row count grows with
+        # everything the install has ever published. Same reasoning as
+        # ``release_approved_content`` in ``publish_tasks``.
+        db.expire_on_commit = False
         # The owner comes back as a column off the join, and is handed to
-        # ``collect_metrics`` rather than walked to.
-        #
-        # Eager-loading the two hops instead — which is what this did — was only
-        # half a fix, and the half that showed up in a test where
-        # ``collect_metrics`` is stubbed and never commits. In production it
-        # records a metric per publication, and each commit expires the session:
-        # the next iteration re-read the publication, then re-read its whole
-        # ``Content`` (article body and all) and its project, one publication at
-        # a time, exactly as if nothing had been eagerly loaded. Three SELECTs
-        # per row on the sweep whose row count grows with everything the install
-        # has ever published, one of them carrying an article.
-        #
-        # Not traversing the relationship at all is what survives the commits.
-        # The publication itself is still re-read after each one — it is the row
-        # being written about, and ``collect_metrics`` re-checks its status
-        # before polling — but that is one narrow SELECT, not three wide ones.
+        # ``collect_metrics`` rather than walked to — see earlier comments on
+        # why eager-loading the relationship was only half a fix.
         #
         # The owner's ``is_active`` is part of the WHERE for the same reason it
         # is in every other sweep here (publishing, headlines, autopilot,
         # triggers, the digest): deactivation is how an account is switched off,
-        # and this was the sweep that did not notice. What it polls with is the
-        # account's own stored platform credentials — ``collect_metrics`` takes
-        # *user_id* precisely to look them up — so a deactivated account went on
-        # making authenticated requests to Dev.to and Hashnode under its owner's
-        # tokens, every few hours, indefinitely. That is the shape
-        # :func:`app.services.preview_links.resolve` argues about: switching an
-        # account off has to close the doors it opened, and a scheduled job
-        # holding its credentials is one of them.
+        # and this was the sweep that did not notice.
         #
         # The *project*'s flag is deliberately not here, though the sweeps that
         # write do check it. Pausing a project says "write nothing new for
-        # this"; it does not say "stop counting what already went out", and the
-        # views still accruing on its posts are its owner's numbers to come back
-        # to.
+        # this"; it does not say "stop counting what already went out".
         rows = db.execute(
             select(Publication, Project.user_id)
             .join(Content, Content.id == Publication.content_id)
@@ -93,40 +80,26 @@ def collect_all_metrics() -> dict:
             )
         ).all()
         recorded = 0
-        # The pieces this sweep wrote a fresh snapshot for. Collected so the
-        # threshold check at the end looks only at what actually moved: a piece
-        # nobody polled cannot have crossed anything, and evaluating the whole
-        # install every few hours would be a full scan for an answer that is
-        # ``no`` for all but a handful of rows in its lifetime.
+        _pending = 0
         touched_content: set[int] = set()
-        # Shared across the whole sweep: once a platform rate-limits one
-        # account, the rest of that account's posts there are skipped without a
-        # request. See ``publishing_service.collect_metrics``.
         rate_limited: set[publishing_service.RateLimitKey] = set()
         for publication, user_id in rows:
-            # Read before the call, not inside the handler below. ``collect_metrics``
-            # ends in a commit, and a commit that fails leaves the session unable to
-            # emit SQL until it is rolled back — including the SELECT that reading an
-            # expired ``publication.id`` would need. Asking for the id *while* handling
-            # the failure raised ``PendingRollbackError`` from inside the ``except``
-            # arm, which escaped the loop, the ``try``, and the task: one row whose
-            # write would not land ended the whole sweep, and the rows after it were
-            # never polled.
             publication_id = publication.id
-            # Read alongside the id, and for the same reason: after
-            # ``collect_metrics`` commits, the publication is expired and
-            # touching any attribute is another SELECT — inside an ``except``
-            # arm, potentially against a session that cannot emit SQL.
             content_id = publication.content_id
             try:
                 if (
                     publishing_service.collect_metrics(
-                        db, publication, user_id=user_id, rate_limited=rate_limited
+                        db, publication, user_id=user_id, rate_limited=rate_limited,
+                        commit=False,
                     )
                     is not None
                 ):
                     recorded += 1
                     touched_content.add(content_id)
+                    _pending += 1
+                    if _pending >= _METRICS_BATCH_SIZE:
+                        db.commit()
+                        _pending = 0
             except SoftTimeLimitExceeded:
                 logger.warning(
                     "metrics collection timed out after %d of %d publications",
@@ -135,27 +108,25 @@ def collect_all_metrics() -> dict:
                 break
             except Exception:
                 # Isolate failures: a broken response from one platform must not
-                # prevent polling the rest.
-                #
-                # The rollback is what makes that true when the failure came from
-                # the database rather than the platform. Every other sweep in this
-                # tree rolls back here; this one did not, so a failed write left the
-                # session poisoned and every remaining publication failed too — on an
-                # error that says nothing about them.
-                db.rollback()
+                # prevent polling the rest. Commit any pending batch first — the
+                # exception comes from the platform API, before ``db.add()``, so
+                # the pending rows are safe to keep.
+                if _pending:
+                    try:
+                        db.commit()
+                    except Exception:
+                        db.rollback()
+                    _pending = 0
+                else:
+                    db.rollback()
                 logger.exception(
                     "metrics collection failed for publication %s", publication_id
                 )
 
-        # After the loop, not inside it. A piece publishes to several platforms
-        # and each one is a separate row here; checking per row would evaluate
-        # the same piece four times in one sweep and — before the latch was
-        # written — announce it on whichever platform happened to be polled
-        # first, with only that platform's share of the number.
-        #
-        # Outside the per-row try/except, and with its own: this is the tail of
-        # the sweep, and a notification that cannot be assembled must not turn
-        # a successful poll of every platform into a failed task.
+        if _pending:
+            db.commit()
+            _pending = 0
+
         try:
             crossings = engagement_alerts.evaluate(db, sorted(touched_content))
         except Exception:

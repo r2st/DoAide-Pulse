@@ -185,7 +185,7 @@ def polled(db, project, monkeypatch) -> list[int]:
 
     seen: list[int] = []
 
-    def _record(db_, publication, *, user_id=None, rate_limited=None):
+    def _record(db_, publication, *, user_id=None, rate_limited=None, **kwargs):
         seen.append(publication.id)
         return None
 
