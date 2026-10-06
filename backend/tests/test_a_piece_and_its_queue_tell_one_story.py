@@ -154,6 +154,7 @@ def test_un_archiving_makes_the_retry_available_again(client, auth, db, piece, c
     _schedule(client, auth, piece, Platform.DEVTO)
     publication = db.scalars(select(Publication)).one()
     client.patch(f"{API}/{piece.id}", json={"status": "archived"}, headers=auth)
+    client.patch(f"{API}/{piece.id}", json={"status": "draft"}, headers=auth)
     client.patch(f"{API}/{piece.id}", json={"status": "approved"}, headers=auth)
 
     resp = client.post(f"{API}/{piece.id}/retry/{publication.id}", headers=auth)

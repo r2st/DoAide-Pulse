@@ -742,6 +742,11 @@ def requeue(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
             "This delivery is still being attempted. "
             "Wait for it to finish before redelivering."
         )
+    reason = _switched_off(delivery.webhook)
+    if reason:
+        raise RequeueError(
+            f"The endpoint is switched off. Re-enable it before redelivering."
+        )
     delivery.status = DeliveryStatus.PENDING
     delivery.attempts = 0
     delivery.error = None

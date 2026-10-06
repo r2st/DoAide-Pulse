@@ -22,7 +22,7 @@ from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -635,29 +635,55 @@ def reclaim_stuck_events(db: Session, *, now: Any = None) -> int:
     )
 
     adopted = 0
+    settled = 0
     for event in stuck:
         content_id = written.get(event.id)
         if content_id is not None:
-            event.status = TriggerEventStatus.GENERATED
-            event.content_id = content_id
-            event.detail = ADOPTED_DETAIL
-            adopted += 1
+            result = db.execute(
+                update(TriggerEvent)
+                .where(
+                    TriggerEvent.id == event.id,
+                    TriggerEvent.status == TriggerEventStatus.RECEIVED,
+                )
+                .values(
+                    status=TriggerEventStatus.GENERATED,
+                    content_id=content_id,
+                    detail=ADOPTED_DETAIL,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount:
+                adopted += 1
+                settled += 1
         else:
-            event.status = TriggerEventStatus.FAILED
-            event.detail = ABANDONED_DETAIL
+            result = db.execute(
+                update(TriggerEvent)
+                .where(
+                    TriggerEvent.id == event.id,
+                    TriggerEvent.status == TriggerEventStatus.RECEIVED,
+                )
+                .values(
+                    status=TriggerEventStatus.FAILED,
+                    detail=ABANDONED_DETAIL,
+                )
+                .execution_options(synchronize_session=False)
+            )
+            if result.rowcount:
+                settled += 1
     db.commit()
 
     # Counted above rather than read back off the rows: the commit expires every
     # one of them, so asking a settled event what its status is costs a SELECT
     # per row — paid at the moment something has already gone wrong, which is
     # the worst moment to be paying it.
-    logger.warning(
-        "settled %d trigger firing(s) abandoned mid-generation "
-        "(%d had a piece to adopt)",
-        len(stuck),
-        adopted,
-    )
-    return len(stuck)
+    if settled:
+        logger.warning(
+            "settled %d trigger firing(s) abandoned mid-generation "
+            "(%d had a piece to adopt)",
+            settled,
+            adopted,
+        )
+    return settled
 
 
 # --------------------------------------------------------------------------- #
