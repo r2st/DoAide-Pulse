@@ -411,3 +411,72 @@ def test_a_limited_endpoint_still_returns_its_body(client, auth, linkless_draft)
 def test_an_anonymous_call_to_a_costly_endpoint_is_still_401(client, linkless_draft):
     """The limit is a second line, not a replacement for the first."""
     assert client.get(f"/api/v1/content/{linkless_draft.id}/links").status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# Bulk and headline endpoints carry rate limits                                #
+# --------------------------------------------------------------------------- #
+
+
+_BULK_CONTENT_ENDPOINTS = [
+    "/api/v1/content/bulk/approve",
+    "/api/v1/content/bulk/reject",
+    "/api/v1/content/bulk/retry",
+]
+
+_BULK_PUBLISH_ENDPOINT = "/api/v1/content/bulk/publish"
+_ARCHIVE_OLD_ENDPOINT = "/api/v1/content/bulk/archive-old"
+
+
+@pytest.mark.parametrize("url", _BULK_CONTENT_ENDPOINTS)
+def test_bulk_content_endpoints_carry_rate_limits(url, client, auth):
+    resp = client.post(url, headers=auth, json={"content_ids": [999999]})
+    assert resp.headers.get("x-ratelimit-limit"), f"{url} missing rate-limit header"
+
+
+def test_bulk_publish_carries_rate_limit(client, auth):
+    resp = client.post(
+        _BULK_PUBLISH_ENDPOINT,
+        headers=auth,
+        json={"content_ids": [999999], "platforms": ["hashnode"]},
+    )
+    assert resp.headers.get("x-ratelimit-limit"), "bulk publish missing rate-limit header"
+
+
+def test_archive_old_carries_rate_limit(client, auth):
+    resp = client.post(
+        _ARCHIVE_OLD_ENDPOINT,
+        headers=auth,
+        json={"older_than_days": 365},
+    )
+    assert resp.headers.get("x-ratelimit-limit"), "archive-old missing rate-limit header"
+
+
+@pytest.mark.parametrize("path", [
+    "/content/bulk/approve",
+    "/content/bulk/reject",
+    "/content/bulk/publish",
+    "/content/bulk/retry",
+    "/content/bulk/archive-old",
+    "/content/{content_id}/headlines/apply",
+    "/content/{content_id}/headlines/auto-select",
+])
+def test_bulk_and_headline_endpoints_are_keyed_by_account(path):
+    routes = _api_routes()
+    for route in routes:
+        if route.path == path:
+            assert _is_account_keyed(route), f"{path} not keyed by account"
+            return
+    pytest.fail(f"route {path} not found")
+
+
+def test_headline_apply_carries_rate_limit(client, auth, linkless_draft):
+    url = f"/api/v1/content/{linkless_draft.id}/headlines/apply"
+    resp = client.post(url, headers=auth, json={"title": "Test"})
+    assert resp.headers.get("x-ratelimit-limit"), "headline apply missing rate-limit header"
+
+
+def test_headline_auto_select_carries_rate_limit(client, auth, linkless_draft):
+    url = f"/api/v1/content/{linkless_draft.id}/headlines/auto-select"
+    resp = client.post(url, headers=auth)
+    assert resp.headers.get("x-ratelimit-limit"), "headline auto-select missing rate-limit header"
