@@ -19,8 +19,8 @@ export function formatWhen(value) {
 
   let magnitude;
   if (abs < 60) magnitude = `${abs}m`;
-  else if (abs < 1440) magnitude = `${Math.round(abs / 60)}h`;
-  else if (abs < 10080) magnitude = `${Math.round(abs / 1440)}d`;
+  else if (abs < 1440) magnitude = `${Math.floor(abs / 60)}h`;
+  else if (abs < 10080) magnitude = `${Math.floor(abs / 1440)}d`;
   else
     return then.toLocaleDateString(undefined, {
       month: "short",

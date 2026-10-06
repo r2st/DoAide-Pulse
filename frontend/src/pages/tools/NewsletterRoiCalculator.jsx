@@ -24,11 +24,18 @@ export default function NewsletterRoiCalculator() {
     document.title = "Newsletter ROI Calculator | DoAide Pulse";
   }, []);
 
-  const opens = subscribers * (openRate / 100);
-  const clicks = opens * (clickRate / 100);
-  const conversions = clicks * (conversionRate / 100);
-  const monthlyRevenue = conversions * revenuePerConversion;
-  const monthlyROI = monthlyCost > 0 ? ((monthlyRevenue - monthlyCost) / monthlyCost) * 100 : 0;
+  const safeSubs = Math.max(0, subscribers) || 0;
+  const safeOpen = Math.min(100, Math.max(0, openRate)) || 0;
+  const safeClick = Math.min(100, Math.max(0, clickRate)) || 0;
+  const safeConv = Math.min(100, Math.max(0, conversionRate)) || 0;
+  const safeRev = Math.max(0, revenuePerConversion) || 0;
+  const safeCost = Math.max(0, monthlyCost) || 0;
+
+  const opens = safeSubs * (safeOpen / 100);
+  const clicks = opens * (safeClick / 100);
+  const conversions = clicks * (safeConv / 100);
+  const monthlyRevenue = conversions * safeRev;
+  const monthlyROI = safeCost > 0 ? ((monthlyRevenue - safeCost) / safeCost) * 100 : 0;
   const annualRevenue = monthlyRevenue * 12;
 
   return (

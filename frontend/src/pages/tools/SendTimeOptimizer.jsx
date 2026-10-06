@@ -50,9 +50,7 @@ const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
 
 function adjustHour(baseHour, tz) {
   const diff = TZ_OFFSETS[tz] - TZ_OFFSETS.IST;
-  let h = baseHour + diff;
-  if (h < 0) h += 24;
-  if (h >= 24) h -= 24;
+  const h = ((baseHour + diff) % 24 + 24) % 24;
   return Math.round(h * 2) / 2;
 }
 

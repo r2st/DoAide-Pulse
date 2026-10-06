@@ -39,4 +39,24 @@ describe("NewsletterRoiCalculator", () => {
     const opens = screen.getByTestId("opens");
     expect(opens.textContent).toBe("1,750");
   });
+
+  it("clamps negative inputs to zero instead of producing negative revenue", async () => {
+    const { container } = wrap();
+    const subsInput = screen.getByLabelText(/subscribers/i);
+    // fireEvent.change is more reliable than userEvent.type for number inputs in jsdom
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.change(subsInput, { target: { value: "-100" } });
+    const revenue = screen.getByTestId("revenue");
+    expect(revenue.textContent).toBe("$0");
+  });
+
+  it("clamps rates above 100 to 100", async () => {
+    wrap();
+    const openInput = screen.getByLabelText(/open rate/i);
+    const { fireEvent } = await import("@testing-library/react");
+    fireEvent.change(openInput, { target: { value: "150" } });
+    const opens = screen.getByTestId("opens");
+    const opensValue = Number(opens.textContent.replace(/,/g, ""));
+    expect(opensValue).toBeLessThanOrEqual(5000);
+  });
 });
