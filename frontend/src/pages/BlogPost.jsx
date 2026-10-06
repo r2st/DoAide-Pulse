@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { staticPosts } from "../data/blogPosts";
+import CrossProductLinks from "../components/CrossProductLinks";
 import PublicNav from "../components/PublicNav";
 import ShareButtons from "../components/ShareButtons";
 
@@ -74,6 +75,7 @@ export default function BlogPost() {
         <div className="mt-6">
           <ShareButtons text={`${post.title} — read on DoAide Pulse`} />
         </div>
+        <CrossProductLinks page="blog" />
       </article>
     </>
   );

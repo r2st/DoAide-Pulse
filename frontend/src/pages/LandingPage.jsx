@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import CrossProductLinks from "../components/CrossProductLinks";
 import DoAideFooter from "../components/DoAideFooter";
 import "./LandingPage.css";
 
@@ -330,6 +331,10 @@ export default function LandingPage() {
           </div>
         </div>
       </main>
+
+      <div className="mx-auto max-w-3xl px-4 py-4">
+        <CrossProductLinks page="landing" />
+      </div>
 
       <DoAideFooter />
 
