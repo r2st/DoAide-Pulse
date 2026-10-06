@@ -240,6 +240,7 @@ def check_url(url: str, *, client: httpx.Client) -> LinkStatus:
     """Resolve one URL to a verdict. Never raises."""
     unreachable = _unreachable_for_a_reader(url)
     if unreachable:
+        logger.warning("link check: SSRF-blocked url=%s reason=%s", url, unreachable)
         return LinkStatus(url, BROKEN, detail=unreachable)
 
     try:
@@ -307,7 +308,24 @@ def check(urls: list[str], *, timeout: float | None = None) -> list[LinkStatus]:
         ) as client,
         ThreadPoolExecutor(max_workers=min(8, len(urls))) as pool,
     ):
-        return list(pool.map(lambda url: check_url(url, client=client), urls))
+        results = list(pool.map(lambda url: check_url(url, client=client), urls))
+
+    n_broken = sum(1 for r in results if r.status == BROKEN)
+    n_unknown = sum(1 for r in results if r.status == UNKNOWN)
+    if n_broken:
+        logger.warning(
+            "link check: %d checked, %d broken, %d unknown",
+            len(results),
+            n_broken,
+            n_unknown,
+        )
+    elif n_unknown:
+        logger.info(
+            "link check: %d checked, %d unknown", len(results), n_unknown
+        )
+    else:
+        logger.debug("link check: %d checked, all ok", len(results))
+    return results
 
 
 def check_body(

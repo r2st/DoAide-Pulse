@@ -38,10 +38,14 @@ identity, and guessing at it is the one outcome worse than the lockout above.
 """
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_email(email: str) -> str:
@@ -83,7 +87,19 @@ def find_by_email(db: Session, email: str) -> User | None:
             select(User).where(func.lower(User.email) == wanted.lower()).limit(2)
         )
     )
-    return candidates[0] if len(candidates) == 1 else None
+    if len(candidates) == 1:
+        logger.info(
+            "find_by_email: case-insensitive fallback matched user %s",
+            candidates[0].id,
+        )
+        return candidates[0]
+    if len(candidates) > 1:
+        logger.warning(
+            "find_by_email: ambiguous case-insensitive match for input, "
+            "%d candidates — returning None",
+            len(candidates),
+        )
+    return None
 
 
 def email_taken(db: Session, email: str) -> bool:
