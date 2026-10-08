@@ -34,6 +34,13 @@ describe("Blog", () => {
     expect(screen.getByText(/Email Marketing vs Social Media Marketing/)).toBeInTheDocument();
   });
 
+  it("shows subject lines, creator playbook, and deliverability articles", () => {
+    wrap();
+    expect(screen.getByText(/Subject Lines That Get 40%\+ Open Rates/)).toBeInTheDocument();
+    expect(screen.getByText(/0 to 10,000 Subscribers: Indian Creator Playbook/)).toBeInTheDocument();
+    expect(screen.getByText(/Email Deliverability Guide: Avoid the Spam Folder/)).toBeInTheDocument();
+  });
+
   it("shows article descriptions", () => {
     wrap();
     expect(screen.getByText(/artificial intelligence transforms/)).toBeInTheDocument();
@@ -47,6 +54,6 @@ describe("Blog", () => {
     );
     const titles = links.map((el) => el.textContent);
     const firstTitle = titles[0];
-    expect(firstTitle).toMatch(/Free AI GST|Best Free Newsletter Tools|Digital Toolkit|Grow Email/);
+    expect(firstTitle).toMatch(/Subject Lines That Get 40%|Free AI GST|Best Free Newsletter Tools|Deliverability Guide/);
   });
 });
