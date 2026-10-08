@@ -27,7 +27,7 @@ const EMPTY_FORM = {
   target_audience: "",
   keywords: "",
   tone: "technical",
-  autopilot_mode: "off",
+  autopilot_mode: "draft",
   auto_canonical: true,
   canonical_platform: "",
   utm_enabled: true,
@@ -38,7 +38,7 @@ const EMPTY_FORM = {
 export default function Projects() {
   const toast = useToast();
   const { data: projects, error, loading, reload } = useApi(() => api.listProjects(), []);
-  const [editing, setEditing] = useState(null); // project | "new" | null
+  const [editing, setEditing] = useState(null); // project | "new" | "quick" | null
 
   return (
     <div className="stagger space-y-6">
@@ -49,9 +49,14 @@ export default function Projects() {
             What the robot writes about.
           </p>
         </div>
-        <button className="btn-primary" onClick={() => setEditing("new")}>
-          Add project
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost" onClick={() => setEditing("new")}>
+            Advanced
+          </button>
+          <button className="btn-primary" onClick={() => setEditing("quick")}>
+            Quick add
+          </button>
+        </div>
       </div>
 
       <ErrorBanner message={error} onRetry={reload} />
@@ -63,7 +68,7 @@ export default function Projects() {
           title="No projects yet"
           hint="Register what you ship — the robot watches and writes."
           action={
-            <button className="btn-primary mt-1" onClick={() => setEditing("new")}>
+            <button className="btn-primary mt-1" onClick={() => setEditing("quick")}>
               Add your first project
             </button>
           }
@@ -81,7 +86,20 @@ export default function Projects() {
         </div>
       )}
 
-      {editing && (
+      {editing === "quick" && (
+        <QuickProjectDialog
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            reload();
+            toast.success("Project created — autopilot is drafting content");
+          }}
+          onAdvanced={() => setEditing("new")}
+          onError={(message) => toast.error(message)}
+        />
+      )}
+
+      {editing && editing !== "quick" && (
         <ProjectDialog
           project={editing === "new" ? null : editing}
           onClose={() => setEditing(null)}
@@ -503,6 +521,90 @@ function ProjectDialog({ project, onClose, onSaved, onError }) {
         <button type="submit" className="btn-primary" disabled={busy}>
           {busy ? "Saving…" : "Save project"}
         </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function QuickProjectDialog({ onClose, onSaved, onAdvanced, onError }) {
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    const isRepo = url.includes("github.com") || url.includes("gitlab.com") || url.includes("bitbucket.org");
+    const payload = {
+      name,
+      description: "",
+      repo_url: isRepo ? url : null,
+      live_url: isRepo ? null : url || null,
+      tech_stack: [],
+      keywords: [],
+      tone: "technical",
+      autopilot_mode: "draft",
+      auto_canonical: true,
+      canonical_platform: null,
+      utm_enabled: true,
+      utm_campaign: "",
+      target_audience: "",
+    };
+    try {
+      await api.createProject(payload);
+      onSaved();
+    } catch (err) {
+      onError(err.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog label="Quick add project" onClose={onClose} closable={!busy} onSubmit={submit}>
+      <h2 className="font-display text-2xl text-ink-900">Quick add</h2>
+      <p className="text-sm text-ink-500">
+        Just a name and URL — autopilot starts drafting right away.
+      </p>
+
+      <div>
+        <label className="label" htmlFor="q-name">Name</label>
+        <input
+          id="q-name"
+          required
+          className="input"
+          placeholder="My Project"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="q-url">URL (repo or live site)</label>
+        <input
+          id="q-url"
+          className="input font-mono text-xs"
+          placeholder="https://github.com/you/project or https://myapp.com"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+      </div>
+
+      <div className="rounded-lg bg-good-wash/50 px-4 py-3 text-sm text-good">
+        Autopilot is ON — Pulse will start drafting content for review.
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <button type="button" className="btn-quiet text-brand-500" onClick={onAdvanced}>
+          More options
+        </button>
+        <div className="flex gap-2">
+          <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button type="submit" className="btn-primary" disabled={busy || !name.trim()}>
+            {busy ? "Creating…" : "Create project"}
+          </button>
+        </div>
       </div>
     </Dialog>
   );

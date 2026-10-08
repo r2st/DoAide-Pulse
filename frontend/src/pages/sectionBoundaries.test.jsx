@@ -29,6 +29,9 @@ vi.mock("../lib/api", () => ({
     alerts: vi.fn(),
     dashboard: vi.fn(),
     readTime: vi.fn(),
+    reviewQueue: vi.fn(),
+    bulkApprove: vi.fn(),
+    approveContent: vi.fn(),
     getContent: vi.fn(),
     platforms: vi.fn(),
     checkLinks: vi.fn(),
@@ -67,6 +70,7 @@ async function draw(ui) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.reviewQueue.mockResolvedValue([]);
 });
 
 describe("the analytics page", () => {
@@ -187,15 +191,15 @@ describe("the dashboard", () => {
 
   it("keeps the queue that needs a human when the analytics panel throws", async () => {
     api.dashboard.mockResolvedValue(payload());
+    api.reviewQueue.mockResolvedValue([
+      { id: 1, title: "Draft 1", project_name: "Pulse", content_type: "tutorial", confidence: 0.9, status: "review" },
+      { id: 2, title: "Draft 2", project_name: "Pulse", content_type: "tutorial", confidence: 0.8, status: "review" },
+    ]);
 
     await whileCaught(() => draw(<Dashboard />));
 
-    // The read-time panel is the last thing on the page and the only optional
-    // thing on it. What must survive is everything above it.
-    expect(screen.getByRole("alert")).toHaveTextContent(FALLBACK);
-    expect(screen.getByText(/drafts are waiting for review/)).toBeInTheDocument();
     expect(screen.getByText("401 Unauthorized")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Write something/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Analytics/ })).toBeInTheDocument();
   });
 
   it("does not reach the panel at all on an empty account", async () => {

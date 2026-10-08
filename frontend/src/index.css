@@ -49,7 +49,7 @@
   }
 
   .btn {
-    @apply inline-flex select-none items-center justify-center gap-2 rounded-lg px-4
+    @apply inline-flex min-h-[44px] select-none items-center justify-center gap-2 rounded-lg px-4
            py-2.5 text-sm font-medium transition-all duration-150
            disabled:pointer-events-none disabled:opacity-40;
   }
@@ -61,7 +61,7 @@
            hover:bg-canvas active:scale-[0.985];
   }
   .btn-quiet {
-    @apply btn px-2.5 py-1.5 text-xs text-ink-500 hover:bg-ink-400/10 hover:text-ink-900;
+    @apply btn min-h-[44px] px-2.5 py-1.5 text-xs text-ink-500 hover:bg-ink-400/10 hover:text-ink-900;
   }
   .btn-danger {
     @apply btn bg-bad text-white hover:bg-bad/90 active:scale-[0.985];
@@ -86,6 +86,12 @@
   }
   .cell {
     @apply px-4 py-3 align-middle;
+  }
+
+  .quick-action-btn {
+    @apply inline-flex min-h-[44px] min-w-[44px] select-none items-center justify-center gap-2
+           rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150
+           disabled:pointer-events-none disabled:opacity-40 active:scale-[0.96];
   }
 
   .prose-pulse {

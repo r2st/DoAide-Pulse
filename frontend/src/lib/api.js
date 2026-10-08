@@ -141,6 +141,11 @@ export const api = {
   retryPublication: (contentId, publicationId) =>
     request(`/content/${contentId}/retry/${publicationId}`, { method: "POST" }),
   reviewQueue: () => request("/content/queue/review"),
+  bulkApprove: (contentIds, dryRun = false) =>
+    request("/content/bulk/approve", {
+      method: "POST",
+      body: { content_ids: contentIds, dry_run: dryRun },
+    }),
   publicationQueue: () => request("/content/queue/publications"),
 
   // ---- preview links ----

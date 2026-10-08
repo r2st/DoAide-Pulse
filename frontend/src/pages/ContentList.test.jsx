@@ -13,10 +13,17 @@ import { api } from "../lib/api";
 import { ROUTER_FUTURE } from "../lib/routerFuture";
 
 vi.mock("../lib/api", () => ({
-  api: { listProjects: vi.fn(), listContent: vi.fn(), generateContent: vi.fn() },
+  api: {
+    listProjects: vi.fn(),
+    listContent: vi.fn(),
+    generateContent: vi.fn(),
+    approveContent: vi.fn(),
+    updateContent: vi.fn(),
+    bulkApprove: vi.fn(),
+  },
 }));
 
-const toast = { success: vi.fn(), error: vi.fn() };
+const toast = { success: vi.fn(), error: vi.fn(), info: vi.fn() };
 vi.mock("../components/ui/Toast", () => ({ useToast: () => toast }));
 
 /**
@@ -333,5 +340,91 @@ describe("generating a draft", () => {
         instructions: "Mention the retry budget.",
       }),
     );
+  });
+});
+
+describe("review mode", () => {
+  function drawReview() {
+    return render(
+      <MemoryRouter initialEntries={["/?status=review"]} future={ROUTER_FUTURE}>
+        <ContentList />
+        <Search />
+      </MemoryRouter>,
+    );
+  }
+
+  it("shows review cards with approve/reject buttons when filtered to review", async () => {
+    api.listContent.mockResolvedValue([
+      item({ id: 1, status: "review", confidence: 0.85 }),
+      item({ id: 2, title: "Second draft", status: "review", confidence: 0.6 }),
+    ]);
+    drawReview();
+
+    expect(await screen.findByText("A retry budget that outlasts the outage")).toBeInTheDocument();
+    const approveButtons = screen.getAllByRole("button", { name: "Approve" });
+    const rejectButtons = screen.getAllByRole("button", { name: "Reject" });
+    expect(approveButtons.length).toBe(2);
+    expect(rejectButtons.length).toBe(2);
+  });
+
+  it("shows an Approve All button in the header", async () => {
+    api.listContent.mockResolvedValue([
+      item({ id: 1, status: "review" }),
+    ]);
+    drawReview();
+
+    expect(await screen.findByRole("button", { name: "Approve all" })).toBeInTheDocument();
+  });
+
+  it("calls bulkApprove when Approve All is clicked", async () => {
+    api.listContent.mockResolvedValue([
+      item({ id: 1, status: "review" }),
+      item({ id: 2, title: "Second", status: "review" }),
+    ]);
+    api.bulkApprove.mockResolvedValue({ succeeded: [1, 2], failed: [] });
+    const user = userEvent.setup();
+    drawReview();
+    await screen.findByRole("button", { name: "Approve all" });
+
+    await user.click(screen.getByRole("button", { name: "Approve all" }));
+
+    await vi.waitFor(() => {
+      expect(api.bulkApprove).toHaveBeenCalledWith([1, 2]);
+    });
+  });
+
+  it("shows confidence bar on review cards", async () => {
+    api.listContent.mockResolvedValue([
+      item({ id: 1, status: "review", confidence: 0.85 }),
+    ]);
+    drawReview();
+
+    expect(await screen.findByText("85%")).toBeInTheDocument();
+  });
+
+  it("calls approveContent for single approve", async () => {
+    api.listContent.mockResolvedValue([
+      item({ id: 42, status: "review" }),
+    ]);
+    api.approveContent.mockResolvedValue({});
+    const user = userEvent.setup();
+    drawReview();
+
+    await user.click(await screen.findByRole("button", { name: "Approve" }));
+
+    expect(api.approveContent).toHaveBeenCalledWith(42);
+  });
+
+  it("moves to draft on reject", async () => {
+    api.listContent.mockResolvedValue([
+      item({ id: 42, status: "review" }),
+    ]);
+    api.updateContent.mockResolvedValue({});
+    const user = userEvent.setup();
+    drawReview();
+
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+
+    expect(api.updateContent).toHaveBeenCalledWith(42, { status: "draft" });
   });
 });

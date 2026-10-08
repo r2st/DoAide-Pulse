@@ -75,7 +75,7 @@ export default function Shell({ children }) {
           <span className="font-display text-lg text-ink-900">Pulse</span>
         </div>
         <button
-          className="btn-quiet -mr-1"
+          className="btn-quiet -mr-1 min-h-[44px] min-w-[44px]"
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
           aria-controls="mobile-nav"
@@ -220,7 +220,7 @@ function MobileTab({ to, end, badge, children }) {
       end={end}
       className={({ isActive }) =>
         [
-          "flex items-center justify-between rounded-md px-3 py-2.5 text-sm transition-colors",
+          "flex min-h-[44px] items-center justify-between rounded-md px-3 py-2.5 text-sm transition-colors",
           isActive
             ? "bg-brand-50 text-brand-500"
             : "text-ink-500 hover:bg-ink-400/10 hover:text-ink-900",

@@ -280,21 +280,18 @@ describe("deleting a project", () => {
 });
 
 describe("the add/edit dialog", () => {
-  it("opens empty from Add project", async () => {
+  it("opens quick add dialog from Add your first project", async () => {
     const user = userEvent.setup();
     draw();
     await screen.findByText("No projects yet");
 
     await user.click(screen.getByRole("button", { name: "Add your first project" }));
 
-    expect(screen.getByRole("heading", { name: "Add a project" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Quick add" })).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("");
   });
 
-  // The dialog's own keyboard behaviour is covered in ui/Dialog.test.jsx. What
-  // these two check is that this page is wired to it at all — the eight dialogs
-  // this replaced each had `aria-modal` and none of them behaved like it.
-  it("puts focus in the first field, so it can be filled in without a mouse", async () => {
+  it("puts focus in the first field of the quick add dialog", async () => {
     const user = userEvent.setup();
     draw();
     await screen.findByText("No projects yet");
@@ -304,7 +301,7 @@ describe("the add/edit dialog", () => {
     expect(screen.getByLabelText("Name")).toHaveFocus();
   });
 
-  it("closes on Escape and hands focus back to what opened it", async () => {
+  it("closes quick add on Escape and hands focus back to what opened it", async () => {
     const user = userEvent.setup();
     draw();
     await screen.findByText("No projects yet");
@@ -342,16 +339,13 @@ describe("the add/edit dialog", () => {
     expect(within(select).queryByText("Twitter / X")).not.toBeInTheDocument();
   });
 
-  it("opens empty from the header button when projects already exist", async () => {
-    // The empty state's button and this one are separate elements, and only the
-    // empty one was ever clicked — so the header's path to the dialog, which is
-    // the only one a user with projects can take, went untested.
+  it("opens the full dialog from the Advanced button when projects already exist", async () => {
     api.listProjects.mockResolvedValue([project()]);
     const user = userEvent.setup();
     draw();
     await screen.findByText("Pulse");
 
-    await user.click(screen.getByRole("button", { name: "Add project" }));
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
 
     expect(screen.getByRole("heading", { name: "Add a project" })).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("");
@@ -432,13 +426,35 @@ describe("the add/edit dialog", () => {
     expect(screen.getByLabelText("Campaign name")).toBeDisabled();
   });
 
-  it("creates a project, splitting comma-separated lists and nulling blank URLs", async () => {
+  it("creates a project from quick add with autopilot defaulting to draft", async () => {
     api.createProject.mockResolvedValue(project());
     const user = userEvent.setup();
     draw();
     await screen.findByText("No projects yet");
     await user.click(screen.getByRole("button", { name: "Add your first project" }));
 
+    await user.type(screen.getByLabelText("Name"), "New Project");
+    await user.type(screen.getByLabelText(/URL/), "https://github.com/me/proj");
+    await user.click(screen.getByRole("button", { name: "Create project" }));
+
+    expect(api.createProject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "New Project",
+        repo_url: "https://github.com/me/proj",
+        autopilot_mode: "draft",
+      }),
+    );
+  });
+
+  it("creates a project via advanced form, splitting comma-separated lists and nulling blank URLs", async () => {
+    api.listProjects.mockResolvedValue([project()]);
+    api.createProject.mockResolvedValue(project());
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("Pulse");
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+
+    await user.clear(screen.getByLabelText("Name"));
     await user.type(screen.getByLabelText("Name"), "New Project");
     await user.type(screen.getByLabelText(/Tech stack/), "Go, Postgres");
     await user.click(screen.getByRole("button", { name: "Save project" }));
@@ -468,7 +484,7 @@ describe("the add/edit dialog", () => {
     expect(api.createProject).not.toHaveBeenCalled();
   });
 
-  it("toasts success and closes the dialog after saving", async () => {
+  it("toasts success and closes the quick dialog after saving", async () => {
     api.createProject.mockResolvedValue(project());
     const user = userEvent.setup();
     draw();
@@ -476,13 +492,13 @@ describe("the add/edit dialog", () => {
     await user.click(screen.getByRole("button", { name: "Add your first project" }));
     await user.type(screen.getByLabelText("Name"), "New Project");
 
-    await user.click(screen.getByRole("button", { name: "Save project" }));
+    await user.click(screen.getByRole("button", { name: "Create project" }));
 
     expect(await screen.findByText("No projects yet")).toBeInTheDocument();
-    expect(toast.success).toHaveBeenCalledWith("Project saved");
+    expect(toast.success).toHaveBeenCalledWith("Project created — autopilot is drafting content");
   });
 
-  it("keeps the dialog open and toasts the error on a failed save", async () => {
+  it("keeps the quick dialog open and toasts the error on a failed save", async () => {
     api.createProject.mockRejectedValue(new Error("Name already in use"));
     const user = userEvent.setup();
     draw();
@@ -490,13 +506,13 @@ describe("the add/edit dialog", () => {
     await user.click(screen.getByRole("button", { name: "Add your first project" }));
     await user.type(screen.getByLabelText("Name"), "New Project");
 
-    await user.click(screen.getByRole("button", { name: "Save project" }));
+    await user.click(screen.getByRole("button", { name: "Create project" }));
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(toast.error).toHaveBeenCalledWith("Name already in use");
   });
 
-  it("closes without saving on cancel", async () => {
+  it("closes the quick dialog without saving on cancel", async () => {
     const user = userEvent.setup();
     draw();
     await screen.findByText("No projects yet");
@@ -506,5 +522,17 @@ describe("the add/edit dialog", () => {
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(api.createProject).not.toHaveBeenCalled();
+  });
+
+  it("switches from quick add to advanced form via More options", async () => {
+    const user = userEvent.setup();
+    draw();
+    await screen.findByText("No projects yet");
+    await user.click(screen.getByRole("button", { name: "Add your first project" }));
+    expect(screen.getByRole("heading", { name: "Quick add" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "More options" }));
+
+    expect(screen.getByRole("heading", { name: "Add a project" })).toBeInTheDocument();
   });
 });

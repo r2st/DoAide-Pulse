@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   Confidence,
@@ -52,23 +52,92 @@ export default function ContentList() {
     setParams(next);
   };
 
+  const isReviewView = status === "review";
+  const [selected, setSelected] = useState(new Set());
+  const [approvingBulk, setApprovingBulk] = useState(false);
+
+  const toggleSelect = useCallback((id) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    if (!data) return;
+    const reviewIds = data.filter((i) => i.status === "review").map((i) => i.id);
+    setSelected((prev) =>
+      prev.size === reviewIds.length ? new Set() : new Set(reviewIds),
+    );
+  }, [data]);
+
+  async function bulkApprove() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setApprovingBulk(true);
+    try {
+      const result = await api.bulkApprove(ids);
+      const ok = result.succeeded?.length ?? 0;
+      if (ok > 0) toast.success(`Approved ${ok} item${ok === 1 ? "" : "s"}`);
+      const fail = result.failed?.length ?? 0;
+      if (fail > 0) toast.error(`${fail} could not be approved`);
+      setSelected(new Set());
+      reload();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setApprovingBulk(false);
+    }
+  }
+
+  async function approveAll() {
+    if (!data) return;
+    const ids = data.filter((i) => i.status === "review").map((i) => i.id);
+    if (ids.length === 0) return;
+    setApprovingBulk(true);
+    try {
+      const result = await api.bulkApprove(ids);
+      const ok = result.succeeded?.length ?? 0;
+      if (ok > 0) toast.success(`Approved ${ok} item${ok === 1 ? "" : "s"}`);
+      setSelected(new Set());
+      reload();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setApprovingBulk(false);
+    }
+  }
+
   return (
     <div className="stagger space-y-6">
       <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="page-title">Content</h1>
           <p className="mt-1 text-sm text-ink-500">
-            All drafts and published pieces.
+            {isReviewView ? "Drafts waiting for your review." : "All drafts and published pieces."}
           </p>
         </div>
-        <button
-          className="btn-primary"
-          onClick={() => setComposing(true)}
-          disabled={!projects?.length}
-          title={projects?.length ? undefined : "Register a project first"}
-        >
-          Generate
-        </button>
+        <div className="flex items-center gap-2">
+          {isReviewView && data?.length > 0 && (
+            <button
+              className="btn-ghost text-good"
+              onClick={approveAll}
+              disabled={approvingBulk}
+            >
+              {approvingBulk ? "Approving…" : "Approve all"}
+            </button>
+          )}
+          <button
+            className="btn-primary"
+            onClick={() => setComposing(true)}
+            disabled={!projects?.length}
+            title={projects?.length ? undefined : "Register a project first"}
+          >
+            Generate
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -137,6 +206,35 @@ export default function ContentList() {
             )
           }
         />
+      ) : isReviewView ? (
+        <>
+          {selected.size > 0 && (
+            <div className="flex items-center gap-3 rounded-lg border border-brand-500/30 bg-brand-50 px-4 py-2.5">
+              <span className="text-sm text-brand-600">{selected.size} selected</span>
+              <button
+                className="btn-quiet text-good"
+                onClick={bulkApprove}
+                disabled={approvingBulk}
+              >
+                Approve selected
+              </button>
+              <button className="btn-quiet" onClick={() => setSelected(new Set())}>
+                Clear
+              </button>
+            </div>
+          )}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data?.map((item) => (
+              <ReviewContentCard
+                key={item.id}
+                item={item}
+                selected={selected.has(item.id)}
+                onToggle={() => toggleSelect(item.id)}
+                onApproved={reload}
+              />
+            ))}
+          </div>
+        </>
       ) : (
         <ul className="panel divide-y divide-line">
           {data?.map((item) => (
@@ -311,5 +409,100 @@ function GenerateDialog({ projects, defaultProjectId, onClose, onDone, onError }
         </p>
       )}
     </Dialog>
+  );
+}
+
+function ReviewContentCard({ item, selected, onToggle, onApproved }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function approve() {
+    setBusy(true);
+    try {
+      await api.approveContent(item.id);
+      toast.success("Approved");
+      onApproved?.();
+    } catch (err) {
+      toast.error(err.message);
+      setBusy(false);
+    }
+  }
+
+  async function reject() {
+    setBusy(true);
+    try {
+      await api.updateContent(item.id, { status: "draft" });
+      toast.info("Moved to draft");
+      onApproved?.();
+    } catch (err) {
+      toast.error(err.message);
+      setBusy(false);
+    }
+  }
+
+  const confidence = item.confidence != null ? Math.round(item.confidence * 100) : null;
+  const confidenceTone =
+    confidence >= 80 ? "text-good" : confidence >= 50 ? "text-warn" : "text-ink-400";
+
+  return (
+    <div className={`panel flex flex-col gap-2 p-4 transition-shadow ${selected ? "ring-2 ring-brand-500/50" : ""}`}>
+      <div className="flex items-start gap-3">
+        <label className="mt-0.5 flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            className="h-4 w-4 rounded border-line-strong text-brand-500"
+          />
+        </label>
+        <Link to={`/content/${item.id}`} className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm font-medium text-ink-900 hover:text-brand-500">
+            {item.title}
+          </p>
+          <p className="mt-1 text-xs text-ink-400">
+            {item.project_name} · {titleize(item.content_type)} · {item.word_count} words
+          </p>
+        </Link>
+      </div>
+
+      {confidence !== null && (
+        <div className="flex items-center gap-2 px-1">
+          <div className="h-1.5 flex-1 rounded-full bg-ink-400/15">
+            <div
+              className={`h-full rounded-full ${
+                confidence >= 80 ? "bg-good" : confidence >= 50 ? "bg-warn" : "bg-ink-400"
+              }`}
+              style={{ width: `${confidence}%` }}
+            />
+          </div>
+          <span className={`font-mono text-[11px] ${confidenceTone}`}>
+            {confidence}%
+          </span>
+        </div>
+      )}
+
+      <div className="mt-auto flex items-center gap-2 pt-1">
+        <button
+          className="min-h-[44px] flex-1 rounded-lg bg-good px-3 py-2 text-sm font-medium text-canvas transition-colors hover:bg-good/90 disabled:opacity-40"
+          onClick={approve}
+          disabled={busy}
+        >
+          Approve
+        </button>
+        <button
+          className="min-h-[44px] flex-1 rounded-lg border border-line px-3 py-2 text-sm text-ink-600 transition-colors hover:bg-canvas disabled:opacity-40"
+          onClick={reject}
+          disabled={busy}
+        >
+          Reject
+        </button>
+        <Link
+          to={`/content/${item.id}`}
+          className="min-h-[44px] rounded-lg border border-line px-3 py-2 text-center text-sm text-ink-600 transition-colors hover:bg-canvas"
+        >
+          View
+        </Link>
+      </div>
+    </div>
   );
 }
