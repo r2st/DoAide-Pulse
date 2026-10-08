@@ -54,3 +54,7 @@ docs/*.pdf
 docs/*.docx
 docs/page-*.jpg
 docs/pulse-seo-features.js
+
+# Environment
+.env*
+!.env.example
