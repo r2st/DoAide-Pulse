@@ -174,7 +174,7 @@ class Plan:
 # --------------------------------------------------------------------------- #
 
 
-def sync_projects(client: PulseClient, plan: Plan, *, dry_run: bool) -> dict[str, int]:
+def sync_projects(client: HeraldClient, plan: Plan, *, dry_run: bool) -> dict[str, int]:
     """Ensure every project in the plan exists and matches. Returns key -> id."""
     existing = {p["name"].lower(): p for p in client.list_projects()}
     ids: dict[str, int] = {}
@@ -252,7 +252,7 @@ def _content_payload(plan: Plan, article: dict, project_id: int) -> dict:
 
 
 def sync_articles(
-    client: PulseClient, plan: Plan, project_ids: dict[str, int], *, dry_run: bool
+    client: HeraldClient, plan: Plan, project_ids: dict[str, int], *, dry_run: bool
 ) -> dict[str, int]:
     """Create or update every article. Returns article key -> content id.
 
@@ -354,7 +354,7 @@ def _warn_if_not_converged(key: str, sent: dict, stored: dict) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def check_links(client: PulseClient, plan: Plan, content_ids: dict[str, int]) -> int:
+def check_links(client: HeraldClient, plan: Plan, content_ids: dict[str, int]) -> int:
     """Report dead links before they block a publish. Returns the broken count.
 
     Pulse runs this itself at publish time and refuses on a definitive 404, so
@@ -382,7 +382,7 @@ def check_links(client: PulseClient, plan: Plan, content_ids: dict[str, int]) ->
 
 
 def schedule(
-    client: PulseClient,
+    client: HeraldClient,
     plan: Plan,
     content_ids: dict[str, int],
     *,
@@ -449,7 +449,7 @@ def schedule(
 # --------------------------------------------------------------------------- #
 
 
-def status(client: PulseClient, plan: Plan) -> None:
+def status(client: HeraldClient, plan: Plan) -> None:
     projects = {p["name"].lower(): p for p in client.list_projects()}
     # One listing per *project*, not one per article. A campaign is mostly
     # several articles against the same handful of projects, so fetching inside
@@ -575,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"      {plan.title(article)}")
         return 0
 
-    with PulseClient(base_url) as client:
+    with HeraldClient(base_url) as client:
         client.login_from_env()
         try:
             if args.command == "status":
@@ -602,7 +602,7 @@ def main(argv: list[str] | None = None) -> int:
                     optimize=args.optimize,
                     dry_run=args.dry_run,
                 )
-        except PulseError as exc:
+        except HeraldError as exc:
             print(f"\nAPI error: {exc}", file=sys.stderr)
             return 1
     return 0

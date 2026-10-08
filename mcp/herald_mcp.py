@@ -62,10 +62,10 @@ from herald_client import DEFAULT_BASE_URL, HeraldClient, HeraldError  # noqa: E
 
 mcp = _Server("herald")
 
-_client: PulseClient | None = None
+_client: HeraldClient | None = None
 
 
-def client() -> PulseClient:
+def client() -> HeraldClient:
     """The logged-in client, created on first use.
 
     Lazy because a server that dies at import time when credentials are absent
@@ -75,14 +75,14 @@ def client() -> PulseClient:
     global _client
     if _client is None:
         base_url = os.environ.get("HERALD_BASE_URL", DEFAULT_BASE_URL)
-        candidate = PulseClient(base_url)
+        candidate = HeraldClient(base_url)
         candidate.login_from_env()
         _client = candidate
     return _client
 
 
 def _guard(fn: _F) -> _F:
-    """Turn a PulseError into a readable message rather than a traceback.
+    """Turn a HeraldError into a readable message rather than a traceback.
 
     Pulse's ``detail`` strings are written to be actionable — "Not connected
     to: devto. Add credentials in Settings." is the fix — and an MCP host shows
@@ -101,7 +101,7 @@ def _guard(fn: _F) -> _F:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         try:
             return fn(*args, **kwargs)
-        except PulseError as exc:
+        except HeraldError as exc:
             return {"error": exc.detail, "status_code": exc.status_code}
 
     return cast(_F, wrapper)

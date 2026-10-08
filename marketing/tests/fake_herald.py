@@ -16,7 +16,7 @@ import re
 from typing import Any
 
 
-class FakePulseError(RuntimeError):
+class FakeHeraldError(RuntimeError):
     """Stands in for ``herald_client.HeraldError``."""
 
     def __init__(self, status_code: int, detail: str) -> None:
@@ -136,7 +136,7 @@ class FakePulse:
         # The backend refuses edits to a published piece — 409 on anything but
         # status and scheduled_for.
         if row["status"] == "published" and set(payload) - {"status", "scheduled_for"}:
-            raise FakePulseError(409, "This piece is already published.")
+            raise FakeHeraldError(409, "This piece is already published.")
         for key, value in payload.items():
             row[key] = normalize_keywords(value) if key == "keywords" else value
         row["word_count"] = len(row["body_markdown"].split())
@@ -178,7 +178,7 @@ class FakePulse:
     def _row(self, content_id: int) -> dict:
         row = next((c for c in self.content if c["id"] == content_id), None)
         if row is None:
-            raise FakePulseError(404, "Content not found")
+            raise FakeHeraldError(404, "Content not found")
         return row
 
     def by_title(self, title: str) -> dict:

@@ -22,7 +22,7 @@ import httpx
 DEFAULT_BASE_URL = "https://herald.doaide.com/api/v1"
 
 
-class PulseError(RuntimeError):
+class HeraldError(RuntimeError):
     """An API call that came back with a non-2xx status.
 
     Carries the parsed ``detail`` where Pulse sent one, because that string is
@@ -36,7 +36,7 @@ class PulseError(RuntimeError):
         self.detail = detail
 
 
-class PulseClient:
+class HeraldClient:
     """Authenticated session against one Pulse instance."""
 
     def __init__(
@@ -61,7 +61,7 @@ class PulseClient:
     # Plumbing                                                          #
     # ----------------------------------------------------------------- #
 
-    def __enter__(self) -> PulseClient:
+    def __enter__(self) -> HeraldClient:
         return self
 
     def __exit__(self, *exc_info: object) -> None:
@@ -72,14 +72,14 @@ class PulseClient:
 
     def _headers(self) -> dict[str, str]:
         if not self._token:
-            raise PulseError("GET", self.base_url, 401, "not logged in")
+            raise HeraldError("GET", self.base_url, 401, "not logged in")
         return {"Authorization": f"Bearer {self._token}"}
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
         url = f"{self.base_url}{path}"
         response = self._http.request(method, url, headers=self._headers(), **kwargs)
         if response.status_code >= 400:
-            raise PulseError(method, url, response.status_code, _detail(response))
+            raise HeraldError(method, url, response.status_code, _detail(response))
         if response.status_code == 204 or not response.content:
             return None
         return response.json()
@@ -93,7 +93,7 @@ class PulseClient:
         url = f"{self.base_url}/auth/login"
         response = self._http.post(url, data={"username": email, "password": password})
         if response.status_code >= 400:
-            raise PulseError("POST", url, response.status_code, _detail(response))
+            raise HeraldError("POST", url, response.status_code, _detail(response))
         self._token = response.json()["access_token"]
 
     def login_from_env(self, base_url_env: str = "HERALD_BASE_URL") -> None:
@@ -246,4 +246,4 @@ def _detail(response: httpx.Response) -> str:
     return str(body)[:500]
 
 
-__all__ = ["PulseClient", "PulseError", "DEFAULT_BASE_URL"]
+__all__ = ["HeraldClient", "HeraldError", "DEFAULT_BASE_URL"]

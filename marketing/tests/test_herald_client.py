@@ -14,11 +14,11 @@ from herald_client import DEFAULT_BASE_URL, HeraldClient, HeraldError
 BASE = "https://herald.example.com/api/v1"
 
 
-def client_for(handler, **kwargs) -> PulseClient:
-    return PulseClient(BASE, transport=httpx.MockTransport(handler), **kwargs)
+def client_for(handler, **kwargs) -> HeraldClient:
+    return HeraldClient(BASE, transport=httpx.MockTransport(handler), **kwargs)
 
 
-def logged_in(handler) -> PulseClient:
+def logged_in(handler) -> HeraldClient:
     """A client past the handshake, so a test can get to the endpoint it means."""
 
     def route(request: httpx.Request) -> httpx.Response:
@@ -53,7 +53,7 @@ def test_login_posts_form_encoded_credentials_not_json():
 
 def test_a_rejected_login_carries_the_detail_herald_sent():
     handler = lambda r: httpx.Response(401, json={"detail": "Incorrect email or password"})
-    with pytest.raises(PulseError) as exc:
+    with pytest.raises(HeraldError) as exc:
         client_for(handler).login("someone@example.com", "wrong")
 
     assert exc.value.status_code == 401
@@ -68,7 +68,7 @@ def test_calling_an_endpoint_before_logging_in_fails_without_a_request():
         called = True
         return httpx.Response(200, json=[])
 
-    with pytest.raises(PulseError, match="not logged in"):
+    with pytest.raises(HeraldError, match="not logged in"):
         client_for(handler).list_projects()
     assert not called
 
@@ -77,7 +77,7 @@ def test_login_from_env_says_which_variables_to_set(monkeypatch):
     monkeypatch.delenv("HERALD_EMAIL", raising=False)
     monkeypatch.delenv("HERALD_PASSWORD", raising=False)
     with pytest.raises(SystemExit, match="HERALD_EMAIL and HERALD_PASSWORD"):
-        PulseClient(BASE).login_from_env()
+        HeraldClient(BASE).login_from_env()
 
 
 def test_login_from_env_uses_the_environment(monkeypatch):
@@ -121,7 +121,7 @@ def test_an_empty_200_body_is_not_parsed_as_json():
 def test_an_error_with_no_json_body_still_reaches_the_operator():
     """A 502 from the reverse proxy is HTML, not Pulse's JSON."""
     handler = lambda r: httpx.Response(502, text="<html>Bad Gateway</html>")
-    with pytest.raises(PulseError) as exc:
+    with pytest.raises(HeraldError) as exc:
         logged_in(handler).list_projects()
 
     assert exc.value.status_code == 502
@@ -131,7 +131,7 @@ def test_an_error_with_no_json_body_still_reaches_the_operator():
 def test_a_validation_error_shows_the_field_that_failed():
     body = {"detail": [{"loc": ["body", "title"], "msg": "Field required"}]}
     handler = lambda r: httpx.Response(422, json=body)
-    with pytest.raises(PulseError) as exc:
+    with pytest.raises(HeraldError) as exc:
         logged_in(handler).create_content({"project_id": 1})
 
     assert "Field required" in exc.value.detail
@@ -139,7 +139,7 @@ def test_a_validation_error_shows_the_field_that_failed():
 
 def test_the_base_url_loses_a_trailing_slash():
     """Otherwise every path is built with a double slash in it."""
-    assert PulseClient("https://herald.example.com/api/v1/").base_url == BASE
+    assert HeraldClient("https://herald.example.com/api/v1/").base_url == BASE
 
 
 def test_the_default_base_url_is_the_public_host():
@@ -147,7 +147,7 @@ def test_the_default_base_url_is_the_public_host():
 
 
 def test_the_client_closes_its_connection_pool():
-    client = PulseClient(BASE, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
+    client = HeraldClient(BASE, transport=httpx.MockTransport(lambda r: httpx.Response(200)))
     with client:
         pass
     assert client._http.is_closed
@@ -174,7 +174,7 @@ def test_list_content_stays_inside_the_limit_the_api_allows():
     """``GET /content`` declares ``le=500``; asking for more is a 422."""
     import inspect
 
-    default = inspect.signature(PulseClient.list_content).parameters["limit"].default
+    default = inspect.signature(HeraldClient.list_content).parameters["limit"].default
     assert default <= 500
 
 
