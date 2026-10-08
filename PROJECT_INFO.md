@@ -53,7 +53,7 @@ ssh -i ../GoSumo/keys/hetzner_deploy_ed25519 root@89.167.8.178
 | Server | `/opt/Pulse/.env` |
 
 `keys/groq_api_key` holds the **canonical Groq key for the whole estate** — the same
-value is mirrored in `../TalentPing/keys/groq`, `../USTradingBot/keys/groq_api_key`,
+value is mirrored in `../DoAide-Jobs/keys/groq`, `../USTradingBot/keys/groq_api_key`,
 and Landline production.
 
 Known gaps as of 2026-07-31: `JWT_SECRET` and `TOKEN_ENCRYPTION_KEY` are still template
@@ -83,7 +83,7 @@ curl https://pulse.doaide.com/api/v1/health   # also lists configured LLM provid
 
 ## Related projects
 
-- [`../TalentPing`](../TalentPing) — same Hetzner box, same LLM fallback pattern, shares the Groq key
+- [`../DoAide-Jobs`](../DoAide-Jobs) — same Hetzner box, same LLM fallback pattern, shares the Groq key
 - [`../GoSumo`](../GoSumo) — same box; **owns the SSH deploy key Pulse uses**
 - [`../Documedic`](../Documedic), [`../HomeNex`](../HomeNex) — same box
 - `knol/memorylayer` — backs the `*.doaide.com` estate and the shared Caddy container

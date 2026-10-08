@@ -121,7 +121,7 @@
       "key": "doaide-jobs",
       "name": "DoAide Jobs",
       "description": "DoAide Jobs is AI-powered job-application automation that skips the ATS spray-and-pray: it finds recruiter and hiring-manager contacts, writes personalised outreach, sends it from the user's own Gmail over OAuth so SPF, DKIM and DMARC align by construction, applies warm-up ramping and throttling with randomised timing, then classifies the replies and drafts responses.",
-      "repo_url": "https://github.com/r2st/TalentPing",
+      "repo_url": "https://github.com/r2st/DoAide-Jobs",
       "live_url": "https://job.doaide.com",
       "tech_stack": [
         "FastAPI",
@@ -320,7 +320,7 @@
       "status": "review"
     },
     {
-      "key": "talentping-outreach-deliverability",
+      "key": "doaide-jobs-outreach-deliverability",
       "project": "doaide-jobs",
       "content_type": "how_to",
       "title": "Cold Email Deliverability for Automated Job Outreach",
@@ -341,7 +341,7 @@
       ],
       "excerpt": "Your replies did not stop because the message got worse. They stopped because your sender reputation did. Authentication, alignment, warm-up curves and the sending behaviour that keeps you in the inbox.",
       "meta_description": "A cold email deliverability guide for automated job-search outreach: SPF, DKIM and DMARC alignment, a realistic warm-up ramp, sending behaviour that does not read as a bot, and the signals to watch.",
-      "body_file": "talentping-outreach-deliverability.md",
+      "body_file": "doaide-jobs-outreach-deliverability.md",
       "platforms": [
         "devto",
         "bluesky"
@@ -465,7 +465,7 @@
       "status": "review"
     },
     {
-      "key": "talentping-smart-job-search-2026",
+      "key": "doaide-jobs-smart-job-search-2026",
       "project": "doaide-jobs",
       "content_type": "how_to",
       "title": "Smart Job Search in 2026: Let AI Handle Your Applications",
@@ -486,7 +486,7 @@
       ],
       "excerpt": "Applying to more roles is the wrong lever. The strategy that works is expensive by hand, which is the actual problem worth automating — and there is a short list of things you must not hand over.",
       "meta_description": "Why volume applications stopped working, the arithmetic favouring researched outreach, and exactly which parts of a job search to automate — contacts, research, follow-up — and which to keep.",
-      "body_file": "talentping-smart-job-search-2026.md",
+      "body_file": "doaide-jobs-smart-job-search-2026.md",
       "platforms": [
         "devto",
         "bluesky"

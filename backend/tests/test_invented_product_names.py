@@ -9,14 +9,14 @@ other two built. ``test_garbled_text_gate`` covers the sampler slipping a
     The outreach module reads from the Teppil inbox …
 
 Neither name exists. Neither is a typo of anything. Neither appears in
-TalentPing's brief, its stack, its keywords or its commits — a free-tier model
+the project's brief, its stack, its keywords or its commits — a free-tier model
 needed two nouns to finish a paragraph and wrote them with the same confidence
 it wrote the rest. The piece scored fine, had no dead links, is ASCII from end
 to end, and came back at 0.85 confidence.
 
 The literals below are the real ones, from the rows they were found in:
 
-* content 56 (TalentPing) — ``Wird``, ``Teppil``
+* content 56 (DoAide Jobs) — ``Wird``, ``Teppil``
 * content 80 (N409) — ``Integrate‑mar``, ``builtExamples``
 
 and the four the gate turned up in the same sweep, which nothing had noticed:
@@ -53,7 +53,7 @@ FOR_EDITOR = "forEditor"
 
 #: What Pulse knows about the project every unit test below is written against.
 KNOWN = factcheck.vocabulary(
-    "TalentPing",
+    "DoAide Jobs",
     "AI recruiting autopilot with automated outreach, follow-ups, ATS boards, "
     "and weekly digests.",
     ["FastAPI", "React", "PostgreSQL", "Celery"],
@@ -129,7 +129,7 @@ def test_the_ones_nothing_had_noticed(sentence, name):
         "Inbound inquiries from property portals (99acres, MagicBricks, "
         "Housing.com) are automatically captured.",  # 4
         "WhatsApp is essential in India/SE Asia/LatAm.",  # 7
-        "TalentPing reads employer ATS boards directly — **Greenhouse, Lever, "
+        "DoAide Jobs reads employer ATS boards directly — **Greenhouse, Lever, "
         "Ashby, Workable and SmartRecruiters** — because that is the freshest "
         "source.",  # 23, 26
         "Writes the hooks into settings.json — Stop, Notification, "
@@ -154,7 +154,7 @@ def test_a_brand_is_still_read_when_the_copy_claims_it_ships():
     """What the tightened arm gives up, and where it is caught instead.
 
     `GoSumoX` is unknown and capitalized, so the shape arm now leaves it alone.
-    The frame does not: the sentence claims TalentPing integrates with it, and
+    The frame does not: the sentence claims DoAide Jobs integrates with it, and
     that claim is the thing a reader would act on.
     """
     claims = factcheck.unsupported_names("Integration with GoSumoX is live.", KNOWN)
@@ -192,7 +192,7 @@ def test_one_bad_token_is_one_claim_not_two():
 def test_a_clean_body_reports_nothing():
     """The control. Without this the section below passes for the wrong reason."""
     text = (
-        "TalentPing pulls from company ATS boards. The outreach module sends "
+        "DoAide Jobs pulls from company ATS boards. The outreach module sends "
         "follow-ups on a schedule, and the weekly digest summarises replies."
     )
 
@@ -203,8 +203,8 @@ def test_a_clean_body_reports_nothing():
     "sentence",
     [
         # The project's own name and stack, in the shapes the copy writes them.
-        "TalentPing is built on FastAPI and PostgreSQL.",
-        "TalentPing's outreach module reads the ATS board.",
+        "DoAide Jobs is built on FastAPI and PostgreSQL.",
+        "DoAide Jobs's outreach module reads the ATS board.",
         # Names common enough that no project declares them.
         "Inquiries arrive over WhatsApp and are pushed to GitHub.",
         "The pipeline runs on Kubernetes with OpenTelemetry traces.",
@@ -269,8 +269,8 @@ def test_empty_text_reports_nothing():
 
 def test_a_name_the_brief_supports_is_not_a_claim():
     """The whole premise: the gate is about grounding, not about spelling."""
-    ungrounded = factcheck.vocabulary("TalentPing")
-    grounded = factcheck.vocabulary("TalentPing", "Now with a Teppil inbox.")
+    ungrounded = factcheck.vocabulary("DoAide Jobs")
+    grounded = factcheck.vocabulary("DoAide Jobs", "Now with a Teppil inbox.")
     text = "The outreach module reads from the Teppil inbox."
 
     assert [c.name for c in factcheck.unsupported_names(text, ungrounded)] == [TEPPIL]

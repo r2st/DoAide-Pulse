@@ -11,9 +11,9 @@ def test_create_and_list_project(client, auth):
         "/api/v1/projects",
         headers=auth,
         json={
-            "name": "TalentPing",
+            "name": "DoAide Jobs",
             "description": "AI recruiter outreach.",
-            "repo_url": "https://github.com/r2st/TalentPing",
+            "repo_url": "https://github.com/r2st/DoAide-Jobs",
             "tech_stack": ["FastAPI", "fastapi", "  React  ", ""],
             "keywords": ["job search"],
             "tone": "marketing",
@@ -21,13 +21,13 @@ def test_create_and_list_project(client, auth):
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["slug"] == "talentping"
-    assert body["repo_full_name"] == "r2st/TalentPing"
+    assert body["slug"] == "doaide-jobs"
+    assert body["repo_full_name"] == "r2st/DoAide-Jobs"
     # Duplicates dropped case-insensitively, blanks removed, casing preserved.
     assert body["tech_stack"] == ["FastAPI", "React"]
 
     listed = client.get("/api/v1/projects", headers=auth).json()
-    assert [p["name"] for p in listed] == ["TalentPing"]
+    assert [p["name"] for p in listed] == ["DoAide Jobs"]
     assert listed[0]["content_count"] == 0
 
 
@@ -344,7 +344,7 @@ def test_publish_accepts_either_platform_spelling(client, auth, project, db):
 
 
 def _payload(**overrides) -> dict:
-    body = {"name": "TalentPing", "description": "AI recruiter outreach."}
+    body = {"name": "DoAide Jobs", "description": "AI recruiter outreach."}
     body.update(overrides)
     return body
 

@@ -1,6 +1,6 @@
 """A project Pulse writes about.
 
-One row per thing the developer wants promoted — TalentPing, GoSumo, Pulse
+One row per thing the developer wants promoted — DoAide Jobs, GoSumo, Pulse
 itself. Everything the content engine needs to write in the project's voice
 lives here, alongside the repo watermarks the autopilot uses to notice that
 something new has shipped.

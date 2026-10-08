@@ -9,7 +9,7 @@ slipping a whole *noun* in, spelled in plain ASCII, in a sentence that parses::
     The outreach module reads from the Teppil inbox …
 
 "Wird" and "Teppil" are not products. They are not typos of products. They are
-not in TalentPing's brief, its stack, its keywords, its commits or its README —
+not in the project's brief, its stack, its keywords, its commits or its README —
 they are two nouns a free-tier model needed in order to finish a sentence, and
 it wrote them with the same confidence it wrote everything else. Every existing
 gate passed the piece: the JSON parsed, the body was long enough, the SEO score
