@@ -654,6 +654,224 @@
   margin-top: 2px;
 }
 
+/* ── Comparison Table ── */
+.landing-comparison {
+  position: relative;
+  z-index: 5;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 60px 24px;
+}
+
+.landing-comparison-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.landing-comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.landing-comparison-table th {
+  font-family: var(--doaide-font-mono, 'IBM Plex Mono', monospace);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  padding: 12px 16px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+
+.landing-comparison-feature-th {
+  text-align: left !important;
+}
+
+.landing-comparison-brand-th {
+  color: var(--accent) !important;
+}
+
+.landing-comparison-table td {
+  padding: 10px 16px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.landing-comparison-feature {
+  text-align: left !important;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+.landing-comparison-brand-cell {
+  background: rgba(240, 180, 41, 0.03);
+}
+
+.landing-comparison-text {
+  font-family: var(--doaide-font-mono, 'IBM Plex Mono', monospace);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.landing-comparison-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.landing-comparison-table tr:hover .landing-comparison-brand-cell {
+  background: rgba(240, 180, 41, 0.06);
+}
+
+/* ── Pricing ── */
+.landing-pricing {
+  position: relative;
+  z-index: 5;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 60px 24px;
+}
+
+.landing-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.landing-pricing-card {
+  background: var(--bg-surface);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.landing-pricing-card:hover {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.landing-pricing-highlight {
+  border-color: rgba(240, 180, 41, 0.3);
+  box-shadow: 0 0 40px rgba(240, 180, 41, 0.08);
+  position: relative;
+}
+
+.landing-pricing-highlight::before {
+  content: "Most Popular";
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--doaide-font-mono, 'IBM Plex Mono', monospace);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #0A0A0B;
+  background: var(--accent);
+  border-radius: 20px;
+  padding: 4px 14px;
+  white-space: nowrap;
+}
+
+.landing-pricing-highlight:hover {
+  border-color: rgba(240, 180, 41, 0.5);
+}
+
+.landing-pricing-header {
+  margin-bottom: 24px;
+}
+
+.landing-pricing-name {
+  display: block;
+  font-family: var(--doaide-font-mono, 'IBM Plex Mono', monospace);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.landing-pricing-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.landing-pricing-currency {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.landing-pricing-price {
+  font-family: var(--doaide-font-display, 'Instrument Serif', Georgia, serif);
+  font-size: 42px;
+  font-style: italic;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.landing-pricing-period {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.landing-pricing-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  flex: 1;
+}
+
+.landing-pricing-feature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  padding: 6px 0;
+}
+
+.landing-pricing-cta-primary {
+  display: block;
+  text-align: center;
+  background: var(--accent);
+  color: #0A0A0B;
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 150ms ease;
+}
+
+.landing-pricing-cta-primary:hover {
+  background: #F7D070;
+}
+
+.landing-pricing-cta-secondary {
+  display: block;
+  text-align: center;
+  color: var(--accent);
+  border: 1px solid rgba(240, 180, 41, 0.3);
+  border-radius: 10px;
+  padding: 12px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.landing-pricing-cta-secondary:hover {
+  border-color: var(--accent);
+  background: rgba(240, 180, 41, 0.06);
+}
+
 /* ── Analytics Mockup ── */
 .landing-analytics-mockup {
   position: relative;
@@ -999,6 +1217,12 @@
   .landing-analytics-charts {
     grid-template-columns: 1fr;
   }
+
+  .landing-pricing-grid {
+    grid-template-columns: 1fr;
+    max-width: 400px;
+    margin: 0 auto;
+  }
 }
 
 /* ── Responsive: mobile ── */
@@ -1106,6 +1330,36 @@
   .landing-quick-links {
     padding: 24px 16px;
     grid-template-columns: 1fr;
+  }
+
+  .landing-comparison {
+    padding: 40px 16px;
+  }
+
+  .landing-comparison-table {
+    font-size: 12px;
+  }
+
+  .landing-comparison-table th,
+  .landing-comparison-table td {
+    padding: 8px 10px;
+  }
+
+  .landing-pricing {
+    padding: 40px 16px;
+  }
+
+  .landing-pricing-grid {
+    grid-template-columns: 1fr;
+    max-width: none;
+  }
+
+  .landing-pricing-card {
+    padding: 24px 20px;
+  }
+
+  .landing-pricing-price {
+    font-size: 32px;
   }
 
   .landing-analytics-mockup {

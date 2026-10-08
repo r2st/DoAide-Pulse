@@ -325,6 +325,171 @@ function TestimonialsSection() {
   );
 }
 
+const COMPARISON_FEATURES = [
+  { feature: "AI content research", pulse: true, mailchimp: false, substack: false },
+  { feature: "AI subject line scoring", pulse: true, mailchimp: false, substack: false },
+  { feature: "Send time optimization", pulse: true, mailchimp: "Paid", substack: false },
+  { feature: "Indian language support", pulse: true, mailchimp: false, substack: false },
+  { feature: "Free tier", pulse: "Unlimited", mailchimp: "500 contacts", substack: "Free newsletters" },
+  { feature: "Email templates", pulse: "11+", mailchimp: "100+", substack: "1" },
+  { feature: "Drag-and-drop editor", pulse: true, mailchimp: true, substack: false },
+  { feature: "Dark mode tested", pulse: true, mailchimp: true, substack: true },
+  { feature: "Automation", pulse: true, mailchimp: "Paid", substack: false },
+  { feature: "Analytics dashboard", pulse: true, mailchimp: true, substack: "Basic" },
+  { feature: "Custom domain", pulse: true, mailchimp: "Paid", substack: "Paid" },
+  { feature: "Built for India", pulse: true, mailchimp: false, substack: false },
+];
+
+function ComparisonCheck({ value }) {
+  if (value === true) {
+    return (
+      <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#10B981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 8 7 12 13 4" />
+      </svg>
+    );
+  }
+  if (value === false) {
+    return (
+      <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round">
+        <line x1="4" y1="8" x2="12" y2="8" />
+      </svg>
+    );
+  }
+  return <span className="landing-comparison-text">{value}</span>;
+}
+
+function ComparisonTable() {
+  return (
+    <div className="landing-comparison">
+      <div className="landing-section-header">
+        <span className="landing-section-eyebrow">Compare</span>
+        <h2 className="landing-section-title">Why creators choose Pulse</h2>
+        <p className="landing-section-subtitle">
+          See how DoAide Pulse stacks up against popular alternatives.
+        </p>
+      </div>
+      <div className="landing-comparison-table-wrap">
+        <table className="landing-comparison-table">
+          <thead>
+            <tr>
+              <th className="landing-comparison-feature-th">Feature</th>
+              <th className="landing-comparison-brand-th">Pulse</th>
+              <th>Mailchimp</th>
+              <th>Substack</th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARISON_FEATURES.map((row) => (
+              <tr key={row.feature}>
+                <td className="landing-comparison-feature">{row.feature}</td>
+                <td className="landing-comparison-brand-cell"><ComparisonCheck value={row.pulse} /></td>
+                <td><ComparisonCheck value={row.mailchimp} /></td>
+                <td><ComparisonCheck value={row.substack} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const PRICING_TIERS = [
+  {
+    name: "Free",
+    price: "0",
+    period: "forever",
+    highlight: false,
+    features: [
+      "Unlimited subscribers",
+      "AI content research",
+      "11 email templates",
+      "Subject line scoring",
+      "Basic analytics",
+      "Indian language support",
+    ],
+    cta: "Get started",
+  },
+  {
+    name: "Pro",
+    price: "999",
+    period: "/month",
+    highlight: true,
+    features: [
+      "Everything in Free",
+      "Advanced analytics dashboard",
+      "Send time optimization",
+      "Custom domain",
+      "Priority support",
+      "Automation workflows",
+      "Team collaboration",
+    ],
+    cta: "Start free trial",
+  },
+  {
+    name: "Business",
+    price: "2,999",
+    period: "/month",
+    highlight: false,
+    features: [
+      "Everything in Pro",
+      "Dedicated IP",
+      "API access",
+      "White-label sending",
+      "SLA guarantee",
+      "Onboarding support",
+    ],
+    cta: "Contact us",
+  },
+];
+
+function PricingSection() {
+  return (
+    <div className="landing-pricing">
+      <div className="landing-section-header">
+        <span className="landing-section-eyebrow">Pricing</span>
+        <h2 className="landing-section-title">Simple, transparent pricing</h2>
+        <p className="landing-section-subtitle">
+          Start free. Upgrade when you need advanced features. No hidden fees.
+        </p>
+      </div>
+      <div className="landing-pricing-grid">
+        {PRICING_TIERS.map((tier) => (
+          <div
+            key={tier.name}
+            className={`landing-pricing-card ${tier.highlight ? "landing-pricing-highlight" : ""}`}
+          >
+            <div className="landing-pricing-header">
+              <span className="landing-pricing-name">{tier.name}</span>
+              <div className="landing-pricing-price-row">
+                <span className="landing-pricing-currency">&#8377;</span>
+                <span className="landing-pricing-price">{tier.price}</span>
+                <span className="landing-pricing-period">{tier.period}</span>
+              </div>
+            </div>
+            <ul className="landing-pricing-features">
+              {tier.features.map((f) => (
+                <li key={f} className="landing-pricing-feature">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke={tier.highlight ? "#F0B429" : "#6B7280"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="3 8 7 12 13 4" />
+                  </svg>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <Link
+              to="/login"
+              className={tier.highlight ? "landing-pricing-cta-primary" : "landing-pricing-cta-secondary"}
+            >
+              {tier.cta}
+            </Link>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CtaSection() {
   return (
     <div className="landing-cta-section">
@@ -578,6 +743,8 @@ export default function LandingPage() {
       <StatsBar />
       <FeaturesGrid />
       <AnalyticsMockup />
+      <ComparisonTable />
+      <PricingSection />
       <TestimonialsSection />
       <QuickLinks />
       <CtaSection />
