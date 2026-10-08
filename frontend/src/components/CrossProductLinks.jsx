@@ -1,31 +1,51 @@
 const CROSS_LINKS = {
   blog: [
     {
-      href: "https://job.doaide.com",
-      label: "DoAide Jobs",
-      text: "Apply for jobs in this industry — AI-powered job matching",
+      href: "https://gst.doaide.com",
+      label: "GSTBot",
+      text: "Free AI GST compliance assistant — WhatsApp-based, no login required",
+    },
+    {
+      href: "https://insure.doaide.com",
+      label: "InsureKit",
+      text: "LIC plan comparisons, premium calculators, and portfolio management for agents",
+    },
+    {
+      href: "https://tax.doaide.com",
+      label: "TaxFile",
+      text: "File your ITR in minutes — old vs new regime comparison with Section 80C optimizer",
+    },
+    {
+      href: "https://docs.doaide.com",
+      label: "DoAide Docs",
+      text: "Generate rent receipts, salary slips, and experience letters instantly",
     },
     {
       href: "https://resume.doaide.com",
-      label: "Resume Builder",
-      text: "Build a professional resume that stands out to recruiters",
+      label: "DoAide Resume",
+      text: "Build ATS-optimized resumes for free with AI-powered suggestions",
     },
   ],
   landing: [
     {
+      href: "https://gst.doaide.com",
+      label: "GSTBot",
+      text: "Free WhatsApp-based GST compliance assistant for Indian businesses",
+    },
+    {
+      href: "https://tax.doaide.com",
+      label: "TaxFile",
+      text: "Compare old vs new tax regime and file your ITR with AI guidance",
+    },
+    {
       href: "https://resume.doaide.com",
-      label: "Resume Builder",
-      text: "Build your professional resume with AI-powered suggestions",
+      label: "DoAide Resume",
+      text: "Build ATS-optimized professional resumes with AI suggestions — free",
     },
     {
-      href: "https://write.doaide.com",
-      label: "DoAide Write",
-      text: "Generate professional content — blogs, emails, and marketing copy",
-    },
-    {
-      href: "https://contracts.doaide.com",
-      label: "Contract Generator",
-      text: "Draft freelancer agreements, NDAs, and service contracts",
+      href: "https://docs.doaide.com",
+      label: "DoAide Docs",
+      text: "Generate professional documents instantly — rent receipts, salary slips, and more",
     },
   ],
 };

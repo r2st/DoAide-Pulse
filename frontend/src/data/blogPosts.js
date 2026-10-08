@@ -1,5 +1,121 @@
 export const staticPosts = [
   {
+    slug: "free-ai-gst-compliance-tool-indian-businesses",
+    title: "Free AI GST Compliance Tool for Indian Businesses",
+    description:
+      "Meet GSTBot — a free WhatsApp-based AI assistant that handles GST queries, HSN code lookups, and compliance checks without login or downloads.",
+    published: "2026-10-08",
+    keywords: [
+      "GST compliance",
+      "WhatsApp bot",
+      "Indian business",
+      "GST filing",
+      "free GST tool",
+    ],
+    body: [
+      "GST compliance is the single biggest administrative burden for small and medium Indian businesses. Between monthly returns, quarterly filings, HSN code lookups, and ever-changing slab rates, most business owners either hire a CA they cannot afford or spend hours on the GST portal trying to get things right. GSTBot changes this equation entirely — it is a free AI-powered GST assistant that works right inside WhatsApp, the app every Indian business owner already uses.",
+      "The core idea is radical simplicity. There is no app to download, no account to create, no login to remember. You send a WhatsApp message to GSTBot describing your product or service, and it instantly tells you the correct HSN or SAC code, the applicable GST rate, and whether any exemptions apply. Ask it about reverse charge, input tax credit eligibility, or the due date for your next GSTR-3B filing — it answers in seconds, in plain language, not in the legalese that makes the GST Act unreadable.",
+      "HSN code lookup is where GSTBot saves the most time. India has over 8,000 HSN codes across 21 sections, and picking the wrong one can trigger notices, penalties, or blocked input tax credit. GSTBot uses AI trained on the complete HSN classification tree plus thousands of real-world product descriptions to match your item to the correct code. Describe your product in everyday language — 'handmade cotton kurta' or 'SaaS subscription for accounting software' — and GSTBot returns the precise code and rate.",
+      "The free tools section on the GSTBot website gives you even more without requiring a login. The GST calculator handles both inclusive and exclusive calculations for any slab rate. The HSN code search lets you browse and verify codes interactively. The compliance checklist walks you through everything a small business needs to stay GST-compliant — from registration thresholds to e-invoicing requirements for businesses crossing the turnover limit.",
+      "For businesses that file their own returns, GSTBot acts as a real-time sanity check. Before you submit GSTR-1, describe your sales and GSTBot verifies the tax treatment for each line item. Before filing GSTR-3B, it cross-checks your input tax credit claims against the rules — blocked credits, time limits, and matching requirements. This catches the errors that typically surface three months later as a demand notice from the department.",
+      "What makes GSTBot different from existing GST tools is the access model. Most compliance platforms are designed for CAs and tax professionals — they assume expertise, charge monthly fees, and require onboarding. GSTBot is designed for the business owner who needs a quick answer between customer calls. No expertise assumed, no fees charged, no onboarding needed. If you can send a WhatsApp message, you can use GSTBot.",
+      "GSTBot is part of the DoAide family of free business tools built for the Indian market. Whether you need to generate GST invoices with DoAide Invoicer, file your ITR with TaxFile, or create professional documents with DoAide Docs, the entire suite works together to handle the paperwork so you can focus on growing your business. Try GSTBot today at gst.doaide.com — your first GST query is a WhatsApp message away.",
+    ],
+  },
+  {
+    slug: "digital-toolkit-every-lic-agent-needs",
+    title: "Digital Toolkit Every LIC Agent Needs in 2026",
+    description:
+      "InsureKit gives LIC agents plan comparisons, premium calculators, portfolio management, and client presentation tools — all in one free platform.",
+    published: "2026-10-07",
+    keywords: [
+      "LIC agent tools",
+      "insurance calculator",
+      "InsureKit",
+      "LIC plan comparison",
+      "insurance portfolio",
+    ],
+    body: [
+      "The Indian insurance industry has 2.8 million agents, and most of them are still running their business from a notebook and a basic phone. Meanwhile, their prospects are comparing policies on aggregator websites, reading Reddit threads about term insurance, and asking ChatGPT which LIC plan offers the best returns. The information asymmetry that once gave agents their edge has flipped — and the agents who do not digitize their practice are losing clients to online platforms that offer instant comparisons and zero pressure.",
+      "InsureKit is built to put that edge back in the agent's hands. It is a free digital toolkit that gives LIC agents the same capabilities that aggregator platforms use — plan comparisons, premium calculators, maturity projections, and portfolio tracking — but designed for the agent-client relationship rather than the self-service model. When you sit across the table from a prospect, InsureKit turns your phone or laptop into a professional presentation tool.",
+      "The plan comparison engine is the feature agents use most. Select any two or three LIC plans — Jeevan Anand, Tech Term, Bima Jyoti, New Endowment — and InsureKit generates a side-by-side comparison showing premium differences, maturity values, death benefits, tax treatment, and surrender value curves. The comparison is visual, easy to read, and designed to be shared on WhatsApp as a PDF that the prospect can show their family before making a decision.",
+      "Premium calculators on InsureKit go beyond the basic age-and-sum-assured calculation that LIC's own tools offer. Enter the client's age, sum assured, policy term, and premium payment term, and the calculator shows not just the premium but also the effective cost of insurance after tax benefits under Section 80C, the IRR on the investment component, and how the plan compares to a combination of term insurance plus mutual fund SIP. This transparent approach builds trust — prospects respect an agent who shows them the full picture.",
+      "Portfolio management is where InsureKit transforms an agent from a salesperson into an advisor. Enter a client's existing policies — LIC and other insurers — and InsureKit maps their total coverage, identifies gaps in protection, flags policies approaching premium due dates, and suggests where additional coverage or investment policies would strengthen the portfolio. For an agent managing 200-plus clients, this is the difference between reactive service and proactive relationship building.",
+      "Client presentations are where first impressions happen, and InsureKit makes them polished. The tool generates professional proposal documents that explain a recommended plan with charts, benefit illustrations, and rider options — all branded with the agent's name and contact details. These are not the cluttered benefit illustrations from LIC's portal; they are clean, modern documents that a prospect's millennial children will take seriously.",
+      "InsureKit is free because it is part of the DoAide ecosystem of tools designed for Indian professionals. Whether you need to generate invoices with DoAide Invoicer, manage your own taxes with TaxFile, or build a professional resume to recruit sub-agents, the tools work together. For LIC agents ready to compete in 2026, InsureKit is the starting point — visit insure.doaide.com and set up your digital practice in under five minutes.",
+    ],
+  },
+  {
+    slug: "file-itr-minutes-with-ai",
+    title: "File Your ITR in Minutes with AI — Old vs New Regime Compared",
+    description:
+      "TaxFile uses AI to compare old and new tax regimes, maximize Section 80C deductions, and guide you through ITR filing — free for salaried individuals.",
+    published: "2026-10-06",
+    keywords: [
+      "ITR filing",
+      "income tax India",
+      "old vs new regime",
+      "Section 80C",
+      "TaxFile",
+      "AI tax filing",
+    ],
+    body: [
+      "Every July, millions of Indian salaried employees face the same stressful question: old regime or new regime? The answer depends on your specific deductions — HRA, 80C investments, home loan interest, NPS contributions, medical insurance — and most people either guess wrong or pay a CA to figure it out. TaxFile eliminates the guesswork. Enter your salary details and deductions, and the AI instantly calculates your tax liability under both regimes, showing you exactly how much you save with each option.",
+      "The old versus new regime comparison is the feature that saves the most money. Under the old regime, you can claim deductions under Section 80C (up to 1.5 lakh for PPF, ELSS, life insurance premiums), Section 80D (medical insurance), HRA exemption, and home loan interest under Section 24. The new regime offers lower slab rates but removes most deductions. TaxFile models both scenarios with your actual numbers — not hypothetical examples — so you see your real tax saving down to the rupee.",
+      "Section 80C optimization is where most people leave money on the table. You get 1.5 lakh in deductions, but the combination of investments matters. EPF contributions by your employer count toward this limit, and many employees do not realize they have already used a significant portion before making additional investments. TaxFile maps your existing 80C utilization — EPF, PPF, ELSS, life insurance, tuition fees, home loan principal — and shows exactly how much room remains, then suggests the most tax-efficient way to fill the gap.",
+      "The ITR filing guidance walks you through each section of the return in plain language. TaxFile identifies which ITR form applies to you — ITR-1 for most salaried individuals, ITR-2 if you have capital gains or foreign income — and explains each field with examples. Common traps like forgetting to report bank interest, not claiming the standard deduction, or misreporting HRA when you live in your own house are flagged before you submit, not after you receive an intimation under Section 143(1).",
+      "For salaried employees with a home loan, TaxFile's regime comparison becomes even more critical. Under the old regime, you can claim up to 2 lakh in interest deduction under Section 24(b) and up to 1.5 lakh in principal repayment under Section 80C. Under the new regime, neither deduction is available, but the lower slab rates might still work in your favor if your loan is small. TaxFile runs both scenarios and factors in the standard deduction, HRA, and NPS contributions to give you the definitive answer.",
+      "Advance tax and TDS tracking keeps you penalty-free throughout the year. If you have income beyond salary — freelancing, capital gains, rental income — you may owe advance tax in quarterly installments. TaxFile tracks your income sources, calculates advance tax liability, and reminds you before each due date. Miss a payment, and you face interest under Section 234B and 234C. TaxFile ensures you never get caught by surprise.",
+      "TaxFile is completely free for individual taxpayers — no premium tier, no hidden charges, no upsell to a CA service. It is built by DoAide, the same team behind GSTBot for business compliance, DoAide Docs for document generation, and DoAide Resume for job seekers. Together, these tools handle the paperwork side of professional life so you can focus on earning, not filing. Start your ITR at tax.doaide.com — the comparison takes 30 seconds, and it might save you thousands.",
+    ],
+  },
+  {
+    slug: "generate-professional-documents-instantly",
+    title: "Generate Professional Documents Instantly with DoAide Docs",
+    description:
+      "DoAide Docs lets you generate rent receipts, salary slips, experience letters, and more — free, instant, and no sign-up required.",
+    published: "2026-10-05",
+    keywords: [
+      "rent receipt generator",
+      "salary slip generator",
+      "document generator",
+      "DoAide Docs",
+      "free document tools",
+    ],
+    body: [
+      "Every working professional in India needs a stack of documents they dread creating — rent receipts for HRA claims, salary slips for loan applications, experience letters for job changes, offer letters for new hires, and NOC letters for a dozen different purposes. Most people either beg their HR department, pay a typist, or spend an hour wrestling with a Word template that never quite looks right. DoAide Docs generates all of these in seconds, formatted professionally, ready to download and print.",
+      "Rent receipts are the most requested document on DoAide Docs, and for good reason. Every salaried employee claiming HRA exemption needs monthly rent receipts, and landlords — especially those renting out a single flat — rarely provide them proactively. DoAide Docs generates rent receipts with the landlord's name, tenant's name, property address, rent amount, payment period, and a revenue stamp placeholder. Generate one month or twelve months at once, and download them as a consolidated PDF ready for your employer's HR portal.",
+      "Salary slips are the second most common need. Banks require them for personal loans, credit cards, and home loan applications. Most small businesses and startups issue salary slips irregularly or not at all, leaving employees scrambling when they need one urgently. DoAide Docs generates salary slips that break down basic salary, HRA, special allowance, PF deduction, professional tax, and TDS — exactly the format banks expect. Enter the details once, and generate slips for any number of months.",
+      "Experience letters and relieving letters are critical during job transitions, and the window to get them from your previous employer is often narrow and frustrating. DoAide Docs provides professionally worded templates for both — you fill in the company name, employee name, designation, joining date, and last working date, and the tool generates a formal letter that follows the standard corporate format. For hiring managers creating these for departing employees, it saves the back-and-forth with legal about approved wording.",
+      "The tool also handles offer letters for small businesses and startups. When you are hiring your first employees, you need an offer letter that covers compensation, joining date, designation, reporting structure, and basic terms — without the legal overhead of having a lawyer draft one. DoAide Docs generates offer letters that are clear, professional, and cover the essential terms. For more complex employment agreements, the DoAide Contracts tool handles non-compete clauses, IP assignment, and other legal provisions.",
+      "What makes DoAide Docs different from template websites is the zero-friction experience. There is no account to create, no email to verify, no watermark to remove, and no premium tier that gates the useful features. Every document is free, every format is available, and every download is instant. The documents are generated client-side — your personal details are not stored on any server, which matters when you are entering salary figures and landlord PAN numbers.",
+      "DoAide Docs is part of a suite of free professional tools by DoAide. Need to file your taxes? TaxFile compares old and new regimes and walks you through ITR filing. Need a GST invoice? DoAide Invoicer generates them in seconds. Need a professional resume? DoAide Resume builds ATS-optimized resumes with AI suggestions. The whole ecosystem is designed for Indian professionals who want things done quickly, correctly, and without paying for something that should be free. Start at docs.doaide.com.",
+    ],
+  },
+  {
+    slug: "build-ats-optimized-resumes-free",
+    title: "Build ATS-Optimized Resumes for Free with DoAide Resume",
+    description:
+      "DoAide Resume offers professional templates, AI-powered content suggestions, and ATS optimization — completely free, no watermarks, no premium gates.",
+    published: "2026-10-04",
+    keywords: [
+      "ATS resume",
+      "resume builder",
+      "DoAide Resume",
+      "free resume maker",
+      "AI resume",
+    ],
+    body: [
+      "Here is a statistic that should alarm every job seeker: 75% of resumes are rejected by Applicant Tracking Systems before a human ever reads them. ATS software scans for keywords, formatting patterns, and section structures that match the job description, and a beautifully designed resume that fails these automated checks is functionally invisible. DoAide Resume is built from the ground up to pass ATS filters while still looking polished to the human recruiter who reads it after the software says yes.",
+      "The ATS optimization engine is what sets DoAide Resume apart from generic resume builders. Paste the job description you are targeting, and the AI analyzes it for required skills, preferred qualifications, industry-specific terminology, and action verbs. It then scans your resume draft and highlights gaps — keywords from the job description that are missing from your resume, skills you have listed differently than the JD phrases them, and sections that ATS software expects but your resume lacks. You fix the gaps before submitting, and your pass rate goes up dramatically.",
+      "Templates on DoAide Resume are designed with a dual audience in mind: the ATS parser and the hiring manager. Every template uses clean single-column layouts that ATS software parses correctly, standard section headings that match what the software looks for (Experience, Education, Skills — not Creative Journey or Learning Adventures), and consistent date formatting that does not confuse parsers. At the same time, the typography, spacing, and visual hierarchy are refined enough that your resume looks professional when a recruiter opens the PDF.",
+      "AI content suggestions solve the hardest part of resume writing: describing what you actually did. Most people either undersell their experience with vague descriptions or oversell it with buzzwords that ring hollow. DoAide Resume's AI reads your job title and company context and suggests bullet points that follow the proven formula: Action Verb + Specific Task + Quantified Result. 'Managed social media' becomes 'Grew Instagram following from 2K to 15K in 8 months through targeted content strategy and influencer partnerships.'",
+      "The Indian job market has specific resume conventions that global resume builders miss. Indian employers expect a declaration section, a photograph placeholder for certain industries, and date-of-birth formatting that differs from Western norms. Campus placement resumes for IIT and IIM students have their own structure — projects and academic achievements before work experience, CGPA prominently displayed, and a compact single-page format. DoAide Resume offers templates tailored for these Indian hiring contexts alongside the universal formats that work for global companies.",
+      "Multiple export formats ensure your resume works everywhere it needs to go. Download as PDF for email attachments and job portal uploads, as DOCX for recruiters who want to edit your formatting, or share via a live link that always shows your latest version. The PDF output is ATS-tested — meaning the text layer is correctly embedded so parsing software can extract every word, unlike some design tools that flatten text into images that ATS cannot read.",
+      "DoAide Resume is completely free — no watermarks on downloads, no premium templates locked behind a paywall, no limit on the number of resumes you can create. It is part of the DoAide ecosystem that includes DoAide Docs for professional documents, TaxFile for income tax filing, GSTBot for GST compliance, and DoAide Pulse for newsletter creation. Every tool is built for Indian professionals who need things done right, done fast, and done free. Start building your resume at resume.doaide.com.",
+    ],
+  },
+  {
     slug: "ai-newsletters-3x-engagement",
     title: "How AI-Powered Newsletters Drive 3x More Engagement",
     description:
