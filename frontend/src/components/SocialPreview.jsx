@@ -209,7 +209,8 @@ function Card({ card }) {
           exactly what will happen in the feed. */}
       <img
         src={card.imageUrl}
-        alt=""
+        alt="Social media preview card"
+        loading="lazy"
         className="aspect-[1.91/1] w-full border-b border-line object-cover"
         onError={() => setBroken(true)}
       />

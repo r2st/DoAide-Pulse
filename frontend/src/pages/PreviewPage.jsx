@@ -56,7 +56,8 @@ export default function PreviewPage() {
             {data.cover_image_url && (
               <img
                 src={data.cover_image_url}
-                alt=""
+                alt="Newsletter cover image"
+                loading="lazy"
                 className="mb-6 aspect-[1200/630] w-full rounded-xl border border-line object-cover"
               />
             )}

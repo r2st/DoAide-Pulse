@@ -1,9 +1,13 @@
 const TOOLS = [
-  { icon: "\u{1F3F7}️", name: "GST Bot", url: "https://gst.doaide.com", desc: "GST filing, lookup & compliance" },
-  { icon: "\u{1F4BC}", name: "AutoApply", url: "https://autoapply.doaide.com", desc: "AI-powered job applications" },
-  { icon: "\u{1F4C4}", name: "Resume", url: "https://resume.doaide.com", desc: "Build ATS-friendly resumes" },
-  { icon: "\u{1F4C5}", name: "Scheduler", url: "https://scheduler.doaide.com", desc: "Smart scheduling & booking" },
-  { icon: "✍️", name: "Write", url: "https://write.doaide.com", desc: "AI writing assistant" },
+  { icon: "\u{1F4C4}", name: "Docs", url: "https://docs.doaide.com", desc: "Free document generators" },
+  { icon: "\u{1F4DD}", name: "Resume", url: "https://resume.doaide.com", desc: "AI resume builder" },
+  { icon: "\u{1F4CA}", name: "409A", url: "https://409a.doaide.com", desc: "Startup valuations" },
+  { icon: "\u{1F3F7}️", name: "GST Bot", url: "https://gst.doaide.com", desc: "GST filing & compliance" },
+  { icon: "\u{1F6E1}️", name: "InsureKit", url: "https://insure.doaide.com", desc: "Insurance calculators" },
+  { icon: "\u{1F4B0}", name: "TaxFile", url: "https://tax.doaide.com", desc: "Tax & financial calculators" },
+  { icon: "\u{1F9FE}", name: "Invoicer", url: "https://invoicer.doaide.com", desc: "GST invoices in seconds" },
+  { icon: "\u{1F4DD}", name: "Contracts", url: "https://contracts.doaide.com", desc: "Business contracts" },
+  { icon: "\u{1F3E0}", name: "HomeNex", url: "https://homenex.aiknol.com", desc: "AI CRM for real estate" },
 ];
 
 export default function DoAideFooter() {

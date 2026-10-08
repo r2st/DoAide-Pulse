@@ -813,7 +813,8 @@ function SeoPanel({ issues, draft, onChange, locked }) {
             // platforms will make.
             <img
               src={cover}
-              alt=""
+              alt="Newsletter cover image preview"
+              loading="lazy"
               className="mt-2 aspect-[16/9] w-full rounded-lg border border-line object-cover"
               onError={() => setCoverBroken(true)}
             />
