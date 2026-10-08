@@ -341,6 +341,79 @@ def _assert_review_ready(
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
 
+def _seo_preflight(content: Content) -> list[str]:
+    """Pre-publish SEO checks returning human-readable issues.
+
+    Validates the five criteria that matter most before a piece goes live:
+    title length, meta description length, keyword density, internal link
+    count (from the body's markdown links), and heading structure.
+    """
+    issues: list[str] = []
+    title = content.title or ""
+    meta = content.meta_description or ""
+    body = content.body_markdown or ""
+
+    if len(title) < 50 or len(title) > 60:
+        issues.append(
+            f"Title is {len(title)} chars — aim for 50–60 for search results."
+        )
+    if len(meta) < 150 or len(meta) > 160:
+        issues.append(
+            f"Meta description is {len(meta)} chars — aim for 150–160."
+        )
+
+    fk = (content.focus_keyword or "").strip()
+    if not fk and content.keywords:
+        fk = content.keywords[0]
+    if fk:
+        plain = seo.strip_markdown(body)
+        density = seo._keyword_density(plain, fk)
+        if density < 1.0 or density > 3.0:
+            issues.append(
+                f'Focus keyword "{fk}" density is {density:.1f}% — aim for 1–3%.'
+            )
+
+    import re
+    link_count = len(re.findall(r"\[([^\]]+)\]\(([^)]+)\)", body))
+    if link_count < 2:
+        issues.append(
+            f"Only {link_count} link(s) in the body — include at least 2 internal links."
+        )
+
+    headings = seo._find_headings(body)
+    h2_count = sum(1 for hashes, _ in headings if len(hashes) == 2)
+    if h2_count == 0:
+        issues.append("No H2 headings — add section headings for scannability and SEO.")
+
+    return issues
+
+
+def _assert_seo_ready(
+    db: Session, content: Content, previous_status: ContentStatus
+) -> None:
+    """Refuse an APPROVED transition when the SEO preflight has issues.
+
+    The gate fires only on transitions *to* APPROVED where the piece was
+    previously in draft or review. A human explicitly approving a piece with
+    SEO issues can still do so by fixing the issues first.
+    """
+    if content.status != ContentStatus.APPROVED:
+        return
+    if previous_status not in (ContentStatus.DRAFT, ContentStatus.REVIEW):
+        return
+
+    issues = _seo_preflight(content)
+    if not issues:
+        return
+
+    db.rollback()
+    detail = (
+        "SEO preflight failed — fix these before approving:\n• "
+        + "\n• ".join(issues)
+    )
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+
+
 def _owned_content_map(
     content_ids: Sequence[int], db: Session, user: User
 ) -> dict[int, Content]:
@@ -406,17 +479,17 @@ def _to_detail(content: Content) -> ContentDetail:
         focus_keyword=getattr(content, "focus_keyword", "") or "",
         slug=content.slug,
     )
+    qr = quality.report_for(content)
+    out = _to_out(content)
+    out.seo_score = qr.seo_score
     return ContentDetail(
-        **_to_out(content).model_dump(),
+        **out.model_dump(),
         body_markdown=content.body_markdown,
         seo_issues=[
             SeoIssueOut(level=i.level, field=i.field, message=i.message) for i in issues
         ],
         format_issues=formats.problems(content.body_markdown, content.content_type),
-        # The same report the review gate applies, from the same call. A score
-        # the editor cannot see until it refuses a transition is a rule the
-        # writer has to discover by hitting it.
-        quality=QualityOut(**quality.report_for(content).as_dict()),
+        quality=QualityOut(**qr.as_dict()),
     )
 
 
@@ -1986,6 +2059,7 @@ def update_content(
     # that rewrites the body and submits it for review in one call is judged on
     # the body it is sending, not on the one it is replacing.
     _assert_review_ready(db, content, previous_status)
+    _assert_seo_ready(db, content, previous_status)
 
     if "scheduled_for" in data:
         # And the piece's date has to reach the rows that act on it. Every other
@@ -2118,6 +2192,7 @@ def approve_content(
         )
     previous_status = content.status
     content.status = ContentStatus.APPROVED
+    _assert_seo_ready(db, content, previous_status)
     _settle_status(db, content, previous_status)
     db.commit()
     content_pipeline.release_approved(db, content)

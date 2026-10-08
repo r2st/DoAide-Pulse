@@ -366,6 +366,24 @@ export default function Calendar() {
 
         <aside className="space-y-4">
           <div className="panel p-5">
+            <h2 className="mb-3 text-sm font-semibold text-ink-900">Color key</h2>
+            <ul className="space-y-1.5 text-[11px]">
+              <li className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#60A5FA]" />
+                <span className="text-ink-500">Blog / Article</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#34D399]" />
+                <span className="text-ink-500">Social</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm bg-[#D4AF37]" />
+                <span className="text-ink-500">Spotlight</span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="panel p-5">
             <h2 className="mb-3 text-sm font-semibold text-ink-900">Suggested slots</h2>
             {(data?.suggested_slots ?? []).length === 0 ? (
               <p className="text-xs text-ink-400">
@@ -478,6 +496,18 @@ const NUDGES = {
   ArrowDown: 7,
 };
 
+/** Color by content type for visual pipeline health. Falls back to status
+ *  tone for terminal states (failed, published) where the status matters more. */
+function typeTone(entry) {
+  if (entry.status === "failed") return "bg-bad-wash text-bad";
+  if (entry.status === "published") return "bg-good-wash text-good";
+  const type = entry.content_type;
+  if (type === "social_thread") return "bg-[rgba(52,211,153,0.15)] text-[#34D399]";
+  if (type === "product_spotlight" || type === "feature_spotlight")
+    return "bg-[rgba(240,180,41,0.12)] text-[#D4AF37]";
+  return "bg-[rgba(96,165,250,0.12)] text-[#60A5FA]";
+}
+
 function CalendarChip({ entry, onDragStart, onDragEnd, onNudge }) {
   return (
     <Link
@@ -486,15 +516,11 @@ function CalendarChip({ entry, onDragStart, onDragEnd, onNudge }) {
       draggable={entry.movable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      // The keyboard's route to the same move the drag performs. Only on a
-      // movable entry: an arrow key that silently does nothing on two thirds of
-      // the calendar teaches the user the feature does not exist.
       onKeyDown={
         entry.movable
           ? (event) => {
               const days = NUDGES[event.key];
               if (days === undefined) return;
-              // Or the page scrolls out from under the chip being moved.
               event.preventDefault();
               onNudge(days);
             }
@@ -504,6 +530,7 @@ function CalendarChip({ entry, onDragStart, onDragEnd, onNudge }) {
       title={[
         entry.title,
         entry.project_name,
+        titleize(entry.content_type),
         formatDateTime(entry.when),
         entry.movable ? "arrow keys move it" : null,
       ]
@@ -511,7 +538,7 @@ function CalendarChip({ entry, onDragStart, onDragEnd, onNudge }) {
         .join(" — ")}
       className={[
         "block truncate rounded px-1.5 py-1 text-[11px] leading-tight transition-shadow",
-        statusTone(entry.status),
+        typeTone(entry),
         entry.movable ? "cursor-grab active:cursor-grabbing hover:shadow-card" : "cursor-default",
       ].join(" ")}
     >

@@ -329,6 +329,7 @@ class ContentOut(BaseModel):
     #: The shape this piece takes — article, thread or changelog. Derived from
     #: ``content_type`` rather than stored, so it can never disagree with it.
     content_format: str = "article"
+    seo_score: int | None = None
     publications: list[PublicationOut] = []
 
     model_config = {"from_attributes": True}

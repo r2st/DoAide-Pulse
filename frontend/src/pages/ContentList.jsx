@@ -22,6 +22,7 @@ const TYPES = [
   "how_to",
   "social_thread",
   "changelog",
+  "product_spotlight",
 ];
 
 /** Everything written, filterable, plus the button that writes something new. */
@@ -251,6 +252,7 @@ export default function ContentList() {
                     <span>{item.word_count} words</span>
                     <span>{item.read_minutes} min read</span>
                     <span>{formatWhen(item.created_at)}</span>
+                    {item.seo_score != null && <SeoScoreBadge score={item.seo_score} />}
                     {item.confidence !== null && <Confidence value={item.confidence} />}
                   </p>
                   {item.publications.length > 0 && (
@@ -504,5 +506,15 @@ function ReviewContentCard({ item, selected, onToggle, onApproved }) {
         </Link>
       </div>
     </div>
+  );
+}
+
+function SeoScoreBadge({ score }) {
+  const tone =
+    score >= 80 ? "text-good" : score >= 50 ? "text-warn" : "text-bad";
+  return (
+    <span className={`${tone}`} title={`SEO score: ${score}/100`}>
+      SEO {score}
+    </span>
   );
 }

@@ -192,6 +192,7 @@ class ContentType(str, Enum):
     HOW_TO = "how_to"
     SOCIAL_THREAD = "social_thread"
     CHANGELOG = "changelog"
+    PRODUCT_SPOTLIGHT = "product_spotlight"
 
     @property
     def label(self) -> str:
@@ -231,6 +232,7 @@ TARGET_WORDS: dict[ContentType, int] = {
     # the envelope is never cut off mid-JSON.
     ContentType.SOCIAL_THREAD: 320,
     ContentType.CHANGELOG: 400,
+    ContentType.PRODUCT_SPOTLIGHT: 1000,
 }
 
 

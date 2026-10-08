@@ -111,6 +111,13 @@ _TYPE_GUIDANCE: dict[ContentType, str] = {
         "what was refactored to allow it. If the brief does not say a thing "
         "changed, it does not go in."
     ),
+    ContentType.PRODUCT_SPOTLIGHT: (
+        "A deep-dive promotional article about one product. Structure it as: "
+        "1) the problem the audience faces, 2) how the product's AI solves it, "
+        "3) three concrete use cases with brief examples, 4) an honest comparison "
+        "against alternatives naming real trade-offs, 5) a clear call-to-action. "
+        "800–1200 words. Lead with the reader's pain, not the product's features."
+    ),
 }
 
 _SYSTEM_PROMPT = (
