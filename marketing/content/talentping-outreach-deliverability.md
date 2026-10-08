@@ -124,4 +124,4 @@ None of it is exotic. All of it is tedious, which is why it is worth automating 
 
 ---
 
-**[TalentPing](https://talentping.doaide.com)** automates exactly this loop: it finds recruiter and hiring-manager contacts, drafts personalised outreach, sends from your own Gmail over OAuth so SPF/DKIM/DMARC align by construction, applies warm-up ramping and throttling with randomised timing, then classifies replies and drafts responses. The positioning is deliberate — quality-targeted outreach rather than volume, because volume is the thing that breaks deliverability.
+**[DoAide Jobs](https://job.doaide.com)** automates exactly this loop: it finds recruiter and hiring-manager contacts, drafts personalised outreach, sends from your own Gmail over OAuth so SPF/DKIM/DMARC align by construction, applies warm-up ramping and throttling with randomised timing, then classifies replies and drafts responses. The positioning is deliberate — quality-targeted outreach rather than volume, because volume is the thing that breaks deliverability.

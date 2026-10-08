@@ -118,11 +118,11 @@
       "utm_campaign": "n409-2026q3"
     },
     {
-      "key": "talentping",
-      "name": "TalentPing",
-      "description": "TalentPing is AI-powered job-application automation that skips the ATS spray-and-pray: it finds recruiter and hiring-manager contacts, writes personalised outreach, sends it from the user's own Gmail over OAuth so SPF, DKIM and DMARC align by construction, applies warm-up ramping and throttling with randomised timing, then classifies the replies and drafts responses.",
+      "key": "doaide-jobs",
+      "name": "DoAide Jobs",
+      "description": "DoAide Jobs is AI-powered job-application automation that skips the ATS spray-and-pray: it finds recruiter and hiring-manager contacts, writes personalised outreach, sends it from the user's own Gmail over OAuth so SPF, DKIM and DMARC align by construction, applies warm-up ramping and throttling with randomised timing, then classifies the replies and drafts responses.",
       "repo_url": "https://github.com/r2st/TalentPing",
-      "live_url": "https://talentping.doaide.com",
+      "live_url": "https://job.doaide.com",
       "tech_stack": [
         "FastAPI",
         "SQLAlchemy",
@@ -150,7 +150,7 @@
       "auto_canonical": true,
       "canonical_platform": "devto",
       "utm_enabled": true,
-      "utm_campaign": "talentping-2026q3"
+      "utm_campaign": "doaide-jobs-2026q3"
     },
     {
       "key": "pulse",
@@ -321,7 +321,7 @@
     },
     {
       "key": "talentping-outreach-deliverability",
-      "project": "talentping",
+      "project": "doaide-jobs",
       "content_type": "how_to",
       "title": "Cold Email Deliverability for Automated Job Outreach",
       "focus_keyword": "cold email deliverability",
@@ -466,7 +466,7 @@
     },
     {
       "key": "talentping-smart-job-search-2026",
-      "project": "talentping",
+      "project": "doaide-jobs",
       "content_type": "how_to",
       "title": "Smart Job Search in 2026: Let AI Handle Your Applications",
       "focus_keyword": "ai job search",
