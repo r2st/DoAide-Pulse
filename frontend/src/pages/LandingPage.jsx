@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import CrossProductLinks from "../components/CrossProductLinks";
 import DoAideFooter from "../components/DoAideFooter";
@@ -81,6 +81,82 @@ const PIPELINE_STAGES = [
       </svg>
     ),
   },
+];
+
+const STATS = [
+  { value: "3x", label: "Higher engagement" },
+  { value: "10s", label: "To generate" },
+  { value: "42%", label: "Avg open rate" },
+  { value: "500+", label: "Newsletters sent" },
+];
+
+const FEATURES = [
+  {
+    title: "AI Content Research",
+    desc: "Scans hundreds of sources to surface stories your audience cares about.",
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F0B429" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="11" cy="11" r="7" />
+        <path d="M16 16l5 5" />
+        <path d="M11 8v6M8 11h6" />
+      </svg>
+    ),
+  },
+  {
+    title: "Smart Subject Lines",
+    desc: "AI-scored subject lines that boost open rates by 22% on average.",
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F0B429" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 4h16v16H4z" />
+        <path d="M4 10h16M10 10v10" />
+      </svg>
+    ),
+  },
+  {
+    title: "Send Time Optimization",
+    desc: "Delivers to each subscriber when they are most likely to read.",
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F0B429" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 3" />
+      </svg>
+    ),
+  },
+  {
+    title: "One-Click Publishing",
+    desc: "Review the AI draft, make your edits, and publish to your list instantly.",
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F0B429" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 2L2 11l8 3 3 8z" />
+        <path d="M22 2L10 14" />
+      </svg>
+    ),
+  },
+  {
+    title: "Analytics Dashboard",
+    desc: "Track opens, clicks, conversions, and subscriber growth in real time.",
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F0B429" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 20V12M10 20V8M16 20V4M22 20V10" />
+      </svg>
+    ),
+  },
+  {
+    title: "Multi-Language Support",
+    desc: "Generate newsletters in Hindi, Tamil, Telugu, and more Indian languages.",
+    icon: (
+      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#F0B429" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M2 12h20M12 3a15 15 0 014 9 15 15 0 01-4 9 15 15 0 01-4-9 15 15 0 014-9z" />
+      </svg>
+    ),
+  },
+];
+
+const TESTIMONIALS = [
+  { quote: "Pulse cut our newsletter production from 4 hours to 30 minutes. The AI research alone is worth it.", author: "Priya S.", role: "Founder, SaaS startup" },
+  { quote: "Our open rates jumped from 18% to 41% after switching to AI-optimized subject lines and send times.", author: "Rahul M.", role: "Marketing lead, D2C brand" },
+  { quote: "Finally a newsletter tool that understands Indian audiences. Regional language support is a game changer.", author: "Anita K.", role: "Content strategist" },
 ];
 
 function RobotFace({ size = 32, color }) {
@@ -182,6 +258,132 @@ function PipelineGraphic() {
   );
 }
 
+function StatsBar() {
+  return (
+    <div className="landing-stats">
+      {STATS.map((stat, i) => (
+        <Fragment key={stat.label}>
+          {i > 0 && <div className="landing-stats-divider" />}
+          <div className="landing-stat">
+            <span className="landing-stat-value">{stat.value}</span>
+            <span className="landing-stat-label">{stat.label}</span>
+          </div>
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+function FeaturesGrid() {
+  return (
+    <div className="landing-features">
+      <div className="landing-section-header">
+        <span className="landing-section-eyebrow">Features</span>
+        <h2 className="landing-section-title">Everything you need to publish</h2>
+        <p className="landing-section-subtitle">
+          AI handles research, writing, and optimization. You keep the editorial control.
+        </p>
+      </div>
+      <div className="landing-features-grid">
+        {FEATURES.map((f) => (
+          <div key={f.title} className="landing-feature-card">
+            <div className="landing-feature-icon">{f.icon}</div>
+            <h3 className="landing-feature-title">{f.title}</h3>
+            <p className="landing-feature-desc">{f.desc}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TestimonialsSection() {
+  return (
+    <div className="landing-testimonials">
+      <div className="landing-section-header">
+        <span className="landing-section-eyebrow">Social proof</span>
+        <h2 className="landing-section-title">Trusted by newsletter creators</h2>
+      </div>
+      <div className="landing-testimonials-grid">
+        {TESTIMONIALS.map((t) => (
+          <div key={t.author} className="landing-testimonial-card">
+            <p className="landing-testimonial-quote">&ldquo;{t.quote}&rdquo;</p>
+            <div className="landing-testimonial-author">
+              <div className="landing-testimonial-avatar">
+                {t.author.charAt(0)}
+              </div>
+              <div>
+                <div className="landing-testimonial-name">{t.author}</div>
+                <div className="landing-testimonial-role">{t.role}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CtaSection() {
+  return (
+    <div className="landing-cta-section">
+      <h2 className="landing-cta-title">Start your AI newsletter today</h2>
+      <p className="landing-cta-subtitle">
+        Free to start. No credit card required. Your first newsletter goes out in minutes.
+      </p>
+      <div className="landing-cta-actions">
+        <Link to="/login" className="landing-cta-primary">Create free account</Link>
+        <Link to="/gallery" className="landing-cta-secondary">See examples</Link>
+      </div>
+    </div>
+  );
+}
+
+function QuickLinks() {
+  return (
+    <div className="landing-quick-links">
+      <Link to="/templates" className="landing-quick-link">
+        <span className="landing-quick-link-icon">
+          <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="14" height="14" rx="2" />
+            <path d="M3 8h14M8 8v9" />
+          </svg>
+        </span>
+        <span>
+          <strong className="landing-quick-link-title">Free Templates</strong>
+          <span className="landing-quick-link-desc">Browse 6 ready-to-use designs</span>
+        </span>
+      </Link>
+      <Link to="/gallery" className="landing-quick-link">
+        <span className="landing-quick-link-icon">
+          <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="3" width="7" height="6" rx="1" />
+            <rect x="11" y="3" width="7" height="6" rx="1" />
+            <rect x="2" y="11" width="7" height="6" rx="1" />
+            <rect x="11" y="11" width="7" height="6" rx="1" />
+          </svg>
+        </span>
+        <span>
+          <strong className="landing-quick-link-title">Newsletter Gallery</strong>
+          <span className="landing-quick-link-desc">See AI-generated examples</span>
+        </span>
+      </Link>
+      <Link to="/blog" className="landing-quick-link">
+        <span className="landing-quick-link-icon">
+          <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 3h10a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" />
+            <path d="M7 7h6M7 10h6M7 13h3" />
+          </svg>
+        </span>
+        <span>
+          <strong className="landing-quick-link-title">Blog</strong>
+          <span className="landing-quick-link-desc">Newsletter tips and strategies</span>
+        </span>
+      </Link>
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const { user, login, register } = useAuth();
   const [mode, setMode] = useState("signin");
@@ -196,6 +398,41 @@ export default function LandingPage() {
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
+  }, []);
+
+  useEffect(() => {
+    document.title = "DoAide Pulse — AI Newsletter Platform for Indian Businesses";
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute("content", "Create, publish, and grow AI-powered newsletters. Research, write, and optimize — all automated. Built for Indian businesses with multilingual support.");
+  }, []);
+
+  useEffect(() => {
+    const ld = document.createElement("script");
+    ld.type = "application/ld+json";
+    ld.textContent = JSON.stringify([
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: "DoAide Pulse",
+        applicationCategory: "BusinessApplication",
+        operatingSystem: "Web",
+        description: "AI-powered newsletter platform for creating, publishing, and growing email newsletters",
+        url: "https://pulse.doaide.com",
+        publisher: { "@type": "Organization", name: "DoAide", url: "https://doaide.com" },
+        offers: { "@type": "Offer", price: "0", priceCurrency: "INR", description: "Free to start" },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: [
+          { "@type": "Question", name: "What is DoAide Pulse?", acceptedAnswer: { "@type": "Answer", text: "DoAide Pulse is an AI-powered newsletter platform that helps businesses research, write, and publish professional newsletters automatically." } },
+          { "@type": "Question", name: "Is DoAide Pulse free?", acceptedAnswer: { "@type": "Answer", text: "Yes, DoAide Pulse is free to start with no credit card required. Create your first AI-powered newsletter in minutes." } },
+          { "@type": "Question", name: "Does it support Indian languages?", acceptedAnswer: { "@type": "Answer", text: "Yes, DoAide Pulse supports content generation in Hindi, Tamil, Telugu, Bengali, Marathi, and other Indian languages." } },
+        ],
+      },
+    ]);
+    document.head.appendChild(ld);
+    return () => document.head.removeChild(ld);
   }, []);
 
   if (user) return <Navigate to="/dashboard" replace />;
@@ -238,6 +475,11 @@ export default function LandingPage() {
             DoAide <em>Pulse</em>
           </span>
         </a>
+        <nav className="landing-header-nav">
+          <Link to="/templates" className="landing-header-link">Templates</Link>
+          <Link to="/gallery" className="landing-header-link">Gallery</Link>
+          <Link to="/blog" className="landing-header-link">Blog</Link>
+        </nav>
       </header>
 
       <main className={`landing-main ${visible ? "landing-visible" : ""}`}>
@@ -247,7 +489,7 @@ export default function LandingPage() {
           </div>
           <h1 className="landing-title">AI newsletters, effortless.</h1>
           <p className="landing-subtitle">
-            Research, write, and publish newsletters — AI handles the heavy lifting.
+            Research, write, and publish newsletters — AI handles the heavy lifting. Built for Indian businesses.
           </p>
           <TypewriterEffect />
           <PipelineGraphic />
@@ -331,6 +573,12 @@ export default function LandingPage() {
           </div>
         </div>
       </main>
+
+      <StatsBar />
+      <FeaturesGrid />
+      <TestimonialsSection />
+      <QuickLinks />
+      <CtaSection />
 
       <div className="mx-auto max-w-3xl px-4 py-4">
         <CrossProductLinks page="landing" />

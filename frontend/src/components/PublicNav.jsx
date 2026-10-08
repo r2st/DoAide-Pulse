@@ -26,6 +26,8 @@ export default function PublicNav() {
               </div>
             )}
           </div>
+          <Link to="/templates" className="text-ink-500 hover:text-brand-500">Templates</Link>
+          <Link to="/gallery" className="text-ink-500 hover:text-brand-500">Gallery</Link>
           <Link to="/blog" className="text-ink-500 hover:text-brand-500">Blog</Link>
           <Link to="/embed" className="text-ink-500 hover:text-brand-500">Embed</Link>
           <Link to="/login" className="btn-primary !py-1.5">Log in</Link>

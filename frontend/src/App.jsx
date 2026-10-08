@@ -13,11 +13,13 @@ import Dashboard from "./pages/Dashboard";
 import Embed from "./pages/Embed";
 import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
+import NewsletterGallery from "./pages/NewsletterGallery";
 import PreviewPage from "./pages/PreviewPage";
 import Projects from "./pages/Projects";
 import Publish from "./pages/Publish";
 import Settings from "./pages/Settings";
 import Templates from "./pages/Templates";
+import TemplatesGallery from "./pages/TemplatesGallery";
 import Triggers from "./pages/Triggers";
 import SubjectLineTester from "./pages/tools/SubjectLineTester";
 import SendTimeOptimizer from "./pages/tools/SendTimeOptimizer";
@@ -111,6 +113,8 @@ export default function App() {
       <Route path="/tools/newsletter-roi-calculator" element={<Unshelled section="tool"><NewsletterRoiCalculator /></Unshelled>} />
       <Route path="/blog" element={<Unshelled section="blog"><Blog /></Unshelled>} />
       <Route path="/blog/:slug" element={<Unshelled section="blog"><BlogPost /></Unshelled>} />
+      <Route path="/templates" element={<Unshelled section="templates"><TemplatesGallery /></Unshelled>} />
+      <Route path="/gallery" element={<Unshelled section="gallery"><NewsletterGallery /></Unshelled>} />
       <Route path="/embed" element={<Unshelled section="embed"><Embed /></Unshelled>} />
 
       <Route
@@ -155,7 +159,7 @@ export default function App() {
         }
       />
       <Route
-        path="/templates"
+        path="/my-templates"
         element={
           <Protected>
             <Templates />

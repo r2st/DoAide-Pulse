@@ -8,7 +8,7 @@ const TABS = [
   { to: "/dashboard", label: "Dashboard", icon: DashboardIcon, end: true },
   { to: "/projects", label: "Projects", icon: ProjectsIcon },
   { to: "/triggers", label: "Triggers", icon: TriggersIcon },
-  { to: "/templates", label: "Templates", icon: TemplatesIcon },
+  { to: "/my-templates", label: "Templates", icon: TemplatesIcon },
   { to: "/content", label: "Content", icon: ContentIcon },
   { to: "/calendar", label: "Calendar", icon: CalendarIcon },
   { to: "/publish", label: "Publish", icon: PublishIcon },
