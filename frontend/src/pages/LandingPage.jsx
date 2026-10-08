@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import AnalyticsMockup from "../components/AnalyticsMockup";
 import CrossProductLinks from "../components/CrossProductLinks";
 import DoAideFooter from "../components/DoAideFooter";
 import "./LandingPage.css";
@@ -576,6 +577,7 @@ export default function LandingPage() {
 
       <StatsBar />
       <FeaturesGrid />
+      <AnalyticsMockup />
       <TestimonialsSection />
       <QuickLinks />
       <CtaSection />
