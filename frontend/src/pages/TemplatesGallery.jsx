@@ -77,6 +77,66 @@ const TEMPLATES = [
       sections: ["Member spotlight", "Upcoming events", "Poll results & discussion"],
     },
   },
+  {
+    id: "welcome-series",
+    name: "Welcome Email Series",
+    category: "Onboarding",
+    description: "A warm welcome sequence for new subscribers with brand introduction, value highlights, and a clear next step to keep them engaged from day one.",
+    preview: {
+      headerBg: "linear-gradient(135deg, #14B8A6 0%, #0D9488 100%)",
+      headerText: "Welcome!",
+      subhead: "We are glad you are here",
+      sections: ["Personal greeting", "What to expect", "Quick-start CTA"],
+    },
+  },
+  {
+    id: "product-launch",
+    name: "Product Launch",
+    category: "Launch",
+    description: "High-impact product launch announcement with hero image area, key feature bullets, pricing highlights, and early-access CTA.",
+    preview: {
+      headerBg: "linear-gradient(135deg, #F43F5E 0%, #E11D48 100%)",
+      headerText: "NOW LIVE",
+      subhead: "Introducing our newest product",
+      sections: ["Hero product showcase", "3 key benefits", "Early-access pricing"],
+    },
+  },
+  {
+    id: "weekly-roundup",
+    name: "Weekly Roundup",
+    category: "Digest",
+    description: "Structured weekly digest with top stories, editor picks, industry stats, and a curated resources section for content-heavy newsletters.",
+    preview: {
+      headerBg: "linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)",
+      headerText: "Week in Review",
+      subhead: "Your weekly briefing",
+      sections: ["Top 3 stories", "Editor's pick", "Stats and resources"],
+    },
+  },
+  {
+    id: "event-invitation",
+    name: "Event Invitation",
+    category: "Events",
+    description: "Clean event invitation with date, time, venue details, speaker lineup, agenda preview, and prominent RSVP button.",
+    preview: {
+      headerBg: "linear-gradient(135deg, #A855F7 0%, #9333EA 100%)",
+      headerText: "You're Invited",
+      subhead: "Join us for a special event",
+      sections: ["Date, time & venue", "Speaker lineup", "RSVP button"],
+    },
+  },
+  {
+    id: "feedback-survey",
+    name: "Feedback Request",
+    category: "Survey",
+    description: "Friendly feedback and survey request template with clear ask, estimated time, incentive mention, and a single prominent survey link.",
+    preview: {
+      headerBg: "linear-gradient(135deg, #F97316 0%, #EA580C 100%)",
+      headerText: "We'd Love to Hear",
+      subhead: "Share your thoughts in 2 minutes",
+      sections: ["Personal ask", "What we'll improve", "Take the survey CTA"],
+    },
+  },
 ];
 
 const FAQS = [

@@ -351,7 +351,7 @@ function QuickLinks() {
         </span>
         <span>
           <strong className="landing-quick-link-title">Free Templates</strong>
-          <span className="landing-quick-link-desc">Browse 6 ready-to-use designs</span>
+          <span className="landing-quick-link-desc">Browse 11 ready-to-use designs</span>
         </span>
       </Link>
       <Link to="/gallery" className="landing-quick-link">
