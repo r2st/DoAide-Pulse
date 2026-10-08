@@ -359,7 +359,7 @@ function SettingsIcon() {
 function applyTheme(t) {
   const dark =
     t === "dark" ||
-    (t !== "light" && matchMedia("(prefers-color-scheme:dark)").matches);
+    (t !== "light" && window.matchMedia?.("(prefers-color-scheme:dark)")?.matches);
   document.documentElement.classList.toggle("dark", dark);
   document
     .querySelector('meta[name="theme-color"]')
@@ -382,7 +382,8 @@ function ThemeToggle() {
 
   useEffect(() => {
     if (theme !== "system") return;
-    const mq = matchMedia("(prefers-color-scheme:dark)");
+    const mq = window.matchMedia?.("(prefers-color-scheme:dark)");
+    if (!mq) return;
     const handler = () => applyTheme("system");
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
