@@ -1,0 +1,32 @@
+{
+  "name": "DoAide Pulse — AI-Powered Newsletters",
+  "short_name": "DoAide Pulse",
+  "description": "Create and send AI-powered newsletters. Automate content curation, writing, and distribution.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0A0A0B",
+  "background_color": "#0A0A0B",
+  "orientation": "any",
+  "categories": ["business", "productivity", "news"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ErrorFallback, RouteErrorBoundary } from "./components/ErrorBoundary";
+import InstallPrompt from "./components/InstallPrompt";
 import Shell from "./components/Shell";
 import { useAuth } from "./hooks/useAuth";
 import Analytics from "./pages/Analytics";
@@ -77,6 +78,7 @@ function Unshelled({ children, section }) {
 
 export default function App() {
   return (
+    <>
     <Routes>
       <Route
         path="/"
@@ -195,5 +197,7 @@ export default function App() {
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+    <InstallPrompt />
+    </>
   );
 }
