@@ -23,7 +23,7 @@ from app.services import analytics_service, feeds, headlines
 from app.tasks import headline_tasks
 from tests.conftest import TestSession
 
-SEED_EMAIL = "quiet-arms-seed@herald.example.com"
+SEED_EMAIL = "quiet-arms-seed@pulse.example.com"
 
 
 def _published(db, project, *, title: str, slug: str, platform: Platform, views: int):

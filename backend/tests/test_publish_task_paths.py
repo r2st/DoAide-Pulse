@@ -46,7 +46,7 @@ def content(db, project) -> Content:
     row = Content(
         project_id=project.id,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
         body_markdown="It ships.",
@@ -131,7 +131,7 @@ def test_a_timeout_after_the_post_went_out_does_not_re_arm_it(db, content, monke
 
     def _publishes_then_times_out(session, row):
         row.status = PublicationStatus.PUBLISHED
-        row.external_url = "https://dev.to/u/herald-1-0"
+        row.external_url = "https://dev.to/u/pulse-1-0"
         session.commit()
         raise SoftTimeLimitExceeded()
 

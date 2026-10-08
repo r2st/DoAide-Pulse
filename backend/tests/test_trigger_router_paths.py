@@ -47,13 +47,13 @@ def second_project(db, user) -> Project:
 def test_listing_filtered_by_project_excludes_the_other_projects_triggers(
     client, auth, project, second_project
 ):
-    _make(client, auth, project, name="on herald")
+    _make(client, auth, project, name="on pulse")
     _make(client, auth, second_project, name="on other")
 
     resp = client.get(API, params={"project_id": project.id}, headers=auth)
 
     assert resp.status_code == 200
-    assert [t["name"] for t in resp.json()] == ["on herald"]
+    assert [t["name"] for t in resp.json()] == ["on pulse"]
 
 
 def test_the_trigger_list_is_paginated_and_reports_the_total(
@@ -260,7 +260,7 @@ def test_a_webhook_trigger_cannot_be_created_when_the_secret_cannot_be_encrypted
     assert "TOKEN_ENCRYPTION_KEY" in resp.json()["detail"]
 
 
-def test_only_the_kinds_herald_goes_and_looks_at_are_polled():
+def test_only_the_kinds_pulse_goes_and_looks_at_are_polled():
     """``check`` is offered for these three and refused for the fourth."""
     assert TriggerKind.GITHUB.is_polled
     assert TriggerKind.RSS.is_polled

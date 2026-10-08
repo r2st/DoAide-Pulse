@@ -43,7 +43,7 @@ def content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
         excerpt="Pulse 1.0 is out.",
         meta_description="Pulse 1.0 is out.",
@@ -189,7 +189,7 @@ def test_a_success_forgets_the_failures_before_it(db, user, content, connected, 
         type(adapter),
         "publish",
         lambda self, request, credentials: PublishResult(
-            external_id="1", external_url="https://dev.to/r2st/herald-1-0"
+            external_id="1", external_url="https://dev.to/r2st/pulse-1-0"
         ),
     )
     publishing_service.execute(db, _fresh(db, content))
@@ -435,7 +435,7 @@ def test_a_piece_held_by_the_breaker_is_not_called_failed(
         project_id=content.project_id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.1",
-        slug="herald-1-1",
+        slug="pulse-1-1",
         body_markdown="## Also out\n\n" + ("word " * 200),
         excerpt="Pulse 1.1 is out.",
         meta_description="Pulse 1.1 is out.",

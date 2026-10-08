@@ -302,7 +302,7 @@ def check(urls: list[str], *, timeout: float | None = None) -> list[LinkStatus]:
             headers={
                 # Some hosts 403 an unidentified client outright. Saying who we
                 # are turns a pile of `unknown` verdicts into real answers.
-                "User-Agent": "Herald/0.1 link-checker (+https://github.com/r2st/Herald)",
+                "User-Agent": "Pulse/0.1 link-checker (+https://github.com/r2st/DoAide-Pulse)",
                 "Accept": "*/*",
             },
         ) as client,

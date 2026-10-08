@@ -72,7 +72,7 @@ def test_hsts_when_caddy_says_the_hop_was_tls(client):
 
     ``X-Forwarded-Proto`` is the only thing that knows TLS was terminated, and
     it is trustworthy here because nothing but Caddy can reach the port — the
-    services bind the bridge address (see deploy/Caddyfile.herald).
+    services bind the bridge address (see deploy/Caddyfile.pulse).
     """
     resp = client.get("/api/v1/health", headers={"X-Forwarded-Proto": "https"})
     assert resp.headers[_HSTS] == "max-age=31536000; includeSubDomains"
@@ -173,12 +173,12 @@ def _origins(value: str, environment: str = "production") -> list[str]:
 
 
 def test_a_wildcard_is_dropped_in_production():
-    assert _origins("*,https://herald.doaide.com") == ["https://herald.doaide.com"]
+    assert _origins("*,https://pulse.doaide.com") == ["https://pulse.doaide.com"]
 
 
 def test_a_plaintext_origin_is_dropped_in_production():
-    assert _origins("http://staging.example.com,https://herald.doaide.com") == [
-        "https://herald.doaide.com"
+    assert _origins("http://staging.example.com,https://pulse.doaide.com") == [
+        "https://pulse.doaide.com"
     ]
 
 
@@ -228,7 +228,7 @@ def test_filtering_everything_is_allowed_to_leave_nothing():
 # --------------------------------------------------------------------------- #
 
 
-def test_herald_sets_no_cookies_at_all(client):
+def test_pulse_sets_no_cookies_at_all(client):
     """There is no cookie to add flags to, and that is the property to keep.
 
     Pulse authenticates with a bearer token the SPA holds and sends

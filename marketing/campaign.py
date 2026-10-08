@@ -6,7 +6,7 @@ should be in them. This runner makes Pulse match that description. It is
 **idempotent**: running it twice creates nothing twice, and running it after
 editing an article body updates the piece rather than duplicating it.
 
-    export HERALD_EMAIL=... HERALD_PASSWORD=...
+    export PULSE_EMAIL=... PULSE_PASSWORD=...
 
     ./campaign.py plan     campaigns/products-2026-q3.json
     ./campaign.py sync     campaigns/products-2026-q3.json
@@ -32,7 +32,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from herald_client import DEFAULT_BASE_URL, HeraldClient, HeraldError  # noqa: E402
+from pulse_client import DEFAULT_BASE_URL, PulseClient, PulseError  # noqa: E402
 
 #: Project fields the runner will correct on a project that already exists.
 #:

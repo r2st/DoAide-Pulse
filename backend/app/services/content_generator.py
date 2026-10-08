@@ -173,7 +173,7 @@ def _quote_source_material(text: str) -> str:
 
 
 #: How much of a source label is worth naming in the prompt. A label is "GitHub
-#: r2st/Herald" or "RSS Changelog" — a handful of words saying where the news
+#: r2st/DoAide-Pulse" or "RSS Changelog" — a handful of words saying where the news
 #: came from. Anything past this is not a label. See :func:`_inline_source`.
 MAX_SOURCE_LABEL_CHARS = 120
 

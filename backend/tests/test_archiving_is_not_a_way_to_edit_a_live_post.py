@@ -32,7 +32,7 @@ from app.models.content import Content, ContentStatus, ContentType
 from app.models.mixins import utcnow
 from app.models.publication import Platform, Publication, PublicationStatus
 
-LIVE_URL = "https://dev.to/herald/live-piece"
+LIVE_URL = "https://dev.to/pulse/live-piece"
 
 
 @pytest.fixture

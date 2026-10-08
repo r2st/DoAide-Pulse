@@ -88,50 +88,50 @@
     @apply px-4 py-3 align-middle;
   }
 
-  .prose-herald {
+  .prose-pulse {
     @apply max-w-[68ch] text-[15px] leading-[1.7] text-ink-700;
   }
-  .prose-herald h1,
-  .prose-herald h2,
-  .prose-herald h3 {
+  .prose-pulse h1,
+  .prose-pulse h2,
+  .prose-pulse h3 {
     @apply mb-3 mt-8 font-semibold text-ink-900;
   }
-  .prose-herald h1 {
+  .prose-pulse h1 {
     @apply text-2xl;
   }
-  .prose-herald h2 {
+  .prose-pulse h2 {
     @apply text-xl;
   }
-  .prose-herald h3 {
+  .prose-pulse h3 {
     @apply text-base;
   }
-  .prose-herald p,
-  .prose-herald ul,
-  .prose-herald ol {
+  .prose-pulse p,
+  .prose-pulse ul,
+  .prose-pulse ol {
     @apply mb-4;
   }
-  .prose-herald ul {
+  .prose-pulse ul {
     @apply list-disc pl-5;
   }
-  .prose-herald ol {
+  .prose-pulse ol {
     @apply list-decimal pl-5;
   }
-  .prose-herald li {
+  .prose-pulse li {
     @apply mb-1;
   }
-  .prose-herald code {
+  .prose-pulse code {
     @apply rounded bg-canvas px-1.5 py-0.5 font-mono text-[13px] text-ink-900;
   }
-  .prose-herald pre {
+  .prose-pulse pre {
     @apply mb-4 overflow-x-auto rounded-lg border border-line bg-canvas p-4;
   }
-  .prose-herald pre code {
+  .prose-pulse pre code {
     @apply bg-transparent p-0;
   }
-  .prose-herald a {
+  .prose-pulse a {
     @apply text-brand-500 underline underline-offset-2;
   }
-  .prose-herald blockquote {
+  .prose-pulse blockquote {
     @apply mb-4 border-l-2 border-line-strong pl-4 italic;
   }
 }

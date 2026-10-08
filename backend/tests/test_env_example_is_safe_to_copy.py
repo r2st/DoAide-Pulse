@@ -1,7 +1,7 @@
 """``.env.example`` is a template for production, so its defaults must be safe.
 
 Nothing reads this file at runtime, which is exactly why it drifts. It is the
-thing a deploy copies to ``/opt/Herald/.env`` and then edits — and what does not
+thing a deploy copies to ``/opt/Pulse/.env`` and then edits — and what does not
 get edited is whatever already looked deliberate. It shipped ``DEBUG=true`` for
 that entire time.
 

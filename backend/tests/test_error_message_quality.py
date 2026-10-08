@@ -178,9 +178,9 @@ class TestHeadlineSyncErrors:
         assert "OSError" in msg
 
     def test_unexpected_sync_error_sanitized(self):
-        exc = RuntimeError("/opt/Herald/backend/app/services/publishers/git.py: no such file")
+        exc = RuntimeError("/opt/Pulse/backend/app/services/publishers/git.py: no such file")
         msg = sanitize_unexpected_error(exc)
-        assert "/opt/Herald" not in msg
+        assert "/opt/Pulse" not in msg
         assert "no such file" not in msg
         assert "RuntimeError" in msg
 

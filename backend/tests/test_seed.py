@@ -16,7 +16,7 @@ from app.models.project import AutopilotMode, Project
 from app.models.user import User
 from tests.conftest import TestSession
 
-SEED_EMAIL = "seed-test@herald.example.com"
+SEED_EMAIL = "seed-test@pulse.example.com"
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def test_seed_registers_every_spec(db, run_seed):
 @pytest.mark.parametrize(
     ("slug", "repo"),
     [
-        ("pulse", "r2st/Herald"),
+        ("pulse", "r2st/DoAide-Pulse"),
         ("gstbot", "r2st/GSTBot"),
         ("caflow", "r2st/CAFlow"),
     ],

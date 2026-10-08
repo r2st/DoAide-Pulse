@@ -37,12 +37,12 @@ def piece(db, project) -> Content:
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
         title="Pulse 2.0 is out",
-        slug="herald-2-0-is-out",
+        slug="pulse-2-0-is-out",
         body_markdown="# Pulse 2.0\n\nThe release is available today.\n",
         excerpt="The release is available today.",
         meta_description="Pulse 2.0, available today.",
-        canonical_url="https://herald.example.com/blog/herald-2-0",
-        tags=["release", "herald"],
+        canonical_url="https://pulse.example.com/blog/pulse-2-0",
+        tags=["release", "pulse"],
         keywords=["release"],
         focus_keyword="release",
     )
@@ -118,7 +118,7 @@ def test_a_translation_does_not_move_the_slug_the_tags_or_the_canonical(piece, f
     assert request.tags == piece.tags
     assert request.keywords == piece.keywords
     assert request.canonical_url == piece.canonical_url
-    assert request.idempotency_key == f"herald-{piece.id}-devto"
+    assert request.idempotency_key == f"pulse-{piece.id}-devto"
 
 
 def test_a_request_with_no_translation_is_exactly_what_it_always_was(piece):

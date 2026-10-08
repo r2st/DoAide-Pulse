@@ -59,7 +59,7 @@ export default function BlogPost() {
       <article className="mx-auto max-w-2xl px-4 py-10">
         <h1 className="page-title mb-2">{post.title}</h1>
         <time className="text-xs text-ink-400">{post.published}</time>
-        <div className="prose-herald mt-6">
+        <div className="prose-pulse mt-6">
           {post.body.map((para, i) => (
             <p key={i}>{para}</p>
           ))}

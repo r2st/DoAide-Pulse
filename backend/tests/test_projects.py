@@ -76,11 +76,11 @@ def test_scan_without_repo_url_is_400(client, auth, db, user):
 @pytest.mark.parametrize(
     ("url", "expected"),
     [
-        ("https://github.com/r2st/Herald", "r2st/Herald"),
-        ("https://github.com/r2st/Herald.git", "r2st/Herald"),
-        ("git@github.com:r2st/Herald.git", "r2st/Herald"),
-        ("https://github.com/r2st/Herald/", "r2st/Herald"),
-        ("https://gitlab.com/r2st/Herald", None),
+        ("https://github.com/r2st/DoAide-Pulse", "r2st/DoAide-Pulse"),
+        ("https://github.com/r2st/DoAide-Pulse.git", "r2st/DoAide-Pulse"),
+        ("git@github.com:r2st/DoAide-Pulse.git", "r2st/DoAide-Pulse"),
+        ("https://github.com/r2st/DoAide-Pulse/", "r2st/DoAide-Pulse"),
+        ("https://gitlab.com/r2st/DoAide-Pulse", None),
         ("not a url", None),
     ],
 )
@@ -219,7 +219,7 @@ def test_feed_is_public_and_lists_only_published_content(client, project, db):
     """No Authorization header at all — an RSS reader has none to send."""
     published = Content(
         project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
-        title="Pulse 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+        title="Pulse 1.0", slug="pulse-1-0", status=ContentStatus.PUBLISHED,
         excerpt="It's out.",
     )
     draft = Content(
@@ -288,7 +288,7 @@ def test_feed_returns_once_something_is_published(client, project, db):
     db.add(
         Content(
             project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
-            title="Pulse 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+            title="Pulse 1.0", slug="pulse-1-0", status=ContentStatus.PUBLISHED,
         )
     )
     db.commit()

@@ -17,7 +17,7 @@ from app.services import publishing_service, utm
 PARAMS = {
     "source": "devto",
     "medium": "syndication",
-    "campaign": "herald",
+    "campaign": "pulse",
     "content": "shipping-fast",
 }
 
@@ -30,11 +30,11 @@ def params_of(url: str) -> dict[str, str]:
 
 
 def test_tag_appends_the_four_parameters():
-    tagged = utm.tag("https://herald.example.com/", **PARAMS)
+    tagged = utm.tag("https://pulse.example.com/", **PARAMS)
     assert params_of(tagged) == {
         "utm_source": "devto",
         "utm_medium": "syndication",
-        "utm_campaign": "herald",
+        "utm_campaign": "pulse",
         "utm_content": "shipping-fast",
     }
 
@@ -53,7 +53,7 @@ def test_a_hand_written_utm_parameter_is_not_overwritten():
     tagged = utm.tag("https://example.com/?utm_source=newsletter", **PARAMS)
     assert params_of(tagged)["utm_source"] == "newsletter"
     # The parameters they did *not* set are still filled in.
-    assert params_of(tagged)["utm_campaign"] == "herald"
+    assert params_of(tagged)["utm_campaign"] == "pulse"
 
 
 @pytest.mark.parametrize(
@@ -64,7 +64,7 @@ def test_non_http_urls_are_returned_untouched(url):
 
 
 def test_blank_parameters_are_omitted_rather_than_sent_empty():
-    tagged = utm.tag("https://example.com/", source="devto", campaign="herald", content="")
+    tagged = utm.tag("https://example.com/", source="devto", campaign="pulse", content="")
     assert "utm_content" not in params_of(tagged)
 
 
@@ -77,24 +77,24 @@ def test_host_of_ignores_www_port_and_case():
 
 
 def test_body_links_to_the_project_are_tagged():
-    body = "Try [Pulse](https://herald.example.com/signup) today."
-    out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
+    body = "Try [Pulse](https://pulse.example.com/signup) today."
+    out = utm.tag_markdown_links(body, host="pulse.example.com", **PARAMS)
     assert "utm_source=devto" in out
-    assert out.startswith("Try [Pulse](https://herald.example.com/signup?")
+    assert out.startswith("Try [Pulse](https://pulse.example.com/signup?")
 
 
 def test_third_party_links_are_left_alone():
     body = "See [the docs](https://fastapi.tiangolo.com/) for more."
-    assert utm.tag_markdown_links(body, host="herald.example.com", **PARAMS) == body
+    assert utm.tag_markdown_links(body, host="pulse.example.com", **PARAMS) == body
 
 
 def test_urls_inside_fenced_code_are_not_rewritten():
     body = (
         "Install it:\n\n"
-        "```bash\ncurl [x](https://herald.example.com/install.sh)\n```\n\n"
-        "Then read [the guide](https://herald.example.com/guide).\n"
+        "```bash\ncurl [x](https://pulse.example.com/install.sh)\n```\n\n"
+        "Then read [the guide](https://pulse.example.com/guide).\n"
     )
-    out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
+    out = utm.tag_markdown_links(body, host="pulse.example.com", **PARAMS)
     assert "install.sh)" in out  # untouched inside the fence
     assert "guide?utm_source=devto" in out
 
@@ -106,8 +106,8 @@ def test_a_bracketed_url_survives_the_rewrite():
     then consumed the link's own `)` as the closing one, publishing a dead link
     on the user's own domain — the one host this rewriter touches at all.
     """
-    body = "Read [the API notes](https://herald.example.com/docs/api_(v2)) first."
-    out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
+    body = "Read [the API notes](https://pulse.example.com/docs/api_(v2)) first."
+    out = utm.tag_markdown_links(body, host="pulse.example.com", **PARAMS)
 
     assert "/docs/api_(v2)?utm_source=devto" in out
     assert out.endswith(") first.")
@@ -116,15 +116,15 @@ def test_a_bracketed_url_survives_the_rewrite():
 
 def test_an_unbalanced_bracket_is_left_alone_rather_than_mangled():
     """Not tagging costs attribution; mangling costs the reader the page."""
-    body = "Try [this](https://herald.example.com/x(y) now."
-    assert utm.tag_markdown_links(body, host="herald.example.com", **PARAMS) == body
+    body = "Try [this](https://pulse.example.com/x(y) now."
+    assert utm.tag_markdown_links(body, host="pulse.example.com", **PARAMS) == body
 
 
 def test_link_titles_survive_the_rewrite():
-    body = '[Pulse](https://herald.example.com/ "The tool")'
-    out = utm.tag_markdown_links(body, host="herald.example.com", **PARAMS)
+    body = '[Pulse](https://pulse.example.com/ "The tool")'
+    out = utm.tag_markdown_links(body, host="pulse.example.com", **PARAMS)
     assert out.endswith('"The tool")')
-    assert "utm_campaign=herald" in out
+    assert "utm_campaign=pulse" in out
 
 
 # -- build_request --------------------------------------------------------- #
@@ -132,7 +132,7 @@ def test_link_titles_survive_the_rewrite():
 
 @pytest.fixture
 def content(db, project):
-    project.live_url = "https://herald.example.com"
+    project.live_url = "https://pulse.example.com"
     project.utm_campaign = ""
     row = Content(
         project_id=project.id,
@@ -140,7 +140,7 @@ def content(db, project):
         status=ContentStatus.APPROVED,
         title="Shipping fast",
         slug="shipping-fast",
-        body_markdown="Read more at [the site](https://herald.example.com/blog).",
+        body_markdown="Read more at [the site](https://pulse.example.com/blog).",
         excerpt="We shipped.",
         meta_description="We shipped.",
         tags=["python"],
@@ -152,13 +152,13 @@ def content(db, project):
 
 
 def test_canonical_url_is_never_tagged(db, content):
-    content.canonical_url = "https://herald.example.com/blog/shipping-fast"
+    content.canonical_url = "https://pulse.example.com/blog/shipping-fast"
     db.commit()
 
     request = publishing_service.build_request(content, platform=Platform.MEDIUM)
 
     # The rel=canonical stays exactly what was published...
-    assert request.canonical_url == "https://herald.example.com/blog/shipping-fast"
+    assert request.canonical_url == "https://pulse.example.com/blog/shipping-fast"
     # ...while the link a reader is sent down carries the campaign.
     assert "utm_source=medium" in request.share_url
     assert request.share_url.startswith(request.canonical_url)
@@ -213,7 +213,7 @@ def test_the_medium_reflects_the_kind_of_platform(db, content):
 
 def test_body_links_are_tagged_per_platform(db, content):
     request = publishing_service.build_request(content, platform=Platform.DEVTO)
-    assert "https://herald.example.com/blog?utm_source=devto" in request.body_markdown
+    assert "https://pulse.example.com/blog?utm_source=devto" in request.body_markdown
 
 
 def test_disabling_utm_leaves_every_url_alone(db, content):
@@ -224,7 +224,7 @@ def test_disabling_utm_leaves_every_url_alone(db, content):
 
     assert "utm_" not in (request.share_url or "")
     assert "utm_" not in request.body_markdown
-    assert request.project_url == "https://herald.example.com"
+    assert request.project_url == "https://pulse.example.com"
 
 
 def test_no_platform_means_no_invented_source(db, content):

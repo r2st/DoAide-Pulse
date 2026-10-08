@@ -62,7 +62,7 @@ BUILTINS: dict[str, str] = {
     "signal.headline": "What the trigger saw happen. Empty when there is no trigger.",
     "signal.summary": "The trigger's prose — release notes, a feed entry's body.",
     "signal.url": "Where a reader can see the thing itself.",
-    "signal.source": "Where the trigger got it: 'RSS Changelog', 'GitHub r2st/Herald'.",
+    "signal.source": "Where the trigger got it: 'RSS Changelog', 'GitHub r2st/DoAide-Pulse'.",
     "signal.items": "The trigger's bullet points, one per line.",
 }
 

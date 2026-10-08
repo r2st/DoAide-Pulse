@@ -140,7 +140,7 @@ def test_slot_suggestions_need_somewhere_to_suggest_slots_for(
 def test_a_github_outage_thins_the_draft_rather_than_failing_the_request(
     client, auth, project, monkeypatch
 ):
-    assert project.repo_full_name == "r2st/Herald"
+    assert project.repo_full_name == "r2st/DoAide-Pulse"
 
     def unavailable(*_args, **_kwargs):
         raise github_client.GitHubError("502 Bad Gateway")

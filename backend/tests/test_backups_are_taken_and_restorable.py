@@ -6,7 +6,7 @@ copies of the database that existed before this were the ad-hoc ``pg_dump`` in
 ``deploy/DEPLOYMENT.md``'s rollback section, taken by hand "before anything
 risky", so the newest one on the box was whenever somebody last remembered.
 
-``deploy/backup.sh`` plus ``herald-backup.timer`` close that. None of it is
+``deploy/backup.sh`` plus ``pulse-backup.timer`` close that. None of it is
 Python, and a backup job fails in the one way nobody notices — quietly, at
 03:30, until the morning somebody needs it. So the properties that make the
 difference between having backups and believing you do are asserted here:
@@ -27,8 +27,8 @@ import pytest
 
 _DEPLOY = Path(__file__).resolve().parents[2] / "deploy"
 _SCRIPT = _DEPLOY / "backup.sh"
-_SERVICE = _DEPLOY / "systemd" / "herald-backup.service"
-_TIMER = _DEPLOY / "systemd" / "herald-backup.timer"
+_SERVICE = _DEPLOY / "systemd" / "pulse-backup.service"
+_TIMER = _DEPLOY / "systemd" / "pulse-backup.timer"
 
 
 def _directive(unit: str, key: str) -> str | None:
@@ -65,12 +65,12 @@ def _run(tmp_path: Path, **env: str) -> subprocess.CompletedProcess[str]:
         timeout=60,
         env={
             "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
-            "HERALD_BACKUP_DIR": str(tmp_path),
+            "PULSE_BACKUP_DIR": str(tmp_path),
             # Pointed at a file that does not exist, so a test that means to
             # reach the connection logic has to say so itself. Without this the
-            # script would read the developer's real /opt/Herald/.env if they
+            # script would read the developer's real /opt/Pulse/.env if they
             # happen to have one.
-            "HERALD_ENV_FILE": str(tmp_path / "absent.env"),
+            "PULSE_ENV_FILE": str(tmp_path / "absent.env"),
             **env,
         },
     )
@@ -91,14 +91,14 @@ def test_the_service_runs_the_script_the_repo_ships():
     """A unit pointing at a path the repo does not have is a backup that never runs."""
     exec_start = _directive(_SERVICE.read_text(), "ExecStart")
 
-    assert exec_start == "/opt/Herald/deploy/backup.sh"
-    # deploy.sh rsyncs the repo to /opt/Herald, so that path is this file.
+    assert exec_start == "/opt/Pulse/deploy/backup.sh"
+    # deploy.sh rsyncs the repo to /opt/Pulse, so that path is this file.
     assert _SCRIPT == _DEPLOY / "backup.sh"
 
 
 def test_the_timer_starts_the_backup_service():
     """``Unit=`` has to name the service; a timer with a typo fires nothing."""
-    assert _directive(_TIMER.read_text(), "Unit") == "herald-backup.service"
+    assert _directive(_TIMER.read_text(), "Unit") == "pulse-backup.service"
 
 
 def test_the_timer_is_installed_into_the_timer_target():
@@ -127,14 +127,14 @@ def test_the_backup_cannot_write_into_the_application_directory():
     """``ProtectSystem=strict`` plus a ``ReadWritePaths`` that names only the
     dump directory.
 
-    The three application units list ``/opt/Herald`` because they write there.
+    The three application units list ``/opt/Pulse`` because they write there.
     This one only reads the script and the env file, and a backup process that
     can write over the application it is dumping has the failure modes of both.
     """
     unit = _SERVICE.read_text()
 
     assert _directive(unit, "ProtectSystem") == "strict"
-    assert _directive(unit, "ReadWritePaths") == "/var/backups/herald"
+    assert _directive(unit, "ReadWritePaths") == "/var/backups/pulse"
 
 
 def test_the_backup_reads_the_same_env_file_as_the_application():
@@ -144,7 +144,7 @@ def test_the_backup_reads_the_same_env_file_as_the_application():
     looks right for years and turns out to have been dumping an empty
     development database the whole time.
     """
-    assert _directive(_SERVICE.read_text(), "EnvironmentFile") == "/opt/Herald/.env"
+    assert _directive(_SERVICE.read_text(), "EnvironmentFile") == "/opt/Pulse/.env"
 
 
 def test_a_failed_dump_is_not_retried_into_a_loop():
@@ -207,7 +207,7 @@ def test_the_documented_restore_does_not_hand_postgres_a_file_it_cannot_read():
     """The runbook has to work as written, on the dumps the script actually makes.
 
     ``umask 077`` puts the dumps at ``0600`` in a ``0700`` directory owned by
-    ``herald``, so ``sudo -u postgres pg_restore /var/backups/herald/…`` — which
+    ``pulse``, so ``sudo -u postgres pg_restore /var/backups/pulse/…`` — which
     is what DEPLOYMENT.md used to say — fails with ``Permission denied``. That is
     the wrong failure at the worst time: it arrives during an incident, from the
     one command nobody has rehearsed, and it reads as a corrupt backup rather
@@ -228,12 +228,12 @@ def test_the_documented_restore_does_not_hand_postgres_a_file_it_cannot_read():
     offenders = [
         command.strip()
         for command in commands
-        if "sudo -u postgres" in command and "/var/backups/herald/" in command
+        if "sudo -u postgres" in command and "/var/backups/pulse/" in command
     ]
 
     assert not offenders, (
         "DEPLOYMENT.md tells the reader to run pg_restore as `postgres` against "
-        "a dump only `herald` can read: " + " | ".join(offenders)
+        "a dump only `pulse` can read: " + " | ".join(offenders)
     )
 
 
@@ -328,7 +328,7 @@ def test_it_refuses_to_write_into_a_directory_that_is_not_there(tmp_path):
     missing = tmp_path / "nope"
     result = _run(
         missing,
-        DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:5432/herald",
+        DATABASE_URL="postgresql+psycopg://u:p@127.0.0.1:5432/pulse",
     )
 
     assert result.returncode != 0
@@ -337,20 +337,20 @@ def test_it_refuses_to_write_into_a_directory_that_is_not_there(tmp_path):
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 def test_it_reads_the_database_url_out_of_the_env_file_without_sourcing_it(tmp_path):
-    """``/opt/Herald/.env`` is systemd's format, not shell.
+    """``/opt/Pulse/.env`` is systemd's format, not shell.
 
     Sourcing it would execute whatever a future value contained. The proof is
     that a line which *would* run as shell does not: the marker file it would
     create is absent, and the script goes on to use the URL on the next line.
     """
-    env_file = tmp_path / "herald.env"
+    env_file = tmp_path / "pulse.env"
     marker = tmp_path / "sourced"
     env_file.write_text(
         f"EVIL=$(touch {marker})\n"
-        "DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:5432/herald\n"
+        "DATABASE_URL=postgresql+psycopg://u:p@127.0.0.1:5432/pulse\n"
     )
 
-    result = _run(tmp_path, HERALD_ENV_FILE=str(env_file))
+    result = _run(tmp_path, PULSE_ENV_FILE=str(env_file))
 
     assert not marker.exists(), "backup.sh sourced the env file as shell"
     # It got past the URL parse — whatever happened next was Postgres refusing

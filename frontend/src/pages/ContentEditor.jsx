@@ -615,7 +615,7 @@ export default function ContentEditor() {
             </div>
           ) : (
             <article
-              className="prose-herald panel px-7 py-6"
+              className="prose-pulse panel px-7 py-6"
               // The renderer escapes everything before emitting a tag and has no
               // raw-HTML passthrough — see lib/markdown.js.
               dangerouslySetInnerHTML={{

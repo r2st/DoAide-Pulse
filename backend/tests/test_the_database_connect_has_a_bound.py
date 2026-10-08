@@ -40,7 +40,7 @@ from app.database import (
 #: A URL that names a database nothing will connect to. ``create_engine`` is
 #: lazy — nothing opens a socket until a statement runs — so the connect args
 #: can be read off a real engine without one existing.
-_POSTGRES = "postgresql+psycopg://herald:herald@db.invalid:5432/herald"
+_POSTGRES = "postgresql+psycopg://pulse:pulse@db.invalid:5432/pulse"
 
 
 class _Enough(Exception):

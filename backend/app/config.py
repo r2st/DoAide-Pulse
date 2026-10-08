@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     # ---- SMTP (password reset mail — the only mail Pulse sends) ----
     # With SMTP_HOST blank the reset link is written to the log instead of sent.
     # That is a deliberate fallback for a self-hosted single-user install, not a
-    # stub: `journalctl -u herald-api` is a workable way to collect your own
+    # stub: `journalctl -u pulse-api` is a workable way to collect your own
     # link. It does put the link in the logs.
     smtp_host: str = ""
     smtp_port: int = 587
@@ -162,7 +162,7 @@ class Settings(BaseSettings):
     # caller can reach. A reader polls a feed every 15-60 minutes; 20/minute is
     # far above any real client and far below what makes the endpoint a lever.
     rate_limit_public_feed: str = "20/minute;300/hour"
-    # The liveness probe. Caddy polls it every 30s (see deploy/Caddyfile.herald)
+    # The liveness probe. Caddy polls it every 30s (see deploy/Caddyfile.pulse)
     # from the Docker bridge with no X-Forwarded-For, so its requests bucket
     # against the proxy address rather than any caller's — and a deploy adds at
     # most a handful of retries to that same bucket. Public traffic arrives
@@ -214,7 +214,7 @@ class Settings(BaseSettings):
     rate_limit_machine_api: str = "300/hour;3000/day"
 
     # ---- Database ----
-    database_url: str = "postgresql+psycopg://herald:herald@localhost:5432/herald"
+    database_url: str = "postgresql+psycopg://pulse:pulse@localhost:5432/pulse"
     # Connections are a per-process budget spent against one shared server, so
     # the number that matters is not this one but this one times the processes
     # running it. The deployed shape is two uvicorn workers, a Celery worker and
@@ -284,7 +284,7 @@ class Settings(BaseSettings):
     # long-form tutorials and comparisons rather than a 280-character tweet.
     # Previously ``openai/gpt-oss-120b:free`` (also removed from free tier).
     openrouter_long_form_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
-    openrouter_app_url: str = "https://herald.local"
+    openrouter_app_url: str = "https://pulse.local"
     openrouter_app_title: str = "Pulse"
 
     # ---- AI fallback providers ---------------------------------------------

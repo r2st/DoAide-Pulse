@@ -600,7 +600,7 @@ async def inbound(
     # header is enough. Both signature schemes are collected here rather than in
     # `_ingest` because this is the only frame that has the request.
     headers = _InboundHeaders(
-        herald_signature=request.headers.get(webhooks.SIGNATURE_HEADER) or "",
+        pulse_signature=request.headers.get(webhooks.SIGNATURE_HEADER) or "",
         github_signature=request.headers.get(webhooks.GITHUB_SIGNATURE_HEADER) or "",
         delivery_id=request.headers.get(webhooks.GITHUB_DELIVERY_HEADER) or "",
     )
@@ -617,7 +617,7 @@ class _InboundHeaders:
     then verifies signatures against the wrong scheme forever.
     """
 
-    herald_signature: str = ""
+    pulse_signature: str = ""
     github_signature: str = ""
     delivery_id: str = ""
 
@@ -647,10 +647,10 @@ def _verified_signature(trigger: Trigger, raw: bytes, headers: _InboundHeaders) 
     # Decoded once, here, and only for Pulse's scheme — which signs the decoded
     # form. GitHub's signs the bytes; see `verify_github` on why the two must
     # not share an input.
-    if headers.herald_signature and webhooks.verify(
-        secret, headers.herald_signature, raw.decode("utf-8", errors="replace")
+    if headers.pulse_signature and webhooks.verify(
+        secret, headers.pulse_signature, raw.decode("utf-8", errors="replace")
     ):
-        return headers.herald_signature
+        return headers.pulse_signature
     if headers.github_signature and webhooks.verify_github(
         secret, headers.github_signature, raw
     ):

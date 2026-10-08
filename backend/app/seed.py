@@ -39,7 +39,7 @@ logger = logging.getLogger("seed")
 
 # Not a `.local` address: that TLD is special-use, and `EmailStr` rejects it —
 # the account would seed fine and then 500 the moment /auth/me serialized it.
-DEFAULT_EMAIL = "dev@herald.example.com"
+DEFAULT_EMAIL = "dev@pulse.example.com"
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,7 @@ class ProjectSpec:
     ideas: list[tuple[ContentType, str, str]] = field(default_factory=list)
 
 
-HERALD = ProjectSpec(
+PULSE_SEED = ProjectSpec(
     name="Pulse",
     description=(
         "Pulse is an AI-powered marketing automation tool for developers who "
@@ -75,7 +75,7 @@ HERALD = ProjectSpec(
         "past you, and publishes to Dev.to, Medium and the rest on a schedule — "
         "then tracks which pieces actually got read."
     ),
-    repo_url="https://github.com/r2st/Herald",
+    repo_url="https://github.com/r2st/DoAide-Pulse",
     live_url=None,
     tech_stack=[
         "FastAPI",
@@ -245,7 +245,7 @@ CAFLOW = ProjectSpec(
 )
 
 #: Everything the seed registers, in the order it appears on the projects page.
-SEED_PROJECTS: list[ProjectSpec] = [HERALD, GSTBOT, CAFLOW]
+SEED_PROJECTS: list[ProjectSpec] = [PULSE_SEED, GSTBOT, CAFLOW]
 
 
 def _create_project(db: Session, user_id: int, spec: ProjectSpec) -> Project:

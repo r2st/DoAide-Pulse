@@ -22,7 +22,7 @@ pulse.doaide.com {
 
 	# FastAPI's own docs/openapi live outside /api. Kept routed on purpose even
 	# though the app answers 404 for all of them in production: the gate is
-	# ENVIRONMENT/DEBUG in /opt/Herald/.env (see app.main.docs_enabled), so
+	# ENVIRONMENT/DEBUG in /opt/Pulse/.env (see app.main.docs_enabled), so
 	# turning the schema back on for a debugging session is an app restart and
 	# not an edit to this shared, bind-mounted Caddyfile.
 	@docs path /docs /docs/* /redoc /redoc/* /openapi.json

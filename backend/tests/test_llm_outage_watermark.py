@@ -100,7 +100,7 @@ def test_the_next_scan_writes_the_piece_the_outage_deferred(
                 "body_markdown": "## What changed\n\n" + ("Real prose. " * 200),
                 "excerpt": "What changed in the publish path.",
                 "meta_description": "A round-up of the publish path work.",
-                "keywords": ["herald"],
+                "keywords": ["pulse"],
                 "tags": ["python"],
                 "confidence": 0.4,
             },

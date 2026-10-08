@@ -38,7 +38,7 @@ def _item_link(content: Content, site_url: str) -> str:
     project's site as a last resort for a piece with none recorded yet."""
     if content.canonical_url:
         return content.canonical_url
-    return f"{site_url}/{content.slug}" if site_url else f"urn:herald:content:{content.id}"
+    return f"{site_url}/{content.slug}" if site_url else f"urn:pulse:content:{content.id}"
 
 
 def build_feed(project: Project, items: list[Content], *, self_url: str) -> str:
@@ -73,7 +73,7 @@ def build_feed(project: Project, items: list[Content], *, self_url: str) -> str:
             "<item>"
             f"<title>{_clean(content.title)}</title>"
             f"<link>{_clean(link)}</link>"
-            f'<guid isPermaLink="false">herald-content-{content.id}</guid>'
+            f'<guid isPermaLink="false">pulse-content-{content.id}</guid>'
             f"<description>{_clean(description)}</description>"
             + pub_date
             + "</item>"

@@ -42,7 +42,7 @@ def piece(db, project) -> Content:
         excerpt="The excerpt as first written.",
         meta_description="A meta description, as first written.",
         keywords=["publishing", "automation"],
-        tags=["herald", "release"],
+        tags=["pulse", "release"],
         focus_keyword="publishing",
     )
     db.add(row)
@@ -111,7 +111,7 @@ def test_a_status_only_change_writes_no_revision(client, auth, db, piece):
 
 def test_the_note_names_the_fields_that_moved(client, auth, db, piece):
     """What turns a column of timestamps into something a user can scan."""
-    _patch(client, auth, piece, title="A second headline", tags=["herald", "changelog"])
+    _patch(client, auth, piece, title="A second headline", tags=["pulse", "changelog"])
 
     stored = db.query(ContentRevision).filter_by(content_id=piece.id).one()
     assert "title" in stored.note
@@ -265,14 +265,14 @@ def test_two_stored_revisions_can_be_compared_with_each_other(client, auth, piec
 def test_a_list_field_diffs_as_a_person_reads_it(client, auth, piece):
     """``tags`` is JSON; reordering it is a change, because the first tag leads."""
     version = piece.version
-    _patch(client, auth, piece, tags=["release", "herald"])
+    _patch(client, auth, piece, tags=["release", "pulse"])
 
     response = client.get(
         f"{V1}/content/{piece.id}/revisions/{version}/diff", headers=auth
     )
     tags = next(item for item in response.json()["fields"] if item["field"] == "tags")
-    assert tags["before"] == "herald, release"
-    assert tags["after"] == "release, herald"
+    assert tags["before"] == "pulse, release"
+    assert tags["after"] == "release, pulse"
 
 
 # --------------------------------------------------------------------------- #

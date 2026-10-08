@@ -26,7 +26,7 @@ from app.models.webhook import (
 )
 from app.services import link_check, webhooks
 
-_URL = "https://hooks.example.test/herald"
+_URL = "https://hooks.example.test/pulse"
 
 
 @pytest.fixture(autouse=True)
@@ -587,7 +587,7 @@ def _content(db, project) -> Content:
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
         title="Pulse ships webhooks",
-        slug="herald-ships-webhooks",
+        slug="pulse-ships-webhooks",
         body_markdown="It calls you now.",
         excerpt="It calls you now.",
     )
@@ -605,7 +605,7 @@ def test_a_first_publish_fires_content_published(db, project, webhook, endpoint)
         content_id=content.id,
         platform=Platform.DEVTO,
         status=PublicationStatus.PUBLISHED,
-        external_url="https://dev.to/x/herald-ships-webhooks",
+        external_url="https://dev.to/x/pulse-ships-webhooks",
     )
     db.add(publication)
     db.commit()

@@ -41,7 +41,7 @@ _UNITS = Path(__file__).resolve().parents[2] / "deploy" / "systemd"
 
 
 def _unit(name: str) -> str:
-    return (_UNITS / f"herald-{name}.service").read_text()
+    return (_UNITS / f"pulse-{name}.service").read_text()
 
 
 def _directive(unit: str, key: str) -> str | None:
@@ -51,7 +51,7 @@ def _directive(unit: str, key: str) -> str | None:
 
 
 #: The units a deploy stops and starts, which is what everything below is about.
-#: ``herald-backup`` is deliberately not among them: it is ``Type=oneshot``, it
+#: ``pulse-backup`` is deliberately not among them: it is ``Type=oneshot``, it
 #: is started by a timer rather than by ``deploy.sh``, and a drain window is
 #: meaningless for a process whose whole life is one ``pg_dump``. Its own
 #: invariants are asserted in ``test_backups_are_taken_and_restorable``.
@@ -61,8 +61,8 @@ _LONG_RUNNING = ("api", "beat", "web", "worker")
 def test_the_units_are_where_the_tests_think_they_are():
     """A guard on the path: an empty glob would pass every test below."""
     assert sorted(p.name for p in _UNITS.glob("*.service")) == sorted(
-        [f"herald-{name}.service" for name in _LONG_RUNNING]
-        + ["herald-backup.service"]
+        [f"pulse-{name}.service" for name in _LONG_RUNNING]
+        + ["pulse-backup.service"]
     )
 
 
@@ -139,7 +139,7 @@ def test_the_worker_outlives_the_longest_task_it_can_be_running():
     stop = int(_directive(_unit("worker"), "TimeoutStopSec"))
 
     assert stop > longest[1], (
-        f"herald-worker is killed after {stop}s but {longest[0]} may run for "
+        f"pulse-worker is killed after {stop}s but {longest[0]} may run for "
         f"{longest[1]}s — the warm shutdown cannot finish what Celery still "
         "considers in time."
     )

@@ -24,7 +24,7 @@ from app.tasks import (  # noqa: F401 -- import registers each module's tasks
 from app.tasks import celery_app as celery_module
 from app.tasks.celery_app import celery_app
 
-HERALD_TASKS = [
+PULSE_TASKS = [
     (name, obj)
     for name, obj in sorted(celery_app.tasks.items())
     if name.startswith("app.tasks.")
@@ -70,7 +70,7 @@ def test_every_included_module_is_reachable_from_the_app():
 def test_every_module_that_defines_a_task_is_in_include():
     """The other direction: a new task module that nobody added to ``include=``
     is registered in every test (they import it) and invisible to a worker."""
-    defining = {name.rsplit(".", 1)[0] for name, _ in HERALD_TASKS}
+    defining = {name.rsplit(".", 1)[0] for name, _ in PULSE_TASKS}
     assert defining <= set(celery_app.conf.include), defining - set(
         celery_app.conf.include
     )
@@ -100,8 +100,8 @@ def test_every_registered_task_offers_both_ways_to_run_it():
     calls ``.delay`` first and falls back to calling the task inline when the
     broker refuses, so a task missing either one breaks the fallback rather than
     the happy path — the harder failure to see."""
-    assert HERALD_TASKS, "no Pulse tasks registered; the imports above went stale"
-    for name, obj in HERALD_TASKS:
+    assert PULSE_TASKS, "no Pulse tasks registered; the imports above went stale"
+    for name, obj in PULSE_TASKS:
         assert callable(getattr(obj, "delay", None)), f"{name} cannot be dispatched"
         assert callable(obj), f"{name} cannot be run inline"
         assert getattr(obj, "name", None) == name

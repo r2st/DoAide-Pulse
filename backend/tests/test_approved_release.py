@@ -46,7 +46,7 @@ def auto_project(db, project):
     return project
 
 
-def _content(db, project, *, status=ContentStatus.REVIEW, slug="herald-1-0", **kwargs):
+def _content(db, project, *, status=ContentStatus.REVIEW, slug="pulse-1-0", **kwargs):
     row = Content(
         project_id=project.id,
         content_type=ContentType.FEATURE_SPOTLIGHT,

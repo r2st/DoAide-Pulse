@@ -18,7 +18,7 @@ from app.routers.webhooks import MAX_WEBHOOKS_PER_USER
 from app.services import link_check, webhooks
 from app.services.crypto import CredentialEncryptionError
 
-_URL = "https://hooks.example.com/herald"
+_URL = "https://hooks.example.com/pulse"
 
 
 @pytest.fixture(autouse=True)

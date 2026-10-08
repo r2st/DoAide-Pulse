@@ -12,21 +12,21 @@ API's own authorisation checks.
 
 Run it::
 
-    export HERALD_EMAIL=you@example.com
-    export HERALD_PASSWORD=...
-    export HERALD_BASE_URL=https://herald.doaide.com/api/v1   # optional
-    python mcp/herald_mcp.py
+    export PULSE_EMAIL=you@example.com
+    export PULSE_PASSWORD=...
+    export PULSE_BASE_URL=https://pulse.doaide.com/api/v1   # optional
+    python mcp/pulse_mcp.py
 
 Register it with Claude Code::
 
-    claude mcp add herald -- /path/to/python /path/to/Herald/mcp/herald_mcp.py
+    claude mcp add pulse -- /path/to/python /path/to/Pulse/mcp/pulse_mcp.py
 
-**On publishing.** ``herald_publish`` puts a post on a real public account and
+**On publishing.** ``pulse_publish`` puts a post on a real public account and
 cannot be taken back — a Bluesky post is live the moment it is accepted, and a
 Buttondown send is an email that cannot be unsent. It is exposed because
 controlling Pulse through MCP is the point, but it is the one tool here that
 does something irreversible in public, and its description says so. Scheduling
-is the gentler path: it lands on the calendar, and ``herald_unschedule`` takes
+is the gentler path: it lands on the calendar, and ``pulse_unschedule`` takes
 it back off.
 """
 from __future__ import annotations
@@ -58,9 +58,9 @@ except ImportError:  # pragma: no cover - exercised by whichever SDK is absent
 # there is no reason to have two copies of the contract.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "marketing"))
 
-from herald_client import DEFAULT_BASE_URL, HeraldClient, HeraldError  # noqa: E402
+from pulse_client import DEFAULT_BASE_URL, PulseClient, PulseError  # noqa: E402
 
-mcp = _Server("herald")
+mcp = _Server("pulse")
 
 _client: PulseClient | None = None
 
@@ -74,7 +74,7 @@ def client() -> PulseClient:
     """
     global _client
     if _client is None:
-        base_url = os.environ.get("HERALD_BASE_URL", DEFAULT_BASE_URL)
+        base_url = os.environ.get("PULSE_BASE_URL", DEFAULT_BASE_URL)
         candidate = PulseClient(base_url)
         candidate.login_from_env()
         _client = candidate
@@ -114,14 +114,14 @@ def _guard(fn: _F) -> _F:
 
 @mcp.tool()
 @_guard
-def herald_list_projects() -> list[dict]:
+def pulse_list_projects() -> list[dict]:
     """List every project, with its slug, autopilot settings and content counts."""
     return client().list_projects()
 
 
 @mcp.tool()
 @_guard
-def herald_create_project(
+def pulse_create_project(
     name: str,
     description: str = "",
     repo_url: str | None = None,
@@ -158,14 +158,14 @@ def herald_create_project(
 
 @mcp.tool()
 @_guard
-def herald_update_project(project_id: int, changes: dict) -> dict:
+def pulse_update_project(project_id: int, changes: dict) -> dict:
     """Patch a project. Only the keys present in ``changes`` are touched."""
     return client().update_project(project_id, changes)
 
 
 @mcp.tool()
 @_guard
-def herald_scan_project(project_id: int) -> dict:
+def pulse_scan_project(project_id: int) -> dict:
     """Pull new commits and releases for a project's repo since the last scan."""
     return client()._request("POST", f"/projects/{project_id}/scan")
 
@@ -177,11 +177,11 @@ def herald_scan_project(project_id: int) -> dict:
 
 @mcp.tool()
 @_guard
-def herald_list_content(project_id: int | None = None, status: str | None = None) -> list[dict]:
+def pulse_list_content(project_id: int | None = None, status: str | None = None) -> list[dict]:
     """List content, optionally filtered by project or status.
 
     Statuses are draft, review, approved, published, archived, failed. Bodies
-    are omitted — use ``herald_get_content`` for one piece's markdown.
+    are omitted — use ``pulse_get_content`` for one piece's markdown.
     """
     params: dict[str, Any] = {"limit": 200}
     if project_id is not None:
@@ -193,14 +193,14 @@ def herald_list_content(project_id: int | None = None, status: str | None = None
 
 @mcp.tool()
 @_guard
-def herald_get_content(content_id: int) -> dict:
+def pulse_get_content(content_id: int) -> dict:
     """One piece in full: body markdown, SEO issues and format issues."""
     return client().get_content(content_id)
 
 
 @mcp.tool()
 @_guard
-def herald_create_content(
+def pulse_create_content(
     project_id: int,
     title: str,
     body_markdown: str,
@@ -241,7 +241,7 @@ def herald_create_content(
 
 @mcp.tool()
 @_guard
-def herald_generate_content(
+def pulse_generate_content(
     project_id: int,
     content_type: str = "feature_spotlight",
     instructions: str = "",
@@ -265,7 +265,7 @@ def herald_generate_content(
 
 @mcp.tool()
 @_guard
-def herald_update_content(content_id: int, changes: dict) -> dict:
+def pulse_update_content(content_id: int, changes: dict) -> dict:
     """Patch a piece — title, body_markdown, keywords, tags, status, and so on.
 
     Pulse refuses edits to an already-published piece beyond status and
@@ -277,14 +277,14 @@ def herald_update_content(content_id: int, changes: dict) -> dict:
 
 @mcp.tool()
 @_guard
-def herald_approve_content(content_id: int) -> dict:
+def pulse_approve_content(content_id: int) -> dict:
     """Mark a piece approved, releasing anything already queued for it."""
     return client().approve_content(content_id)
 
 
 @mcp.tool()
 @_guard
-def herald_check_links(content_id: int) -> dict:
+def pulse_check_links(content_id: int) -> dict:
     """Check every URL in the body. Worth running before scheduling anything.
 
     A definitive 404 blocks publishing; a timeout does not, and is reported as
@@ -295,21 +295,21 @@ def herald_check_links(content_id: int) -> dict:
 
 @mcp.tool()
 @_guard
-def herald_social_preview(content_id: int) -> dict:
+def pulse_social_preview(content_id: int) -> dict:
     """How the link card will render per network, plus the meta tags for it."""
     return client().social_cards(content_id)
 
 
 @mcp.tool()
 @_guard
-def herald_repurpose(content_id: int) -> dict:
+def pulse_repurpose(content_id: int) -> dict:
     """Derive social snippets from a long piece. Returns them; persists nothing."""
     return client()._request("POST", f"/content/{content_id}/repurpose")
 
 
 @mcp.tool()
 @_guard
-def herald_headline_variants(content_id: int) -> dict:
+def pulse_headline_variants(content_id: int) -> dict:
     """Suggest alternative headlines for a piece. Nothing is applied."""
     return client()._request("POST", f"/content/{content_id}/headlines")
 
@@ -321,7 +321,7 @@ def herald_headline_variants(content_id: int) -> dict:
 
 @mcp.tool()
 @_guard
-def herald_platforms() -> list[dict]:
+def pulse_platforms() -> list[dict]:
     """Every destination, whether an adapter exists, and whether it is connected.
 
     Check this before scheduling: Pulse rejects a publish to a platform with
@@ -333,14 +333,14 @@ def herald_platforms() -> list[dict]:
 
 @mcp.tool()
 @_guard
-def herald_schedule_suggestions(content_id: int, platforms: list[str]) -> list[dict]:
+def pulse_schedule_suggestions(content_id: int, platforms: list[str]) -> list[dict]:
     """When Pulse would put this out, and why. Nothing is queued or changed."""
     return client().schedule_suggestions(content_id, platforms)
 
 
 @mcp.tool()
 @_guard
-def herald_schedule(
+def pulse_schedule(
     content_id: int,
     platforms: list[str] | None = None,
     scheduled_for: str | None = None,
@@ -355,7 +355,7 @@ def herald_schedule(
     every copy into every feed in the same second.
 
     This arranges for the post to go out unattended at that time. Use
-    ``herald_unschedule`` to take it back off before it fires.
+    ``pulse_unschedule`` to take it back off before it fires.
     """
     return client().schedule_content(
         content_id,
@@ -368,14 +368,14 @@ def herald_schedule(
 
 @mcp.tool()
 @_guard
-def herald_unschedule(content_id: int) -> list[dict]:
+def pulse_unschedule(content_id: int) -> list[dict]:
     """Take a piece off the calendar. Anything already published stays published."""
     return client().unschedule_content(content_id)
 
 
 @mcp.tool()
 @_guard
-def herald_publish(
+def pulse_publish(
     content_id: int,
     platforms: list[str],
     as_draft: bool = False,
@@ -387,10 +387,10 @@ def herald_publish(
     Buttondown publish sends the newsletter to real subscribers and an email
     cannot be unsent. Confirm with the person you are working for before
     calling this — and prefer ``as_draft`` on the platforms that support it, or
-    ``herald_schedule``, which is reversible right up until it fires.
+    ``pulse_schedule``, which is reversible right up until it fires.
 
     The response is the queue state, not the outcome. Poll
-    ``herald_get_content`` to see what each platform said.
+    ``pulse_get_content`` to see what each platform said.
     """
     return client().publish_content(
         content_id,
@@ -407,21 +407,21 @@ def herald_publish(
 
 @mcp.tool()
 @_guard
-def herald_calendar(start: str | None = None, end: str | None = None) -> dict:
+def pulse_calendar(start: str | None = None, end: str | None = None) -> dict:
     """Scheduled and published items in a window, with cadence guidance."""
     return client().calendar(start, end)
 
 
 @mcp.tool()
 @_guard
-def herald_analytics() -> dict:
+def pulse_analytics() -> dict:
     """The dashboard rollup: views, engagement, trends and alerts."""
     return client().analytics_dashboard()
 
 
 @mcp.tool()
 @_guard
-def herald_review_queue() -> list[dict]:
+def pulse_review_queue() -> list[dict]:
     """Everything waiting for a human decision before it can go out."""
     return client()._request("GET", "/content/queue/review")
 

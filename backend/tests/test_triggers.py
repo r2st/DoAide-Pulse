@@ -87,14 +87,14 @@ def test_repo_activity_becomes_a_signal_that_keeps_the_editorial_judgement():
     from app.services.github_client import Commit, Release, RepoActivity
 
     release = RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_release=Release(
             tag="v1.2.0", name="Triggers", body="Notes.",
             published_at=None, url="https://example.com/r", prerelease=False,
         ),
     )
     commits = RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_commits=[Commit("abc123", "feat: triggers", "dev", None, "https://x/1")],
     )
 
@@ -337,7 +337,7 @@ def _activity(*, commits: int = 0, release: bool = False, head: str = "abc123"):
     from app.services.github_client import Commit, Release, RepoActivity
 
     return RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_commits=[
             Commit(f"sha{i}", f"feat: thing {i}", "r2st", None, "https://x/c")
             for i in range(commits)
@@ -362,7 +362,7 @@ def test_the_first_github_check_baselines_and_writes_nothing(
     db, writing_project, monkeypatch
 ):
     _stub_activity(monkeypatch, commits=3)
-    trigger = _trigger(db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald")
+    trigger = _trigger(db, writing_project, TriggerKind.GITHUB, repo="r2st/DoAide-Pulse")
 
     result = triggers.check(db, trigger)
 
@@ -384,7 +384,7 @@ def test_commits_below_the_threshold_hold_the_watermark(
     """
     _stub_activity(monkeypatch, commits=3, head="baseline")
     trigger = _trigger(
-        db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald", commit_threshold=10
+        db, writing_project, TriggerKind.GITHUB, repo="r2st/DoAide-Pulse", commit_threshold=10
     )
     triggers.check(db, trigger)  # baselines
 
@@ -401,7 +401,7 @@ def test_commits_below_the_threshold_accumulate_across_scans(
 ):
     _stub_activity(monkeypatch, commits=1, head="baseline")
     trigger = _trigger(
-        db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald", commit_threshold=5
+        db, writing_project, TriggerKind.GITHUB, repo="r2st/DoAide-Pulse", commit_threshold=5
     )
     triggers.check(db, trigger)  # baselines
 
@@ -421,7 +421,7 @@ def test_a_release_clears_the_threshold_regardless_of_commit_count(
 ):
     _stub_activity(monkeypatch, commits=1)
     trigger = _trigger(
-        db, writing_project, TriggerKind.GITHUB, repo="r2st/Herald", commit_threshold=10
+        db, writing_project, TriggerKind.GITHUB, repo="r2st/DoAide-Pulse", commit_threshold=10
     )
     triggers.check(db, trigger)  # baselines
 

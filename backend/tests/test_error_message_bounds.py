@@ -218,7 +218,7 @@ def test_a_successful_check_clears_the_error_rather_than_clipping_a_none(
 def webhook(db, user) -> Webhook:
     row = Webhook(
         user_id=user.id,
-        url="https://hooks.example.com/herald",
+        url="https://hooks.example.com/pulse",
         description="Slack",
         events=[WebhookEvent.CONTENT_PUBLISHED.value],
         encrypted_secret=webhooks.store_secret("shhh-a-secret-value"),

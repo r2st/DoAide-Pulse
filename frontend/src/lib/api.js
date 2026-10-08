@@ -2,7 +2,7 @@
 // Stores the JWT in localStorage and attaches it as a Bearer token.
 
 const BASE = "/api/v1";
-const TOKEN_KEY = "herald_token";
+const TOKEN_KEY = "pulse_token";
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);

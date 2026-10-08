@@ -117,7 +117,7 @@ def _headers() -> dict[str, str]:
     headers = {
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "Herald/0.1 (+https://github.com/r2st/Herald)",
+        "User-Agent": "Pulse/0.1 (+https://github.com/r2st/DoAide-Pulse)",
     }
     if settings.github_token:
         headers["Authorization"] = f"Bearer {settings.github_token}"

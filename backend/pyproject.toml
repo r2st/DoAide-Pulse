@@ -2,7 +2,7 @@
 # requirements.txt (the Dockerfile installs from there); this file exists so
 # `pip install -e .` puts `app` on the path and so ruff/pytest have a home.
 [project]
-name = "herald-backend"
+name = "pulse-backend"
 version = "0.1.0"
 description = "Pulse — AI marketing automation for developer projects (FastAPI backend)"
 requires-python = ">=3.11"

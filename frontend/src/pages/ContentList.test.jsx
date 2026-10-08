@@ -39,7 +39,7 @@ function draw() {
   );
 }
 
-const PROJECT = { id: 1, name: "Pulse", repo_full_name: "r2st/Herald" };
+const PROJECT = { id: 1, name: "Pulse", repo_full_name: "r2st/DoAide-Pulse" };
 
 function item(overrides = {}) {
   return {

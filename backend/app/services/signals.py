@@ -46,7 +46,7 @@ class TriggerSignal:
 
     kind: TriggerKind
     #: Where it came from, for the log and the activity list: "GitHub
-    #: r2st/Herald", "RSS Changelog", "Webhook from Linear".
+    #: r2st/DoAide-Pulse", "RSS Changelog", "Webhook from Linear".
     source: str
     #: The one-line description of the event itself — not the title of the post
     #: that will be written about it.

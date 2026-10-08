@@ -193,7 +193,7 @@ def feed_project(project, db):
     db.add(
         Content(
             project_id=project.id, content_type=ContentType.ANNOUNCEMENT,
-            title="Pulse 1.0", slug="herald-1-0", status=ContentStatus.PUBLISHED,
+            title="Pulse 1.0", slug="pulse-1-0", status=ContentStatus.PUBLISHED,
         )
     )
     db.commit()
@@ -267,7 +267,7 @@ def redis_up(monkeypatch):
 def test_health_leaves_caddy_an_order_of_magnitude_of_headroom():
     """The number is load-bearing in a way the others are not.
 
-    Caddy polls ``/api/v1/health`` every 30s (deploy/Caddyfile.herald) and pulls
+    Caddy polls ``/api/v1/health`` every 30s (deploy/Caddyfile.pulse) and pulls
     the upstream out of the pool when it does not get a 200 — so a limit set
     below the poll rate would not throttle an attacker, it would take the site
     down by itself. Two requests a minute against sixty is the margin, and a

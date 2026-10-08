@@ -64,7 +64,7 @@ def second_project(db, user):
 
 def test_curves_can_be_narrowed_to_one_project(db, user, project, second_project):
     """The dashboard filters by project; the query must, not the caller."""
-    _published(db, project, slug="from-herald")
+    _published(db, project, slug="from-pulse")
     _published(db, second_project, slug="from-the-other-thing")
 
     everything = velocity.curves(db, user.id)

@@ -1,23 +1,23 @@
 [Unit]
 Description=Nightly Pulse database backup
-Documentation=https://github.com/r2st/Herald
+Documentation=https://github.com/r2st/DoAide-Pulse
 After=network.target postgresql.service
 Wants=postgresql.service
 
 [Service]
 Type=oneshot
 
-User=herald
-Group=herald
+User=pulse
+Group=pulse
 # DATABASE_URL, so the script dumps the database the application uses rather
 # than one named a second time here and free to drift from it. The same file
 # the api/worker/beat units read.
-EnvironmentFile=/opt/Herald/.env
-ExecStart=/opt/Herald/deploy/backup.sh
+EnvironmentFile=/opt/Pulse/.env
+ExecStart=/opt/Pulse/deploy/backup.sh
 
 # A failed dump must be visible, not retried into a loop at 03:30. The timer
 # comes back tomorrow; what matters is that the failure is in the journal with
-# a non-zero result on `systemctl status herald-backup`.
+# a non-zero result on `systemctl status pulse-backup`.
 Restart=no
 TimeoutStartSec=1800
 
@@ -32,10 +32,10 @@ IOSchedulingClass=idle
 # filesystem read-only, so the dump directory has to be named — and naming it
 # is also what stops a mistake in the script writing anywhere else.
 #
-# /opt/Herald is *not* in ReadWritePaths, unlike the application units: this
+# /opt/Pulse is *not* in ReadWritePaths, unlike the application units: this
 # job only reads the code and the env file, and a backup that can write over
 # the application it is backing up has the failure modes of both.
-ReadWritePaths=/var/backups/herald
+ReadWritePaths=/var/backups/pulse
 UMask=0077
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -65,7 +65,7 @@ AmbientCapabilities=
 
 StandardOutput=journal
 StandardError=journal
-# `journalctl -u herald-backup` is how anyone checks whether last night ran.
+# `journalctl -u pulse-backup` is how anyone checks whether last night ran.
 # Without this the lines are tagged "backup.sh" on a box where that name is not
 # reserved to this product — GSTBot ships a script by the same name.
-SyslogIdentifier=herald-backup
+SyslogIdentifier=pulse-backup

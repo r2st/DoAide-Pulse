@@ -1,18 +1,18 @@
 [Unit]
 Description=Pulse Celery worker (generation, publishing, metrics)
-Documentation=https://github.com/r2st/Herald
+Documentation=https://github.com/r2st/DoAide-Pulse
 After=network.target postgresql.service redis-server.service
 Wants=postgresql.service redis-server.service
 
 [Service]
 Type=simple
-User=herald
-Group=herald
-WorkingDirectory=/opt/Herald/backend
-EnvironmentFile=/opt/Herald/.env
+User=pulse
+Group=pulse
+WorkingDirectory=/opt/Pulse/backend
+EnvironmentFile=/opt/Pulse/.env
 # --concurrency=2: the box has 4 GB shared with five other apps, and this
 # workload is IO-bound on LLM and platform APIs rather than CPU-bound.
-ExecStart=/opt/Herald/.venv/bin/celery -A app.tasks.celery_app:celery_app worker --loglevel=info --concurrency=2
+ExecStart=/opt/Pulse/.venv/bin/celery -A app.tasks.celery_app:celery_app worker --loglevel=info --concurrency=2
 Restart=always
 RestartSec=10
 # KillMode=mixed sends the stop signal to the main celery process only, and
@@ -50,11 +50,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/Herald
+ReadWritePaths=/opt/Pulse
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=herald-worker
+SyslogIdentifier=pulse-worker
 
 [Install]
 WantedBy=multi-user.target

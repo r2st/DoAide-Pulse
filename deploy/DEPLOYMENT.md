@@ -10,9 +10,9 @@ shared Caddy container.
 |---|---|
 | Host | `89.167.8.178` |
 | SSH | `ssh -i /Users/dev/projects/Products/GoSumo/keys/hetzner_deploy_ed25519 root@89.167.8.178` |
-| Code | `/opt/Herald` — a plain rsync copy, **no `.git`** |
-| Runs as | system user `herald` (not root) |
-| Public URL | `https://herald.doaide.com` |
+| Code | `/opt/Pulse` — a plain rsync copy, **no `.git`** |
+| Runs as | system user `pulse` (not root) |
+| Public URL | `https://pulse.doaide.com` |
 | Deploy | `./deploy/deploy.sh` |
 
 ## Ports
@@ -22,8 +22,8 @@ Documedic 3003/3004, HomeNex 3005, Authmatic 8000):
 
 | Port | Service |
 |---|---|
-| 3006 | `herald-api` — uvicorn, 2 workers |
-| 3007 | `herald-web` — static SPA server |
+| 3006 | `pulse-api` — uvicorn, 2 workers |
+| 3007 | `pulse-web` — static SPA server |
 
 Both bind **`172.18.0.1`** (the `knol_knol` Docker bridge gateway), not
 `0.0.0.0`. That address is the host as seen from inside the Caddy container, so
@@ -37,26 +37,26 @@ itself within `RestartSec`.
 
 | Unit | What it does |
 |---|---|
-| `herald-api` | FastAPI on 3006 |
-| `herald-web` | `deploy/static-server.mjs` serving `frontend/dist` on 3007 |
-| `herald-worker` | Celery worker — generation, publishing, metrics |
-| `herald-beat` | Celery beat — publish sweep (5 min), repo scan (1 h), metrics (6 h) |
+| `pulse-api` | FastAPI on 3006 |
+| `pulse-web` | `deploy/static-server.mjs` serving `frontend/dist` on 3007 |
+| `pulse-worker` | Celery worker — generation, publishing, metrics |
+| `pulse-beat` | Celery beat — publish sweep (5 min), repo scan (1 h), metrics (6 h) |
 
 ```bash
-systemctl status  herald-api herald-web herald-worker herald-beat
-systemctl restart herald-api herald-web herald-worker herald-beat
-journalctl -u herald-api -f
+systemctl status  pulse-api pulse-web pulse-worker pulse-beat
+systemctl restart pulse-api pulse-web pulse-worker pulse-beat
+journalctl -u pulse-api -f
 ```
 
 All four are hardened (`ProtectSystem=strict`, `ProtectHome`,
-`NoNewPrivileges`, `ReadWritePaths=/opt/Herald`). Beat's schedule file is
-pinned to `/opt/Herald/backend/celerybeat-schedule` because its default
+`NoNewPrivileges`, `ReadWritePaths=/opt/Pulse`). Beat's schedule file is
+pinned to `/opt/Pulse/backend/celerybeat-schedule` because its default
 location — the working directory — is read-only under `ProtectSystem=strict`.
 
 ## Data stores
 
-- **PostgreSQL 16**, the host instance on `127.0.0.1:5432`. Database `herald`,
-  owner role `herald`. (GoSumo's Postgres on 5433 is a separate container and
+- **PostgreSQL 16**, the host instance on `127.0.0.1:5432`. Database `pulse`,
+  owner role `pulse`. (GoSumo's Postgres on 5433 is a separate container and
   is not used here.)
 - **Redis**, installed from apt for Pulse and listening on `127.0.0.1:6379`,
   DB 0 (app) / 1 (Celery broker) / 2 (results). GoSumo's containerised Redis on
@@ -72,14 +72,14 @@ second explicit pass.
 
 The SPA calls the API at the **relative** path `/api/v1`
 (`frontend/src/lib/api.js`), which is why there is a single origin with Caddy
-splitting `/api/*` to the API rather than a separate `api.herald.doaide.com`.
+splitting `/api/*` to the API rather than a separate `api.pulse.doaide.com`.
 A split-origin setup would need CORS plus an absolute URL baked into the build.
 
 ## Caddy
 
 Pulse's vhost lives in the shared config at `/opt/knol/Caddyfile`
 (container `knol-caddy`); the canonical copy of the block is
-`deploy/Caddyfile.herald`.
+`deploy/Caddyfile.pulse`.
 
 ```bash
 docker exec knol-caddy caddy validate --config /etc/caddy/Caddyfile
@@ -104,26 +104,26 @@ To verify a vhost's routing without touching the live proxy, run a throwaway
 Caddy on the same network with just that block bound to a spare port:
 
 ```bash
-{ echo ":8099 {"; sed -n '/^herald.doaide.com {/,/^}/p' /opt/knol/Caddyfile | tail -n +2; } > /tmp/ht/Caddyfile
-docker run --rm -d --name herald-caddy-test --network knol_knol \
+{ echo ":8099 {"; sed -n '/^pulse.doaide.com {/,/^}/p' /opt/knol/Caddyfile | tail -n +2; } > /tmp/ht/Caddyfile
+docker run --rm -d --name pulse-caddy-test --network knol_knol \
   -p 127.0.0.1:8099:8099 -v /tmp/ht/Caddyfile:/etc/caddy/Caddyfile:ro caddy:2-alpine
 curl -s http://127.0.0.1:8099/api/v1/health
-docker rm -f herald-caddy-test
+docker rm -f pulse-caddy-test
 ```
 
 ## DNS
 
-`herald.doaide.com` needs an **A record → 89.167.8.178, proxy disabled (grey
+`pulse.doaide.com` needs an **A record → 89.167.8.178, proxy disabled (grey
 cloud)** in the Cloudflare zone `doaide.com`, matching how
 `documedic.doaide.com` is set up. Caddy solves the ACME HTTP-01 challenge
 itself; an orange-cloud record would break issuance. Until the record exists,
 Caddy retries every 60 s and logs `NXDOMAIN looking up A for
-herald.doaide.com` — it picks up the certificate on its own once DNS resolves,
+pulse.doaide.com` — it picks up the certificate on its own once DNS resolves,
 with no restart needed.
 
 ## Environment
 
-`/opt/Herald/.env`, mode 600, owned by `herald`; systemd reads it via
+`/opt/Pulse/.env`, mode 600, owned by `pulse`; systemd reads it via
 `EnvironmentFile`. Generated at deploy time and **never** in git. `JWT_SECRET`
 and `TOKEN_ENCRYPTION_KEY` were generated on the box.
 
@@ -140,7 +140,7 @@ instead, with nothing going down in between:
    ```sh
    NEW=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
    # TOKEN_ENCRYPTION_KEY=<new>,<old>
-   systemctl restart herald-api herald-worker herald-beat
+   systemctl restart pulse-api pulse-worker pulse-beat
    ```
 
    Everything still reads; new writes go under the new key.
@@ -149,7 +149,7 @@ instead, with nothing going down in between:
    this nightly, but after a rotation run it now:
 
    ```sh
-   cd /opt/Herald/backend && .venv/bin/celery -A app.tasks.celery_app \
+   cd /opt/Pulse/backend && .venv/bin/celery -A app.tasks.celery_app \
        call app.tasks.maintenance_tasks.rewrap_credentials
    ```
 
@@ -178,12 +178,12 @@ rather than attempted and failed. Whichever one serves a piece is recorded on it
 in the order it will be tried.
 
 **No fallback key is set on the box yet** — `GEMINI_API_KEY` and `GROQ_API_KEY`
-are present in `/opt/Herald/.env` but empty, so the live chain is
+are present in `/opt/Pulse/.env` but empty, so the live chain is
 `["openrouter"]` and a day when the shared quota is already spent is a day of
 template output. Fixing that needs a key, which has to be created by hand:
 
 ```bash
-# /opt/Herald/.env, then: systemctl restart herald-api herald-worker herald-beat
+# /opt/Pulse/.env, then: systemctl restart pulse-api pulse-worker pulse-beat
 GEMINI_API_KEY=…    # https://aistudio.google.com/apikey
 GROQ_API_KEY=…      # https://console.groq.com/keys
 ```
@@ -197,7 +197,7 @@ degrading every generated post.
 Verify what took effect:
 
 ```bash
-curl -s https://herald.doaide.com/api/v1/health | python3 -m json.tool
+curl -s https://pulse.doaide.com/api/v1/health | python3 -m json.tool
 # → "llm_providers": ["openrouter", "gemini", "groq"]
 ```
 
@@ -210,8 +210,8 @@ schema is there, and there is nothing in it worth authenticating for.
 
 The schema is a full inventory of every route and field, served on the same
 origin as the SPA, which is what makes it worth withholding from anonymous
-visitors. To read it against the live box, `DEBUG=true` in `/opt/Herald/.env`
-plus `systemctl restart herald-api` — no Caddy edit, the vhost still routes
+visitors. To read it against the live box, `DEBUG=true` in `/opt/Pulse/.env`
+plus `systemctl restart pulse-api` — no Caddy edit, the vhost still routes
 those paths.
 
 ## Health check
@@ -252,7 +252,7 @@ the only part that is rate limited (`app/ratelimit.py`, slowapi).
   a token is refused rather than served open.
 - **Limits** are 10/minute login, 5/hour register, 5/hour password reset,
   60/minute `/auth/me`. Counters are in **Redis DB 3** on this box
-  (`RATE_LIMIT_STORAGE_URI=redis://localhost:6379/3`, set in `/opt/Herald/.env`),
+  (`RATE_LIMIT_STORAGE_URI=redis://localhost:6379/3`, set in `/opt/Pulse/.env`),
   so the numbers are exact. Left blank they live in process memory, which with
   `--workers 2` means each worker keeps its own and the real budget is double —
   and, because a caller's consecutive requests land on either worker, the limit
@@ -277,11 +277,11 @@ of sent — which is a workable way to reset your own password on a single-user
 install:
 
 ```bash
-journalctl -u herald-api --since '2 min ago' | grep reset-password
+journalctl -u pulse-api --since '2 min ago' | grep reset-password
 ```
 
 To send it properly, set `SMTP_HOST`/`SMTP_USER`/`SMTP_PASSWORD` in
-`/opt/Herald/.env` (Gmail wants an app password) and restart `herald-api`.
+`/opt/Pulse/.env` (Gmail wants an app password) and restart `pulse-api`.
 
 Two things this flow does **not** do:
 
@@ -294,7 +294,7 @@ Two things this flow does **not** do:
   token has to be posted to the confirm endpoint by hand for now:
 
   ```bash
-  curl -X POST https://herald.doaide.com/api/v1/auth/password-reset/confirm \
+  curl -X POST https://pulse.doaide.com/api/v1/auth/password-reset/confirm \
     -H 'Content-Type: application/json' \
     -d '{"token":"…","new_password":"…"}'
   ```
@@ -302,9 +302,9 @@ Two things this flow does **not** do:
 ## Migrations
 
 ```bash
-cd /opt/Herald/backend
-sudo -u herald env $(grep -E '^DATABASE_URL=' /opt/Herald/.env | xargs) \
-  /opt/Herald/.venv/bin/alembic upgrade head
+cd /opt/Pulse/backend
+sudo -u pulse env $(grep -E '^DATABASE_URL=' /opt/Pulse/.env | xargs) \
+  /opt/Pulse/.venv/bin/alembic upgrade head
 ```
 
 `deploy.sh` stops the worker and beat before migrating and starts them after.
@@ -312,13 +312,13 @@ sudo -u herald env $(grep -E '^DATABASE_URL=' /opt/Herald/.env | xargs) \
 ## Seeding
 
 ```bash
-cd /opt/Herald/backend
-sudo -u herald env $(grep -vE '^#|^$' /opt/Herald/.env | xargs) \
-  /opt/Herald/.venv/bin/python -m app.seed
+cd /opt/Pulse/backend
+sudo -u pulse env $(grep -vE '^#|^$' /opt/Pulse/.env | xargs) \
+  /opt/Pulse/.venv/bin/python -m app.seed
 ```
 
 Idempotent, keyed on `SEED_EMAIL`. The seed address must be a **routable**
-domain: `EmailStr` rejects special-use TLDs, so the old `dev@herald.local`
+domain: `EmailStr` rejects special-use TLDs, so the old `dev@pulse.local`
 default seeded fine and then 500'd `/api/v1/auth/me` on response validation.
 
 ## Rollback
@@ -333,14 +333,14 @@ git checkout <good-sha>
 Take a code and database snapshot before anything risky:
 
 ```bash
-ssh … 'tar czf /opt/backups/herald-code-$(date +%s).tar.gz -C /opt Pulse'
-ssh … 'sudo -u postgres pg_dump herald | gzip > /opt/backups/herald-db-$(date +%s).sql.gz'
+ssh … 'tar czf /opt/backups/pulse-code-$(date +%s).tar.gz -C /opt Pulse'
+ssh … 'sudo -u postgres pg_dump pulse | gzip > /opt/backups/pulse-db-$(date +%s).sql.gz'
 ```
 
 ## Backups
 
-`herald-backup.timer` runs `deploy/backup.sh` at 03:30 UTC. It writes a
-verified `pg_dump --format=custom` into `/var/backups/herald` and prunes dumps
+`pulse-backup.timer` runs `deploy/backup.sh` at 03:30 UTC. It writes a
+verified `pg_dump --format=custom` into `/var/backups/pulse` and prunes dumps
 older than 14 days. The snapshot above is still worth taking before a risky
 deploy — it is a point-in-time copy you chose; this is the one that exists when
 nobody chose anything.
@@ -351,23 +351,23 @@ one.
 
 ```bash
 # Did last night run?
-ssh … 'systemctl status herald-backup; ls -la /var/backups/herald'
-ssh … 'journalctl -u herald-backup --since "2 days ago"'
+ssh … 'systemctl status pulse-backup; ls -la /var/backups/pulse'
+ssh … 'journalctl -u pulse-backup --since "2 days ago"'
 
 # Take one now.
-ssh … 'systemctl start herald-backup'
+ssh … 'systemctl start pulse-backup'
 ```
 
-Installing it on a fresh box — the units are rsynced to `/opt/Herald/deploy`
+Installing it on a fresh box — the units are rsynced to `/opt/Pulse/deploy`
 by `deploy.sh`, but systemd needs them in `/etc` and the directory has to
 exist:
 
 ```bash
 ssh … '
-  install -d -o herald -g herald -m 0700 /var/backups/herald
-  cp /opt/Herald/deploy/systemd/herald-backup.{service,timer} /etc/systemd/system/
+  install -d -o pulse -g pulse -m 0700 /var/backups/pulse
+  cp /opt/Pulse/deploy/systemd/pulse-backup.{service,timer} /etc/systemd/system/
   systemctl daemon-reload
-  systemctl enable --now herald-backup.timer'
+  systemctl enable --now pulse-backup.timer'
 ```
 
 **Restoring.** `--format=custom` is what makes a single table recoverable
@@ -376,7 +376,7 @@ actually needs.
 
 One thing to know before the incident rather than during it: `backup.sh` runs
 `umask 077`, so the dumps are `0600` inside a `0700` directory owned by
-`herald`. That is deliberate — a dump holds every password hash and every
+`pulse`. That is deliberate — a dump holds every password hash and every
 encrypted platform credential in the database, on a box six products share. It
 also means **`sudo -u postgres pg_restore` cannot read them.** Handing the path
 straight to the `postgres` user fails with
@@ -390,20 +390,20 @@ which at 03:00 reads like a corrupt backup and is not one. Stage a copy the
 
 ```bash
 # What is in the dump. As root, which is not subject to the mode bits.
-pg_restore --list /var/backups/herald/herald-<stamp>.dump
+pg_restore --list /var/backups/pulse/pulse-<stamp>.dump
 
 # Stage it where postgres can read it, without widening the mode.
-install -d -o postgres -g postgres -m 0700 /var/backups/herald-restore
+install -d -o postgres -g postgres -m 0700 /var/backups/pulse-restore
 install -o postgres -g postgres -m 0600 \
-  /var/backups/herald/herald-<stamp>.dump /var/backups/herald-restore/dump
+  /var/backups/pulse/pulse-<stamp>.dump /var/backups/pulse-restore/dump
 
 # One table, into a scratch database first — never straight over prod.
-sudo -u postgres createdb herald_restore
-sudo -u postgres pg_restore -d herald_restore -t content \
-  /var/backups/herald-restore/dump
+sudo -u postgres createdb pulse_restore
+sudo -u postgres pg_restore -d pulse_restore -t content \
+  /var/backups/pulse-restore/dump
 
 # The staged copy is a second unencrypted copy of the database. Remove it.
-rm -rf /var/backups/herald-restore
+rm -rf /var/backups/pulse-restore
 ```
 
 **Restore drill.** The above, whole rather than one table, is how you find out
@@ -411,15 +411,15 @@ the dumps are real before you need them. `--exit-on-error` is the point: without
 it `pg_restore` reports a partial restore as success.
 
 ```bash
-sudo -u postgres createdb herald_restore_drill
-sudo -u postgres pg_restore --exit-on-error -d herald_restore_drill \
-  /var/backups/herald-restore/dump
+sudo -u postgres createdb pulse_restore_drill
+sudo -u postgres pg_restore --exit-on-error -d pulse_restore_drill \
+  /var/backups/pulse-restore/dump
 # Compare against live, then drop it.
-sudo -u postgres psql -d herald_restore_drill -c 'select count(*) from content'
-sudo -u postgres dropdb herald_restore_drill
+sudo -u postgres psql -d pulse_restore_drill -c 'select count(*) from content'
+sudo -u postgres dropdb pulse_restore_drill
 ```
 
-Last drilled 2026-08-15 against `herald-20260815T033246Z.dump`: restored clean,
+Last drilled 2026-08-15 against `pulse-20260815T033246Z.dump`: restored clean,
 15/15 tables, 53 indexes and 14 foreign keys matching live, same Alembic head.
 
 Two limits, stated so they are not discovered during an incident: the dumps sit

@@ -59,7 +59,7 @@ def _capture(root: logging.Logger) -> StringIO:
     """Point Pulse's handler at a buffer instead of stdout."""
     stream = StringIO()
     for handler in root.handlers:
-        if getattr(handler, "name", None) == "herald":
+        if getattr(handler, "name", None) == "pulse":
             handler.setStream(stream)
     return stream
 
@@ -244,13 +244,13 @@ def test_configuring_twice_does_not_double_every_line(pristine_logging):
     logging.getLogger("app.demo").info("once")
 
     assert stream.getvalue().count("once") == 1
-    assert len([h for h in pristine_logging.handlers if h.name == "herald"]) == 1
+    assert len([h for h in pristine_logging.handlers if h.name == "pulse"]) == 1
 
 
 def test_it_leaves_other_handlers_alone(pristine_logging):
     """pytest's capture handler and uvicorn's live on. Only ours is replaced."""
     someone_else = logging.StreamHandler(StringIO())
-    someone_else.name = "not-herald"
+    someone_else.name = "not-pulse"
     pristine_logging.addHandler(someone_else)
 
     configure_logging(level="INFO")
@@ -350,6 +350,6 @@ def test_the_celery_receiver_installs_the_same_handler(pristine_logging):
 
     _configure_logging()
 
-    assert [h.name for h in pristine_logging.handlers if h.name == "herald"] == [
-        "herald"
+    assert [h.name for h in pristine_logging.handlers if h.name == "pulse"] == [
+        "pulse"
     ]

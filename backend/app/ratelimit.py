@@ -157,7 +157,7 @@ limiter = Limiter(
     # A dead Redis must not take the login page down with it: on a storage
     # error slowapi logs and allows the request through.
     swallow_errors=True,
-    key_prefix="herald",
+    key_prefix="pulse",
 )
 
 

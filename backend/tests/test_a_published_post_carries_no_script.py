@@ -148,8 +148,8 @@ def test_ordinary_markdown_still_renders(markdown: str, expected: str):
 
 
 def test_an_http_link_keeps_its_href():
-    html = formatting.to_html("[Herald](https://herald.doaide.com/post)")
-    assert 'href="https://herald.doaide.com/post"' in html
+    html = formatting.to_html("[Pulse](https://pulse.doaide.com/post)")
+    assert 'href="https://pulse.doaide.com/post"' in html
 
 
 def test_an_outbound_link_is_given_a_safe_rel():

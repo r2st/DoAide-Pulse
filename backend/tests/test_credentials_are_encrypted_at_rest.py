@@ -32,7 +32,7 @@ CREDS = {"token": "ghp_notarealtoken", "repo": "owner/name"}
 _PRODUCTION = {
     "environment": "production",
     "jwt_secret": "x" * 48,
-    "database_url": "postgresql+psycopg://u:p@localhost/herald",
+    "database_url": "postgresql+psycopg://u:p@localhost/pulse",
 }
 
 

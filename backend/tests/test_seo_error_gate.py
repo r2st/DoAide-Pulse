@@ -41,7 +41,7 @@ _CLEAN = {
     ),
     "keywords": ["retries"],
     "focus_keyword": "retries",
-    "slug": "retries-in-herald",
+    "slug": "retries-in-pulse",
     "cover_image_url": None,
 }
 

@@ -64,7 +64,7 @@ If a month feels slow, it is worth remembering what the alternative actually was
 
 ## Where Pulse fits
 
-[Herald](https://herald.doaide.com) is marketing automation for developers who ship more than they write about. It watches your project repos, drafts posts and social copy when something meaningful lands, runs them past you, publishes to Dev.to, Medium and elsewhere on a schedule with canonical URLs configured correctly, and then tracks which pieces actually got read.
+[Pulse](https://pulse.doaide.com) is marketing automation for developers who ship more than they write about. It watches your project repos, drafts posts and social copy when something meaningful lands, runs them past you, publishes to Dev.to, Medium and elsewhere on a schedule with canonical URLs configured correctly, and then tracks which pieces actually got read.
 
 The approval step is the design. Automating the mechanics — drafting, formatting, canonical configuration, scheduling, cross-posting, measurement — removes the friction that kills a cadence. Automating the *decision* to publish removes the only thing keeping the output worth reading, and turns a content strategy into a spam cannon.
 

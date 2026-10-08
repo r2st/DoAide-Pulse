@@ -3,7 +3,7 @@
 // an npm install to serve static files, and `vite preview` is a dev tool that
 // binds loosely and prints a banner nobody reads in a journal.
 //
-//   node deploy/static-server.mjs --root /opt/Herald/frontend/dist \
+//   node deploy/static-server.mjs --root /opt/Pulse/frontend/dist \
 //                                 --host 172.18.0.1 --port 3007
 //
 // Anything that isn't an existing file resolves to index.html, because the
@@ -73,7 +73,7 @@ function cacheControl(pathname) {
 //   img-src https:      Post previews, lead images and social cards point at
 //                       whatever host the author's image lives on.
 //   connect-src 'self'  The API is same-origin behind Caddy (see
-//                       Caddyfile.herald), so nothing else needs reaching.
+//                       Caddyfile.pulse), so nothing else needs reaching.
 //
 // frame-ancestors repeats X-Frame-Options because the header is the legacy
 // spelling and the directive is the one modern browsers honour.
@@ -157,5 +157,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`herald-web: serving ${ROOT} on http://${HOST}:${PORT}`);
+  console.log(`pulse-web: serving ${ROOT} on http://${HOST}:${PORT}`);
 });

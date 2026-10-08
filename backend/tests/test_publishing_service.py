@@ -25,7 +25,7 @@ def content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
         excerpt="Pulse 1.0 is out.",
         meta_description="Pulse 1.0 is out.",
@@ -157,7 +157,7 @@ def test_successful_publish_updates_both_rows(db, content, connected, monkeypatc
         DevToAdapter,
         "publish",
         lambda self, req, creds: PublishResult(
-            external_id="42", external_url="https://dev.to/r2st/herald-1-0"
+            external_id="42", external_url="https://dev.to/r2st/pulse-1-0"
         ),
     )
 
@@ -166,7 +166,7 @@ def test_successful_publish_updates_both_rows(db, content, connected, monkeypatc
     publishing_service.execute(db, publication)
 
     assert publication.status == PublicationStatus.PUBLISHED
-    assert publication.external_url == "https://dev.to/r2st/herald-1-0"
+    assert publication.external_url == "https://dev.to/r2st/pulse-1-0"
     assert publication.published_at is not None
     # One success is enough to call the piece published.
     assert content.status == ContentStatus.PUBLISHED

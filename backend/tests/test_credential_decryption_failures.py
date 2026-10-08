@@ -227,7 +227,7 @@ def test_a_readable_trigger_secret_still_comes_back(trigger):
 def webhook(db, user, key) -> Webhook:
     row = Webhook(
         user_id=user.id,
-        url="https://hooks.example.com/herald",
+        url="https://hooks.example.com/pulse",
         description="Slack",
         events=[WebhookEvent.CONTENT_PUBLISHED.value],
         encrypted_secret=webhooks.store_secret("shhh-a-secret-value"),

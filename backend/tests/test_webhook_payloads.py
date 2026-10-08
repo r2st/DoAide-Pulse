@@ -21,11 +21,11 @@ def content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         body_markdown="## It's out\n\nword " * 30,
         excerpt="Pulse 1.0 is out.",
         meta_description="Pulse 1.0 is out.",
-        canonical_url="https://herald.example.com/blog/herald-1-0",
+        canonical_url="https://pulse.example.com/blog/pulse-1-0",
     )
     db.add(row)
     db.commit()

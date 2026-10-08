@@ -62,7 +62,7 @@ _NOISY = {
 
 #: Marks the handler as ours, so :func:`configure_logging` can recognise its own
 #: work and replace it rather than stacking a second copy of every line.
-_HANDLER_NAME = "herald"
+_HANDLER_NAME = "pulse"
 
 
 class RequestIDFilter(logging.Filter):

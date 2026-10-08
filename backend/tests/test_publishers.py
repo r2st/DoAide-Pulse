@@ -41,8 +41,8 @@ def request_() -> PublishRequest:
         excerpt="Pulse watches your repos and writes the posts for you.",
         meta_description="Pulse automates developer marketing end to end.",
         tags=["python", "dev-tools", "AI", "automation", "extra", "sixth"],
-        canonical_url="https://herald.example.com/blog/automating",
-        project_url="https://herald.example.com",
+        canonical_url="https://pulse.example.com/blog/automating",
+        project_url="https://pulse.example.com",
         project_name="Pulse",
     )
 
@@ -147,7 +147,7 @@ def test_bluesky_post_fits_the_limit_counting_the_link_in_full(request_):
 def test_bluesky_facets_are_byte_offsets_not_character_offsets():
     # An em dash is one character and three bytes. Counting characters here is
     # the bug this test exists for: the link would highlight the wrong span.
-    url = "https://herald.example.com/post"
+    url = "https://pulse.example.com/post"
     text = f"Shipped — read it: {url}"
     (facet,) = bluesky.link_facets(text, url)
 
@@ -340,10 +340,10 @@ def test_git_refuses_an_unknown_placeholder(request_):
 
 @pytest.mark.parametrize(
     "pasted",
-    ["r2st/Herald", "https://github.com/r2st/Herald", "git@github.com:r2st/Herald.git"],
+    ["r2st/DoAide-Pulse", "https://github.com/r2st/DoAide-Pulse", "git@github.com:r2st/DoAide-Pulse.git"],
 )
 def test_git_accepts_any_shape_of_repo(pasted):
-    assert GitAdapter()._repo({"repo": pasted}) == "r2st/Herald"
+    assert GitAdapter()._repo({"repo": pasted}) == "r2st/DoAide-Pulse"
 
 
 def test_git_rejects_something_that_is_not_a_repo():

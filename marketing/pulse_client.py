@@ -19,7 +19,7 @@ from typing import Any
 
 import httpx
 
-DEFAULT_BASE_URL = "https://herald.doaide.com/api/v1"
+DEFAULT_BASE_URL = "https://pulse.doaide.com/api/v1"
 
 
 class PulseError(RuntimeError):
@@ -96,17 +96,17 @@ class PulseClient:
             raise PulseError("POST", url, response.status_code, _detail(response))
         self._token = response.json()["access_token"]
 
-    def login_from_env(self, base_url_env: str = "HERALD_BASE_URL") -> None:
-        """Log in from ``HERALD_EMAIL`` / ``HERALD_PASSWORD``.
+    def login_from_env(self, base_url_env: str = "PULSE_BASE_URL") -> None:
+        """Log in from ``PULSE_EMAIL`` / ``PULSE_PASSWORD``.
 
         Kept separate from :meth:`login` so credentials never have to appear in
         a campaign file or on a command line.
         """
-        email = os.environ.get("HERALD_EMAIL")
-        password = os.environ.get("HERALD_PASSWORD")
+        email = os.environ.get("PULSE_EMAIL")
+        password = os.environ.get("PULSE_PASSWORD")
         if not email or not password:
             raise SystemExit(
-                "Set HERALD_EMAIL and HERALD_PASSWORD (and optionally "
+                "Set PULSE_EMAIL and PULSE_PASSWORD (and optionally "
                 f"{base_url_env}) before running."
             )
         self.login(email, password)

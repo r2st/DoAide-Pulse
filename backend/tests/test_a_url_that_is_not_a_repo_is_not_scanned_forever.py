@@ -56,7 +56,7 @@ from app.tasks import autopilot_tasks
         "https://example.com/acme/thing",
         # The repo's web page rather than the repo. A real paste, and the one
         # that reads most like a working setting.
-        "https://github.com/r2st/Herald/issues",
+        "https://github.com/r2st/DoAide-Pulse/issues",
         "https://github.com/r2st",
         "not a url at all",
     ],
@@ -68,17 +68,17 @@ def test_a_url_the_scan_cannot_read_has_no_full_name(url):
 @pytest.mark.parametrize(
     "url",
     [
-        "https://github.com/r2st/Herald",
-        "https://github.com/r2st/Herald/",
-        "https://github.com/r2st/Herald.git",
-        "http://github.com/r2st/Herald",
-        "git@github.com:r2st/Herald.git",
-        "  https://github.com/r2st/Herald  ",
-        "https://GitHub.com/r2st/Herald",
+        "https://github.com/r2st/DoAide-Pulse",
+        "https://github.com/r2st/DoAide-Pulse/",
+        "https://github.com/r2st/DoAide-Pulse.git",
+        "http://github.com/r2st/DoAide-Pulse",
+        "git@github.com:r2st/DoAide-Pulse.git",
+        "  https://github.com/r2st/DoAide-Pulse  ",
+        "https://GitHub.com/r2st/DoAide-Pulse",
     ],
 )
 def test_the_github_url_shapes_people_actually_paste_all_parse(url):
-    assert repo_full_name(url) == "r2st/Herald"
+    assert repo_full_name(url) == "r2st/DoAide-Pulse"
 
 
 def test_the_property_and_the_function_cannot_drift(db, user):
@@ -91,8 +91,8 @@ def test_the_property_and_the_function_cannot_drift(db, user):
     row = _project(db, user, "gitlab", repo_url="https://gitlab.com/acme/thing")
     assert row.repo_full_name is repo_full_name(row.repo_url) is None
 
-    row.repo_url = "https://github.com/r2st/Herald"
-    assert row.repo_full_name == repo_full_name(row.repo_url) == "r2st/Herald"
+    row.repo_url = "https://github.com/r2st/DoAide-Pulse"
+    assert row.repo_full_name == repo_full_name(row.repo_url) == "r2st/DoAide-Pulse"
 
 
 # --------------------------------------------------------------------------- #
@@ -173,7 +173,7 @@ def test_it_is_still_not_dispatched_on_the_next_sweep(db, user, dispatched, stub
 def test_a_scannable_project_beside_it_is_unaffected(db, user, dispatched, stub_github):
     """The filter must drop one row, not shorten the sweep."""
     _project(db, user, "gitlab", repo_url="https://gitlab.com/acme/thing")
-    good = _project(db, user, "herald", repo_url="https://github.com/r2st/Herald")
+    good = _project(db, user, "pulse", repo_url="https://github.com/r2st/DoAide-Pulse")
 
     autopilot_tasks.scan_all_projects()
 
@@ -272,8 +272,8 @@ def test_the_interval_still_holds_a_scannable_project(
     _project(
         db,
         user,
-        "herald",
-        repo_url="https://github.com/r2st/Herald",
+        "pulse",
+        repo_url="https://github.com/r2st/DoAide-Pulse",
         interval=48,
         last_scanned_at=utcnow() - timedelta(hours=1),
     )

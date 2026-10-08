@@ -1,4 +1,4 @@
-# Herald backend — runtime dependencies.
+# Pulse backend — runtime dependencies.
 # Python 3.12 (3.11+ works; 3.14 lacks wheels for some of these).
 
 # ---- Web ----
@@ -28,7 +28,7 @@ pydantic-settings>=2.3
 # Nothing loads it, so it is dead weight rather than exposure, but it cannot be
 # cleared from here — only on the box, and only by hand:
 #
-#   sudo -u herald /opt/Herald/.venv/bin/pip uninstall -y ecdsa python-jose
+#   sudo -u pulse /opt/Pulse/.venv/bin/pip uninstall -y ecdsa python-jose
 #
 # Until somebody runs that, an `ecdsa` line in a pip-audit report is this, and
 # not a dependency that came back.
@@ -38,7 +38,7 @@ bcrypt>=4.1
 slowapi>=0.1.9
 # Credential encryption at rest (Fernet).
 # Floor is 50.0 for PYSEC-2026-3552 (a decryption oracle in the PKCS7 helpers).
-# Herald only uses Fernet and never touches those, so the exposure was nil — but
+# Pulse only uses Fernet and never touches those, so the exposure was nil — but
 # the floor is what `pip install -r` on the box compares against, and at >=42.0
 # an already-installed 49.0.0 satisfied it and was never upgraded.
 cryptography>=50.0

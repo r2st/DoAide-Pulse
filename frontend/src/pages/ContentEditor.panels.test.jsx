@@ -54,7 +54,7 @@ function content(overrides = {}) {
     body_markdown: "Saved body",
     excerpt: "Saved excerpt",
     meta_description: "Saved meta",
-    keywords: ["herald"],
+    keywords: ["pulse"],
     tags: ["python"],
     cover_image_url: null,
     content_type: "announcement",
@@ -67,7 +67,7 @@ function content(overrides = {}) {
     publications: [],
     seo_issues: [],
     seo_score: 80,
-    focus_keyword: "herald",
+    focus_keyword: "pulse",
     slug: "saved-title",
     canonical_url: null,
     ...overrides,
@@ -222,9 +222,9 @@ describe("the SEO panel", () => {
   });
 
   it("seeds the list fields from the arrays the API sends", async () => {
-    await open({ keywords: ["herald", "ci"], tags: ["python", "devops"] });
+    await open({ keywords: ["pulse", "ci"], tags: ["python", "devops"] });
 
-    expect(screen.getByLabelText("Keywords")).toHaveValue("herald, ci");
+    expect(screen.getByLabelText("Keywords")).toHaveValue("pulse, ci");
     expect(screen.getByLabelText("Platform tags")).toHaveValue("python, devops");
   });
 });
@@ -807,7 +807,7 @@ describe("the write and preview tabs", () => {
     await open();
 
     expect(screen.getByLabelText("Title")).toBeInTheDocument();
-    expect(document.querySelector("article.prose-herald")).toBeNull();
+    expect(document.querySelector("article.prose-pulse")).toBeNull();
   });
 
   it("renders the draft as markdown under preview", async () => {
@@ -816,7 +816,7 @@ describe("the write and preview tabs", () => {
 
     await user.click(screen.getByRole("button", { name: "Preview" }));
 
-    const article = document.querySelector("article.prose-herald");
+    const article = document.querySelector("article.prose-pulse");
     expect(within(article).getByRole("heading", { level: 2 })).toHaveTextContent(
       "A heading",
     );
@@ -831,7 +831,7 @@ describe("the write and preview tabs", () => {
     await user.type(screen.getByLabelText(/^Body/), "Unsaved body");
     await user.click(screen.getByRole("button", { name: "Preview" }));
 
-    expect(document.querySelector("article.prose-herald")).toHaveTextContent(
+    expect(document.querySelector("article.prose-pulse")).toHaveTextContent(
       "Unsaved body",
     );
   });
@@ -846,7 +846,7 @@ describe("the write and preview tabs", () => {
     await user.type(screen.getByLabelText("Title"), "<img onerror=x>");
     await user.click(screen.getByRole("button", { name: "Preview" }));
 
-    const article = document.querySelector("article.prose-herald");
+    const article = document.querySelector("article.prose-pulse");
     expect(article.querySelector("img")).toBeNull();
     expect(article).toHaveTextContent("<img onerror=x>");
   });

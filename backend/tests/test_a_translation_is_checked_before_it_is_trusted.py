@@ -38,11 +38,11 @@ ENGLISH_BODY = (
     "Install the package and run the setup command:\n"
     "\n"
     "```bash\n"
-    "pip install herald\n"
-    "herald init --repo owner/name\n"
+    "pip install pulse\n"
+    "pulse init --repo owner/name\n"
     "```\n"
     "\n"
-    "See the [documentation](https://herald.example.com/docs) for the full "
+    "See the [documentation](https://pulse.example.com/docs) for the full "
     "configuration reference. Nothing is published without your approval.\n"
 )
 
@@ -59,11 +59,11 @@ FRENCH_BODY = (
     "Installez le paquet et lancez la commande de configuration :\n"
     "\n"
     "```bash\n"
-    "pip install herald\n"
-    "herald init --repo owner/name\n"
+    "pip install pulse\n"
+    "pulse init --repo owner/name\n"
     "```\n"
     "\n"
-    "Consultez la [documentation](https://herald.example.com/docs) pour la "
+    "Consultez la [documentation](https://pulse.example.com/docs) pour la "
     "référence de configuration complète. Rien n'est publié sans votre accord.\n"
 )
 
@@ -76,7 +76,7 @@ def piece(db, project) -> Content:
         content_type=ContentType.TUTORIAL,
         status=ContentStatus.DRAFT,
         title="Publishing with Pulse",
-        slug="publishing-with-herald",
+        slug="publishing-with-pulse",
         body_markdown=ENGLISH_BODY,
         excerpt="How Pulse turns repository activity into posts.",
         meta_description="Turn repository activity into finished posts.",
@@ -142,7 +142,7 @@ def test_translated_code_is_caught_by_the_fence_count(piece):
 def test_a_rewritten_link_is_caught(piece):
     """A translation must not change where a reader is sent."""
     moved = FRENCH_BODY.replace(
-        "https://herald.example.com/docs", "https://herald.example.fr/docs"
+        "https://pulse.example.com/docs", "https://pulse.example.fr/docs"
     )
 
     assert "links_changed" in _validate(piece, moved)
@@ -174,7 +174,7 @@ def test_a_code_heavy_article_is_not_read_as_untranslated(piece, db):
     piece.body_markdown = (
         "# Setup\n\n"
         + "```bash\n"
-        + "\n".join(f"herald run --step {n}" for n in range(30))
+        + "\n".join(f"pulse run --step {n}" for n in range(30))
         + "\n```\n\n"
         + "Read the guide before you begin, then run each step in order.\n"
     )
@@ -230,7 +230,7 @@ def test_the_validator_reads_the_target_language_not_english(piece):
 def test_a_splice_in_the_title_is_caught_as_well_as_in_the_body(piece):
     """The gates read every field the model wrote.
 
-    Same lesson as ``herald-gates-read-the-whole-piece``: a short field outside
+    Same lesson as ``pulse-gates-read-the-whole-piece``: a short field outside
     the sweep is a short field that publishes unread.
     """
     codes = _validate(piece, FRENCH_BODY, title="Publier avec 日本語 Pulse")

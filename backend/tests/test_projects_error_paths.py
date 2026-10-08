@@ -82,7 +82,7 @@ def test_the_retry_builds_a_fresh_row_rather_than_reusing_the_rolled_back_one(
         API,
         json=_payload(
             "Pulse",
-            repo_url="https://github.com/r2st/Herald",
+            repo_url="https://github.com/r2st/DoAide-Pulse",
             tech_stack=["FastAPI"],
             keywords=["marketing"],
         ),
@@ -91,7 +91,7 @@ def test_the_retry_builds_a_fresh_row_rather_than_reusing_the_rolled_back_one(
 
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["repo_url"] == "https://github.com/r2st/Herald"
+    assert body["repo_url"] == "https://github.com/r2st/DoAide-Pulse"
     assert body["tech_stack"] == ["FastAPI"]
     assert body["keywords"] == ["marketing"]
 
@@ -207,7 +207,7 @@ def test_a_successful_scan_moves_the_watermark_and_summarises(
 ):
     """The manual scan is the user saying "I've seen this"."""
     activity = github_client.RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         head_sha="deadbeef",
         new_commits=[
             github_client.Commit(

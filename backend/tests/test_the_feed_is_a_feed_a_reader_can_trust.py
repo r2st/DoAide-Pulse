@@ -184,12 +184,12 @@ def test_the_channel_carries_every_element_rss_requires(client, db, project):
 def test_an_item_carries_a_title_a_link_and_a_guid(client, db, project):
     _publish(
         db, project, title="Released", when=utcnow(),
-        canonical_url="https://dev.to/herald/released",
+        canonical_url="https://dev.to/pulse/released",
     )
 
     item = _feed(client, project).find("channel/item")
     assert item.find("title").text == "Released"
-    assert item.find("link").text == "https://dev.to/herald/released"
+    assert item.find("link").text == "https://dev.to/pulse/released"
     guid = item.find("guid")
     # isPermaLink=false: the guid is Pulse's own identifier, not a URL. A
     # reader that took it for one would fetch a page that does not exist.

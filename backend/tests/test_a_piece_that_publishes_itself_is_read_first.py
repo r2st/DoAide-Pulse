@@ -125,7 +125,7 @@ def test_the_dense_body_is_the_thing_no_other_gate_objects_to():
         "from repo watch to published post.",
         keywords=["marketing automation", "devtools"],
         focus_keyword="marketing automation",
-        slug="herald-ships-marketing-automation",
+        slug="pulse-ships-marketing-automation",
     )
 
     assert report.score < 60, "the dense fixture must fail the default floor"
@@ -142,7 +142,7 @@ def test_the_clear_body_clears_the_floor():
         "from repo watch to published post.",
         keywords=["marketing automation", "devtools"],
         focus_keyword="marketing automation",
-        slug="herald-ships-marketing-automation",
+        slug="pulse-ships-marketing-automation",
     )
 
     assert report.score >= 60

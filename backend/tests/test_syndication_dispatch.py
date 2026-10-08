@@ -55,7 +55,7 @@ def content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         status=ContentStatus.APPROVED,
         body_markdown="## It's out\n\n" + ("word " * 200),
         excerpt="Pulse 1.0 is out.",
@@ -377,7 +377,7 @@ def test_retrying_a_copy_goes_out_now_once_the_original_has_its_url(
     """With a canonical URL to carry, the copy has nothing left to wait for."""
     _devto, medium = _crosspost(db, content, project)
     _fail(db, medium)
-    content.canonical_url = "https://dev.to/r2st/herald-1-0"
+    content.canonical_url = "https://dev.to/r2st/pulse-1-0"
     db.commit()
 
     dispatched: list[int] = []

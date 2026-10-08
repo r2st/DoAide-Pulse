@@ -203,7 +203,7 @@ describe("the list", () => {
         kind: "webhook",
         name: "Zapier",
         config: {},
-        inbound_url: "https://herald.test/api/v1/triggers/inbound/tok",
+        inbound_url: "https://pulse.test/api/v1/triggers/inbound/tok",
       }),
     ]);
     draw();
@@ -217,18 +217,18 @@ describe("the list", () => {
       trigger({
         kind: "webhook",
         config: {},
-        inbound_url: "https://herald.test/api/v1/triggers/inbound/tok",
+        inbound_url: "https://pulse.test/api/v1/triggers/inbound/tok",
       }),
     ]);
     draw();
     expect(
-      await screen.findByText("https://herald.test/api/v1/triggers/inbound/tok"),
+      await screen.findByText("https://pulse.test/api/v1/triggers/inbound/tok"),
     ).toBeInTheDocument();
   });
 
   it("warns that an unsigned inbound URL is the whole credential", async () => {
     api.listTriggers.mockResolvedValue([
-      trigger({ kind: "webhook", config: {}, inbound_url: "https://herald.test/x" }),
+      trigger({ kind: "webhook", config: {}, inbound_url: "https://pulse.test/x" }),
     ]);
     draw();
     expect(await screen.findByText(/Anyone holding this URL can fire it/)).toBeInTheDocument();
@@ -242,7 +242,7 @@ describe("the list", () => {
       trigger({
         kind: "webhook",
         config: { require_signature: true },
-        inbound_url: "https://herald.test/x",
+        inbound_url: "https://pulse.test/x",
         has_secret: true,
       }),
     ]);
@@ -271,7 +271,7 @@ describe("the list", () => {
       trigger({
         kind: "webhook",
         config: {},
-        inbound_url: "https://herald.test/x",
+        inbound_url: "https://pulse.test/x",
         last_checked_at: "2026-08-14T09:00:00Z",
       }),
     ]);
@@ -515,7 +515,7 @@ describe("the signing secret", () => {
   it("is shown once, with the URL, after creating a webhook trigger", async () => {
     api.createTrigger.mockResolvedValue({
       ...trigger({ kind: "webhook", config: {} }),
-      inbound_url: "https://herald.test/api/v1/triggers/inbound/tok",
+      inbound_url: "https://pulse.test/api/v1/triggers/inbound/tok",
       secret: "s3cr3t-value",
     });
     draw();
@@ -534,7 +534,7 @@ describe("the signing secret", () => {
     // on the next render would undo the "shown once" the copy promises.
     api.createTrigger.mockResolvedValue({
       ...trigger({ kind: "webhook", config: {} }),
-      inbound_url: "https://herald.test/api/v1/triggers/inbound/tok",
+      inbound_url: "https://pulse.test/api/v1/triggers/inbound/tok",
       secret: "s3cr3t-value",
     });
     draw();
@@ -726,7 +726,7 @@ describe("rotating a webhook's secret", () => {
       kind: "webhook",
       name: "Deploy hook",
       config: {},
-      inbound_url: "https://herald.test/api/v1/triggers/inbound/old",
+      inbound_url: "https://pulse.test/api/v1/triggers/inbound/old",
       has_secret: true,
     });
 
@@ -761,7 +761,7 @@ describe("rotating a webhook's secret", () => {
     api.listTriggers.mockResolvedValue([webhook()]);
     api.rotateTriggerSecret.mockResolvedValue({
       ...webhook(),
-      inbound_url: "https://herald.test/api/v1/triggers/inbound/new",
+      inbound_url: "https://pulse.test/api/v1/triggers/inbound/new",
       secret: "rotated-s3cr3t",
     });
     draw();
@@ -769,7 +769,7 @@ describe("rotating a webhook's secret", () => {
 
     expect(await screen.findByText("rotated-s3cr3t")).toBeInTheDocument();
     expect(
-      screen.getByText("https://herald.test/api/v1/triggers/inbound/new"),
+      screen.getByText("https://pulse.test/api/v1/triggers/inbound/new"),
     ).toBeInTheDocument();
     expect(screen.getByText(/shown once/i)).toBeInTheDocument();
   });
@@ -806,11 +806,11 @@ describe("copying credentials", () => {
   async function openRotatedDialog() {
     confirming(true);
     api.listTriggers.mockResolvedValue([
-      trigger({ kind: "webhook", config: {}, inbound_url: "https://herald.test/old" }),
+      trigger({ kind: "webhook", config: {}, inbound_url: "https://pulse.test/old" }),
     ]);
     api.rotateTriggerSecret.mockResolvedValue({
       ...trigger({ kind: "webhook", config: {} }),
-      inbound_url: "https://herald.test/new",
+      inbound_url: "https://pulse.test/new",
       secret: "top-secret",
     });
     draw();
@@ -828,7 +828,7 @@ describe("copying credentials", () => {
 
     await userEvent.click(copyUrl);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("URL copied"));
-    expect(writeText).toHaveBeenLastCalledWith("https://herald.test/new");
+    expect(writeText).toHaveBeenLastCalledWith("https://pulse.test/new");
 
     await userEvent.click(copySecret);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Secret copied"));
@@ -856,7 +856,7 @@ describe("copying credentials", () => {
       trigger({
         kind: "webhook",
         config: {},
-        inbound_url: "https://herald.test/api/v1/triggers/inbound/tok",
+        inbound_url: "https://pulse.test/api/v1/triggers/inbound/tok",
       }),
     ]);
     draw();
@@ -864,14 +864,14 @@ describe("copying credentials", () => {
 
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("URL copied"));
     expect(writeText).toHaveBeenCalledWith(
-      "https://herald.test/api/v1/triggers/inbound/tok",
+      "https://pulse.test/api/v1/triggers/inbound/tok",
     );
   });
 
   it("points at the URL on screen when the card's copy is refused", async () => {
     clipboard(() => Promise.reject(new Error("Denied")));
     api.listTriggers.mockResolvedValue([
-      trigger({ kind: "webhook", config: {}, inbound_url: "https://herald.test/tok" }),
+      trigger({ kind: "webhook", config: {}, inbound_url: "https://pulse.test/tok" }),
     ]);
     draw();
     await userEvent.click(await screen.findByRole("button", { name: "Copy" }));

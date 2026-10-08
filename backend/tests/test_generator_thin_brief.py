@@ -76,8 +76,8 @@ def test_a_full_brief_contributes_every_optional_fact(project):
     prompt = messages[-1]["content"]
     assert "Built with: FastAPI, React" in prompt
     assert "Who it is for: Indie developers" in prompt
-    assert "Live at: https://herald.example.com" in prompt
-    assert "Source: https://github.com/r2st/Herald" in prompt
+    assert "Live at: https://pulse.example.com" in prompt
+    assert "Source: https://github.com/r2st/DoAide-Pulse" in prompt
     assert "Target keywords: marketing automation, developer marketing" in prompt
     assert "Extra direction from the author: keep it short" in prompt
 
@@ -108,7 +108,7 @@ def test_the_article_fallback_keeps_the_sections_a_full_brief_fills(project):
     assert result.is_fallback is True
     assert "## How it is built" in result.body_markdown
     assert "## Try it" in result.body_markdown
-    assert "https://herald.example.com" in result.body_markdown
+    assert "https://pulse.example.com" in result.body_markdown
 
 
 def test_the_thread_fallback_omits_the_link_when_there_is_no_live_url(bare_project):

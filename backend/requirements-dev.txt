@@ -10,7 +10,7 @@ ruff>=0.5
 # different names. Pinned here rather than in requirements.txt so the production
 # image does not carry an HTTP stack nothing imports.
 httpx2>=2.0
-# Herald writes YAML front matter by hand (app.services.publishers.formatting)
+# Pulse writes YAML front matter by hand (app.services.publishers.formatting)
 # rather than depending on a serializer at runtime. The tests check that output
 # against a real parser, because hand-rolled escaping is exactly the thing that
 # looks right and is not — see tests/test_front_matter_hostile_input.py.

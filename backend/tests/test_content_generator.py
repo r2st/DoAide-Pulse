@@ -154,7 +154,7 @@ def test_repo_activity_reaches_the_prompt(project, monkeypatch):
     from app.services.github_client import Release
 
     activity = RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_commits=[
             Commit(
                 sha=f"s{i}",
@@ -215,7 +215,7 @@ def test_ideas_prefer_a_release_when_there_is_one(project):
     from app.services.github_client import Release
 
     activity = RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_release=Release(
             tag="v2.0.0",
             name="Two",
@@ -365,7 +365,7 @@ def test_the_changelog_fallback_is_built_from_the_commits_themselves(
         lambda *a, **k: (_ for _ in ()).throw(ai.AIError("no providers")),
     )
     activity = RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_commits=[
             Commit(
                 sha="a" * 40,

@@ -245,7 +245,7 @@ def test_a_repeated_scope_is_not_stored_twice(db, project):
     assert row.scopes == ["content:read"]
 
 
-def test_a_scope_herald_does_not_define_is_refused(db, project):
+def test_a_scope_pulse_does_not_define_is_refused(db, project):
     with pytest.raises(api_keys.ApiKeyError, match="Unknown scope"):
         api_keys.mint(db, project=project, name="a", scopes=["content:destroy"])
 
@@ -256,7 +256,7 @@ def test_a_key_with_no_scopes_is_refused(db, project):
         api_keys.mint(db, project=project, name="a", scopes=[])
 
 
-def test_a_scope_this_herald_no_longer_defines_reads_as_absent(db, key):
+def test_a_scope_this_pulse_no_longer_defines_reads_as_absent(db, key):
     """``has_scope`` must not raise on a value it does not recognise.
 
     A stored scope string outlives the enum member that wrote it — a downgrade,

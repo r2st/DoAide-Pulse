@@ -243,7 +243,7 @@ def test_a_line_written_inside_a_task_carries_that_task_s_id(pristine_logging):
     sending ``task_prerun``, running the body, sending the terminal signals — so
     what this asserts is the wiring, not the receivers.
     """
-    stream = _herald_stream(pristine_logging)
+    stream = _pulse_stream(pristine_logging)
 
     result = noisy.apply(args=("published to devto",), task_id="feedfacecafe0000")
 
@@ -258,7 +258,7 @@ def test_a_task_run_inside_a_request_hands_the_request_its_id_back(pristine_logg
     to the task — it is a real run, with a real task id — but the request has
     more to do afterwards, and its remaining lines must not inherit the id of
     the work it dispatched partway through."""
-    _herald_stream(pristine_logging)
+    _pulse_stream(pristine_logging)
     request_id_var.set("aaaabbbbcccc")
 
     noisy.apply(args=("inline fallback",), task_id="feedfacecafe0000")
@@ -306,11 +306,11 @@ def _connected(signal) -> set:
     return live
 
 
-def _herald_stream(root: logging.Logger) -> StringIO:
+def _pulse_stream(root: logging.Logger) -> StringIO:
     """Configure logging and point Pulse's own handler at a buffer."""
     configure_logging(level="INFO")
     stream = StringIO()
     for handler in root.handlers:
-        if getattr(handler, "name", None) == "herald":
+        if getattr(handler, "name", None) == "pulse":
             handler.setStream(stream)  # type: ignore[attr-defined]
     return stream

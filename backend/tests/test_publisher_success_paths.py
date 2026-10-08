@@ -43,9 +43,9 @@ FULL = PublishRequest(
     excerpt="Pulse watches your repos.",
     meta_description="Pulse automates developer marketing end to end.",
     tags=["python", "automation"],
-    canonical_url="https://herald.example.com/blog/automating",
-    cover_image_url="https://herald.example.com/cover.png",
-    project_url="https://herald.example.com",
+    canonical_url="https://pulse.example.com/blog/automating",
+    cover_image_url="https://pulse.example.com/cover.png",
+    project_url="https://pulse.example.com",
     project_name="Pulse",
     focus_keyword="developer marketing",
 )
@@ -122,7 +122,7 @@ def test_hashnode_sends_the_cover_image_and_skips_absent_meta():
     without = adapter.build_payload(BARE, "pub-1")
 
     assert with_everything["coverImageOptions"] == {
-        "coverImageURL": "https://herald.example.com/cover.png"
+        "coverImageURL": "https://pulse.example.com/cover.png"
     }
     assert with_everything["metaTags"]["description"] == FULL.meta_description
     assert "metaTags" not in without
@@ -327,7 +327,7 @@ def test_devto_sends_the_cover_image_when_there_is_one(monkeypatch):
     adapter.publish(FULL, {"api_key": "k"})
 
     article = calls[-1]["json_body"]["article"]
-    assert article["main_image"] == "https://herald.example.com/cover.png"
+    assert article["main_image"] == "https://pulse.example.com/cover.png"
 
 
 def test_a_twitter_thread_with_no_tags_gets_no_hashtag_tweet():

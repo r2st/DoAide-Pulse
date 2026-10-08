@@ -243,9 +243,9 @@ def smtp(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP_SSL", _FakeSMTP)
     monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
     monkeypatch.setattr(settings, "smtp_port", 587)
-    monkeypatch.setattr(settings, "smtp_user", "herald@example.com")
+    monkeypatch.setattr(settings, "smtp_user", "pulse@example.com")
     monkeypatch.setattr(settings, "smtp_password", "app-password")
-    monkeypatch.setattr(settings, "smtp_from", "Pulse <herald@example.com>")
+    monkeypatch.setattr(settings, "smtp_from", "Pulse <pulse@example.com>")
     return _FakeSMTP
 
 
@@ -327,7 +327,7 @@ def test_a_published_time_is_carried_into_the_card_when_there_is_one():
     tags = dict(
         social_cards.meta_tags(
             title="A piece",
-            url="https://herald.example.com/a-piece",
+            url="https://pulse.example.com/a-piece",
             meta_description="What it is about.",
             published_at="2026-08-10T12:00:00+00:00",
         )

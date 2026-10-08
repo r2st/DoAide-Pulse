@@ -150,7 +150,7 @@ def test_the_committed_file_parses_when_every_field_is_hostile():
         tags=["python", "dev tools"],
         keywords=['say "hi"', "path" + BACKSLASH, "plain"],
         focus_keyword='focus "word"',
-        canonical_url="https://herald.example.com/blog/shipping",
+        canonical_url="https://pulse.example.com/blog/shipping",
         project_name="Pulse",
         slug="shipping",
     )

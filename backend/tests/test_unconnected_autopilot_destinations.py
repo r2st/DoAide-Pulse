@@ -231,7 +231,7 @@ def test_approving_queues_nothing_for_an_unconnected_project(db, auto_project):
         project_id=auto_project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         body_markdown="word " * 200,
         status=ContentStatus.APPROVED,
     )
@@ -253,7 +253,7 @@ def test_connecting_the_account_later_releases_the_waiting_piece(
         project_id=auto_project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         body_markdown="word " * 200,
         status=ContentStatus.APPROVED,
     )

@@ -48,7 +48,7 @@ from app.services.publishers.base import PublishError, PublishResult
 from app.services.publishers.devto import DevToAdapter
 
 API = "/api/v1/content"
-LIVE_URL = "https://dev.to/herald/live-piece"
+LIVE_URL = "https://dev.to/pulse/live-piece"
 
 
 def _future(days: int = 2) -> str:

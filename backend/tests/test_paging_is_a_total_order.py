@@ -175,7 +175,7 @@ def test_projects_sharing_a_name_page_without_repeating(client, auth, db, user):
         row = Project(
             user_id=user.id,
             name="Pulse",
-            slug=f"herald-{index}",
+            slug=f"pulse-{index}",
             tone=Tone.TECHNICAL,
         )
         db.add(row)

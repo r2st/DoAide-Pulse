@@ -106,7 +106,7 @@ def test_a_piece_retries_all_of_its_failed_publications(
     this test is about the fan-out, and the hold has its own test below.
     """
     piece = _content(db, project)
-    piece.canonical_url = "https://herald.example.com/a-piece"
+    piece.canonical_url = "https://pulse.example.com/a-piece"
     db.commit()
     a = _publication(db, piece, platform=Platform.DEVTO, status=PublicationStatus.FAILED)
     b = _publication(

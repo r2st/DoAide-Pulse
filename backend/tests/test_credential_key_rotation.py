@@ -82,7 +82,7 @@ def secrets(db, user, project, old_key) -> dict:
     )
     webhook = Webhook(
         user_id=user.id,
-        url="https://hooks.example.com/herald",
+        url="https://hooks.example.com/pulse",
         description="Slack",
         events=[WebhookEvent.CONTENT_PUBLISHED.value],
         encrypted_secret=webhooks.store_secret(WEBHOOK_SECRET),
@@ -459,7 +459,7 @@ def test_production_validates_every_key_in_the_list():
     base = {
         "environment": "production",
         "jwt_secret": "x" * 48,
-        "database_url": "postgresql+psycopg://u:p@localhost/herald",
+        "database_url": "postgresql+psycopg://u:p@localhost/pulse",
     }
     good = Fernet.generate_key().decode()
 

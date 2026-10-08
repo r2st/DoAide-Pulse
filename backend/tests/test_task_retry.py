@@ -6,7 +6,7 @@ upstream) and what matters here is that we actually wired it in.
 
 Two layers, and the second is what keeps the first from going stale.
 ``RETRYABLE_TASKS`` is a hand-written list of the six tasks that reach the
-network on every run, held to the strictest policy. Below it, ``HERALD_TASKS``
+network on every run, held to the strictest policy. Below it, ``PULSE_TASKS``
 walks the registry the way ``test_celery_app.py`` does, so a task added to this
 tree tomorrow is covered by the floor without anybody remembering this file
 exists. A hand-written list cannot catch the task that was never added to it,
@@ -21,7 +21,7 @@ from sqlalchemy.exc import OperationalError
 from app.tasks.autopilot_tasks import scan_all_projects, scan_project
 from app.tasks.metrics_tasks import collect_all_metrics, collect_one
 from app.tasks.publish_tasks import publish_due, publish_one
-from tests.test_celery_app import HERALD_TASKS
+from tests.test_celery_app import PULSE_TASKS
 
 RETRYABLE_TASKS = [
     publish_one,
@@ -88,7 +88,7 @@ def test_max_retries_is_bounded(task):
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize("name,task", HERALD_TASKS, ids=[n for n, _ in HERALD_TASKS])
+@pytest.mark.parametrize("name,task", PULSE_TASKS, ids=[n for n, _ in PULSE_TASKS])
 def test_every_task_declares_both_time_limits(name, task):
     """A task with no soft limit cannot stop cleanly, and one with no hard limit
     cannot be stopped at all.
@@ -108,7 +108,7 @@ def test_every_task_declares_both_time_limits(name, task):
     )
 
 
-@pytest.mark.parametrize("name,task", HERALD_TASKS, ids=[n for n, _ in HERALD_TASKS])
+@pytest.mark.parametrize("name,task", PULSE_TASKS, ids=[n for n, _ in PULSE_TASKS])
 def test_every_task_either_retries_transient_failures_or_says_why_not(name, task):
     """``OperationalError`` is the floor: it is what a dropped Postgres
     connection raises, every task in this tree opens a session, and a connection
@@ -129,7 +129,7 @@ def test_every_task_either_retries_transient_failures_or_says_why_not(name, task
     )
 
 
-@pytest.mark.parametrize("name,task", HERALD_TASKS, ids=[n for n, _ in HERALD_TASKS])
+@pytest.mark.parametrize("name,task", PULSE_TASKS, ids=[n for n, _ in PULSE_TASKS])
 def test_every_retrying_task_backs_off_within_a_bound(name, task):
     """Retrying is only half a policy. Without backoff a task hammers whatever
     just failed; without jitter every task that failed in the same outage comes

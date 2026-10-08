@@ -142,9 +142,9 @@ def test_github_json_error_hides_content_type():
 
 
 def test_sanitize_hides_file_paths():
-    exc = OSError("/opt/Herald/backend/app/services/publishers/git.py: crash")
+    exc = OSError("/opt/Pulse/backend/app/services/publishers/git.py: crash")
     msg = sanitize_unexpected_error(exc)
-    assert "/opt/Herald" not in msg
+    assert "/opt/Pulse" not in msg
     assert "OSError" in msg
 
 

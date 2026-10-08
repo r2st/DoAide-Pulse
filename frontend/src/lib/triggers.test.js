@@ -143,8 +143,8 @@ describe("describeTrigger", () => {
     expect(describeTrigger({ kind: "rss", config: { feed_url: "https://x/f.xml" } })).toBe(
       "https://x/f.xml",
     );
-    expect(describeTrigger({ kind: "github", config: { repo: "r2st/Herald" } })).toBe(
-      "r2st/Herald",
+    expect(describeTrigger({ kind: "github", config: { repo: "r2st/DoAide-Pulse" } })).toBe(
+      "r2st/DoAide-Pulse",
     );
     expect(describeTrigger({ kind: "schedule", config: { topic: "Weekly" } })).toBe("Weekly");
   });

@@ -563,7 +563,7 @@ def test_a_secret_in_a_platform_error_does_not_reach_the_outcome(
             platform=Platform.DEVTO,
             status=ConnectionStatus.CONNECTED,
             encrypted_credentials=encrypt_credentials({"api_key": "sk-not-in-a-log"}),
-            display_name="@herald-devto",
+            display_name="@pulse-devto",
         )
     )
     db.commit()

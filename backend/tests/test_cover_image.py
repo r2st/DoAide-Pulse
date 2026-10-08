@@ -147,18 +147,18 @@ def test_build_request_carries_the_cover(db, project):
 
 def test_the_audit_asks_for_a_cover_image():
     issues = seo.audit(
-        title="A perfectly fine title about herald",
+        title="A perfectly fine title about pulse",
         body_markdown="## Section\n\n" + ("word " * 400),
         meta_description="A meta description of an entirely reasonable length for this post.",
-        keywords=["herald"],
+        keywords=["pulse"],
     )
     assert any(i.field == "cover_image_url" for i in issues)
 
     with_cover = seo.audit(
-        title="A perfectly fine title about herald",
+        title="A perfectly fine title about pulse",
         body_markdown="## Section\n\n" + ("word " * 400),
         meta_description="A meta description of an entirely reasonable length for this post.",
-        keywords=["herald"],
+        keywords=["pulse"],
         cover_image_url=COVER,
     )
     assert not any(i.field == "cover_image_url" for i in with_cover)

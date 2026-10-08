@@ -284,14 +284,14 @@ def test_the_commits_that_prompted_the_piece_ground_it(project):
     held back for naming exactly what it was asked to write about.
     """
     activity = RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_commits=[
             Commit(
                 sha="a" * 40,
                 message="feat(inbox): add the Teppil digest",
                 author="suman",
                 committed_at=None,
-                url="https://github.com/r2st/Herald/commit/aaa",
+                url="https://github.com/r2st/DoAide-Pulse/commit/aaa",
             )
         ],
     )
@@ -619,7 +619,7 @@ def test_a_project_with_no_github_repo_skips_the_readme(
     monkeypatch.setattr(
         github_client, "fetch_readme", lambda full_name: calls.append(full_name) or ""
     )
-    auto_project.repo_url = "https://gitlab.com/r2st/Herald"
+    auto_project.repo_url = "https://gitlab.com/r2st/DoAide-Pulse"
     db.commit()
     writes(
         _generated(

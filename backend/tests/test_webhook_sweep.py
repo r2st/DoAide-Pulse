@@ -27,7 +27,7 @@ from app.models.webhook import (
 from app.services import link_check, webhooks
 from app.tasks import webhook_tasks
 
-_URL = "https://hooks.example.test/herald"
+_URL = "https://hooks.example.test/pulse"
 
 
 @pytest.fixture(autouse=True)

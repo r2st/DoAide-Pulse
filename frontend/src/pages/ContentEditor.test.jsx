@@ -35,7 +35,7 @@ function content(overrides = {}) {
     body_markdown: "Saved body",
     excerpt: "Saved excerpt",
     meta_description: "Saved meta",
-    keywords: ["herald"],
+    keywords: ["pulse"],
     tags: ["python"],
     cover_image_url: null,
     content_type: "announcement",
@@ -48,7 +48,7 @@ function content(overrides = {}) {
     publications: [],
     seo_issues: [],
     seo_score: 80,
-    focus_keyword: "herald",
+    focus_keyword: "pulse",
     slug: "saved-title",
     canonical_url: null,
     // Every save carries this back as `If-Match`, so the fixture has to have
@@ -76,7 +76,7 @@ function draw() {
 /** Put an unsaved buffer in storage, as a crashed tab would have left one. */
 function storeBuffer(fields, at = Date.now()) {
   window.localStorage.setItem(
-    "herald:draft:3",
+    "pulse:draft:3",
     JSON.stringify({
       at,
       draft: {
@@ -84,7 +84,7 @@ function storeBuffer(fields, at = Date.now()) {
         body_markdown: "Saved body",
         excerpt: "Saved excerpt",
         meta_description: "Saved meta",
-        keywords: "herald",
+        keywords: "pulse",
         tags: "python",
         cover_image_url: "",
         ...fields,
@@ -515,7 +515,7 @@ describe("auto-save", () => {
     // The other half of the merge: a normalised keyword list has to land in the
     // fields, or the editor stays permanently dirty and saves in a loop.
     api.updateContent.mockResolvedValue(
-      content({ title: "Saved title!", keywords: ["herald", "seo"] }),
+      content({ title: "Saved title!", keywords: ["pulse", "seo"] }),
     );
     draw();
     const title = await screen.findByLabelText(/^Title/i);
@@ -524,7 +524,7 @@ describe("auto-save", () => {
     typeInto(title, "Saved title!");
     await settle();
 
-    expect(screen.getByLabelText(/^Keywords/i)).toHaveValue("herald, seo");
+    expect(screen.getByLabelText(/^Keywords/i)).toHaveValue("pulse, seo");
     await settle(10000);
     expect(api.updateContent).toHaveBeenCalledTimes(1);
   });
@@ -1121,7 +1121,7 @@ describe("sharing a preview link", () => {
     api.listPreviewLinks.mockResolvedValue([]);
     api.createPreviewLink.mockResolvedValue({
       id: 9,
-      url: "https://herald.example.com/preview/abc123",
+      url: "https://pulse.example.com/preview/abc123",
       expires_at: "2026-08-16T10:00:00Z",
       revoked_at: null,
       view_count: 0,
@@ -1133,7 +1133,7 @@ describe("sharing a preview link", () => {
     await userEvent.click(screen.getByRole("button", { name: "New link" }));
 
     expect(
-      await screen.findByText("https://herald.example.com/preview/abc123"),
+      await screen.findByText("https://pulse.example.com/preview/abc123"),
     ).toBeInTheDocument();
     expect(screen.getByText(/Shown once/)).toBeInTheDocument();
   });
@@ -1142,7 +1142,7 @@ describe("sharing a preview link", () => {
     api.listPreviewLinks.mockResolvedValue([]);
     api.createPreviewLink.mockResolvedValue({
       id: 9,
-      url: "https://herald.example.com/preview/abc123",
+      url: "https://pulse.example.com/preview/abc123",
       expires_at: "2026-08-16T10:00:00Z",
       revoked_at: null,
       view_count: 0,
@@ -1151,12 +1151,12 @@ describe("sharing a preview link", () => {
     draw();
     await screen.findByDisplayValue("Saved title");
     await userEvent.click(screen.getByRole("button", { name: "New link" }));
-    await screen.findByText("https://herald.example.com/preview/abc123");
+    await screen.findByText("https://pulse.example.com/preview/abc123");
 
     await userEvent.click(screen.getByRole("button", { name: "Copy" }));
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-      "https://herald.example.com/preview/abc123",
+      "https://pulse.example.com/preview/abc123",
     );
     expect(toast.success).toHaveBeenCalledWith("Link copied");
   });
@@ -1232,7 +1232,7 @@ describe("sharing a preview link", () => {
     api.listPreviewLinks.mockResolvedValue([]);
     api.createPreviewLink.mockResolvedValue({
       id: 9,
-      url: "https://herald.example.com/preview/abc123",
+      url: "https://pulse.example.com/preview/abc123",
       expires_at: "2026-08-16T10:00:00Z",
       revoked_at: null,
       view_count: 0,
@@ -1242,7 +1242,7 @@ describe("sharing a preview link", () => {
     draw();
     await screen.findByDisplayValue("Saved title");
     await userEvent.click(screen.getByRole("button", { name: "New link" }));
-    await screen.findByText("https://herald.example.com/preview/abc123");
+    await screen.findByText("https://pulse.example.com/preview/abc123");
 
     await userEvent.click(screen.getByRole("button", { name: "Copy" }));
 
@@ -1253,7 +1253,7 @@ describe("sharing a preview link", () => {
     );
     expect(toast.success).not.toHaveBeenCalled();
     expect(
-      screen.getByText("https://herald.example.com/preview/abc123"),
+      screen.getByText("https://pulse.example.com/preview/abc123"),
     ).toBeInTheDocument();
   });
 
@@ -1288,7 +1288,7 @@ describe("sharing a preview link", () => {
     api.listPreviewLinks.mockResolvedValue([]);
     api.createPreviewLink.mockResolvedValue({
       id: 9,
-      url: "https://herald.example.com/preview/abc123",
+      url: "https://pulse.example.com/preview/abc123",
       expires_at: "2026-08-16T10:00:00Z",
       revoked_at: null,
       view_count: 0,
@@ -1298,14 +1298,14 @@ describe("sharing a preview link", () => {
     draw();
     await screen.findByDisplayValue("Saved title");
     await userEvent.click(screen.getByRole("button", { name: "New link" }));
-    await screen.findByText("https://herald.example.com/preview/abc123");
+    await screen.findByText("https://pulse.example.com/preview/abc123");
 
     await userEvent.click(screen.getByRole("button", { name: "Revoke" }));
 
     expect(api.revokePreviewLink).toHaveBeenCalledWith(3, 9);
     await waitFor(() =>
       expect(
-        screen.queryByText("https://herald.example.com/preview/abc123"),
+        screen.queryByText("https://pulse.example.com/preview/abc123"),
       ).not.toBeInTheDocument(),
     );
   });
@@ -1326,7 +1326,7 @@ describe("sharing a preview link", () => {
     ]);
     api.createPreviewLink.mockResolvedValue({
       id: 9,
-      url: "https://herald.example.com/preview/abc123",
+      url: "https://pulse.example.com/preview/abc123",
       expires_at: "2026-08-16T10:00:00Z",
       revoked_at: null,
       view_count: 0,
@@ -1336,7 +1336,7 @@ describe("sharing a preview link", () => {
     await screen.findByDisplayValue("Saved title");
 
     await userEvent.click(screen.getByRole("button", { name: "New link" }));
-    await screen.findByText("https://herald.example.com/preview/abc123");
+    await screen.findByText("https://pulse.example.com/preview/abc123");
 
     await waitFor(() => expect(api.listPreviewLinks).toHaveBeenCalledTimes(2));
     // One Revoke — the callout's. The list entry for the same link is filtered

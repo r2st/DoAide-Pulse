@@ -518,7 +518,7 @@ def create_app() -> FastAPI:
             # own scheme says "http" and the forwarded header is the only
             # honest signal. It is trustworthy here specifically because
             # nothing but Caddy can reach the port: the services bind the
-            # bridge address, not a public one (see deploy/Caddyfile.herald).
+            # bridge address, not a public one (see deploy/Caddyfile.pulse).
             forwarded_proto = request.headers.get("x-forwarded-proto", "")
             over_tls = request.url.scheme == "https" or (
                 forwarded_proto.split(",")[0].strip().lower() == "https"

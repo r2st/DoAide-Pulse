@@ -6,7 +6,7 @@ ten-megabyte response to render a sidebar of timestamps. So :class:`RevisionOut`
 carries the metadata and a word count, and :class:`RevisionDetail` — one row,
 asked for by number — carries the text.
 
-That is the same mistake ``herald-payload-width-perf-bug`` records: the query
+That is the same mistake ``pulse-payload-width-perf-bug`` records: the query
 count is fine either way and the bytes are what hurt, which no query-count budget
 test can see. ``test_list_items_are_bounded`` is the sweep that would have caught
 it here.

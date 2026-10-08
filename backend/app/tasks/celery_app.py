@@ -64,7 +64,7 @@ def _configure_logging(**_kwargs: object) -> None:
     configure_logging()
 
 celery_app = Celery(
-    "herald",
+    "pulse",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
     include=[

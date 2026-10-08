@@ -92,7 +92,7 @@ ratelimit.limiter = slowapi.Limiter(
     enabled=_cfg.settings.rate_limit_enabled,
     headers_enabled=True,
     swallow_errors=True,
-    key_prefix="herald",
+    key_prefix="pulse",
 )
 
 from app.database import Base, get_db  # noqa: E402
@@ -214,7 +214,7 @@ def connect(db, user):
                     platform=platform,
                     status=ConnectionStatus.CONNECTED,
                     encrypted_credentials=encrypt_credentials({"api_key": "k"}),
-                    display_name=f"@herald-{platform.value}",
+                    display_name=f"@pulse-{platform.value}",
                 )
             )
         db.commit()
@@ -328,14 +328,14 @@ def repo_activity(*, commits: int = 0, release: bool = False, head: str = "abc12
     from app.services.github_client import Commit, Release, RepoActivity
 
     return RepoActivity(
-        full_name="r2st/Herald",
+        full_name="r2st/DoAide-Pulse",
         new_commits=[
             Commit(
                 sha=f"sha{i}",
                 message=f"feat: thing {i}\n\nbody",
                 author="r2st",
                 committed_at=datetime(2026, 7, 1, tzinfo=UTC),
-                url="https://github.com/r2st/Herald/commit/x",
+                url="https://github.com/r2st/DoAide-Pulse/commit/x",
             )
             for i in range(commits)
         ],
@@ -345,7 +345,7 @@ def repo_activity(*, commits: int = 0, release: bool = False, head: str = "abc12
                 name="Calendar drag-and-drop",
                 body="- Drag to reschedule\n- SEO panel",
                 published_at=datetime(2026, 7, 20, tzinfo=UTC),
-                url="https://github.com/r2st/Herald/releases/v1.2.0",
+                url="https://github.com/r2st/DoAide-Pulse/releases/v1.2.0",
                 prerelease=False,
             )
             if release
@@ -384,8 +384,8 @@ def project(db, user) -> Project:
         name="Pulse",
         slug="pulse",
         description="AI marketing automation for developer projects.",
-        repo_url="https://github.com/r2st/Herald",
-        live_url="https://herald.example.com",
+        repo_url="https://github.com/r2st/DoAide-Pulse",
+        live_url="https://pulse.example.com",
         tech_stack=["FastAPI", "React"],
         target_audience="Indie developers",
         keywords=["marketing automation", "developer marketing"],

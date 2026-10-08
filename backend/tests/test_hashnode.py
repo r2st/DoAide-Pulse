@@ -24,8 +24,8 @@ def request_() -> PublishRequest:
         excerpt="Pulse watches your repos.",
         meta_description="Pulse automates developer marketing end to end.",
         tags=["python", "automation"],
-        canonical_url="https://herald.example.com/blog/automating",
-        project_url="https://herald.example.com",
+        canonical_url="https://pulse.example.com/blog/automating",
+        project_url="https://pulse.example.com",
         project_name="Pulse",
     )
 

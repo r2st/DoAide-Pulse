@@ -39,7 +39,7 @@ def piece(db, project) -> Content:
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
         title="Pulse ships marketing automation",
-        slug="herald-ships-marketing-automation",
+        slug="pulse-ships-marketing-automation",
         body_markdown="## Why\n\nPulse watches your repo and writes the post.",
         excerpt="Pulse writes the posts about the projects you ship.",
         meta_description="Pulse automates developer marketing end to end.",

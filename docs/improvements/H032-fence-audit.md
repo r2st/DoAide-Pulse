@@ -8,7 +8,7 @@
 
 ## Summary
 
-The Herald (DoAide Pulse) backend is **exceptionally well-secured**. Every
+The Pulse (DoAide Pulse) backend is **exceptionally well-secured**. Every
 authenticated endpoint uses `get_current_user` or `require_scope`. Every
 resource access verifies ownership with a 404 (not 403) to prevent
 enumeration. Every public endpoint is rate-limited. Input schemas carry

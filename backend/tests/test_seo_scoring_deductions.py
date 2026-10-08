@@ -31,7 +31,7 @@ GOOD = {
     "keywords": ["scheduling"],
     "cover_image_url": "https://example.com/cover.png",
     "focus_keyword": "scheduling",
-    "slug": "herald-ships-scheduling",
+    "slug": "pulse-ships-scheduling",
 }
 
 
@@ -80,7 +80,7 @@ def test_an_image_that_has_alt_text_costs_nothing():
 
 
 def test_a_slug_too_long_for_a_search_result_costs_three_points():
-    long_slug = "herald-ships-scheduling-" + "and-more-besides-" * 4
+    long_slug = "pulse-ships-scheduling-" + "and-more-besides-" * 4
 
     assert len(long_slug) > 60
     assert _score(slug=long_slug + "scheduling") == 97

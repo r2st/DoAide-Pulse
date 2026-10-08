@@ -49,9 +49,9 @@ def smtp(monkeypatch):
     monkeypatch.setattr(smtplib, "SMTP_SSL", _FakeSMTP)
     monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
     monkeypatch.setattr(settings, "smtp_port", 587)
-    monkeypatch.setattr(settings, "smtp_user", "herald@example.com")
+    monkeypatch.setattr(settings, "smtp_user", "pulse@example.com")
     monkeypatch.setattr(settings, "smtp_password", "app-password")
-    monkeypatch.setattr(settings, "smtp_from", "Pulse <herald@example.com>")
+    monkeypatch.setattr(settings, "smtp_from", "Pulse <pulse@example.com>")
     return _FakeSMTP
 
 
@@ -70,12 +70,12 @@ def test_starttls_then_login_then_send(smtp, monkeypatch):
     # Order matters: credentials must not go out before the channel is encrypted.
     assert session.calls == [
         "starttls",
-        "login:herald@example.com:app-password",
+        "login:pulse@example.com:app-password",
         "send",
         "quit",
     ]
     assert session.message["To"] == "dev@example.com"
-    assert session.message["From"] == "Pulse <herald@example.com>"
+    assert session.message["From"] == "Pulse <pulse@example.com>"
     assert session.message["Subject"] == "Reset"
     assert session.message.get_content().strip() == "link"
 
@@ -110,4 +110,4 @@ def test_send_failures_are_reported_not_raised(smtp, monkeypatch, error):
 def test_from_address_falls_back_to_the_host(smtp, monkeypatch):
     monkeypatch.setattr(settings, "smtp_from", "")
     mailer.send(to="dev@example.com", subject="s", body="b")
-    assert smtp.instances[0].message["From"] == "herald@smtp.example.com"
+    assert smtp.instances[0].message["From"] == "pulse@smtp.example.com"

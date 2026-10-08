@@ -67,7 +67,7 @@ def test_it_is_not_installed_twice(engine):
 
 def test_the_shipped_engine_is_armed():
     """The wiring, not the mechanism — the two are easy to get separately right."""
-    assert getattr(database.engine, "_herald_slow_query_logging", False) is True
+    assert getattr(database.engine, "_pulse_slow_query_logging", False) is True
 
 
 # --------------------------------------------------------------------------- #

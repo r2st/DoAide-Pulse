@@ -50,8 +50,8 @@ def _request(**overrides) -> PublishRequest:
         "excerpt": "",
         "meta_description": "",
         "tags": ["python", "devtools"],
-        "canonical_url": "https://herald.example.com/blog/retries",
-        "project_url": "https://herald.example.com",
+        "canonical_url": "https://pulse.example.com/blog/retries",
+        "project_url": "https://pulse.example.com",
         "project_name": "Pulse",
     }
     fields.update(overrides)
@@ -90,7 +90,7 @@ def test_linkedin_does_not_open_with_blank_lines():
 
 def test_linkedin_still_carries_the_link_and_the_hashtags():
     commentary = LinkedInAdapter().build_commentary(_request())
-    assert "https://herald.example.com/blog/retries" in commentary
+    assert "https://pulse.example.com/blog/retries" in commentary
     assert "#python" in commentary
 
 

@@ -160,7 +160,7 @@ def test_webhook_sweep_delivers_the_rest_after_one_row_fails_to_commit(
     """A delivery whose outcome will not persist must not silence the queue."""
     webhook = Webhook(
         user_id=user.id,
-        url="https://hooks.example.test/herald",
+        url="https://hooks.example.test/pulse",
         encrypted_secret=webhooks_service.store_secret(
             webhooks_service.generate_secret()
         ),

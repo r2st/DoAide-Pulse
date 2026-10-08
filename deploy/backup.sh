@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Pulse — nightly database backup.
 #
-#   ./deploy/backup.sh                    # dump to /var/backups/herald
-#   HERALD_BACKUP_DIR=/tmp/drill ./deploy/backup.sh   # restore drill
+#   ./deploy/backup.sh                    # dump to /var/backups/pulse
+#   PULSE_BACKUP_DIR=/tmp/drill ./deploy/backup.sh   # restore drill
 #
-# Run by `herald-backup.timer`. Until this existed the only backups Herald had
+# Run by `pulse-backup.timer`. Until this existed the only backups Pulse had
 # were the ad-hoc `pg_dump` in deploy/DEPLOYMENT.md's rollback section, taken by
 # hand "before anything risky" — which meant the newest copy of the database was
 # whenever somebody last remembered. Deleting a piece is a hard `DELETE` (see
@@ -17,7 +17,7 @@
 #     error and corruption; it does not cover losing the box. Copying $DEST
 #     off-host is a separate job and is not done yet.
 #   * Only the database is dumped. `frontend/dist` and the venv come back from
-#     a deploy, but anything written into /opt/Herald at runtime does not.
+#     a deploy, but anything written into /opt/Pulse at runtime does not.
 #
 # Postgres is shared with the other products on this box. This dumps one
 # database, by name — never `pg_dumpall`, which would put GSTBot's and
@@ -27,12 +27,12 @@ set -euo pipefail
 # Every knob is an environment variable with a default, so the unit file can
 # stay declarative and a one-off restore drill can point the script at a
 # scratch directory without editing it.
-ENV_FILE="${HERALD_ENV_FILE:-/opt/Herald/.env}"
-DEST="${HERALD_BACKUP_DIR:-/var/backups/herald}"
-RETENTION_DAYS="${HERALD_BACKUP_RETENTION_DAYS:-14}"
+ENV_FILE="${PULSE_ENV_FILE:-/opt/Pulse/.env}"
+DEST="${PULSE_BACKUP_DIR:-/var/backups/pulse}"
+RETENTION_DAYS="${PULSE_BACKUP_RETENTION_DAYS:-14}"
 # A dump that fills the disk takes out six products, not one. This is the floor
 # the dump refuses to start below, in MiB.
-MIN_FREE_MB="${HERALD_BACKUP_MIN_FREE_MB:-1024}"
+MIN_FREE_MB="${PULSE_BACKUP_MIN_FREE_MB:-1024}"
 
 log() { printf '%s\n' "$*"; }
 die() { printf '\033[31merror: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -40,7 +40,7 @@ die() { printf '\033[31merror: %s\033[0m\n' "$*" >&2; exit 1; }
 # ---- Connection details ---------------------------------------------------
 # Under systemd the unit's EnvironmentFile has already put DATABASE_URL in the
 # environment. By hand it has not, so fall back to reading the one line out of
-# the env file rather than sourcing it — /opt/Herald/.env is systemd's format,
+# the env file rather than sourcing it — /opt/Pulse/.env is systemd's format,
 # not shell, and sourcing it would execute anything a future value contained.
 if [ -z "${DATABASE_URL:-}" ]; then
     [ -r "$ENV_FILE" ] || die "$ENV_FILE is not readable and DATABASE_URL is unset"
@@ -124,7 +124,7 @@ log "Wrote $target ($(du -h "$target" | cut -f1))"
 # Only reached after a dump that verified, so this cannot leave the directory
 # empty — unless RETENTION_DAYS is 0, which would delete the file just written
 # and is treated as a configuration error rather than a policy.
-[ "$RETENTION_DAYS" -ge 1 ] || die "HERALD_BACKUP_RETENTION_DAYS must be at least 1"
+[ "$RETENTION_DAYS" -ge 1 ] || die "PULSE_BACKUP_RETENTION_DAYS must be at least 1"
 find "$DEST" -maxdepth 1 -type f -name '*.dump' -mtime "+$RETENTION_DAYS" -print -delete \
     | sed 's/^/Pruned /'
 

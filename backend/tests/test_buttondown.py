@@ -33,9 +33,9 @@ def request_() -> PublishRequest:
         excerpt="Pulse watches your repos.",
         meta_description="Pulse automates developer marketing.",
         tags=["python", "automation"],
-        slug="herald-writes-the-posts-now",
-        canonical_url="https://herald.example.com/blog/writes",
-        project_url="https://herald.example.com",
+        slug="pulse-writes-the-posts-now",
+        canonical_url="https://pulse.example.com/blog/writes",
+        project_url="https://pulse.example.com",
         project_name="Pulse",
     )
 
@@ -59,8 +59,8 @@ def sent(adapter, monkeypatch):
     reply: dict = {
         "id": "em-1",
         "status": "about_to_send",
-        "slug": "herald-writes-the-posts-now",
-        "absolute_url": "https://buttondown.com/herald/archive/writes",
+        "slug": "pulse-writes-the-posts-now",
+        "absolute_url": "https://buttondown.com/pulse/archive/writes",
     }
 
     def fake_request(method, url, **kwargs):
@@ -230,10 +230,10 @@ def test_verify_returns_the_newsletter_name(adapter, monkeypatch):
 
 def test_verify_accepts_a_bare_list_too(adapter, monkeypatch):
     monkeypatch.setattr(
-        adapter, "_request", lambda *a, **kw: FakeResponse([{"username": "herald"}])
+        adapter, "_request", lambda *a, **kw: FakeResponse([{"username": "pulse"}])
     )
 
-    assert adapter.verify({"api_key": "k"}) == "herald"
+    assert adapter.verify({"api_key": "k"}) == "pulse"
 
 
 def test_a_key_with_no_newsletter_is_a_credential_error(adapter, monkeypatch):
@@ -259,7 +259,7 @@ def test_the_result_carries_the_archive_url(adapter, request_, sent):
     result = adapter.publish(request_, {"api_key": "k"})
 
     assert result.external_id == "em-1"
-    assert result.external_url == "https://buttondown.com/herald/archive/writes"
+    assert result.external_url == "https://buttondown.com/pulse/archive/writes"
     assert result.extra["status"] == "about_to_send"
 
 

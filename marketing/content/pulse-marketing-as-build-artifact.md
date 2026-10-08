@@ -74,6 +74,6 @@ The teams that will get value from this are the ones shipping steadily with nobo
 
 ---
 
-**[Herald](https://herald.doaide.com)** is a working implementation of this. It watches project repositories, drafts posts from real commit and release activity, parks them in a review queue for a human, then publishes on a schedule to Dev.to, Hashnode, Bluesky, Mastodon, Medium, WordPress, Buttondown or a commit to your blog repo — handling canonical URLs, syndication delay, per-platform formatting and UTM attribution — and tracks views and engagement afterwards.
+**[Pulse](https://pulse.doaide.com)** is a working implementation of this. It watches project repositories, drafts posts from real commit and release activity, parks them in a review queue for a human, then publishes on a schedule to Dev.to, Hashnode, Bluesky, Mastodon, Medium, WordPress, Buttondown or a commit to your blog repo — handling canonical URLs, syndication delay, per-platform formatting and UTM attribution — and tracks views and engagement afterwards.
 
 It is FastAPI, PostgreSQL, Celery and React, with an LLM router that falls back across providers and degrades to a static template rather than failing. The whole thing is driven by an HTTP API, which means it can be scripted, or driven from an MCP client, or left to run itself. The review queue stays.

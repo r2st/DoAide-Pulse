@@ -316,7 +316,7 @@ def test_a_published_row_keeps_the_time_it_actually_went_out(
     devto.status = PublicationStatus.PUBLISHED
     devto.published_at = went_out
     devto.scheduled_for = went_out
-    devto.external_url = "https://dev.to/herald/shipping-a-scheduler"
+    devto.external_url = "https://dev.to/pulse/shipping-a-scheduler"
     publishing_service.sync_content_status(piece)
     db.commit()
 
@@ -525,7 +525,7 @@ def test_the_ordinary_lifecycle_leaves_nothing_contradictory(
     devto.status = PublicationStatus.PUBLISHED
     devto.published_at = datetime.now(UTC)
     devto.scheduled_for = None
-    devto.external_url = "https://dev.to/herald/shipping-a-scheduler"
+    devto.external_url = "https://dev.to/pulse/shipping-a-scheduler"
     publishing_service.sync_content_status(db.get(Content, piece.id))
     db.commit()
     assert contradictions(db) == []

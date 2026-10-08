@@ -386,14 +386,14 @@ def test_a_github_trigger_with_no_repo_of_its_own_borrows_the_project_s(
 
     triggers.check(db, trigger)
 
-    assert asked == ["r2st/Herald"]
+    assert asked == ["r2st/DoAide-Pulse"]
 
 
 def test_a_github_rate_limit_leaves_the_watermark_alone(db, project, monkeypatch):
     """We genuinely did not look, so the next poll must look at the same range."""
     from app.services import github_client
 
-    trigger = _trigger(db, project, TriggerKind.GITHUB, repo="r2st/Herald")
+    trigger = _trigger(db, project, TriggerKind.GITHUB, repo="r2st/DoAide-Pulse")
     trigger.state = {"last_sha": "abc123", "last_tag": "v1.0"}
     db.commit()
 
@@ -416,7 +416,7 @@ def test_a_github_rate_limit_leaves_the_watermark_alone(db, project, monkeypatch
 def test_any_other_github_failure_is_recorded_the_same_way(db, project, monkeypatch):
     from app.services import github_client
 
-    trigger = _trigger(db, project, TriggerKind.GITHUB, repo="r2st/Herald")
+    trigger = _trigger(db, project, TriggerKind.GITHUB, repo="r2st/DoAide-Pulse")
     monkeypatch.setattr(
         github_client,
         "fetch_activity",
@@ -434,7 +434,7 @@ def test_a_quiet_repo_after_the_baseline_scan_reports_no_news(
 ):
     from app.services import github_client
 
-    trigger = _trigger(db, project, TriggerKind.GITHUB, repo="r2st/Herald")
+    trigger = _trigger(db, project, TriggerKind.GITHUB, repo="r2st/DoAide-Pulse")
     trigger.state = {"last_sha": "abc123"}
     db.commit()
 
@@ -442,7 +442,7 @@ def test_a_quiet_repo_after_the_baseline_scan_reports_no_news(
         github_client,
         "fetch_activity",
         lambda *a, **k: github_client.RepoActivity(
-            full_name="r2st/Herald", head_sha="abc123"
+            full_name="r2st/DoAide-Pulse", head_sha="abc123"
         ),
     )
 

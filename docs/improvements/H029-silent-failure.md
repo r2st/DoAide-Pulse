@@ -48,5 +48,5 @@ No findings to report.
 
 ---
 
-Audited by Herald improvement pass H029, methodology M5 (silent failure),
+Audited by Pulse improvement pass H029, methodology M5 (silent failure),
 pass 5, cycle C94.

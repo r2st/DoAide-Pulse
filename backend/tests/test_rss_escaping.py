@@ -35,7 +35,7 @@ from app.models.content import Content, ContentStatus, ContentType
 from app.models.project import Project, Tone
 from app.services import rss
 
-SELF = "https://herald.example.com/api/v1/projects/1/feed.xml"
+SELF = "https://pulse.example.com/api/v1/projects/1/feed.xml"
 
 
 def _project(**overrides) -> Project:
@@ -43,9 +43,9 @@ def _project(**overrides) -> Project:
         id=1,
         user_id=1,
         name="Pulse",
-        slug="herald",
+        slug="pulse",
         description="Updates.",
-        live_url="https://herald.example.com",
+        live_url="https://pulse.example.com",
         tone=Tone.TECHNICAL,
     )
     defaults.update(overrides)

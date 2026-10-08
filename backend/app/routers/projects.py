@@ -39,7 +39,7 @@ def _unique_slug(db: Session, user_id: int, name: str, *, exclude_id: int | None
     """A slug unique within this user's projects.
 
     Scoped per user rather than globally: two people registering a project
-    called "Pulse" should both get ``herald``.
+    called "Pulse" should both get ``pulse``.
     """
     base = slugify(name)
     candidate = base
@@ -277,7 +277,7 @@ def update_project(
             p.value if hasattr(p, "value") else str(p) for p in data["autopilot_platforms"]
         ]
     # Renaming re-slugs, but only if the name actually changed — otherwise a
-    # PATCH that touches nothing would bump `herald` to `herald-2`.
+    # PATCH that touches nothing would bump `pulse` to `pulse-2`.
     if "name" in data and data["name"] != project.name:
         project.slug = _unique_slug(db, user.id, data["name"], exclude_id=project.id)
 

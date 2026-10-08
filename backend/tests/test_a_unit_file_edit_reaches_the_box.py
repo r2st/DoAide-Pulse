@@ -1,15 +1,15 @@
 """Editing a unit file has to be the same act as deploying it.
 
-``deploy.sh`` rsyncs the repo to ``/opt/Herald`` and restarts four services.
-systemd does not read ``/opt/Herald/deploy/systemd`` — it reads
+``deploy.sh`` rsyncs the repo to ``/opt/Pulse`` and restarts four services.
+systemd does not read ``/opt/Pulse/deploy/systemd`` — it reads
 ``/etc/systemd/system`` — so for as long as installing was a manual step
 documented in ``DEPLOYMENT.md``, a unit file could be edited, reviewed, tested,
 committed and deployed while the box went on running the copy from whenever
 somebody last remembered.
 
 That is not hypothetical. Two rounds of graceful-shutdown work shipped exactly
-that way: the ``--timeout-graceful-shutdown`` on ``herald-api`` and the raised
-``TimeoutStopSec`` on ``herald-worker`` were both live in the repo, asserted by
+that way: the ``--timeout-graceful-shutdown`` on ``pulse-api`` and the raised
+``TimeoutStopSec`` on ``pulse-worker`` were both live in the repo, asserted by
 ``tests/test_shutdown_is_graceful.py``, and absent from the running units. The
 tests passed. The deploy said ``done``. The drain window did not exist.
 
@@ -68,7 +68,7 @@ def test_the_deploy_installs_unit_files(install_loop):
 def test_it_installs_whatever_is_in_the_directory_rather_than_a_list(install_loop):
     """A hard-coded list of units is the same drift one level up.
 
-    ``herald-backup.timer`` is the case that proves it: it is not one of the
+    ``pulse-backup.timer`` is the case that proves it: it is not one of the
     four the deploy restarts, so any list written from the restart line would
     have silently left it out.
     """
@@ -89,7 +89,7 @@ def test_every_file_in_the_unit_directory_is_covered_by_the_glob(unit, install_l
     deploy silently walks past, which is the original bug wearing a new suffix.
     """
     # Compared on the basename: the patterns are rooted at the deploy target,
-    # ``/opt/Herald/deploy/systemd``, and the directory being checked is the
+    # ``/opt/Pulse/deploy/systemd``, and the directory being checked is the
     # same one in this checkout.
     patterns = [PurePosixPath(p).name for p in install_loop.group("glob").split()]
 
@@ -99,7 +99,7 @@ def test_every_file_in_the_unit_directory_is_covered_by_the_glob(unit, install_l
 
 
 def test_the_installed_copy_belongs_to_root(install_loop):
-    """``deploy.sh`` chowns all of ``/opt/Herald`` to ``herald`` before this
+    """``deploy.sh`` chowns all of ``/opt/Pulse`` to ``pulse`` before this
     runs, so the source is writable by the service account. A unit file systemd
     executes as root, writable by the user that root's services run as, is a
     privilege escalation with a deploy script for a delivery mechanism."""
@@ -143,7 +143,7 @@ def test_a_unit_systemd_has_not_re_read_is_also_a_change(script: str):
     definition from before the copy — the original bug, surviving the fix aimed
     at it, in the one state that fix cannot see.
 
-    ``herald-beat`` was in exactly that state the first time the install loop
+    ``pulse-beat`` was in exactly that state the first time the install loop
     ran, which is why this asks systemd rather than trusting the files.
     """
     assert "NeedDaemonReload" in script

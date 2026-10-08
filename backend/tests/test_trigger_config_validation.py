@@ -48,7 +48,7 @@ def test_every_unknown_key_is_reported_not_just_the_first():
 def test_a_key_belonging_to_another_kind_is_refused():
     """``repo`` is a github setting; on a schedule it is a trigger that never fires."""
     with pytest.raises(ValueError, match="repo"):
-        validate_config(TriggerKind.SCHEDULE, {"repo": "r2st/Herald"})
+        validate_config(TriggerKind.SCHEDULE, {"repo": "r2st/DoAide-Pulse"})
 
 
 def test_a_required_key_present_but_blank_counts_as_missing():
@@ -263,7 +263,7 @@ def test_a_feed_url_is_stripped_on_the_way_through():
         "not a url at all",
     ],
 )
-def test_a_feed_url_herald_would_refuse_to_fetch_is_refused_at_the_form(url):
+def test_a_feed_url_pulse_would_refuse_to_fetch_is_refused_at_the_form(url):
     with pytest.raises(ValueError):
         validate_config(TriggerKind.RSS, {"feed_url": url})
 
@@ -368,7 +368,7 @@ def test_the_topic_cap_matches_the_column_the_headline_lands_in():
 @pytest.mark.parametrize(
     "repo",
     [
-        "r2st/Herald",
+        "r2st/DoAide-Pulse",
         "a/b",
         "some-org/my_repo.js",
         "torvalds/linux",
@@ -394,7 +394,7 @@ def test_a_real_repository_name_is_accepted(repo):
         "owner/name/",
         "/name",
         "owner/",
-        "https://github.com/r2st/Herald",  # the URL, not the full name
+        "https://github.com/r2st/DoAide-Pulse",  # the URL, not the full name
         "-owner/name",  # GitHub logins may not start with a hyphen
         "own--er/name",  # nor contain a double one
         "owner-/name",
@@ -422,9 +422,9 @@ def test_a_blank_repo_is_allowed_because_the_project_supplies_one():
 
 
 def test_a_repo_is_stripped_on_the_way_through():
-    config = validate_config(TriggerKind.GITHUB, {"repo": "  r2st/Herald\n"})
+    config = validate_config(TriggerKind.GITHUB, {"repo": "  r2st/DoAide-Pulse\n"})
 
-    assert config["repo"] == "r2st/Herald"
+    assert config["repo"] == "r2st/DoAide-Pulse"
 
 
 def test_repo_set_to_none_is_left_alone():
@@ -433,7 +433,7 @@ def test_repo_set_to_none_is_left_alone():
 
 def test_a_non_string_repo_is_refused_rather_than_stringified_into_a_path():
     with pytest.raises(ValueError, match="not a GitHub repository"):
-        validate_config(TriggerKind.GITHUB, {"repo": {"full_name": "r2st/Herald"}})
+        validate_config(TriggerKind.GITHUB, {"repo": {"full_name": "r2st/DoAide-Pulse"}})
 
 
 # --------------------------------------------------------------------------- #

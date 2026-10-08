@@ -21,7 +21,7 @@ if str(MARKETING) not in sys.path:
 #: The smallest plan that is still a real one: two projects, three articles,
 #: one complete two-part series.
 PLAN = {
-    "base_url": "https://herald.example.com/api/v1",
+    "base_url": "https://pulse.example.com/api/v1",
     "projects": [
         {
             "key": "gstbot",
@@ -35,12 +35,12 @@ PLAN = {
             "tone": "technical",
         },
         {
-            "key": "herald",
+            "key": "pulse",
             "name": "Pulse",
             "description": "Marketing automation for developers.",
-            "live_url": "https://herald.example.com",
+            "live_url": "https://pulse.example.com",
             "utm_enabled": True,
-            "utm_campaign": "herald-2026q3",
+            "utm_campaign": "pulse-2026q3",
         },
     ],
     "series": [{"key": "gst-guide", "title": "The GST Guide"}],
@@ -74,7 +74,7 @@ PLAN = {
         },
         {
             "key": "launch",
-            "project": "herald",
+            "project": "pulse",
             "title": "Pulse Ships",
             "body_file": "launch.md",
             "platforms": ["bluesky"],

@@ -22,11 +22,11 @@ def _long_content(**overrides) -> Content:
         project_id=1,
         content_type=ContentType.FEATURE_SPOTLIGHT,
         title="Pulse ships internal link suggestions",
-        slug="herald-ships-internal-link-suggestions",
+        slug="pulse-ships-internal-link-suggestions",
         body_markdown=body,
         excerpt="Pulse now suggests internal links by keyword overlap.",
         tags=["python", "fastapi"],
-        canonical_url="https://example.com/herald-ships-internal-link-suggestions",
+        canonical_url="https://example.com/pulse-ships-internal-link-suggestions",
     )
     defaults.update(overrides)
     return Content(**defaults)

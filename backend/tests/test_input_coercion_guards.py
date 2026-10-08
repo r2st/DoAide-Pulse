@@ -111,10 +111,10 @@ def test_a_missing_list_field_coerces_to_an_empty_list():
 def test_a_url_that_already_carries_every_utm_key_is_returned_untouched():
     url = (
         "https://example.com/post?utm_source=devto&utm_medium=social"
-        "&utm_campaign=herald"
+        "&utm_campaign=pulse"
     )
 
-    assert utm.tag(url, source="devto", medium="social", campaign="herald") == url
+    assert utm.tag(url, source="devto", medium="social", campaign="pulse") == url
 
 
 def test_rewriting_links_in_an_empty_body_or_with_no_host_is_a_no_op():

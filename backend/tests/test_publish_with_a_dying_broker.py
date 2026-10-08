@@ -71,7 +71,7 @@ def content(db, project) -> Content:
         content_type=ContentType.ANNOUNCEMENT,
         status=ContentStatus.APPROVED,
         title="Pulse survives a dead broker",
-        slug="herald-survives-a-dead-broker",
+        slug="pulse-survives-a-dead-broker",
         body_markdown="## It's out\n\n" + ("word " * 200),
         excerpt="Pulse 1.0 is out.",
         meta_description="Pulse 1.0 is out.",
@@ -91,7 +91,7 @@ def connected(db, user) -> None:
                 platform=platform,
                 status=ConnectionStatus.CONNECTED,
                 encrypted_credentials=encrypt_credentials({"api_key": "k"}),
-                display_name="@herald",
+                display_name="@pulse",
             )
             for platform in PLATFORMS
         ]
@@ -114,7 +114,7 @@ def posts(db, monkeypatch) -> list[Platform]:
             slug = platform.value
             return PublishResult(
                 external_id=f"{slug}-1",
-                external_url=f"https://{slug}.example/herald",
+                external_url=f"https://{slug}.example/pulse",
             )
 
         monkeypatch.setattr(adapter, "publish", _publish)
@@ -251,5 +251,5 @@ def test_every_publication_row_lands_published_after_the_outage(
     for platform in (Platform.HASHNODE, Platform.MEDIUM):
         row = rows[platform]
         assert row.status == PublicationStatus.PUBLISHED, platform
-        assert row.external_url == f"https://{platform.value}.example/herald"
+        assert row.external_url == f"https://{platform.value}.example/pulse"
         assert row.attempts == 1, "one attempt each, not a retried duplicate"

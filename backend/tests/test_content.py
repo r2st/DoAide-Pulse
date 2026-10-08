@@ -695,7 +695,7 @@ def test_repurpose_returns_snippets_via_the_mechanical_fallback(client, auth, pr
         project_id=project.id,
         content_type=ContentType.FEATURE_SPOTLIGHT,
         title="Pulse ships bulk content operations",
-        slug="herald-ships-bulk-content-operations",
+        slug="pulse-ships-bulk-content-operations",
         body_markdown=body,
         excerpt="Approve, reject or publish many drafts in one call.",
         tags=["python", "fastapi"],

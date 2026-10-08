@@ -7,7 +7,7 @@ provider SDK. ``smtplib`` against whatever host the operator points it at.
 **When SMTP is not configured the message is written to the log instead**, at
 WARNING, link and all. That is not a stub: Pulse is single-user and self-hosted,
 and the alternative for an operator who never set up a mail server is a reset
-flow that cannot complete at all. ``journalctl -u herald-api`` is a legitimate
+flow that cannot complete at all. ``journalctl -u pulse-api`` is a legitimate
 way to collect your own reset link. It does mean the link passes through the
 logs, which is why :func:`configured` is surfaced on the health endpoint and why
 the log line says so out loud.
@@ -33,7 +33,7 @@ def configured() -> bool:
 
 
 def _from_address() -> str:
-    return settings.smtp_from.strip() or f"herald@{settings.smtp_host.strip()}"
+    return settings.smtp_from.strip() or f"pulse@{settings.smtp_host.strip()}"
 
 
 def send(*, to: str, subject: str, body: str, html: str | None = None) -> bool:

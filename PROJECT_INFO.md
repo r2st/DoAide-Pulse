@@ -2,7 +2,7 @@
 
 **Marketing automation for developers: watches your project repos, drafts blog and social copy when something ships, publishes it on a schedule, and tracks what got read.**
 
-- **Repo:** https://github.com/r2st/Herald · branch `main`
+- **Repo:** https://github.com/r2st/DoAide-Pulse · branch `main`
 - **Local path:** `Products/Pulse`
 
 ## Tech stack
@@ -22,15 +22,15 @@
 | | |
 |---|---|
 | Host | Hetzner `89.167.8.178` (Ubuntu 24.04, 4 GB) — shared with GoSumo, Documedic, HomeNex, Knol |
-| Code | `/opt/Herald` — plain rsync copy, **no `.git` on the server** |
-| Runs as | system user `herald` |
-| Public URL | https://herald.doaide.com |
+| Code | `/opt/Pulse` — plain rsync copy, **no `.git` on the server** |
+| Runs as | system user `pulse` |
+| Public URL | https://pulse.doaide.com |
 | Process model | **systemd, not Docker.** The repo's `docker-compose.yml` is local-dev only. |
-| Ports | `3006` `herald-api` (uvicorn, 2 workers) · `3007` `herald-web` (static SPA) |
+| Ports | `3006` `pulse-api` (uvicorn, 2 workers) · `3007` `pulse-web` (static SPA) |
 | Bind address | `172.18.0.1` (the `knol_knol` Docker bridge gateway) so only the shared Caddy container can reach it — deliberately not `0.0.0.0` |
-| Units | `herald-api`, `herald-web`, `herald-worker`, `herald-beat` |
+| Units | `pulse-api`, `pulse-web`, `pulse-worker`, `pulse-beat` |
 
-Full detail: [`deploy/DEPLOYMENT.md`](deploy/DEPLOYMENT.md), [`deploy/Caddyfile.herald`](deploy/Caddyfile.herald).
+Full detail: [`deploy/DEPLOYMENT.md`](deploy/DEPLOYMENT.md), [`deploy/Caddyfile.pulse`](deploy/Caddyfile.pulse).
 
 ## SSH key
 
@@ -50,7 +50,7 @@ ssh -i ../GoSumo/keys/hetzner_deploy_ed25519 root@89.167.8.178
 |---|---|
 | `.env` (gitignored) | Local dev config — full var list documented in `.env.example` |
 | `keys/` (gitignored) | Individual secrets, mode 600: `openrouter_api_key`, `gemini_api_key`, `groq_api_key`, `devto_api_key`, `hashnode_api_key`, `bluesky_app_password`, `bluesky_handle`, `sendgrid.txt` |
-| Server | `/opt/Herald/.env` |
+| Server | `/opt/Pulse/.env` |
 
 `keys/groq_api_key` holds the **canonical Groq key for the whole estate** — the same
 value is mirrored in `../TalentPing/keys/groq`, `../USTradingBot/keys/groq_api_key`,
@@ -73,12 +73,12 @@ python -m app.seed                       # single-user account creation
 ./deploy/deploy.sh
 
 # On the server
-systemctl status  herald-api herald-web herald-worker herald-beat
-systemctl restart herald-api herald-web herald-worker herald-beat
-journalctl -u herald-api -f
+systemctl status  pulse-api pulse-web pulse-worker pulse-beat
+systemctl restart pulse-api pulse-web pulse-worker pulse-beat
+journalctl -u pulse-api -f
 
 # Health
-curl https://herald.doaide.com/api/v1/health   # also lists configured LLM providers
+curl https://pulse.doaide.com/api/v1/health   # also lists configured LLM providers
 ```
 
 ## Related projects

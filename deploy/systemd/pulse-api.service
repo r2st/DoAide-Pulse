@@ -1,6 +1,6 @@
 [Unit]
 Description=Pulse API (FastAPI/uvicorn)
-Documentation=https://github.com/r2st/Herald
+Documentation=https://github.com/r2st/DoAide-Pulse
 # Bound to the Docker bridge gateway so Caddy (in a container) can reach it
 # while the public internet cannot — hence the docker ordering.
 After=network.target postgresql.service redis-server.service docker.service
@@ -8,10 +8,10 @@ Wants=postgresql.service redis-server.service docker.service
 
 [Service]
 Type=simple
-User=herald
-Group=herald
-WorkingDirectory=/opt/Herald/backend
-EnvironmentFile=/opt/Herald/.env
+User=pulse
+Group=pulse
+WorkingDirectory=/opt/Pulse/backend
+EnvironmentFile=/opt/Pulse/.env
 # --timeout-graceful-shutdown: on SIGTERM uvicorn stops accepting connections
 # and lets in-flight requests finish. Without a bound it waits forever for one
 # that never does, and systemd SIGKILLs the lot at TimeoutStopSec — taking every
@@ -19,7 +19,7 @@ EnvironmentFile=/opt/Herald/.env
 # exists to avoid. Twenty seconds is longer than any request here should take
 # and comfortably inside the stop timeout below, so the drain always completes
 # on uvicorn's terms rather than systemd's.
-ExecStart=/opt/Herald/.venv/bin/uvicorn app.main:app --host 172.18.0.1 --port 3006 --workers 2 --timeout-graceful-shutdown 20
+ExecStart=/opt/Pulse/.venv/bin/uvicorn app.main:app --host 172.18.0.1 --port 3006 --workers 2 --timeout-graceful-shutdown 20
 Restart=always
 RestartSec=5
 # Room for the drain above plus the lifespan hook that disposes the pool.
@@ -30,11 +30,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/Herald
+ReadWritePaths=/opt/Pulse
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=herald-api
+SyslogIdentifier=pulse-api
 
 [Install]
 WantedBy=multi-user.target

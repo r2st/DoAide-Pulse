@@ -95,7 +95,7 @@ def production_shaped_app(monkeypatch):
 
     @app.get("/_raises_for_this_test")
     def _boom() -> None:
-        raise RuntimeError("connection string postgresql://herald:hunter2@db")
+        raise RuntimeError("connection string postgresql://pulse:hunter2@db")
 
     return app
 
@@ -141,4 +141,4 @@ def test_the_flat_500_is_logged_with_the_request_id(production_shaped_app, caplo
     assert "unhandled exception" in logged
     assert "request_id=" in logged
     # The traceback the response withheld is in the log, where it belongs.
-    assert "postgresql://herald:hunter2@db" in caplog.text
+    assert "postgresql://pulse:hunter2@db" in caplog.text

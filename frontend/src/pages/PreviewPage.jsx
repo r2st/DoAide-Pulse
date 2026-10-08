@@ -66,7 +66,7 @@ export default function PreviewPage() {
               {formatCount(data.word_count)} words · {formatReadLength(data.read_minutes)}
             </p>
             <div
-              className="prose-herald panel px-7 py-6"
+              className="prose-pulse panel px-7 py-6"
               dangerouslySetInnerHTML={{
                 __html: `<h1>${escapeText(data.title)}</h1>${renderMarkdown(
                   data.body_markdown,

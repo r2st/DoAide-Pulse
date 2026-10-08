@@ -1,8 +1,8 @@
 {
-  "base_url": "https://herald.doaide.com/api/v1",
+  "base_url": "https://pulse.doaide.com/api/v1",
   "_notes": [
     "canonical_platform is devto on every product project: Dev.to publishes",
-    "first, Herald adopts its URL as the piece's canonical, and the Bluesky",
+    "first, Pulse adopts its URL as the piece's canonical, and the Bluesky",
     "copy then goes out linking back to it rather than duplicating the body.",
     "That is what makes the cross-post a referral instead of a competitor for",
     "the same search query.",
@@ -153,11 +153,11 @@
       "utm_campaign": "talentping-2026q3"
     },
     {
-      "key": "herald",
-      "name": "Herald",
-      "description": "Herald is an AI-powered marketing automation tool for developers who ship more than they write about. It watches your project repos, drafts blog posts and social copy when something meaningful lands, runs them past you, and publishes to Dev.to, Medium and the rest on a schedule — then tracks which pieces actually got read.",
-      "repo_url": "https://github.com/r2st/Herald",
-      "live_url": "https://herald.doaide.com",
+      "key": "pulse",
+      "name": "Pulse",
+      "description": "Pulse is an AI-powered marketing automation tool for developers who ship more than they write about. It watches your project repos, drafts blog posts and social copy when something meaningful lands, runs them past you, and publishes to Dev.to, Medium and the rest on a schedule — then tracks which pieces actually got read.",
+      "repo_url": "https://github.com/r2st/DoAide-Pulse",
+      "live_url": "https://pulse.doaide.com",
       "tech_stack": [
         "FastAPI",
         "SQLAlchemy",
@@ -186,7 +186,7 @@
       "auto_canonical": true,
       "canonical_platform": "devto",
       "utm_enabled": true,
-      "utm_campaign": "herald-2026q3"
+      "utm_campaign": "pulse-2026q3"
     }
   ],
   "series": [
@@ -494,8 +494,8 @@
       "status": "review"
     },
     {
-      "key": "herald-free-marketing-for-saas",
-      "project": "herald",
+      "key": "pulse-free-marketing-for-saas",
+      "project": "pulse",
       "content_type": "how_to",
       "title": "Free Marketing for SaaS: Content Strategies That Actually Work",
       "focus_keyword": "free marketing for saas",
@@ -515,7 +515,7 @@
       ],
       "excerpt": "Nothing here is free — it is paid in founder attention, which is why most content strategies die in March. What survives that constraint: three kinds of post, one canonical rule, and a cadence of one piece a month.",
       "meta_description": "Content strategies that survive a small SaaS team's actual budget: what to stop doing, the three kinds of post that compound, the canonical URL rule that decides whether syndication helps or hurts.",
-      "body_file": "herald-free-marketing-for-saas.md",
+      "body_file": "pulse-free-marketing-for-saas.md",
       "platforms": [
         "devto",
         "bluesky"
@@ -523,8 +523,8 @@
       "status": "review"
     },
     {
-      "key": "herald-marketing-as-build-artifact",
-      "project": "herald",
+      "key": "pulse-marketing-as-build-artifact",
+      "project": "pulse",
       "content_type": "feature_spotlight",
       "title": "Developer Marketing as a Build Artifact",
       "focus_keyword": "developer marketing",
@@ -544,7 +544,7 @@
       ],
       "excerpt": "Your CI builds, tests, signs, deploys — then stops, and everything downstream of 'the code is live' happens by hand or not at all. On automating the pipeline while keeping the one decision that matters.",
       "meta_description": "Why small teams ship in silence, what changed in publishing APIs and drafting, and the distinction that separates developer marketing automation from a spam cannon: automate the mechanics, keep the approval.",
-      "body_file": "herald-marketing-as-build-artifact.md",
+      "body_file": "pulse-marketing-as-build-artifact.md",
       "platforms": [
         "devto",
         "bluesky"

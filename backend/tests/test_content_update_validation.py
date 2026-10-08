@@ -27,7 +27,7 @@ def content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         body_markdown="word " * 200,
         excerpt="x",
         meta_description="x",
@@ -127,8 +127,8 @@ def test_approving_through_the_patch_releases_it_too(
 @pytest.mark.parametrize(
     "value",
     [
-        "/blog/herald-1-0",
-        "herald.example.com/blog",
+        "/blog/pulse-1-0",
+        "pulse.example.com/blog",
         "javascript:alert(1)",
         "data:text/html,<script>alert(1)</script>",
     ],
@@ -142,15 +142,15 @@ def test_a_canonical_that_is_not_an_absolute_http_url_is_refused(
 
 def test_an_absolute_canonical_is_accepted(client, auth, content):
     resp = _patch(
-        client, auth, content, {"canonical_url": "https://herald.example.com/blog/x"}
+        client, auth, content, {"canonical_url": "https://pulse.example.com/blog/x"}
     )
 
     assert resp.status_code == 200, resp.text
-    assert resp.json()["canonical_url"] == "https://herald.example.com/blog/x"
+    assert resp.json()["canonical_url"] == "https://pulse.example.com/blog/x"
 
 
 def test_clearing_the_canonical_still_works(client, auth, db, content):
-    content.canonical_url = "https://herald.example.com/blog/x"
+    content.canonical_url = "https://pulse.example.com/blog/x"
     db.commit()
 
     resp = _patch(client, auth, content, {"canonical_url": ""})
@@ -195,7 +195,7 @@ def test_creating_with_a_relative_canonical_is_refused(client, auth, project):
     ("field", "value"),
     [
         ("meta_description", "m" * 321),
-        ("canonical_url", "https://herald.example.com/" + "p" * 480),
+        ("canonical_url", "https://pulse.example.com/" + "p" * 480),
     ],
 )
 def test_a_value_too_long_for_its_column_is_refused_on_patch(
@@ -214,7 +214,7 @@ def test_a_value_too_long_for_its_column_is_refused_on_patch(
     ("field", "value"),
     [
         ("meta_description", "m" * 321),
-        ("canonical_url", "https://herald.example.com/" + "p" * 480),
+        ("canonical_url", "https://pulse.example.com/" + "p" * 480),
     ],
 )
 def test_a_value_too_long_for_its_column_is_refused_on_create(

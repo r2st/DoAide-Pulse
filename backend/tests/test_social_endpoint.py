@@ -72,7 +72,7 @@ def test_without_a_canonical_the_card_falls_back_to_where_it_went_live(
             content_id=content.id,
             platform=Platform.DEVTO,
             status=PublicationStatus.PUBLISHED,
-            external_url="https://dev.to/herald/shipping-v2",
+            external_url="https://dev.to/pulse/shipping-v2",
             published_at=datetime.now(UTC),
         )
     )
@@ -92,7 +92,7 @@ def test_an_unpublished_publication_is_not_treated_as_the_live_url(client, auth,
             content_id=content.id,
             platform=Platform.DEVTO,
             status=PublicationStatus.SCHEDULED,
-            external_url="https://dev.to/herald/not-yet",
+            external_url="https://dev.to/pulse/not-yet",
         )
     )
     db.commit()

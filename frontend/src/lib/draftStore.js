@@ -19,7 +19,7 @@
 // the normal case rather than an error. A recovery buffer that breaks the
 // editor when it is unavailable would be worse than no buffer.
 
-const PREFIX = "herald:draft:";
+const PREFIX = "pulse:draft:";
 
 /** Drafts older than this are not offered back. */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

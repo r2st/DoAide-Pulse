@@ -7,15 +7,15 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: herald
-      POSTGRES_PASSWORD: herald
-      POSTGRES_DB: herald
+      POSTGRES_USER: pulse
+      POSTGRES_PASSWORD: pulse
+      POSTGRES_DB: pulse
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U herald"]
+      test: ["CMD-SHELL", "pg_isready -U pulse"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -39,7 +39,7 @@ services:
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg://herald:herald@db:5432/herald
+      DATABASE_URL: postgresql+psycopg://pulse:pulse@db:5432/pulse
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
@@ -59,7 +59,7 @@ services:
     command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg://herald:herald@db:5432/herald
+      DATABASE_URL: postgresql+psycopg://pulse:pulse@db:5432/pulse
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:
@@ -76,7 +76,7 @@ services:
     command: celery -A app.tasks.celery_app.celery_app beat --loglevel=info
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg://herald:herald@db:5432/herald
+      DATABASE_URL: postgresql+psycopg://pulse:pulse@db:5432/pulse
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     volumes:

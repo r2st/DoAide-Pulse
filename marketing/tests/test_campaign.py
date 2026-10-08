@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 import campaign
 import pytest
 from conftest import PLAN, write_plan
-from fake_herald import FakePulse
+from fake_pulse import FakePulse
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def plan(plan_path):
 
 
 @pytest.fixture
-def herald():
+def pulse():
     return FakePulse()
 
 
@@ -94,22 +94,22 @@ def test_the_part_marker_goes_in_the_title_but_the_series_name_does_not(plan):
 # -- project sync ----------------------------------------------------------- #
 
 
-def test_projects_are_created_when_absent(herald, plan):
-    ids = campaign.sync_projects(herald, plan, dry_run=False)
-    assert set(ids) == {"gstbot", "herald"}
-    assert {p["name"] for p in herald.projects} == {"GSTBot", "Pulse"}
+def test_projects_are_created_when_absent(pulse, plan):
+    ids = campaign.sync_projects(pulse, plan, dry_run=False)
+    assert set(ids) == {"gstbot", "pulse"}
+    assert {p["name"] for p in pulse.projects} == {"GSTBot", "Pulse"}
 
 
-def test_a_second_sync_creates_nothing(herald, plan):
-    campaign.sync_projects(herald, plan, dry_run=False)
-    campaign.sync_projects(herald, plan, dry_run=False)
-    assert len(herald.projects) == 2
-    assert herald.count("create_project") == 2
+def test_a_second_sync_creates_nothing(pulse, plan):
+    campaign.sync_projects(pulse, plan, dry_run=False)
+    campaign.sync_projects(pulse, plan, dry_run=False)
+    assert len(pulse.projects) == 2
+    assert pulse.count("create_project") == 2
 
 
-def test_sync_corrects_publishing_machinery_but_not_the_users_copy(herald, plan):
+def test_sync_corrects_publishing_machinery_but_not_the_users_copy(pulse, plan):
     """The narrow field list is the point — see ``_PROJECT_SYNC_FIELDS``."""
-    herald.add_project(
+    pulse.add_project(
         name="GSTBot",
         description="A description the user rewrote by hand.",
         live_url="https://old.example.com",
@@ -118,9 +118,9 @@ def test_sync_corrects_publishing_machinery_but_not_the_users_copy(herald, plan)
         utm_enabled=False,
         utm_campaign="",
     )
-    campaign.sync_projects(herald, plan, dry_run=False)
+    campaign.sync_projects(pulse, plan, dry_run=False)
 
-    stored = next(p for p in herald.projects if p["name"] == "GSTBot")
+    stored = next(p for p in pulse.projects if p["name"] == "GSTBot")
     assert stored["live_url"] == "https://gstbot.example.com"
     assert stored["canonical_platform"] == "devto"
     assert stored["utm_campaign"] == "gstbot-2026q3"
@@ -128,55 +128,55 @@ def test_sync_corrects_publishing_machinery_but_not_the_users_copy(herald, plan)
     assert stored["description"] == "A description the user rewrote by hand."
 
 
-def test_a_dry_run_writes_nothing(herald, plan):
-    campaign.sync_projects(herald, plan, dry_run=True)
-    assert herald.projects == []
-    assert herald.count("create_project") == 0
+def test_a_dry_run_writes_nothing(pulse, plan):
+    campaign.sync_projects(pulse, plan, dry_run=True)
+    assert pulse.projects == []
+    assert pulse.count("create_project") == 0
 
 
 # -- article sync ----------------------------------------------------------- #
 
 
-def test_articles_are_created_with_the_campaign_key(herald, plan):
-    ids = sync(herald, plan)
+def test_articles_are_created_with_the_campaign_key(pulse, plan):
+    ids = sync(pulse, plan)
     assert set(ids) == {"reconciliation", "matching", "launch"}
-    row = herald.by_title("Where ITC Leaks (Part 1)")
+    row = pulse.by_title("Where ITC Leaks (Part 1)")
     assert row["source"]["campaign_key"] == "q3/reconciliation"
     assert row["status"] == "review"
 
 
-def test_running_twice_creates_nothing_twice(herald, plan):
-    first = sync(herald, plan)
-    second = sync(herald, plan)
+def test_running_twice_creates_nothing_twice(pulse, plan):
+    first = sync(pulse, plan)
+    second = sync(pulse, plan)
     assert first == second
-    assert len(herald.content) == 3
-    assert herald.count("create_content") == 3
+    assert len(pulse.content) == 3
+    assert pulse.count("create_content") == 3
 
 
-def test_a_retitled_piece_is_matched_on_its_key_not_its_title(herald, plan):
+def test_a_retitled_piece_is_matched_on_its_key_not_its_title(pulse, plan):
     """The title is the field an edit is most likely to move."""
-    ids = sync(herald, plan)
-    herald._row(ids["reconciliation"])["title"] = "An Editor's Better Headline"
+    ids = sync(pulse, plan)
+    pulse._row(ids["reconciliation"])["title"] = "An Editor's Better Headline"
 
-    again = sync(herald, plan)
+    again = sync(pulse, plan)
 
     assert again["reconciliation"] == ids["reconciliation"]
-    assert len(herald.content) == 3
+    assert len(pulse.content) == 3
 
 
-def test_an_edited_body_updates_the_piece_rather_than_duplicating_it(herald, plan, plan_dir):
-    ids = sync(herald, plan)
+def test_an_edited_body_updates_the_piece_rather_than_duplicating_it(pulse, plan, plan_dir):
+    ids = sync(pulse, plan)
     (plan_dir / "content" / "reconciliation.md").write_text(
         "# Where ITC Leaks\n\nRewritten entirely.\n", encoding="utf-8"
     )
 
-    sync(herald, campaign.Plan(plan.path))
+    sync(pulse, campaign.Plan(plan.path))
 
-    assert len(herald.content) == 3
-    assert "Rewritten entirely." in herald._row(ids["reconciliation"])["body_markdown"]
+    assert len(pulse.content) == 3
+    assert "Rewritten entirely." in pulse._row(ids["reconciliation"])["body_markdown"]
 
 
-def test_a_second_run_does_not_wipe_what_herald_generated(herald, plan):
+def test_a_second_run_does_not_wipe_what_pulse_generated(pulse, plan):
     """The regression: an undeclared field was sent as "" on every run.
 
     ``launch`` names no excerpt and no meta description, so Pulse writes both
@@ -184,45 +184,45 @@ def test_a_second_run_does_not_wipe_what_herald_generated(herald, plan):
     "replace the one Pulse wrote with nothing", which is an idempotent sync
     destroying data it did not author.
     """
-    ids = sync(herald, plan)
-    generated = herald._row(ids["launch"])["excerpt"]
+    ids = sync(pulse, plan)
+    generated = pulse._row(ids["launch"])["excerpt"]
     assert generated  # Pulse filled it in
 
-    sync(herald, plan)
+    sync(pulse, plan)
 
-    assert herald._row(ids["launch"])["excerpt"] == generated
-    assert herald._row(ids["launch"])["meta_description"]
+    assert pulse._row(ids["launch"])["excerpt"] == generated
+    assert pulse._row(ids["launch"])["meta_description"]
 
 
-def test_a_declared_field_is_still_corrected(herald, plan):
+def test_a_declared_field_is_still_corrected(pulse, plan):
     """Not sending undeclared fields must not stop the declared ones syncing."""
-    ids = sync(herald, plan)
-    herald._row(ids["reconciliation"])["excerpt"] = "Somebody pasted this in."
+    ids = sync(pulse, plan)
+    pulse._row(ids["reconciliation"])["excerpt"] = "Somebody pasted this in."
 
-    sync(herald, plan)
+    sync(pulse, plan)
 
-    assert herald._row(ids["reconciliation"])["excerpt"] == (
+    assert pulse._row(ids["reconciliation"])["excerpt"] == (
         "Reconciliation is four problems wearing one name."
     )
 
 
-def test_a_published_piece_is_left_alone(herald, plan):
-    ids = sync(herald, plan)
-    row = herald._row(ids["reconciliation"])
+def test_a_published_piece_is_left_alone(pulse, plan):
+    ids = sync(pulse, plan)
+    row = pulse._row(ids["reconciliation"])
     row["status"] = "published"
     row["body_markdown"] = "What actually went out."
-    herald.calls.clear()
+    pulse.calls.clear()
 
-    sync(herald, plan)
+    sync(pulse, plan)
 
     assert row["body_markdown"] == "What actually went out."
     # Not merely un-updated: never even fetched for comparison.
-    assert f"get_content:{ids['reconciliation']}" not in herald.calls
-    assert f"update_content:{ids['reconciliation']}" not in herald.calls
+    assert f"get_content:{ids['reconciliation']}" not in pulse.calls
+    assert f"update_content:{ids['reconciliation']}" not in pulse.calls
 
 
-def test_drift_herald_will_never_accept_is_reported_once_not_forever(
-    herald, plan_dir, capsys
+def test_drift_pulse_will_never_accept_is_reported_once_not_forever(
+    pulse, plan_dir, capsys
 ):
     """Nine keywords, and Pulse stores eight. Silence here is an endless loop.
 
@@ -234,38 +234,38 @@ def test_drift_herald_will_never_accept_is_reported_once_not_forever(
     noisy["articles"][0]["keywords"] = [f"keyword number {n}" for n in range(9)]
     plan = campaign.Plan(write_plan(plan_dir, noisy, "noisy.json"))
 
-    sync(herald, plan)
+    sync(pulse, plan)
     capsys.readouterr()
-    sync(herald, plan)
+    sync(pulse, plan)
 
     out = capsys.readouterr().out
     assert "Pulse normalised keywords" in out
     assert "reconciliation" in out
 
 
-def test_a_clean_second_run_says_nothing_about_normalisation(herald, plan, capsys):
-    sync(herald, plan)
+def test_a_clean_second_run_says_nothing_about_normalisation(pulse, plan, capsys):
+    sync(pulse, plan)
     capsys.readouterr()
-    sync(herald, plan)
+    sync(pulse, plan)
     assert "normalised" not in capsys.readouterr().out
 
 
 def test_article_listings_are_fetched_once_per_project_not_once_per_article(
-    herald, plan
+    pulse, plan
 ):
-    sync(herald, plan)
-    herald.calls.clear()
-    sync(herald, plan)
+    sync(pulse, plan)
+    pulse.calls.clear()
+    sync(pulse, plan)
     # Two projects, three articles.
-    assert herald.count("list_content") == 2
+    assert pulse.count("list_content") == 2
 
 
 # -- link check -------------------------------------------------------------- #
 
 
-def test_check_links_counts_the_broken_ones(herald, plan, capsys):
-    ids = sync(herald, plan)
-    herald.link_results[ids["launch"]] = {
+def test_check_links_counts_the_broken_ones(pulse, plan, capsys):
+    ids = sync(pulse, plan)
+    pulse.link_results[ids["launch"]] = {
         "checked": 2,
         "broken_count": 1,
         "links": [
@@ -274,40 +274,40 @@ def test_check_links_counts_the_broken_ones(herald, plan, capsys):
         ],
     }
 
-    assert campaign.check_links(herald, plan, ids) == 1
+    assert campaign.check_links(pulse, plan, ids) == 1
     assert "https://gone.example.com (404)" in capsys.readouterr().out
 
 
-def test_check_links_is_quiet_when_everything_resolves(herald, plan):
-    ids = sync(herald, plan)
-    assert campaign.check_links(herald, plan, ids) == 0
+def test_check_links_is_quiet_when_everything_resolves(pulse, plan):
+    ids = sync(pulse, plan)
+    assert campaign.check_links(pulse, plan, ids) == 0
 
 
 # -- schedule ---------------------------------------------------------------- #
 
 
-def test_scheduling_refuses_a_platform_that_is_not_connected(herald, plan):
-    herald.connected = ["devto"]  # the plan wants bluesky too
-    ids = sync(herald, plan)
+def test_scheduling_refuses_a_platform_that_is_not_connected(pulse, plan):
+    pulse.connected = ["devto"]  # the plan wants bluesky too
+    ids = sync(pulse, plan)
 
     with pytest.raises(SystemExit, match="Not connected to: bluesky"):
         campaign.schedule(
-            herald, plan, ids,
+            pulse, plan, ids,
             start=datetime(2026, 12, 1, 9, tzinfo=UTC),
             every_days=3, optimize=False, dry_run=False,
         )
 
 
-def test_scheduling_lays_the_campaign_out_on_the_requested_drumbeat(herald, plan):
-    ids = sync(herald, plan)
+def test_scheduling_lays_the_campaign_out_on_the_requested_drumbeat(pulse, plan):
+    ids = sync(pulse, plan)
     start = datetime(2026, 12, 1, 9, tzinfo=UTC)
 
     campaign.schedule(
-        herald, plan, ids, start=start, every_days=3, optimize=False, dry_run=False
+        pulse, plan, ids, start=start, every_days=3, optimize=False, dry_run=False
     )
 
     when = [
-        herald._row(ids[key])["publications"][0]["scheduled_for"]
+        pulse._row(ids[key])["publications"][0]["scheduled_for"]
         for key in ("reconciliation", "matching", "launch")
     ]
     assert when == [
@@ -315,14 +315,14 @@ def test_scheduling_lays_the_campaign_out_on_the_requested_drumbeat(herald, plan
     ]
 
 
-def test_a_dry_run_schedules_nothing(herald, plan):
-    ids = sync(herald, plan)
+def test_a_dry_run_schedules_nothing(pulse, plan):
+    ids = sync(pulse, plan)
     campaign.schedule(
-        herald, plan, ids,
+        pulse, plan, ids,
         start=datetime(2026, 12, 1, 9, tzinfo=UTC),
         every_days=3, optimize=False, dry_run=True,
     )
-    assert herald.count("schedule_content") == 0
+    assert pulse.count("schedule_content") == 0
 
 
 # -- schedule argument checking ---------------------------------------------- #
@@ -378,43 +378,43 @@ def test_optimize_alone_needs_no_start():
 # -- status ------------------------------------------------------------------ #
 
 
-def test_status_reports_what_is_scheduled(herald, plan, capsys):
-    ids = sync(herald, plan)
+def test_status_reports_what_is_scheduled(pulse, plan, capsys):
+    ids = sync(pulse, plan)
     campaign.schedule(
-        herald, plan, ids,
+        pulse, plan, ids,
         start=datetime(2026, 12, 1, 9, tzinfo=UTC),
         every_days=3, optimize=False, dry_run=False,
     )
     capsys.readouterr()
 
-    campaign.status(herald, plan)
+    campaign.status(pulse, plan)
 
     out = capsys.readouterr().out
     assert "devto:scheduled" in out
     assert "bluesky:scheduled" in out
 
 
-def test_status_lists_each_project_once_rather_than_once_per_article(herald, plan):
+def test_status_lists_each_project_once_rather_than_once_per_article(pulse, plan):
     """The N+1: a twelve-article campaign asked Pulse for the same list twelve times."""
-    sync(herald, plan)
-    herald.calls.clear()
+    sync(pulse, plan)
+    pulse.calls.clear()
 
-    campaign.status(herald, plan)
+    campaign.status(pulse, plan)
 
-    assert herald.count("list_content") == 2  # two projects, three articles
-    assert herald.count("list_projects") == 1
+    assert pulse.count("list_content") == 2  # two projects, three articles
+    assert pulse.count("list_projects") == 1
 
 
-def test_status_says_so_when_a_project_was_never_created(herald, plan, capsys):
-    campaign.status(herald, plan)
+def test_status_says_so_when_a_project_was_never_created(pulse, plan, capsys):
+    campaign.status(pulse, plan)
     assert capsys.readouterr().out.count("no project") == 3
 
 
 def test_status_says_so_when_the_project_exists_but_the_article_does_not(
-    herald, plan, capsys
+    pulse, plan, capsys
 ):
-    campaign.sync_projects(herald, plan, dry_run=False)
-    campaign.status(herald, plan)
+    campaign.sync_projects(pulse, plan, dry_run=False)
+    campaign.status(pulse, plan)
     assert capsys.readouterr().out.count("absent") == 3
 
 

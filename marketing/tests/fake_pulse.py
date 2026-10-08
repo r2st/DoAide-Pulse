@@ -17,7 +17,7 @@ from typing import Any
 
 
 class FakePulseError(RuntimeError):
-    """Stands in for ``herald_client.HeraldError``."""
+    """Stands in for ``pulse_client.PulseError``."""
 
     def __init__(self, status_code: int, detail: str) -> None:
         super().__init__(f"{status_code}: {detail}")
@@ -153,7 +153,7 @@ class FakePulse:
     ) -> list[dict]:
         self.calls.append(f"schedule_content:{content_id}")
         row = self._row(content_id)
-        when = kwargs.get("scheduled_for") or "herald-chosen"
+        when = kwargs.get("scheduled_for") or "pulse-chosen"
         publications = [
             {
                 "id": self._id(),

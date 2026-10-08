@@ -229,14 +229,14 @@ rollback, the Caddyfile edit that bites; read that one before touching
 production. The shape of it:
 
 - **Production is not Docker.** `docker-compose.yml` in the repo root is
-  local-dev only. The box runs four systemd units — `herald-api`,
-  `herald-web`, `herald-worker`, `herald-beat` — in front of the host's
+  local-dev only. The box runs four systemd units — `pulse-api`,
+  `pulse-web`, `pulse-worker`, `pulse-beat` — in front of the host's
   PostgreSQL and Redis. Worker and beat are separate units for the same reason
   the compose file separates them: scaling workers must not duplicate the
   schedule.
 - **TLS and routing are Caddy's**, in a shared container, one origin with
   `/api/*` split to the API. The vhost lives in `/opt/knol/Caddyfile`; the
-  canonical copy of the block is `deploy/Caddyfile.herald`.
+  canonical copy of the block is `deploy/Caddyfile.pulse`.
 - **The frontend is built on your machine, never on the server** — 4 GB is
   shared between six applications, and `frontend/dist/` is rsynced.
 - `./deploy/deploy.sh` does the whole thing: build, rsync, dependencies,

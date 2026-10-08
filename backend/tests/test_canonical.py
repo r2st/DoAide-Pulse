@@ -21,8 +21,8 @@ from app.services.publishers.bluesky import BlueskyAdapter
 from app.services.publishers.devto import DevToAdapter
 from app.services.publishers.medium import MediumAdapter
 
-DEVTO_URL = "https://dev.to/r2st/herald-1-0"
-MEDIUM_URL = "https://medium.com/@r2st/herald-1-0"
+DEVTO_URL = "https://dev.to/r2st/pulse-1-0"
+MEDIUM_URL = "https://medium.com/@r2st/pulse-1-0"
 BLUESKY_URL = "https://bsky.app/profile/r2st.bsky.social/post/3ms7qsatutl26"
 
 
@@ -41,7 +41,7 @@ def content(db, project) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse 1.0",
-        slug="herald-1-0",
+        slug="pulse-1-0",
         body_markdown="## It's out\n\n" + ("word " * 200),
         excerpt="Pulse 1.0 is out.",
         meta_description="Pulse 1.0 is out.",
@@ -131,13 +131,13 @@ def test_the_second_platform_is_told_about_the_first(
 
 
 def test_a_hand_typed_canonical_is_never_overwritten(db, content, connected, adapters):
-    content.canonical_url = "https://herald.example.com/blog/herald-1-0"
+    content.canonical_url = "https://pulse.example.com/blog/pulse-1-0"
     db.commit()
 
     publication = publishing_service.queue(db, content, ["devto"])[0]
     publishing_service.execute(db, publication)
 
-    assert content.canonical_url == "https://herald.example.com/blog/herald-1-0"
+    assert content.canonical_url == "https://pulse.example.com/blog/pulse-1-0"
 
 
 def test_opting_out_leaves_the_field_empty(db, project, content, connected, adapters):

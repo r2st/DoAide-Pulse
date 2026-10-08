@@ -262,10 +262,10 @@ def repo_project(db, user) -> Project:
     row = Project(
         user_id=user.id,
         name="Pulse",
-        slug="herald-scan",
+        slug="pulse-scan",
         description="A thing that ships.",
         tone=Tone.TECHNICAL,
-        repo_url="https://github.com/r2st/Herald",
+        repo_url="https://github.com/r2st/DoAide-Pulse",
         last_seen_commit_sha="abc123",
     )
     db.add(row)

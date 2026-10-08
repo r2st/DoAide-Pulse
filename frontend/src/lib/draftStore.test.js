@@ -126,13 +126,13 @@ describe("save and load", () => {
 
 describe("load rejects anything it cannot fully understand", () => {
   it("returns null for unparseable json", () => {
-    window.localStorage.setItem(`herald:draft:${ID}`, "{not json");
+    window.localStorage.setItem(`pulse:draft:${ID}`, "{not json");
 
     expect(load(ID)).toBe(null);
   });
 
   it("returns null for a blob written by an older shape", () => {
-    window.localStorage.setItem(`herald:draft:${ID}`, JSON.stringify({ title: "bare" }));
+    window.localStorage.setItem(`pulse:draft:${ID}`, JSON.stringify({ title: "bare" }));
 
     expect(load(ID)).toBe(null);
   });
@@ -142,7 +142,7 @@ describe("load rejects anything it cannot fully understand", () => {
 
     expect(load(ID, 8 * DAY)).toBe(null);
     // Not merely hidden — dropped, so it stops occupying quota.
-    expect(window.localStorage.getItem(`herald:draft:${ID}`)).toBe(null);
+    expect(window.localStorage.getItem(`pulse:draft:${ID}`)).toBe(null);
   });
 
   it("still returns a draft just under the cutoff", () => {
@@ -185,18 +185,18 @@ describe("prune", () => {
   });
 
   it("removes entries it cannot parse", () => {
-    window.localStorage.setItem("herald:draft:9", "garbage");
+    window.localStorage.setItem("pulse:draft:9", "garbage");
 
     expect(prune()).toBe(1);
   });
 
   it("leaves keys belonging to anything else alone", () => {
-    window.localStorage.setItem("herald:token", "abc");
+    window.localStorage.setItem("pulse:token", "abc");
     save(1, draft({ title: "Old" }), draft(), 0);
 
     prune(8 * DAY);
 
-    expect(window.localStorage.getItem("herald:token")).toBe("abc");
+    expect(window.localStorage.getItem("pulse:token")).toBe("abc");
   });
 
   it("removes every stale entry, not every other one", () => {
@@ -298,7 +298,7 @@ describe("missing fields are read as empty rather than undefined", () => {
     // A draft written before a field existed still has to be offerable, or an
     // upgrade silently strands whatever the user had unsaved at the time.
     window.localStorage.setItem(
-      `herald:draft:${ID}`,
+      `pulse:draft:${ID}`,
       JSON.stringify({ at: 0, draft: { title: "Half a draft" } }),
     );
 

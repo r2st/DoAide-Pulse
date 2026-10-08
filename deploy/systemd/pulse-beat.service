@@ -1,18 +1,18 @@
 [Unit]
 Description=Pulse Celery beat (autopilot scan, publish sweep, metrics poll)
-Documentation=https://github.com/r2st/Herald
-After=network.target redis-server.service herald-worker.service
+Documentation=https://github.com/r2st/DoAide-Pulse
+After=network.target redis-server.service pulse-worker.service
 Wants=redis-server.service
 
 [Service]
 Type=simple
-User=herald
-Group=herald
-WorkingDirectory=/opt/Herald/backend
-EnvironmentFile=/opt/Herald/.env
+User=pulse
+Group=pulse
+WorkingDirectory=/opt/Pulse/backend
+EnvironmentFile=/opt/Pulse/.env
 # The schedule file must live under ReadWritePaths; beat's default is the CWD,
 # which ProtectSystem=strict makes read-only.
-ExecStart=/opt/Herald/.venv/bin/celery -A app.tasks.celery_app:celery_app beat --loglevel=info --schedule /opt/Herald/backend/celerybeat-schedule
+ExecStart=/opt/Pulse/.venv/bin/celery -A app.tasks.celery_app:celery_app beat --loglevel=info --schedule /opt/Pulse/backend/celerybeat-schedule
 Restart=always
 RestartSec=10
 # Beat only decides *when* something runs and publishes a message; there is no
@@ -26,11 +26,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/Herald
+ReadWritePaths=/opt/Pulse
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=herald-beat
+SyslogIdentifier=pulse-beat
 
 [Install]
 WantedBy=multi-user.target

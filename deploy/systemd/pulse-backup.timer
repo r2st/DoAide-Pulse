@@ -1,9 +1,9 @@
 [Unit]
 Description=Nightly Pulse database backup
-Documentation=https://github.com/r2st/Herald
+Documentation=https://github.com/r2st/DoAide-Pulse
 
 [Timer]
-Unit=herald-backup.service
+Unit=pulse-backup.service
 # 03:30 UTC. GSTBot dumps at 02:30 and CAFlow around 20:50; this sits clear of
 # both so the dumps are not competing for the same disk. It is also after the
 # hourly autopilot scan at :34 has finished writing, so a dump taken here holds

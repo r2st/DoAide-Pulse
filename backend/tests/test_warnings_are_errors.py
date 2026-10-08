@@ -103,8 +103,8 @@ def test_a_warning_actually_fails():
     command line put it back; this asserts on the behaviour the rest of the
     module only describes.
     """
-    with pytest.raises(UserWarning, match="herald-warning-filter-probe"):
-        warnings.warn("herald-warning-filter-probe", UserWarning, stacklevel=1)
+    with pytest.raises(UserWarning, match="pulse-warning-filter-probe"):
+        warnings.warn("pulse-warning-filter-probe", UserWarning, stacklevel=1)
 
 
 def test_a_deprecation_fails_too():
@@ -114,5 +114,5 @@ def test_a_deprecation_fails_too():
     that most needs the explicit ``error`` — and the one whose regression would
     be least visible.
     """
-    with pytest.raises(DeprecationWarning, match="herald-deprecation-probe"):
-        warnings.warn("herald-deprecation-probe", DeprecationWarning, stacklevel=1)
+    with pytest.raises(DeprecationWarning, match="pulse-deprecation-probe"):
+        warnings.warn("pulse-deprecation-probe", DeprecationWarning, stacklevel=1)

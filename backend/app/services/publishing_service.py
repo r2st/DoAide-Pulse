@@ -594,7 +594,7 @@ def build_request(
         project_name=project.name if project else "",
         as_draft=as_draft,
         idempotency_key=(
-            f"herald-{content.id}-{platform.value}" if platform and content.id else None
+            f"pulse-{content.id}-{platform.value}" if platform and content.id else None
         ),
         language=translation.language if translation is not None else languages.SOURCE_LANGUAGE,
     )

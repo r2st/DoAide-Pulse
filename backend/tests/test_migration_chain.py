@@ -4,7 +4,7 @@
 head``, singular. Alembic refuses that command outright when two revisions have
 no descendant — "Multiple head revisions are present for given argument 'head'"
 — so a second head is not a merge to resolve later, it is a deploy that stops
-between ``systemctl stop herald-worker`` and ``systemctl restart herald-api``.
+between ``systemctl stop pulse-worker`` and ``systemctl restart pulse-api``.
 The API comes back up against a schema the models have moved past.
 
 Getting there takes nothing exotic: write a new revision, set ``down_revision``

@@ -190,7 +190,7 @@ SLOW_QUERY_STATEMENT_CHARS = 400
 #: ``before`` can arrive before the matching ``after`` when a cursor is executed
 #: inside an event handler — and a scalar would have the inner statement's start
 #: time attributed to the outer one.
-_TIMER_KEY = "herald_query_started"
+_TIMER_KEY = "pulse_query_started"
 
 
 def _condensed(statement: str) -> str:
@@ -229,7 +229,7 @@ def install_slow_query_logging(target: Engine, threshold_ms: int) -> bool:
     """
     if threshold_ms <= 0:
         return False
-    if getattr(target, "_herald_slow_query_logging", False):
+    if getattr(target, "_pulse_slow_query_logging", False):
         return False
 
     @event.listens_for(target, "before_cursor_execute")
@@ -268,7 +268,7 @@ def install_slow_query_logging(target: Engine, threshold_ms: int) -> bool:
             _condensed(statement),
         )
 
-    target._herald_slow_query_logging = True  # type: ignore[attr-defined]
+    target._pulse_slow_query_logging = True  # type: ignore[attr-defined]
     return True
 
 

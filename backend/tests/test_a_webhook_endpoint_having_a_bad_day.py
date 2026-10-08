@@ -44,7 +44,7 @@ from app.models.mixins import as_aware, utcnow
 from app.models.webhook import DeliveryStatus, Webhook, WebhookDelivery, WebhookEvent
 from app.services import link_check, webhooks
 
-_URL = "https://hooks.example.test/herald"
+_URL = "https://hooks.example.test/pulse"
 
 #: What httpx raises when the certificate does not verify. Built the way the
 #: real one is — an ``ssl`` error wrapped in a transport error — because the

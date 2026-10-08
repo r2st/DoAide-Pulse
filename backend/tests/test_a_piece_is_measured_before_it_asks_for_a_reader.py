@@ -121,9 +121,9 @@ def test_the_missing_readability_weight_goes_to_the_code_component():
         title="Pulse 1.0",
         body_markdown="Pulse 1.0 is out today. It writes your changelog.",
         meta_description="Pulse 1.0 is out today, and it writes your changelog for you.",
-        keywords=["herald"],
-        focus_keyword="herald",
-        slug="herald-1-0",
+        keywords=["pulse"],
+        focus_keyword="pulse",
+        slug="pulse-1-0",
     )
 
     assert short.readability_points is None

@@ -211,15 +211,15 @@ def test_every_keyword_becomes_its_own_article_tag():
 
 
 def test_a_handle_without_an_at_sign_gets_one():
-    tags = dict(social_cards.meta_tags(title="T", url="https://e.com/p", author_handle="herald"))
+    tags = dict(social_cards.meta_tags(title="T", url="https://e.com/p", author_handle="pulse"))
 
-    assert tags["twitter:creator"] == "@herald"
+    assert tags["twitter:creator"] == "@pulse"
 
 
 def test_a_handle_that_already_has_an_at_sign_is_not_doubled():
-    tags = dict(social_cards.meta_tags(title="T", url="https://e.com/p", author_handle="@herald"))
+    tags = dict(social_cards.meta_tags(title="T", url="https://e.com/p", author_handle="@pulse"))
 
-    assert tags["twitter:creator"] == "@herald"
+    assert tags["twitter:creator"] == "@pulse"
 
 
 # --------------------------------------------------------------------------- #

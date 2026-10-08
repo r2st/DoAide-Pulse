@@ -167,7 +167,7 @@ def validate_config(kind: TriggerKind, config: dict[str, Any] | None) -> dict[st
         if repo and not _REPO_RE.match(repo):
             raise ValueError(
                 f"{repo!r} is not a GitHub repository. Give it as owner/name, "
-                "e.g. r2st/Herald."
+                "e.g. r2st/DoAide-Pulse."
             )
         body["repo"] = repo
 

@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from herald_client import DEFAULT_BASE_URL, HeraldClient, HeraldError
+from pulse_client import DEFAULT_BASE_URL, PulseClient, PulseError
 
-BASE = "https://herald.example.com/api/v1"
+BASE = "https://pulse.example.com/api/v1"
 
 
 def client_for(handler, **kwargs) -> PulseClient:
@@ -51,7 +51,7 @@ def test_login_posts_form_encoded_credentials_not_json():
     assert "password=hunter2" in seen["body"]
 
 
-def test_a_rejected_login_carries_the_detail_herald_sent():
+def test_a_rejected_login_carries_the_detail_pulse_sent():
     handler = lambda r: httpx.Response(401, json={"detail": "Incorrect email or password"})
     with pytest.raises(PulseError) as exc:
         client_for(handler).login("someone@example.com", "wrong")
@@ -74,15 +74,15 @@ def test_calling_an_endpoint_before_logging_in_fails_without_a_request():
 
 
 def test_login_from_env_says_which_variables_to_set(monkeypatch):
-    monkeypatch.delenv("HERALD_EMAIL", raising=False)
-    monkeypatch.delenv("HERALD_PASSWORD", raising=False)
-    with pytest.raises(SystemExit, match="HERALD_EMAIL and HERALD_PASSWORD"):
+    monkeypatch.delenv("PULSE_EMAIL", raising=False)
+    monkeypatch.delenv("PULSE_PASSWORD", raising=False)
+    with pytest.raises(SystemExit, match="PULSE_EMAIL and PULSE_PASSWORD"):
         PulseClient(BASE).login_from_env()
 
 
 def test_login_from_env_uses_the_environment(monkeypatch):
-    monkeypatch.setenv("HERALD_EMAIL", "someone@example.com")
-    monkeypatch.setenv("HERALD_PASSWORD", "hunter2")
+    monkeypatch.setenv("PULSE_EMAIL", "someone@example.com")
+    monkeypatch.setenv("PULSE_PASSWORD", "hunter2")
     seen: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -139,7 +139,7 @@ def test_a_validation_error_shows_the_field_that_failed():
 
 def test_the_base_url_loses_a_trailing_slash():
     """Otherwise every path is built with a double slash in it."""
-    assert PulseClient("https://herald.example.com/api/v1/").base_url == BASE
+    assert PulseClient("https://pulse.example.com/api/v1/").base_url == BASE
 
 
 def test_the_default_base_url_is_the_public_host():

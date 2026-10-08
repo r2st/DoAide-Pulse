@@ -38,8 +38,8 @@ function project(overrides = {}) {
     id: 1,
     name: "Pulse",
     description: "A dev-blog autopilot.",
-    repo_url: "https://github.com/r2st/Herald",
-    repo_full_name: "r2st/Herald",
+    repo_url: "https://github.com/r2st/DoAide-Pulse",
+    repo_full_name: "r2st/DoAide-Pulse",
     live_url: "",
     tech_stack: ["FastAPI", "React"],
     target_audience: "",
@@ -50,7 +50,7 @@ function project(overrides = {}) {
     canonical_platform: "",
     utm_enabled: true,
     utm_campaign: "",
-    slug: "herald",
+    slug: "pulse",
     content_count: 4,
     published_count: 3,
     last_scanned_at: null,
@@ -96,17 +96,17 @@ describe("a project card", () => {
     draw();
 
     expect(await screen.findByText("Pulse")).toBeInTheDocument();
-    expect(screen.getByText("r2st/Herald")).toBeInTheDocument();
+    expect(screen.getByText("r2st/DoAide-Pulse")).toBeInTheDocument();
     expect(screen.getByTitle("Autopilot mode")).toHaveTextContent("draft");
   });
 
   it("falls back to the live URL when there is no repo", async () => {
     api.listProjects.mockResolvedValue([
-      project({ repo_full_name: "", live_url: "https://herald.example.com" }),
+      project({ repo_full_name: "", live_url: "https://pulse.example.com" }),
     ]);
     draw();
 
-    expect(await screen.findByText("https://herald.example.com")).toBeInTheDocument();
+    expect(await screen.findByText("https://pulse.example.com")).toBeInTheDocument();
   });
 
   it("offers a scan button only when a repo is connected", async () => {
@@ -176,7 +176,7 @@ describe("scanning a repo", () => {
   it("reports what the scan found and reloads", async () => {
     api.listProjects.mockResolvedValue([project()]);
     api.scanProject.mockResolvedValue({
-      full_name: "r2st/Herald",
+      full_name: "r2st/DoAide-Pulse",
       new_commit_count: 3,
       new_release_tag: null,
     });
@@ -187,7 +187,7 @@ describe("scanning a repo", () => {
     await user.click(screen.getByRole("button", { name: "Scan repo" }));
 
     await vi.waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith("r2st/Herald: 3 new commit(s)"),
+      expect(toast.success).toHaveBeenCalledWith("r2st/DoAide-Pulse: 3 new commit(s)"),
     );
     expect(api.scanProject).toHaveBeenCalledWith(1);
     expect(api.listProjects).toHaveBeenCalledTimes(2);
@@ -196,7 +196,7 @@ describe("scanning a repo", () => {
   it("mentions the release tag alongside the commit count when one shipped", async () => {
     api.listProjects.mockResolvedValue([project()]);
     api.scanProject.mockResolvedValue({
-      full_name: "r2st/Herald",
+      full_name: "r2st/DoAide-Pulse",
       new_commit_count: 5,
       new_release_tag: "v2.1.0",
     });
@@ -208,7 +208,7 @@ describe("scanning a repo", () => {
 
     await vi.waitFor(() =>
       expect(toast.success).toHaveBeenCalledWith(
-        "r2st/Herald: 5 new commit(s), release v2.1.0",
+        "r2st/DoAide-Pulse: 5 new commit(s), release v2.1.0",
       ),
     );
   });

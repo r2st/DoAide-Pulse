@@ -17,7 +17,7 @@ def _content(db, project, **overrides) -> Content:
         project_id=project.id,
         content_type=ContentType.ANNOUNCEMENT,
         title="Pulse ships bulk operations",
-        slug="herald-ships-bulk-operations",
+        slug="pulse-ships-bulk-operations",
         excerpt="Approve, reject or publish many drafts in one call.",
         focus_keyword="bulk content operations",
     )

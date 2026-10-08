@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 #: The message header the request id travels in. Namespaced because it shares a
 #: dict with Celery's own protocol fields, and a collision there is not a bug
 #: that announces itself.
-REQUEST_ID_HEADER = "herald_request_id"
+REQUEST_ID_HEADER = "pulse_request_id"
 
 #: How much of a task's arguments is worth putting in a failure line. The
 #: arguments here are row ids, so this is generous for the real cases and a cap

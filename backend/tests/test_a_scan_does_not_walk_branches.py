@@ -56,7 +56,7 @@ def _commit(sha: str) -> dict:
             "message": f"feat: {sha}",
             "author": {"name": "r2st", "date": "2026-07-01T00:00:00Z"},
         },
-        "html_url": f"https://github.com/r2st/Herald/commit/{sha}",
+        "html_url": f"https://github.com/r2st/DoAide-Pulse/commit/{sha}",
     }
 
 
@@ -73,10 +73,10 @@ def test_a_commits_page_is_asked_for_without_a_branch(calls):
     """
     calls["set"]([_commit("aaa1111")])
 
-    github_client._commits_page("r2st/Herald", per_page=100)
+    github_client._commits_page("r2st/DoAide-Pulse", per_page=100)
 
     (request,) = calls["recorded"]
-    assert request["path"] == "/repos/r2st/Herald/commits"
+    assert request["path"] == "/repos/r2st/DoAide-Pulse/commits"
     assert "sha" not in request["params"], (
         "the commits endpoint was asked for a specific branch. GitHub's "
         "default is the repo's default branch, and selecting one is the first "
@@ -95,7 +95,7 @@ def test_a_full_fetch_names_no_branch_either(calls):
     """
     calls["set"]([_commit("aaa1111"), _commit("bbb2222")])
 
-    github_client.fetch_commits("r2st/Herald", since_sha="bbb2222")
+    github_client.fetch_commits("r2st/DoAide-Pulse", since_sha="bbb2222")
 
     assert calls["recorded"], "no request was made at all"
     for request in calls["recorded"]:
@@ -109,7 +109,7 @@ def test_a_scan_with_no_watermark_still_names_no_branch(calls):
     """The first scan of a project takes the other path through the function."""
     calls["set"]([_commit("aaa1111")])
 
-    github_client.fetch_commits("r2st/Herald")
+    github_client.fetch_commits("r2st/DoAide-Pulse")
 
     for request in calls["recorded"]:
         assert "sha" not in request["params"]
@@ -128,12 +128,12 @@ def test_the_request_count_does_not_depend_on_the_repo(calls):
     precisely the property: there is no branch enumeration to grow.
     """
     calls["set"]([_commit("aaa1111")])
-    github_client.fetch_commits("r2st/Herald", since_sha="aaa1111")
+    github_client.fetch_commits("r2st/DoAide-Pulse", since_sha="aaa1111")
     unchanged = len(calls["recorded"])
 
     calls["recorded"].clear()
     calls["set"]([_commit("ccc3333"), _commit("aaa1111")])
-    github_client.fetch_commits("r2st/Herald", since_sha="aaa1111")
+    github_client.fetch_commits("r2st/DoAide-Pulse", since_sha="aaa1111")
     moved = len(calls["recorded"])
 
     # One request when the watermark is still HEAD, two when it has moved —
@@ -153,7 +153,7 @@ def test_an_unmoved_head_is_answered_with_a_one_commit_page(calls):
     """
     calls["set"]([_commit("aaa1111")])
 
-    assert github_client.fetch_commits("r2st/Herald", since_sha="aaa1111") == []
+    assert github_client.fetch_commits("r2st/DoAide-Pulse", since_sha="aaa1111") == []
 
     (request,) = calls["recorded"]
     assert request["params"]["per_page"] == 1

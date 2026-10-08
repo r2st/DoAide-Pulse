@@ -205,7 +205,7 @@ def test_project_builtins_resolve_without_being_declared(project):
 
     result = tmpl.render(template, {}, project=project)
 
-    assert result.body == "Pulse — https://herald.example.com"
+    assert result.body == "Pulse — https://pulse.example.com"
 
 
 def test_project_url_falls_back_to_the_repo_when_there_is_no_site(project):
@@ -213,7 +213,7 @@ def test_project_url_falls_back_to_the_repo_when_there_is_no_site(project):
     template = make_template(body="{{project.url}}")
 
     assert tmpl.render(template, {}, project=project).body == (
-        "https://github.com/r2st/Herald"
+        "https://github.com/r2st/DoAide-Pulse"
     )
 
 
