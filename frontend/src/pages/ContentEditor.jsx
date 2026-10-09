@@ -52,6 +52,7 @@ function draftFrom(content) {
     // The one field `ContentDetail` declares nullable; the two lists above
     // carry `[]` as their schema default and cannot arrive absent.
     cover_image_url: content.cover_image_url ?? "",
+    marketing_images: content.marketing_images ?? [],
   };
 }
 
@@ -294,6 +295,7 @@ export default function ContentEditor() {
         tags: splitList(sent.tags),
         // The API rejects a relative path and reads "" as "no image".
         cover_image_url: sent.cover_image_url.trim() || null,
+        marketing_images: sent.marketing_images || [],
       },
       // The version of the piece these fields were edited from. `data` is only
       // replaced by a save of our own — the load effect above runs once per
@@ -637,6 +639,7 @@ export default function ContentEditor() {
               issues={data.seo_issues}
               draft={draft}
               onChange={set}
+              setDraft={setDraft}
               locked={locked}
             />
           </SectionBoundary>
@@ -780,37 +783,185 @@ function PassageTools({ selection, dirty, busy, undoable, disabled, onRun, onUnd
   );
 }
 
-function SeoPanel({ issues, draft, onChange, locked }) {
+function AiButton({ label, loading, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      className="ml-auto inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
+      onClick={onClick}
+      disabled={disabled || loading}
+      title={`Generate ${label} with AI`}
+    >
+      {loading ? (
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border border-accent/30 border-t-accent" />
+      ) : (
+        <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.5 4.5H14l-3.7 2.7 1.4 4.3L8 9.8l-3.7 2.7 1.4-4.3L2 5.5h4.5z"/></svg>
+      )}
+      AI
+    </button>
+  );
+}
+
+function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
   const [coverBroken, setCoverBroken] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [aiLoading, setAiLoading] = useState({});
+  const [galleryUploading, setGalleryUploading] = useState(false);
   const cover = draft.cover_image_url.trim();
+  const fileInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
+  const toast = useToast();
+
+  async function handleCoverUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const result = await api.uploadImage(file);
+      setDraft((d) => ({ ...d, cover_image_url: result.url }));
+      setCoverBroken(false);
+    } catch (err) {
+      toast.error(`Upload failed: ${err.message}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleGalleryUpload(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setGalleryUploading(true);
+    try {
+      const urls = [];
+      for (const file of files) {
+        const result = await api.uploadImage(file);
+        urls.push(result.url);
+      }
+      setDraft((d) => ({
+        ...d,
+        marketing_images: [...(d.marketing_images || []), ...urls],
+      }));
+    } catch (err) {
+      toast.error(`Upload failed: ${err.message}`);
+    } finally {
+      setGalleryUploading(false);
+      if (galleryInputRef.current) galleryInputRef.current.value = "";
+    }
+  }
+
+  function removeGalleryImage(index) {
+    setDraft((d) => ({
+      ...d,
+      marketing_images: d.marketing_images.filter((_, i) => i !== index),
+    }));
+  }
+
+  async function generateField(field) {
+    setAiLoading((prev) => ({ ...prev, [field]: true }));
+    try {
+      const result = await api.generateFields({
+        title: draft.title,
+        body_markdown: draft.body_markdown,
+        excerpt: draft.excerpt,
+        fields: [field],
+      });
+      if (field === "meta_description" && result.meta_description) {
+        setDraft((d) => ({ ...d, meta_description: result.meta_description }));
+      } else if (field === "keywords" && result.keywords) {
+        setDraft((d) => ({ ...d, keywords: result.keywords.join(", ") }));
+      } else if (field === "tags" && result.tags) {
+        setDraft((d) => ({ ...d, tags: result.tags.join(", ") }));
+      } else if (field === "excerpt" && result.excerpt) {
+        setDraft((d) => ({ ...d, excerpt: result.excerpt }));
+      }
+    } catch (err) {
+      toast.error(`AI generation failed: ${err.message}`);
+    } finally {
+      setAiLoading((prev) => ({ ...prev, [field]: false }));
+    }
+  }
+
+  async function generateAll() {
+    setAiLoading({ meta_description: true, keywords: true, tags: true, excerpt: true });
+    try {
+      const result = await api.generateFields({
+        title: draft.title,
+        body_markdown: draft.body_markdown,
+        excerpt: draft.excerpt,
+        fields: ["meta_description", "keywords", "tags", "excerpt"],
+      });
+      setDraft((d) => ({
+        ...d,
+        ...(result.meta_description ? { meta_description: result.meta_description } : {}),
+        ...(result.keywords ? { keywords: result.keywords.join(", ") } : {}),
+        ...(result.tags ? { tags: result.tags.join(", ") } : {}),
+        ...(result.excerpt ? { excerpt: result.excerpt } : {}),
+      }));
+    } catch (err) {
+      toast.error(`AI generation failed: ${err.message}`);
+    } finally {
+      setAiLoading({});
+    }
+  }
+
+  const hasContent = draft.title || draft.body_markdown;
 
   return (
     <div className="panel space-y-4 p-5">
-      <h2 className="text-sm font-semibold text-ink-900">SEO</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-ink-900">SEO</h2>
+        {hasContent && !locked && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
+            onClick={generateAll}
+            disabled={Object.values(aiLoading).some(Boolean)}
+          >
+            <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.5 4.5H14l-3.7 2.7 1.4 4.3L8 9.8l-3.7 2.7 1.4-4.3L2 5.5h4.5z"/></svg>
+            Generate all with AI
+          </button>
+        )}
+      </div>
 
       <div>
         <label className="label" htmlFor="c-cover">
           Cover image
         </label>
-        <input
-          id="c-cover"
-          className="input font-mono text-[11px]"
-          placeholder="https://cdn.example.com/cover.png"
-          value={draft.cover_image_url}
-          onChange={(event) => {
-            setCoverBroken(false);
-            onChange("cover_image_url")(event);
-          }}
-          disabled={locked}
-        />
+        <div className="flex gap-2">
+          <input
+            id="c-cover"
+            className="input flex-1 font-mono text-[11px]"
+            placeholder="https://cdn.example.com/cover.png"
+            value={draft.cover_image_url}
+            onChange={(event) => {
+              setCoverBroken(false);
+              onChange("cover_image_url")(event);
+            }}
+            disabled={locked}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleCoverUpload}
+          />
+          <button
+            type="button"
+            className="shrink-0 rounded border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-ink-600 hover:bg-ink-50 disabled:opacity-50"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={locked || uploading}
+          >
+            {uploading ? "Uploading..." : "Upload"}
+          </button>
+        </div>
         {cover ? (
           coverBroken ? (
             <p className="mt-1.5 rounded bg-bad-wash px-2 py-1 text-xs text-bad">
               That URL did not load an image.
             </p>
           ) : (
-            // A live thumbnail is the only honest check: it is the same fetch the
-            // platforms will make.
             <img
               src={cover}
               alt="Newsletter cover image preview"
@@ -822,15 +973,20 @@ function SeoPanel({ issues, draft, onChange, locked }) {
         ) : (
           <p className="mt-1 text-xs text-ink-400">
             Shown in the Dev.to, Medium and Hashnode feeds, and used for the
-            LinkedIn and Twitter link preview. Must be an absolute URL.
+            LinkedIn and Twitter link preview.
           </p>
         )}
       </div>
 
       <div>
-        <label className="label" htmlFor="c-meta">
-          Meta description
-        </label>
+        <div className="flex items-center">
+          <label className="label" htmlFor="c-meta">
+            Meta description
+          </label>
+          {hasContent && !locked && (
+            <AiButton label="meta description" loading={aiLoading.meta_description} onClick={() => generateField("meta_description")} />
+          )}
+        </div>
         <textarea
           id="c-meta"
           rows={3}
@@ -845,9 +1001,14 @@ function SeoPanel({ issues, draft, onChange, locked }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="c-keywords">
-          Keywords
-        </label>
+        <div className="flex items-center">
+          <label className="label" htmlFor="c-keywords">
+            Keywords
+          </label>
+          {hasContent && !locked && (
+            <AiButton label="keywords" loading={aiLoading.keywords} onClick={() => generateField("keywords")} />
+          )}
+        </div>
         <input
           id="c-keywords"
           className="input text-[13px]"
@@ -858,9 +1019,14 @@ function SeoPanel({ issues, draft, onChange, locked }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="c-tags">
-          Platform tags
-        </label>
+        <div className="flex items-center">
+          <label className="label" htmlFor="c-tags">
+            Platform tags
+          </label>
+          {hasContent && !locked && (
+            <AiButton label="tags" loading={aiLoading.tags} onClick={() => generateField("tags")} />
+          )}
+        </div>
         <input
           id="c-tags"
           className="input text-[13px]"
@@ -874,9 +1040,14 @@ function SeoPanel({ issues, draft, onChange, locked }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="c-excerpt">
-          Excerpt
-        </label>
+        <div className="flex items-center">
+          <label className="label" htmlFor="c-excerpt">
+            Excerpt
+          </label>
+          {hasContent && !locked && (
+            <AiButton label="excerpt" loading={aiLoading.excerpt} onClick={() => generateField("excerpt")} />
+          )}
+        </div>
         <textarea
           id="c-excerpt"
           rows={2}
@@ -885,6 +1056,55 @@ function SeoPanel({ issues, draft, onChange, locked }) {
           onChange={onChange("excerpt")}
           disabled={locked}
         />
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-ink-700">Marketing images</h3>
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            className="hidden"
+            onChange={handleGalleryUpload}
+          />
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded border border-line bg-surface px-2 py-1 text-[11px] font-medium text-ink-600 hover:bg-ink-50 disabled:opacity-50"
+            onClick={() => galleryInputRef.current?.click()}
+            disabled={locked || galleryUploading}
+          >
+            {galleryUploading ? "Uploading..." : "+ Add images"}
+          </button>
+        </div>
+        {(draft.marketing_images?.length > 0) ? (
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {draft.marketing_images.map((url, index) => (
+              <div key={index} className="group relative">
+                <img
+                  src={url}
+                  alt={`Marketing image ${index + 1}`}
+                  className="aspect-square w-full rounded-lg border border-line object-cover"
+                />
+                {!locked && (
+                  <button
+                    type="button"
+                    className="absolute -right-1 -top-1 hidden rounded-full bg-bad p-0.5 text-white shadow group-hover:block"
+                    onClick={() => removeGalleryImage(index)}
+                    title="Remove image"
+                  >
+                    <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 text-xs text-ink-400">
+            Add images for social posts and marketing material.
+          </p>
+        )}
       </div>
 
       {issues.length === 0 ? (

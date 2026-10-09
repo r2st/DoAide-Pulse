@@ -159,6 +159,7 @@ class ContentCreate(BaseModel):
     tags: list[Tag] = Field(default=[], max_length=30)
     canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
+    marketing_images: list[str] = Field(default=[], max_length=20)
     #: The primary SEO keyword. Defaults to the first keyword when omitted.
     focus_keyword: str = Field(default="", max_length=100)
     #: A caller's own stable identifier for this piece, stored on ``source``.
@@ -188,6 +189,7 @@ class ContentUpdate(BaseModel):
     tags: list[Tag] | None = Field(default=None, max_length=30)
     canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
+    marketing_images: list[str] | None = Field(default=None, max_length=20)
     focus_keyword: str | None = Field(default=None, max_length=100)
     content_type: ContentType | None = None
     status: ContentStatus | None = None
@@ -310,6 +312,7 @@ class ContentOut(BaseModel):
     tags: list[str] = []
     canonical_url: str | None = None
     cover_image_url: str | None = None
+    marketing_images: list[str] = []
     focus_keyword: str = ""
     confidence: float | None = None
     generated_by_provider: str | None = None

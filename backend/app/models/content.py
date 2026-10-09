@@ -357,6 +357,10 @@ class Content(Base, TimestampMixin):
     #: it itself, so hosting the bytes would add a storage story to the deploy
     #: for no gain on the platform side.
     cover_image_url: Mapped[str | None] = mapped_column(String(700))
+    #: Optional gallery of images for social posts and marketing material.
+    marketing_images: Mapped[list[str]] = mapped_column(
+        JSON, default=list, nullable=False
+    )
 
     # ---- Provenance ----
     #: Which provider/model actually wrote it, for the "what works" analysis.

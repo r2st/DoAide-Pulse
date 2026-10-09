@@ -219,6 +219,17 @@ export const api = {
   useTemplate: (id, payload) =>
     request(`/templates/${id}/use`, { method: "POST", body: payload }),
 
+  // ---- uploads ----
+  uploadImage: (file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request("/uploads", { method: "POST", form });
+  },
+
+  // ---- AI generation ----
+  generateFields: (payload) =>
+    request("/ai/generate-fields", { method: "POST", body: payload }),
+
   // ---- settings ----
   platforms: () => request("/settings/platforms"),
   saveConnection: (platform, credentials) =>

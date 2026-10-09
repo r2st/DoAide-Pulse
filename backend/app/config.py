@@ -261,6 +261,10 @@ class Settings(BaseSettings):
     # parameters are never logged with it. Set to 0 to disable.
     db_slow_query_ms: int = 500
 
+    # ---- Uploads ----
+    upload_dir: str = "uploads"
+    max_upload_bytes: int = 10 * 1024 * 1024  # 10 MB
+
     # ---- Redis / Celery ----
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/1"

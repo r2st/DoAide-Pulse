@@ -21,6 +21,7 @@ from app.config import settings
 from app.logging_config import configure_logging, request_id_var
 from app.ratelimit import limiter, rate_limit_exceeded_handler
 from app.routers import (
+    ai_generate,
     analytics,
     api_keys,
     auth,
@@ -35,6 +36,7 @@ from app.routers import (
     templates,
     translations,
     triggers,
+    uploads,
     webhooks,
 )
 from app.routers import settings as settings_router
@@ -47,6 +49,10 @@ logger = logging.getLogger(__name__)
 #: content body (~200 KB max via schema validation), and this gives comfortable
 #: headroom while stopping a multi-GB upload from consuming all memory.
 MAX_BODY_BYTES = 1 * 1024 * 1024
+
+#: Paths that accept file uploads and need a higher body size limit.
+_UPLOAD_PATHS = frozenset({"/api/v1/uploads"})
+MAX_UPLOAD_BODY_BYTES = 10 * 1024 * 1024
 
 #: How deeply a request body may nest arrays and objects.
 #:
@@ -104,6 +110,9 @@ class BodySizeLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
+        req_path = scope.get("path", "")
+        limit = MAX_UPLOAD_BODY_BYTES if any(req_path.startswith(p) for p in _UPLOAD_PATHS) else MAX_BODY_BYTES
+
         declared = Headers(scope=scope).get("content-length")
         if declared:
             try:
@@ -113,10 +122,10 @@ class BodySizeLimitMiddleware:
             if length < 0:
                 await _respond(scope, send, 400, "Invalid Content-Length header")
                 return
-            if length > MAX_BODY_BYTES:
+            if length > limit:
                 await _respond(
                     scope, send, 413,
-                    f"Request body too large (limit is {MAX_BODY_BYTES // 1024} KB)",
+                    f"Request body too large (limit is {limit // 1024} KB)",
                 )
                 return
 
@@ -138,10 +147,10 @@ class BodySizeLimitMiddleware:
             if message["type"] == "http.request":
                 body = message.get("body", b"")
                 read += len(body)
-                if read > MAX_BODY_BYTES:
+                if read > limit:
                     rejection = (
                         413,
-                        f"Request body too large (limit is {MAX_BODY_BYTES // 1024} KB)",
+                        f"Request body too large (limit is {limit // 1024} KB)",
                     )
                     return {"type": "http.disconnect"}
                 if depth is not None and depth.feed(body) > MAX_JSON_DEPTH:
@@ -579,6 +588,8 @@ def create_app() -> FastAPI:
     # Last, and deliberately apart from the rest: everything above authenticates
     # a person with a bearer token, and this one authenticates a machine with a
     # scoped credential. See app.routers.machine.
+    app.include_router(uploads.router, prefix=prefix)
+    app.include_router(ai_generate.router, prefix=prefix)
     app.include_router(machine.router, prefix=prefix)
 
     @app.get(
