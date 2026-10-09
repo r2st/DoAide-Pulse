@@ -9,7 +9,7 @@ shared Caddy container.
 | | |
 |---|---|
 | Host | `89.167.8.178` |
-| SSH | `ssh -i /Users/dev/projects/Products/GoSumo/keys/hetzner_deploy_ed25519 root@89.167.8.178` |
+| SSH | `ssh -i /Users/dev/projects/keys/hetzner_deploy_ed25519 root@89.167.8.178` |
 | Code | `/opt/Pulse` — a plain rsync copy, **no `.git`** |
 | Runs as | system user `pulse` (not root) |
 | Public URL | `https://pulse.doaide.com` |

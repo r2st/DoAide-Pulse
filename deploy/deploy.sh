@@ -10,7 +10,7 @@
 set -euo pipefail
 
 HOST=${PULSE_HOST:-89.167.8.178}
-SSH_KEY=${PULSE_SSH_KEY:-/Users/dev/projects/Products/GoSumo/keys/hetzner_deploy_ed25519}
+SSH_KEY=${PULSE_SSH_KEY:-/Users/dev/projects/keys/hetzner_deploy_ed25519}
 REMOTE=/opt/Pulse
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SSH=(ssh -i "$SSH_KEY" "root@$HOST")

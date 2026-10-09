@@ -11,6 +11,10 @@
 # the Caddy container. Pulse's services bind that address only, so they are
 # unreachable from the public internet.
 
+herald.aiknol.com {
+	redir https://pulse.doaide.com{uri} permanent
+}
+
 pulse.doaide.com {
 	@api path /api/*
 	handle @api {
