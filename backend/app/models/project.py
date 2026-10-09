@@ -88,6 +88,8 @@ class AutopilotMode(str, Enum):
     DRAFT = "draft"
     #: Generate, and publish without review when confidence clears the bar.
     AUTO = "auto"
+    #: Generate and publish unconditionally — no confidence threshold.
+    FULL = "full"
 
 
 def slugify(value: str) -> str:
@@ -440,7 +442,7 @@ class Project(Base, TimestampMixin):
 
     def _cannot_finish(self, mode: AutopilotMode) -> str | None:
         """Why a piece this project writes will never *publish* itself."""
-        if mode != AutopilotMode.AUTO:
+        if mode not in (AutopilotMode.AUTO, AutopilotMode.FULL):
             return None
 
         # Imported here rather than at module scope: the pipeline imports the

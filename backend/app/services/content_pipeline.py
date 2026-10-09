@@ -249,7 +249,11 @@ def generate_and_route(
     )
     confident = generated.confidence >= settings.autopilot_auto_publish_confidence
     destinations = publishable_destinations(project)
-    auto = bool(mode == AutopilotMode.AUTO and confident and destinations.usable)
+    auto = bool(
+        mode in (AutopilotMode.AUTO, AutopilotMode.FULL)
+        and (confident or mode == AutopilotMode.FULL)
+        and destinations.usable
+    )
 
     dead_links: list[str] = []
     if auto and settings.link_check_enabled:
@@ -586,7 +590,7 @@ def release_approved(db: Session, content: Content) -> list[Publication]:
         if isinstance(project.autopilot_mode, AutopilotMode)
         else AutopilotMode(project.autopilot_mode)
     )
-    if mode != AutopilotMode.AUTO:
+    if mode not in (AutopilotMode.AUTO, AutopilotMode.FULL):
         return []
 
     platforms = publishable_destinations(project).usable
