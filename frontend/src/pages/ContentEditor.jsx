@@ -783,34 +783,54 @@ function PassageTools({ selection, dirty, busy, undoable, disabled, onRun, onUnd
   );
 }
 
-function AiButton({ label, loading, onClick, disabled }) {
-  return (
-    <button
-      type="button"
-      className="ml-auto inline-flex items-center gap-1 rounded bg-accent/10 px-2 py-0.5 text-[11px] font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
-      onClick={onClick}
-      disabled={disabled || loading}
-      title={`Generate ${label} with AI`}
-    >
-      {loading ? (
-        <span className="inline-block h-3 w-3 animate-spin rounded-full border border-accent/30 border-t-accent" />
-      ) : (
-        <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.5 4.5H14l-3.7 2.7 1.4 4.3L8 9.8l-3.7 2.7 1.4-4.3L2 5.5h4.5z"/></svg>
-      )}
-      AI
-    </button>
-  );
-}
-
 function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
   const [coverBroken, setCoverBroken] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [aiLoading, setAiLoading] = useState({});
+  const [aiLoading, setAiLoading] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
+  const [aiRanFor, setAiRanFor] = useState("");
   const cover = draft.cover_image_url.trim();
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const toast = useToast();
+
+  const seoFieldsEmpty =
+    !draft.meta_description && !draft.keywords && !draft.tags && !draft.excerpt;
+  const hasContent = (draft.title?.length > 10) || (draft.body_markdown?.length > 50);
+  const contentKey = `${draft.title}::${draft.body_markdown?.slice(0, 200)}`;
+
+  useEffect(() => {
+    if (locked || !hasContent || !seoFieldsEmpty || aiLoading) return;
+    if (aiRanFor === contentKey) return;
+
+    const timer = setTimeout(async () => {
+      setAiLoading(true);
+      try {
+        const result = await api.generateFields({
+          title: draft.title,
+          body_markdown: draft.body_markdown,
+          excerpt: draft.excerpt,
+          fields: ["meta_description", "keywords", "tags", "excerpt"],
+        });
+        setDraft((d) => {
+          if (d.meta_description || d.keywords || d.tags || d.excerpt) return d;
+          return {
+            ...d,
+            ...(result.meta_description ? { meta_description: result.meta_description } : {}),
+            ...(result.keywords ? { keywords: result.keywords.join(", ") } : {}),
+            ...(result.tags ? { tags: result.tags.join(", ") } : {}),
+            ...(result.excerpt ? { excerpt: result.excerpt } : {}),
+          };
+        });
+        setAiRanFor(contentKey);
+      } catch {
+        // silent — auto-generation is best-effort
+      } finally {
+        setAiLoading(false);
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [contentKey, locked, hasContent, seoFieldsEmpty, aiLoading, aiRanFor]);
 
   async function handleCoverUpload(event) {
     const file = event.target.files?.[0];
@@ -857,70 +877,15 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
     }));
   }
 
-  async function generateField(field) {
-    setAiLoading((prev) => ({ ...prev, [field]: true }));
-    try {
-      const result = await api.generateFields({
-        title: draft.title,
-        body_markdown: draft.body_markdown,
-        excerpt: draft.excerpt,
-        fields: [field],
-      });
-      if (field === "meta_description" && result.meta_description) {
-        setDraft((d) => ({ ...d, meta_description: result.meta_description }));
-      } else if (field === "keywords" && result.keywords) {
-        setDraft((d) => ({ ...d, keywords: result.keywords.join(", ") }));
-      } else if (field === "tags" && result.tags) {
-        setDraft((d) => ({ ...d, tags: result.tags.join(", ") }));
-      } else if (field === "excerpt" && result.excerpt) {
-        setDraft((d) => ({ ...d, excerpt: result.excerpt }));
-      }
-    } catch (err) {
-      toast.error(`AI generation failed: ${err.message}`);
-    } finally {
-      setAiLoading((prev) => ({ ...prev, [field]: false }));
-    }
-  }
-
-  async function generateAll() {
-    setAiLoading({ meta_description: true, keywords: true, tags: true, excerpt: true });
-    try {
-      const result = await api.generateFields({
-        title: draft.title,
-        body_markdown: draft.body_markdown,
-        excerpt: draft.excerpt,
-        fields: ["meta_description", "keywords", "tags", "excerpt"],
-      });
-      setDraft((d) => ({
-        ...d,
-        ...(result.meta_description ? { meta_description: result.meta_description } : {}),
-        ...(result.keywords ? { keywords: result.keywords.join(", ") } : {}),
-        ...(result.tags ? { tags: result.tags.join(", ") } : {}),
-        ...(result.excerpt ? { excerpt: result.excerpt } : {}),
-      }));
-    } catch (err) {
-      toast.error(`AI generation failed: ${err.message}`);
-    } finally {
-      setAiLoading({});
-    }
-  }
-
-  const hasContent = draft.title || draft.body_markdown;
-
   return (
     <div className="panel space-y-4 p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-ink-900">SEO</h2>
-        {hasContent && !locked && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
-            onClick={generateAll}
-            disabled={Object.values(aiLoading).some(Boolean)}
-          >
-            <svg className="h-3 w-3" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1l1.5 4.5H14l-3.7 2.7 1.4 4.3L8 9.8l-3.7 2.7 1.4-4.3L2 5.5h4.5z"/></svg>
-            Generate all with AI
-          </button>
+        {aiLoading && (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-accent">
+            <span className="inline-block h-3 w-3 animate-spin rounded-full border border-accent/30 border-t-accent" />
+            Auto-filling with AI…
+          </span>
         )}
       </div>
 
@@ -953,7 +918,7 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
             onClick={() => fileInputRef.current?.click()}
             disabled={locked || uploading}
           >
-            {uploading ? "Uploading..." : "Upload"}
+            {uploading ? "Uploading…" : "Upload"}
           </button>
         </div>
         {cover ? (
@@ -979,18 +944,14 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
       </div>
 
       <div>
-        <div className="flex items-center">
-          <label className="label" htmlFor="c-meta">
-            Meta description
-          </label>
-          {hasContent && !locked && (
-            <AiButton label="meta description" loading={aiLoading.meta_description} onClick={() => generateField("meta_description")} />
-          )}
-        </div>
+        <label className="label" htmlFor="c-meta">
+          Meta description
+        </label>
         <textarea
           id="c-meta"
           rows={3}
-          className="input resize-y text-[13px]"
+          className={`input resize-y text-[13px] ${aiLoading && !draft.meta_description ? "animate-pulse bg-ink-50" : ""}`}
+          placeholder={aiLoading ? "Generating…" : ""}
           value={draft.meta_description}
           onChange={onChange("meta_description")}
           disabled={locked}
@@ -1001,17 +962,13 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
       </div>
 
       <div>
-        <div className="flex items-center">
-          <label className="label" htmlFor="c-keywords">
-            Keywords
-          </label>
-          {hasContent && !locked && (
-            <AiButton label="keywords" loading={aiLoading.keywords} onClick={() => generateField("keywords")} />
-          )}
-        </div>
+        <label className="label" htmlFor="c-keywords">
+          Keywords
+        </label>
         <input
           id="c-keywords"
-          className="input text-[13px]"
+          className={`input text-[13px] ${aiLoading && !draft.keywords ? "animate-pulse bg-ink-50" : ""}`}
+          placeholder={aiLoading ? "Generating…" : ""}
           value={draft.keywords}
           onChange={onChange("keywords")}
           disabled={locked}
@@ -1019,17 +976,13 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
       </div>
 
       <div>
-        <div className="flex items-center">
-          <label className="label" htmlFor="c-tags">
-            Platform tags
-          </label>
-          {hasContent && !locked && (
-            <AiButton label="tags" loading={aiLoading.tags} onClick={() => generateField("tags")} />
-          )}
-        </div>
+        <label className="label" htmlFor="c-tags">
+          Platform tags
+        </label>
         <input
           id="c-tags"
-          className="input text-[13px]"
+          className={`input text-[13px] ${aiLoading && !draft.tags ? "animate-pulse bg-ink-50" : ""}`}
+          placeholder={aiLoading ? "Generating…" : ""}
           value={draft.tags}
           onChange={onChange("tags")}
           disabled={locked}
@@ -1040,18 +993,14 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
       </div>
 
       <div>
-        <div className="flex items-center">
-          <label className="label" htmlFor="c-excerpt">
-            Excerpt
-          </label>
-          {hasContent && !locked && (
-            <AiButton label="excerpt" loading={aiLoading.excerpt} onClick={() => generateField("excerpt")} />
-          )}
-        </div>
+        <label className="label" htmlFor="c-excerpt">
+          Excerpt
+        </label>
         <textarea
           id="c-excerpt"
           rows={2}
-          className="input resize-y text-[13px]"
+          className={`input resize-y text-[13px] ${aiLoading && !draft.excerpt ? "animate-pulse bg-ink-50" : ""}`}
+          placeholder={aiLoading ? "Generating…" : ""}
           value={draft.excerpt}
           onChange={onChange("excerpt")}
           disabled={locked}
@@ -1075,7 +1024,7 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
             onClick={() => galleryInputRef.current?.click()}
             disabled={locked || galleryUploading}
           >
-            {galleryUploading ? "Uploading..." : "+ Add images"}
+            {galleryUploading ? "Uploading…" : "+ Add images"}
           </button>
         </div>
         {(draft.marketing_images?.length > 0) ? (
