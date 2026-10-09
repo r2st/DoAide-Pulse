@@ -489,6 +489,10 @@ class Settings(BaseSettings):
     # time limit — inside that window the task is still alive and re-arming it
     # would post twice.
     publish_stuck_after_seconds: int = 900
+    # How often the beat task re-verifies stored platform connections. A
+    # token that was revoked or expired sits at CONNECTED until something
+    # tries it, which on a quiet project can be weeks. Weekly by default.
+    connection_verify_interval_seconds: int = 604800
 
     # ---- Outbound webhooks ----
     # Per-request budget for a user's own endpoint. Short: a webhook is a

@@ -201,6 +201,12 @@ celery_app.conf.beat_schedule = {
         "task": "app.tasks.maintenance_tasks.rewrap_credentials",
         "schedule": 86400.0,
     },
+    "verify-platform-connections": {
+        # Re-check stored credentials so a revoked token is noticed before
+        # the next publish attempt.
+        "task": "app.tasks.maintenance_tasks.verify_all_connections",
+        "schedule": float(settings.connection_verify_interval_seconds),
+    },
 }
 
 # Imported for its side effect: the module is nothing but signal receivers, and

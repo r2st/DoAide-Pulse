@@ -15,7 +15,7 @@ from app.models.mixins import utcnow
 from app.models.preview_link import PreviewLink
 from app.models.trigger import TriggerEvent, TriggerEventStatus
 from app.models.webhook import DeliveryStatus, WebhookDelivery
-from app.services import credential_rotation, llm_usage, password_reset
+from app.services import connection_verify, credential_rotation, llm_usage, password_reset
 from app.tasks.celery_app import task
 
 logger = logging.getLogger(__name__)
@@ -212,5 +212,41 @@ def purge_old_llm_usage() -> dict:
         if count:
             logger.info("purged %d llm usage row(s)", count)
         return {"purged": count}
+    finally:
+        db.close()
+
+
+@task(
+    name="app.tasks.maintenance_tasks.verify_all_connections",
+    soft_time_limit=300,
+    time_limit=360,
+)
+def verify_all_connections() -> dict:
+    """Re-verify every stored platform connection.
+
+    A token that was revoked, expired, or rotated on the platform side sits
+    at CONNECTED until something tries it. On a project that writes twice a
+    month that is two weeks of silence before the first failure says the
+    credential is dead.
+
+    This sweep catches it early. It is the same operation the manual
+    ``POST /settings/connections/{platform}/verify`` runs — decrypt, call
+    ``adapter.verify``, stamp the result — just for every connection at once,
+    on a schedule.
+
+    Errors are per-connection, never per-sweep: one dead token must not stop
+    the others from being checked.
+    """
+    db = SessionLocal()
+    try:
+        result = connection_verify.verify_all(db)
+        logger.info(
+            "connection re-verify: %d checked, %d still valid, %d invalid, %d unreachable",
+            result["checked"],
+            result["valid"],
+            result["invalid"],
+            result["unreachable"],
+        )
+        return result
     finally:
         db.close()

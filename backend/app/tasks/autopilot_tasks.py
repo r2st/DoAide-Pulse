@@ -127,6 +127,8 @@ def scan_project(project_id: int) -> dict:
 
         full_name = project.repo_full_name
         if not full_name:
+            project.record_scan(duration_ms=0)
+            db.commit()
             return {"project_id": project_id, "status": "no_repo"}
 
         # Started here rather than at the top of the task: the three returns
