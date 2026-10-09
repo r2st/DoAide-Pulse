@@ -1,14 +1,14 @@
 """Add subscribers table for embed widget email collection
 
 Revision ID: a1v3w5x7y9z1
-Revises: z0t2p4r6s8o0
+Revises: a1b2c3d4e5f7
 Create Date: 2026-10-09 12:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "a1v3w5x7y9z1"
-down_revision = "z0t2p4r6s8o0"
+down_revision = "a1b2c3d4e5f7"
 branch_labels = None
 depends_on = None
 
