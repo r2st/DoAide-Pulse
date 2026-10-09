@@ -21,9 +21,11 @@ import Settings from "./pages/Settings";
 import Templates from "./pages/Templates";
 import TemplatesGallery from "./pages/TemplatesGallery";
 import Triggers from "./pages/Triggers";
+import PublicArticle from "./pages/PublicArticle";
 import SubjectLineTester from "./pages/tools/SubjectLineTester";
 import SendTimeOptimizer from "./pages/tools/SendTimeOptimizer";
 import NewsletterRoiCalculator from "./pages/tools/NewsletterRoiCalculator";
+import ContentIdeaGenerator from "./pages/tools/ContentIdeaGenerator";
 
 function Loading() {
   return (
@@ -111,6 +113,8 @@ export default function App() {
       <Route path="/tools/subject-line-tester" element={<Unshelled section="tool"><SubjectLineTester /></Unshelled>} />
       <Route path="/tools/send-time-optimizer" element={<Unshelled section="tool"><SendTimeOptimizer /></Unshelled>} />
       <Route path="/tools/newsletter-roi-calculator" element={<Unshelled section="tool"><NewsletterRoiCalculator /></Unshelled>} />
+      <Route path="/tools/content-idea-generator" element={<Unshelled section="tool"><ContentIdeaGenerator /></Unshelled>} />
+      <Route path="/article/:slug" element={<Unshelled section="article"><PublicArticle /></Unshelled>} />
       <Route path="/blog" element={<Unshelled section="blog"><Blog /></Unshelled>} />
       <Route path="/blog/:slug" element={<Unshelled section="blog"><BlogPost /></Unshelled>} />
       <Route path="/templates" element={<Unshelled section="templates"><TemplatesGallery /></Unshelled>} />

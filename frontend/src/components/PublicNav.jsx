@@ -23,6 +23,7 @@ export default function PublicNav() {
                 <Link to="/tools/subject-line-tester" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Subject Line Tester</Link>
                 <Link to="/tools/send-time-optimizer" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Send Time Optimizer</Link>
                 <Link to="/tools/newsletter-roi-calculator" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">ROI Calculator</Link>
+                <Link to="/tools/content-idea-generator" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Content Idea Generator</Link>
               </div>
             )}
           </div>

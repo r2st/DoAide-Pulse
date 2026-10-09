@@ -37,6 +37,7 @@ from app.routers import (
     translations,
     triggers,
     uploads,
+    viral,
     webhooks,
 )
 from app.routers import settings as settings_router
@@ -590,6 +591,7 @@ def create_app() -> FastAPI:
     # scoped credential. See app.routers.machine.
     app.include_router(uploads.router, prefix=prefix)
     app.include_router(ai_generate.router, prefix=prefix)
+    app.include_router(viral.router, prefix=prefix)
     app.include_router(machine.router, prefix=prefix)
 
     @app.get(

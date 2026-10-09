@@ -53,6 +53,8 @@ vi.mock("./pages/Templates", () => ({ default: () => <p>page: Templates</p> }));
 vi.mock("./pages/TemplatesGallery", () => ({ default: () => <p>page: TemplatesGallery</p> }));
 vi.mock("./pages/NewsletterGallery", () => ({ default: () => <p>page: NewsletterGallery</p> }));
 vi.mock("./pages/Triggers", () => ({ default: () => <p>page: Triggers</p> }));
+vi.mock("./pages/PublicArticle", () => ({ default: () => <p>page: PublicArticle</p> }));
+vi.mock("./pages/tools/ContentIdeaGenerator", () => ({ default: () => <p>page: ContentIdeaGenerator</p> }));
 
 import { useAuth } from "./hooks/useAuth";
 
@@ -99,6 +101,7 @@ const PUBLIC = [
   ["/preview/abc123", "PreviewPage"],
   ["/templates", "TemplatesGallery"],
   ["/gallery", "NewsletterGallery"],
+  ["/article/test-slug", "PublicArticle"],
 ];
 
 beforeEach(() => {
@@ -110,7 +113,7 @@ describe("the route table", () => {
     // A guard on the guards below, which are parametrised over these lists: a
     // route added to App.jsx and not to one of them is a route nothing here
     // checks, and the file would stay green while covering less of the table.
-    expect(PROTECTED.length + PUBLIC.length).toBe(15);
+    expect(PROTECTED.length + PUBLIC.length).toBe(16);
   });
 
   it.each(PROTECTED)("renders %s as the %s page", async (path, name) => {

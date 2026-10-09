@@ -230,6 +230,13 @@ export const api = {
   generateFields: (payload) =>
     request("/ai/generate-fields", { method: "POST", body: payload }),
 
+  // ---- viral / public ----
+  publicArticle: (slug) => request(`/articles/${slug}`, { auth: false }),
+  subscribe: (email, source = "embed") =>
+    request("/subscribers", { method: "POST", body: { email, source }, auth: false }),
+  generateContentIdeas: (niche, count = 5) =>
+    request("/tools/content-ideas", { method: "POST", body: { niche, count }, auth: false }),
+
   // ---- settings ----
   platforms: () => request("/settings/platforms"),
   saveConnection: (platform, credentials) =>

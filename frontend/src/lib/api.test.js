@@ -508,6 +508,10 @@ describe("every endpoint's path and verb", () => {
     ["previewTemplate", [4, { values: {} }], "/templates/4/preview", "POST"],
     ["useTemplate", [4, { values: {} }], "/templates/4/use", "POST"],
 
+    ["publicArticle", ["test-slug"], "/articles/test-slug", "GET"],
+    ["subscribe", ["a@b.com"], "/subscribers", "POST"],
+    ["generateContentIdeas", ["AI tools"], "/tools/content-ideas", "POST"],
+
     ["platforms", [], "/settings/platforms", "GET"],
     ["saveConnection", ["devto", {}], "/settings/connections", "PUT"],
     ["verifyConnection", ["devto"], "/settings/connections/devto/verify", "POST"],
