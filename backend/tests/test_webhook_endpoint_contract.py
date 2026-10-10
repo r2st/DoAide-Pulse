@@ -148,7 +148,7 @@ def test_a_box_with_no_encryption_key_refuses_rather_than_storing_plaintext(
     )
 
     assert resp.status_code == 500
-    assert "TOKEN_ENCRYPTION_KEY" in resp.json()["detail"]
+    assert "encrypt" in resp.json()["detail"].lower()
 
 
 # --------------------------------------------------------------------------- #

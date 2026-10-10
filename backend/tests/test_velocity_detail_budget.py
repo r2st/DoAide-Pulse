@@ -227,7 +227,7 @@ def test_another_users_publication_is_a_404_not_a_curve(client, auth, db, subjec
     )
 
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Publication not found"
+    assert resp.json()["detail"] == "Publication not found."
 
 
 def test_a_publication_that_does_not_exist_is_the_same_404(client, auth, subject):

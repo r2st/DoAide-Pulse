@@ -53,6 +53,10 @@ os.environ["BACKEND_CORS_ORIGINS"] = "http://localhost:5173,http://localhost:300
 # storage backend is unreachable — which hides real rate-limit bugs.
 os.environ["RATE_LIMIT_STORAGE_URI"] = ""
 os.environ["RATE_LIMIT_ENABLED"] = "true"
+# The SEO preflight and quality score gates block approval of test fixtures
+# whose titles and meta descriptions are deliberately short. Tests that
+# exercise the gate itself enable it explicitly.
+os.environ["CONTENT_QUALITY_GATE_ENABLED"] = "false"
 
 # Clear the settings cache and rebuild the module-level singleton so test
 # environment variables take effect even when running on a server whose .env

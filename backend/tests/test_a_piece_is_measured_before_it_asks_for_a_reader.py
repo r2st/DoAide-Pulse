@@ -22,6 +22,11 @@ from app.models.content import Content, ContentStatus, ContentType
 from app.models.mixins import utcnow
 from app.services import quality
 
+@pytest.fixture(autouse=True)
+def _enable_quality_gate(monkeypatch):
+    monkeypatch.setattr(settings, "content_quality_gate_enabled", True)
+
+
 # --------------------------------------------------------------------------- #
 # Fixtures                                                                     #
 # --------------------------------------------------------------------------- #

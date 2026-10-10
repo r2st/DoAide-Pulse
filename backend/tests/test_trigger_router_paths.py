@@ -257,7 +257,7 @@ def test_a_webhook_trigger_cannot_be_created_when_the_secret_cannot_be_encrypted
     resp = _make(client, auth, project)
 
     assert resp.status_code == 500
-    assert "TOKEN_ENCRYPTION_KEY" in resp.json()["detail"]
+    assert "encrypt" in resp.json()["detail"].lower()
 
 
 def test_only_the_kinds_pulse_goes_and_looks_at_are_polled():

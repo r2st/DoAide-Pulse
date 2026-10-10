@@ -54,6 +54,8 @@ _ANONYMOUS_WRITES = {
     ("POST", "/auth/password-reset"): "nothing, and it says nothing back",
     ("POST", "/auth/password-reset/confirm"): "the emailed reset token",
     ("POST", "/triggers/inbound/{token}"): "the trigger's own inbound token",
+    ("POST", "/subscribers"): "an email in the body, rate-limited",
+    ("POST", "/tools/content-ideas"): "a niche in the body, rate-limited",
 }
 
 

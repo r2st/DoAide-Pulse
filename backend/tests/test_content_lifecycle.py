@@ -150,7 +150,7 @@ def test_a_published_row_is_skipped_not_retried(client, auth, db, project, dispa
     body = client.post(f"/api/v1/content/{piece.id}/retry", headers=auth).json()
 
     assert body["retried"] == [failed.id]
-    assert [s["content_id"] for s in body["skipped"]] == [live.id]
+    assert [s["publication_id"] for s in body["skipped"]] == [live.id]
     assert dispatched == [failed.id]
     db.refresh(live)
     assert live.status == PublicationStatus.PUBLISHED

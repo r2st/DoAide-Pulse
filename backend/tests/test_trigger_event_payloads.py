@@ -192,7 +192,7 @@ def test_an_unknown_event_id_is_a_404(client, auth, project, db):
     resp = client.get(f"{API}/{trigger['id']}/events/999999", headers=auth)
 
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Trigger event not found"
+    assert resp.json()["detail"] == "Trigger event not found."
 
 
 def test_an_event_belonging_to_another_trigger_of_your_own_is_a_404(

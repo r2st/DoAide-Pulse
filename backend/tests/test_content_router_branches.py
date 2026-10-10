@@ -117,7 +117,7 @@ def test_approving_something_that_already_went_out_is_refused(
     resp = client.post(f"{API}/{live.id}/approve", headers=auth)
 
     assert resp.status_code == 409
-    assert resp.json()["detail"] == "Already published"
+    assert resp.json()["detail"] == "This piece is already published — approving it again has no effect."
 
 
 def test_slot_suggestions_need_somewhere_to_suggest_slots_for(

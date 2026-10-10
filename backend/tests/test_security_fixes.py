@@ -58,7 +58,7 @@ def test_login_nonexistent_email_returns_401(client):
         data={"username": "nobody@nowhere.example", "password": "longpassword123"},
     )
     assert resp.status_code == 401
-    assert resp.json()["detail"] == "Incorrect email or password"
+    assert resp.json()["detail"] == "Incorrect email or password."
 
 
 # --------------------------------------------------------------------------- #

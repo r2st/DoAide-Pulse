@@ -80,7 +80,8 @@ def generate_fields(
     req: GenerateFieldsRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> GenerateFieldsResponse:
+    """Use the LLM provider chain to generate SEO and content metadata."""
     if not req.title and not req.body_markdown:
         raise HTTPException(
             status_code=400,

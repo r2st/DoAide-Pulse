@@ -221,7 +221,7 @@ def test_a_missing_idea_is_still_a_404_and_still_locks_nothing(client, auth, cal
     resp = client.post("/api/v1/content/ideas/999999/write", headers=auth)
 
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Idea not found"
+    assert resp.json()["detail"] == "Idea not found."
     assert not calls
 
 

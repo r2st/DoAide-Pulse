@@ -101,7 +101,7 @@ def test_login_still_rejects_both_the_same_way(client, user):
     wrong = client.post(LOGIN, data={"username": user.email, "password": "wrongwrong1"})
 
     assert unknown.status_code == wrong.status_code == 401
-    assert unknown.json()["detail"] == wrong.json()["detail"] == "Incorrect email or password"
+    assert unknown.json()["detail"] == wrong.json()["detail"] == "Incorrect email or password."
 
 
 # --------------------------------------------------------------------------- #

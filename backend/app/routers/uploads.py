@@ -3,18 +3,16 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.ratelimit import limiter
 from app.schemas.errors import AUTHENTICATED, errors
 
 logger = logging.getLogger(__name__)
@@ -56,8 +54,8 @@ def _ext_from_content_type(ct: str) -> str:
 async def upload_image(
     file: UploadFile,
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+) -> dict[str, str | int]:
+    """Accept an image file and persist it to the upload directory."""
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
             status_code=400,
@@ -88,7 +86,9 @@ async def upload_image(
     summary="Serve an uploaded image",
     responses=errors(status.HTTP_404_NOT_FOUND),
 )
-async def serve_image(filename: str):
+@limiter.limit(settings.rate_limit_public_read)
+async def serve_image(request: Request, filename: str) -> FileResponse:
+    """Return a previously uploaded image by filename."""
     if "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 

@@ -180,7 +180,7 @@ def test_a_body_that_is_not_json_names_itself_as_such(monkeypatch):
     with pytest.raises(llm_router.LLMError) as excinfo:
         _call(monkeypatch, resp)
 
-    assert "not JSON" in str(excinfo.value)
+    assert "non-JSON" in str(excinfo.value)
     assert "openrouter" in str(excinfo.value)
 
 
@@ -202,7 +202,7 @@ def test_a_choices_key_that_does_not_hold_a_choice_is_an_unexpected_payload(
     with pytest.raises(llm_router.LLMError) as excinfo:
         _call(monkeypatch, _Resp(payload))
 
-    assert "unexpected payload" in str(excinfo.value)
+    assert "missing expected fields" in str(excinfo.value)
 
 
 @pytest.mark.parametrize(

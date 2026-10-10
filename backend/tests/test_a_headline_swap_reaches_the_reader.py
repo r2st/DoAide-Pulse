@@ -862,7 +862,9 @@ def test_sync_title_absorbs_a_database_failure(db, piece, monkeypatch):
 
     outcomes = headline_sync.sync_title(db, piece)
 
-    assert outcomes == []
+    assert len(outcomes) == 1
+    assert outcomes[0].status == headline_sync.FAILED
+    assert "crash" in outcomes[0].detail.lower() or "error" in outcomes[0].detail.lower()
 
 
 def test_sync_title_preserves_partial_outcomes_on_late_failure(db, piece, monkeypatch):
@@ -888,4 +890,7 @@ def test_sync_title_preserves_partial_outcomes_on_late_failure(db, piece, monkey
 
     outcomes = headline_sync.sync_title(db, piece)
 
-    assert len(outcomes) == 2
+    assert len(outcomes) == 3
+    assert outcomes[0].status == headline_sync.UNCHANGED
+    assert outcomes[1].status == headline_sync.UNCHANGED
+    assert outcomes[2].status == headline_sync.FAILED

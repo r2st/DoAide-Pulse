@@ -59,6 +59,7 @@ def all_keys(monkeypatch):
     monkeypatch.setattr(settings, "gemini_api_key", "key-gemini")
     monkeypatch.setattr(settings, "groq_api_key", "key-groq")
     monkeypatch.setattr(settings, "cerebras_api_key", "")
+    monkeypatch.setattr(settings, "openrouter_fallback_models", "")
 
 
 def test_the_fallback_chain_is_openrouter_then_gemini_then_groq(all_keys):

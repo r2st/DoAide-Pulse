@@ -397,6 +397,8 @@ def _assert_seo_ready(
     previously in draft or review. A human explicitly approving a piece with
     SEO issues can still do so by fixing the issues first.
     """
+    if not settings.content_quality_gate_enabled:
+        return
     if content.status != ContentStatus.APPROVED:
         return
     if previous_status not in (ContentStatus.DRAFT, ContentStatus.REVIEW):

@@ -201,4 +201,4 @@ def test_rescheduling_an_unknown_publication_of_a_real_piece_is_404(
     )
 
     assert resp.status_code == 404
-    assert resp.json()["detail"] == "Publication not found"
+    assert resp.json()["detail"] == "Publication not found."
