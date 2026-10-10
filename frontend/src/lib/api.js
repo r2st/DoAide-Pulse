@@ -146,6 +146,21 @@ export const api = {
       method: "POST",
       body: { content_ids: contentIds, dry_run: dryRun },
     }),
+  bulkReject: (contentIds, dryRun = false) =>
+    request("/content/bulk/reject", {
+      method: "POST",
+      body: { content_ids: contentIds, dry_run: dryRun },
+    }),
+  bulkPublish: (contentIds, platforms, dryRun = false) =>
+    request("/content/bulk/publish", {
+      method: "POST",
+      body: { content_ids: contentIds, platforms, dry_run: dryRun },
+    }),
+  bulkRetry: (contentIds) =>
+    request("/content/bulk/retry", {
+      method: "POST",
+      body: { content_ids: contentIds },
+    }),
   publicationQueue: () => request("/content/queue/publications"),
 
   // ---- preview links ----
@@ -236,6 +251,38 @@ export const api = {
     request("/subscribers", { method: "POST", body: { email, source }, auth: false }),
   generateContentIdeas: (niche, count = 5) =>
     request("/tools/content-ideas", { method: "POST", body: { niche, count }, auth: false }),
+
+  // ---- webhooks ----
+  webhookEvents: () => request("/webhooks/events"),
+  listWebhooks: () => request("/webhooks"),
+  createWebhook: (payload) => request("/webhooks", { method: "POST", body: payload }),
+  updateWebhook: (id, payload) =>
+    request(`/webhooks/${id}`, { method: "PATCH", body: payload }),
+  deleteWebhook: (id) => request(`/webhooks/${id}`, { method: "DELETE" }),
+  rotateWebhookSecret: (id) =>
+    request(`/webhooks/${id}/rotate-secret`, { method: "POST" }),
+  pingWebhook: (id) => request(`/webhooks/${id}/ping`, { method: "POST" }),
+  webhookDeliveries: (id, params = {}) =>
+    request(`/webhooks/${id}/deliveries${qs(params)}`),
+
+  // ---- API keys ----
+  apiKeyScopes: () => request("/api-keys/scopes"),
+  listApiKeys: (params = {}) => request(`/api-keys${qs(params)}`),
+  createApiKey: (payload) => request("/api-keys", { method: "POST", body: payload }),
+  rotateApiKey: (id, graceHours = 0) =>
+    request(`/api-keys/${id}/rotate`, { method: "POST", body: { grace_hours: graceHours } }),
+  revokeApiKey: (id) => request(`/api-keys/${id}`, { method: "DELETE" }),
+
+  // ---- auth (extended) ----
+  updateMe: (payload) => request("/auth/me", { method: "PATCH", body: payload }),
+  requestPasswordReset: (email) =>
+    request("/auth/password-reset", { method: "POST", body: { email }, auth: false }),
+  confirmPasswordReset: (token, newPassword) =>
+    request("/auth/password-reset/confirm", {
+      method: "POST",
+      body: { token, new_password: newPassword },
+      auth: false,
+    }),
 
   // ---- settings ----
   platforms: () => request("/settings/platforms"),

@@ -56,6 +56,7 @@ export default function ContentList() {
   const isReviewView = status === "review";
   const [selected, setSelected] = useState(new Set());
   const [approvingBulk, setApprovingBulk] = useState(false);
+  const [rejectingBulk, setRejectingBulk] = useState(false);
 
   const toggleSelect = useCallback((id) => {
     setSelected((prev) => {
@@ -108,6 +109,25 @@ export default function ContentList() {
       toast.error(err.message);
     } finally {
       setApprovingBulk(false);
+    }
+  }
+
+  async function bulkReject() {
+    const ids = [...selected];
+    if (ids.length === 0) return;
+    setRejectingBulk(true);
+    try {
+      const result = await api.bulkReject(ids);
+      const ok = result.archived?.length ?? 0;
+      if (ok > 0) toast.success(`Rejected ${ok} item${ok === 1 ? "" : "s"}`);
+      const fail = result.failed?.length ?? 0;
+      if (fail > 0) toast.error(`${fail} could not be rejected`);
+      setSelected(new Set());
+      reload();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setRejectingBulk(false);
     }
   }
 
@@ -215,9 +235,16 @@ export default function ContentList() {
               <button
                 className="btn-quiet text-good"
                 onClick={bulkApprove}
-                disabled={approvingBulk}
+                disabled={approvingBulk || rejectingBulk}
               >
                 Approve selected
+              </button>
+              <button
+                className="btn-quiet text-bad"
+                onClick={bulkReject}
+                disabled={rejectingBulk || approvingBulk}
+              >
+                {rejectingBulk ? "Rejecting…" : "Reject selected"}
               </button>
               <button className="btn-quiet" onClick={() => setSelected(new Set())}>
                 Clear

@@ -175,11 +175,15 @@ def test_the_units_are_installed_after_the_tree_is_synced(script: str):
 def test_every_unit_the_deploy_restarts_exists_in_the_repo(script: str):
     """The other direction: a restart line naming a unit nothing installs is a
     unit whose file lives only on the box."""
+    shell_operators = {"||", "&&", ";", "|", ">", ">>", "<", "true", "false"}
     named = set()
     for line in script.splitlines():
         stripped = line.strip()
         if stripped.startswith(("systemctl restart ", "systemctl start ")):
-            named.update(stripped.split()[2:])
+            for token in stripped.split()[2:]:
+                if token in shell_operators:
+                    break
+                named.add(token)
 
     assert named, "deploy.sh no longer restarts anything"
     for unit in named:
