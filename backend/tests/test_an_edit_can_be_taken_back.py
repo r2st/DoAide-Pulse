@@ -119,7 +119,7 @@ def test_the_note_names_the_fields_that_moved(client, auth, db, piece):
     assert "body_markdown" not in stored.note
 
 
-def test_a_failed_edit_leaves_no_history_entry(client, auth, db, piece):
+def test_a_failed_edit_leaves_no_history_entry(client, auth, db, piece, monkeypatch):
     """The snapshot joins the request's transaction rather than committing early.
 
     A PATCH refused by the review-readiness gate never happened, and a history
@@ -128,6 +128,10 @@ def test_a_failed_edit_leaves_no_history_entry(client, auth, db, piece):
     would leave it — and rolls back explicitly, so this is the case that proves
     the snapshot is not committed on its own.
     """
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "content_quality_gate_enabled", True)
+
     all_code = "```python\n" + "\n".join(f"x{n} = compute({n})" for n in range(60)) + "\n```\n"
 
     response = client.patch(

@@ -24,6 +24,17 @@ vi.mock("../lib/api", () => ({
     verifyConnection: vi.fn(),
     deleteConnection: vi.fn(),
     saveConnection: vi.fn(),
+    listWebhooks: vi.fn(),
+    webhookEvents: vi.fn(),
+    createWebhook: vi.fn(),
+    deleteWebhook: vi.fn(),
+    updateWebhook: vi.fn(),
+    pingWebhook: vi.fn(),
+    listApiKeys: vi.fn(),
+    apiKeyScopes: vi.fn(),
+    createApiKey: vi.fn(),
+    revokeApiKey: vi.fn(),
+    listProjects: vi.fn(),
   },
 }));
 
@@ -57,6 +68,11 @@ beforeEach(() => {
     credential_encryption: true,
     implemented_platforms: ["devto"],
   });
+  api.listWebhooks.mockResolvedValue([]);
+  api.webhookEvents.mockResolvedValue([]);
+  api.listApiKeys.mockResolvedValue([]);
+  api.apiKeyScopes.mockResolvedValue([]);
+  api.listProjects.mockResolvedValue([]);
 });
 
 describe("service health", () => {
@@ -549,5 +565,241 @@ describe("the connect dialog", () => {
     expect(
       within(dialog).getByText("Posts land as drafts; you publish them by hand."),
     ).toBeInTheDocument();
+  });
+});
+
+/* ---- Outbound webhooks ---- */
+
+function webhook(overrides = {}) {
+  return {
+    id: 1,
+    url: "https://example.com/hook",
+    description: "CI notifier",
+    events: ["content_published"],
+    is_active: true,
+    consecutive_failures: 0,
+    last_delivery_at: null,
+    last_status: null,
+    last_error: null,
+    created_at: "2025-01-15T10:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("outbound webhooks", () => {
+  it("shows the empty state when there are none", async () => {
+    api.listWebhooks.mockResolvedValue([]);
+    draw();
+
+    expect(await screen.findByText("No webhooks")).toBeInTheDocument();
+  });
+
+  it("renders a webhook row with its URL and events", async () => {
+    api.listWebhooks.mockResolvedValue([webhook()]);
+    draw();
+
+    expect(await screen.findByText("https://example.com/hook")).toBeInTheDocument();
+    expect(screen.getByText("Content Published")).toBeInTheDocument();
+    expect(screen.getByText("CI notifier")).toBeInTheDocument();
+  });
+
+  it("shows a paused badge on an inactive webhook", async () => {
+    api.listWebhooks.mockResolvedValue([webhook({ is_active: false })]);
+    draw();
+
+    expect(await screen.findByText("paused")).toBeInTheDocument();
+  });
+
+  it("shows a failure badge when consecutive failures > 0", async () => {
+    api.listWebhooks.mockResolvedValue([webhook({ consecutive_failures: 3 })]);
+    draw();
+
+    expect(await screen.findByText("3 failures")).toBeInTheDocument();
+  });
+
+  it("shows the last error when present", async () => {
+    api.listWebhooks.mockResolvedValue([
+      webhook({ last_error: "Connection refused" }),
+    ]);
+    draw();
+
+    expect(await screen.findByText("Connection refused")).toBeInTheDocument();
+  });
+
+  it("pings a webhook and shows success", async () => {
+    api.listWebhooks.mockResolvedValue([webhook()]);
+    api.pingWebhook.mockResolvedValue({ status: "delivered" });
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Ping" }));
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith("Ping delivered"),
+    );
+  });
+
+  it("pings a webhook and shows failure", async () => {
+    api.listWebhooks.mockResolvedValue([webhook()]);
+    api.pingWebhook.mockResolvedValue({ status: "failed", error: "timeout" });
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Ping" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("timeout"));
+  });
+
+  it("pauses and resumes a webhook", async () => {
+    api.listWebhooks.mockResolvedValue([webhook()]);
+    api.updateWebhook.mockResolvedValue({});
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Pause" }));
+    await waitFor(() =>
+      expect(api.updateWebhook).toHaveBeenCalledWith(1, { is_active: false }),
+    );
+    expect(toast.success).toHaveBeenCalledWith("Paused");
+  });
+
+  it("deletes a webhook after confirmation", async () => {
+    api.listWebhooks.mockResolvedValue([webhook()]);
+    api.deleteWebhook.mockResolvedValue(undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(api.deleteWebhook).toHaveBeenCalledWith(1));
+    expect(toast.success).toHaveBeenCalledWith("Webhook deleted");
+    window.confirm.mockRestore();
+  });
+
+  it("opens the create dialog and submits a new webhook", async () => {
+    api.listWebhooks.mockResolvedValue([]);
+    api.webhookEvents.mockResolvedValue([
+      { event: "content_published", description: "A piece went live." },
+      { event: "publication_failed", description: "A platform gave up." },
+    ]);
+    api.createWebhook.mockResolvedValue({
+      ...webhook(),
+      secret: "whsec_test123",
+    });
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Add webhook" }));
+
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Endpoint URL"), "https://hook.test/cb");
+    await user.click(within(dialog).getByText("Content Published"));
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(api.createWebhook).toHaveBeenCalledWith({
+        url: "https://hook.test/cb",
+        events: ["content_published"],
+        description: "",
+      }),
+    );
+
+    // The one-time secret dialog should appear
+    expect(await screen.findByText("Signing secret")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("whsec_test123")).toBeInTheDocument();
+  });
+});
+
+/* ---- API keys ---- */
+
+function apiKey(overrides = {}) {
+  return {
+    id: 1,
+    project_id: 1,
+    name: "CI deploy key",
+    prefix: "psk_abc",
+    scopes: ["content_read"],
+    expires_at: null,
+    revoked_at: null,
+    last_used_at: null,
+    rotated_from_id: null,
+    created_at: "2025-01-20T10:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("API keys", () => {
+  it("shows the empty state when there are none", async () => {
+    api.listApiKeys.mockResolvedValue([]);
+    draw();
+
+    expect(await screen.findByText("No API keys")).toBeInTheDocument();
+  });
+
+  it("renders a key row with its name, prefix, and scopes", async () => {
+    api.listApiKeys.mockResolvedValue([apiKey()]);
+    draw();
+
+    expect(await screen.findByText("CI deploy key")).toBeInTheDocument();
+    expect(screen.getByText("psk_abc…")).toBeInTheDocument();
+    expect(screen.getByText("Content Read")).toBeInTheDocument();
+  });
+
+  it("shows a revoked badge on a revoked key", async () => {
+    api.listApiKeys.mockResolvedValue([
+      apiKey({ revoked_at: "2025-02-01T10:00:00Z" }),
+    ]);
+    draw();
+
+    expect(await screen.findByText("revoked")).toBeInTheDocument();
+    // No revoke button for an already-revoked key
+    expect(screen.queryByRole("button", { name: "Revoke" })).not.toBeInTheDocument();
+  });
+
+  it("revokes a key after confirmation", async () => {
+    api.listApiKeys.mockResolvedValue([apiKey()]);
+    api.revokeApiKey.mockResolvedValue({ ...apiKey(), revoked_at: "2025-02-01T10:00:00Z" });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Revoke" }));
+    await waitFor(() => expect(api.revokeApiKey).toHaveBeenCalledWith(1));
+    expect(toast.success).toHaveBeenCalledWith("Key revoked");
+    window.confirm.mockRestore();
+  });
+
+  it("opens the create dialog and mints a key", async () => {
+    api.listApiKeys.mockResolvedValue([]);
+    api.listProjects.mockResolvedValue([{ id: 1, name: "My Project" }]);
+    api.apiKeyScopes.mockResolvedValue([
+      { scope: "content_read", description: "List the project's pieces." },
+      { scope: "content_write", description: "File an idea." },
+    ]);
+    api.createApiKey.mockResolvedValue({
+      ...apiKey(),
+      token: "psk_abc.secret_token_value",
+    });
+    const user = userEvent.setup();
+    draw();
+
+    await user.click(await screen.findByRole("button", { name: "Create key" }));
+
+    const dialog = screen.getByRole("dialog");
+    await user.selectOptions(within(dialog).getByLabelText("Project"), "1");
+    await user.type(within(dialog).getByLabelText("Key name"), "CI deploy key");
+    await user.click(within(dialog).getByText("Content Read"));
+    await user.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() =>
+      expect(api.createApiKey).toHaveBeenCalledWith({
+        project_id: 1,
+        name: "CI deploy key",
+        scopes: ["content_read"],
+        expires_in_days: null,
+      }),
+    );
+
+    // The one-time token dialog should appear
+    expect(await screen.findByText("API token")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("psk_abc.secret_token_value")).toBeInTheDocument();
   });
 });

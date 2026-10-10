@@ -20,6 +20,7 @@ vi.mock("../lib/api", () => ({
     approveContent: vi.fn(),
     updateContent: vi.fn(),
     bulkApprove: vi.fn(),
+    bulkReject: vi.fn(),
   },
 }));
 
@@ -426,5 +427,25 @@ describe("review mode", () => {
     await user.click(await screen.findByRole("button", { name: "Reject" }));
 
     expect(api.updateContent).toHaveBeenCalledWith(42, { status: "draft" });
+  });
+
+  it("calls bulkReject for selected items when Reject selected is clicked", async () => {
+    api.listContent.mockResolvedValue([
+      item({ id: 1, status: "review" }),
+      item({ id: 2, title: "Second", status: "review" }),
+    ]);
+    api.bulkReject.mockResolvedValue({ archived: [1, 2], failed: [] });
+    const user = userEvent.setup();
+    drawReview();
+
+    const checkboxes = await screen.findAllByRole("checkbox");
+    await user.click(checkboxes[0]);
+    await user.click(checkboxes[1]);
+
+    await user.click(screen.getByRole("button", { name: "Reject selected" }));
+
+    await vi.waitFor(() => {
+      expect(api.bulkReject).toHaveBeenCalledWith([1, 2]);
+    });
   });
 });

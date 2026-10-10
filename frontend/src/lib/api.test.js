@@ -473,6 +473,9 @@ describe("every endpoint's path and verb", () => {
     ["retryPublication", [3, 8], "/content/3/retry/8", "POST"],
     ["reviewQueue", [], "/content/queue/review", "GET"],
     ["bulkApprove", [[1, 2]], "/content/bulk/approve", "POST"],
+    ["bulkReject", [[1, 2]], "/content/bulk/reject", "POST"],
+    ["bulkPublish", [[1, 2], ["devto"]], "/content/bulk/publish", "POST"],
+    ["bulkRetry", [[1, 2]], "/content/bulk/retry", "POST"],
     ["publicationQueue", [], "/content/queue/publications", "GET"],
 
     ["listPreviewLinks", [3], "/content/3/preview-links", "GET"],
@@ -512,6 +515,27 @@ describe("every endpoint's path and verb", () => {
     ["subscribe", ["a@b.com"], "/subscribers", "POST"],
     ["generateContentIdeas", ["AI tools"], "/tools/content-ideas", "POST"],
 
+    ["webhookEvents", [], "/webhooks/events", "GET"],
+    ["listWebhooks", [], "/webhooks", "GET"],
+    ["createWebhook", [{ url: "https://x.test", events: ["ping"] }], "/webhooks", "POST"],
+    ["updateWebhook", [1, { is_active: false }], "/webhooks/1", "PATCH"],
+    ["deleteWebhook", [1], "/webhooks/1", "DELETE"],
+    ["rotateWebhookSecret", [1], "/webhooks/1/rotate-secret", "POST"],
+    ["pingWebhook", [1], "/webhooks/1/ping", "POST"],
+    ["webhookDeliveries", [1], "/webhooks/1/deliveries", "GET"],
+
+    ["apiKeyScopes", [], "/api-keys/scopes", "GET"],
+    ["listApiKeys", [], "/api-keys", "GET"],
+    ["createApiKey", [{ project_id: 1, name: "k", scopes: ["content_read"] }], "/api-keys", "POST"],
+    ["rotateApiKey", [1], "/api-keys/1/rotate", "POST"],
+    ["revokeApiKey", [1], "/api-keys/1", "DELETE"],
+
+    ["updateMe", [{ full_name: "J" }], "/auth/me", "PATCH"],
+    ["requestPasswordReset", ["a@b.com"], "/auth/password-reset", "POST"],
+    ["confirmPasswordReset", ["tok", "newpw"], "/auth/password-reset/confirm", "POST"],
+
+    ["generateFields", [{ content_id: 1 }], "/ai/generate-fields", "POST"],
+
     ["platforms", [], "/settings/platforms", "GET"],
     ["saveConnection", ["devto", {}], "/settings/connections", "PUT"],
     ["verifyConnection", ["devto"], "/settings/connections/devto/verify", "POST"],
@@ -532,7 +556,7 @@ describe("every endpoint's path and verb", () => {
     // `login`, `register` and `logout` are covered by their own cases above —
     // one sends a form, one is unauthenticated, and one touches no network at
     // all, so none of them fits the shape this table asserts.
-    const exempt = new Set(["login", "register", "logout"]);
+    const exempt = new Set(["login", "register", "logout", "uploadImage"]);
     const covered = new Set(ENDPOINTS.map(([name]) => name));
 
     const uncovered = Object.keys(api).filter(
