@@ -72,6 +72,8 @@ def truncate_at_sentence(text: str, limit: int) -> str:
     mid-word — a clipped meta description reads as broken, not as truncated.
     """
     text = text.strip()
+    if limit <= 0:
+        return ""
     if len(text) <= limit:
         return text
 
