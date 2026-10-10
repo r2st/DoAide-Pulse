@@ -94,13 +94,15 @@ def _latest_totals(db: Session, content_ids: list[int]) -> dict[int, tuple[int, 
 
     by_publication = {row[0]: (row[1], row[2].value) for row in pub_rows}
 
-    # The newest capture per publication, then the row at that instant. Two
-    # statements over an indexed column, independent of how many pieces are in
-    # the batch.
+    # The newest row per publication, by id rather than by captured_at.
+    # Two rows captured in the same second (sweep + refresh-button race)
+    # share a timestamp, so a max(captured_at) join would return both and
+    # double-count engagement. max(id) is unique and uses the
+    # ix_content_metrics_pub_latest index.
     latest = (
         select(
             ContentMetric.publication_id.label("pub_id"),
-            func.max(ContentMetric.captured_at).label("captured"),
+            func.max(ContentMetric.id).label("latest_id"),
         )
         .where(ContentMetric.publication_id.in_(list(by_publication)))
         .group_by(ContentMetric.publication_id)
@@ -111,8 +113,7 @@ def _latest_totals(db: Session, content_ids: list[int]) -> dict[int, tuple[int, 
     for metric in db.scalars(
         select(ContentMetric).join(
             latest,
-            (ContentMetric.publication_id == latest.c.pub_id)
-            & (ContentMetric.captured_at == latest.c.captured),
+            ContentMetric.id == latest.c.latest_id,
         )
     ):
         content_id, platform = by_publication[metric.publication_id]

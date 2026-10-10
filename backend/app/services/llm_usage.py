@@ -243,11 +243,15 @@ def by_purpose(db: Session, *, hours: int = 24) -> list[dict[str, Any]]:
 GENERATION_PURPOSE = "content"
 
 
-def _weighted_mean(providers: list[dict[str, Any]]) -> int:
-    """The per-call mean duration across providers, weighted by call count."""
+def _weighted_mean(providers: list[dict[str, Any]]) -> int | None:
+    """The per-call mean duration across providers, weighted by call count.
+
+    ``None`` when no calls have been recorded — 0 would show as the fastest
+    possible install on a dashboard rather than as missing data.
+    """
     calls = sum(p["calls"] for p in providers)
     if not calls:
-        return 0
+        return None
     total = sum(p["avg_duration_ms"] * p["calls"] for p in providers)
     return int(round(total / calls))
 
