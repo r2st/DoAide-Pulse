@@ -22,6 +22,10 @@ vi.mock("../lib/api", () => ({
     revokePreviewLink: vi.fn(),
     listRevisions: vi.fn(),
     restoreRevision: vi.fn(),
+    listLanguages: vi.fn(),
+    listTranslations: vi.fn(),
+    translateContent: vi.fn(),
+    deleteTranslation: vi.fn(),
   },
 }));
 
@@ -102,6 +106,8 @@ beforeEach(() => {
   api.platforms.mockResolvedValue([]);
   api.listPreviewLinks.mockResolvedValue([]);
   api.listRevisions.mockResolvedValue({ items: [], total: 0, retained: 50 });
+  api.listLanguages.mockResolvedValue([]);
+  api.listTranslations.mockResolvedValue({ items: [], source_language: "en" });
 });
 
 describe("recovering unsaved work", () => {
@@ -1407,5 +1413,60 @@ describe("revision history", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledWith("Published pieces cannot be restored");
     });
+  });
+});
+
+describe("translations", () => {
+  it("shows empty state when there are no translations", async () => {
+    draw();
+    expect(await screen.findByText("No translations yet.")).toBeInTheDocument();
+  });
+
+  it("renders existing translations with status and remove button", async () => {
+    api.listTranslations.mockResolvedValue({
+      items: [
+        { language: "hi", name: "Hindi", endonym: "हिन्दी", status: "ready", stale: false, quality_issues: [], rtl: false, publishable: true },
+        { language: "ta", name: "Tamil", endonym: "தமிழ்", status: "needs_review", stale: true, quality_issues: ["loanword"], rtl: false, publishable: false },
+      ],
+      source_language: "en",
+    });
+    api.listLanguages.mockResolvedValue([
+      { code: "en", name: "English", endonym: "English", rtl: false },
+      { code: "hi", name: "Hindi", endonym: "हिन्दी", rtl: false },
+      { code: "ta", name: "Tamil", endonym: "தமிழ்", rtl: false },
+    ]);
+    draw();
+
+    expect(await screen.findByText("Hindi")).toBeInTheDocument();
+    expect(screen.getByText("Tamil")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Remove" })).toHaveLength(2);
+  });
+
+  it("shows available language buttons for untranslated languages", async () => {
+    api.listTranslations.mockResolvedValue({ items: [], source_language: "en" });
+    api.listLanguages.mockResolvedValue([
+      { code: "en", name: "English", endonym: "English", rtl: false },
+      { code: "hi", name: "Hindi", endonym: "हिन्दी", rtl: false },
+    ]);
+    draw();
+
+    expect(await screen.findByRole("button", { name: "हिन्दी" })).toBeInTheDocument();
+  });
+
+  it("translates and reloads on success", async () => {
+    api.listTranslations.mockResolvedValue({ items: [], source_language: "en" });
+    api.listLanguages.mockResolvedValue([
+      { code: "en", name: "English", endonym: "English", rtl: false },
+      { code: "hi", name: "Hindi", endonym: "हिन्दी", rtl: false },
+    ]);
+    api.translateContent.mockResolvedValue({});
+    draw();
+
+    await userEvent.click(await screen.findByRole("button", { name: "हिन्दी" }));
+
+    await waitFor(() => {
+      expect(api.translateContent).toHaveBeenCalledWith(3, "hi");
+    });
+    expect(toast.success).toHaveBeenCalledWith("Translated to hi");
   });
 });

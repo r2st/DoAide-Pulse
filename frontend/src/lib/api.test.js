@@ -478,6 +478,11 @@ describe("every endpoint's path and verb", () => {
     ["bulkRetry", [[1, 2]], "/content/bulk/retry", "POST"],
     ["publicationQueue", [], "/content/queue/publications", "GET"],
 
+    ["listLanguages", [], "/languages", "GET"],
+    ["listTranslations", [3], "/content/3/translations", "GET"],
+    ["translateContent", [3, "hi"], "/content/3/translations", "POST"],
+    ["deleteTranslation", [3, "hi"], "/content/3/translations/hi", "DELETE"],
+
     ["listRevisions", [3], "/content/3/revisions", "GET"],
     ["getRevision", [3, 2], "/content/3/revisions/2", "GET"],
     ["diffRevision", [3, 2], "/content/3/revisions/2/diff", "GET"],

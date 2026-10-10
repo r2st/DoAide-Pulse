@@ -163,6 +163,14 @@ export const api = {
     }),
   publicationQueue: () => request("/content/queue/publications"),
 
+  // ---- translations ----
+  listLanguages: () => request("/languages"),
+  listTranslations: (contentId) => request(`/content/${contentId}/translations`),
+  translateContent: (contentId, language) =>
+    request(`/content/${contentId}/translations`, { method: "POST", body: { language } }),
+  deleteTranslation: (contentId, language) =>
+    request(`/content/${contentId}/translations/${language}`, { method: "DELETE" }),
+
   // ---- revisions ----
   listRevisions: (contentId, params = {}) =>
     request(`/content/${contentId}/revisions${qs(params)}`),

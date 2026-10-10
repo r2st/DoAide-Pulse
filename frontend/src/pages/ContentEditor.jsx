@@ -661,6 +661,9 @@ export default function ContentEditor() {
           <SectionBoundary name="editor:publications">
             <PublicationsPanel content={data} onChanged={reload} />
           </SectionBoundary>
+          <SectionBoundary name="editor:translations">
+            <TranslationsPanel contentId={data.id} />
+          </SectionBoundary>
           <SectionBoundary name="editor:history">
             <HistoryPanel contentId={data.id} onRestored={reload} />
           </SectionBoundary>
@@ -1361,6 +1364,103 @@ function PublicationsPanel({ content, onChanged }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function TranslationsPanel({ contentId }) {
+  const toast = useToast();
+  const [translations, setTranslations] = useState(null);
+  const [languages, setLanguages] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [translating, setTranslating] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([api.listTranslations(contentId), api.listLanguages()]).then(
+      ([t, l]) => { if (!cancelled) { setTranslations(t); setLanguages(l); setLoading(false); } },
+      () => { if (!cancelled) setLoading(false); },
+    );
+    return () => { cancelled = true; };
+  }, [contentId]);
+
+  async function translate(language) {
+    setTranslating(language);
+    try {
+      await api.translateContent(contentId, language);
+      const t = await api.listTranslations(contentId);
+      setTranslations(t);
+      toast.success(`Translated to ${language}`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setTranslating(null);
+    }
+  }
+
+  async function remove(language) {
+    try {
+      await api.deleteTranslation(contentId, language);
+      const t = await api.listTranslations(contentId);
+      setTranslations(t);
+      toast.success(`Removed ${language} translation`);
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="panel p-5">
+        <h2 className="mb-1 text-sm font-semibold text-ink-900">Translations</h2>
+        <p className="text-xs text-ink-400">Loading…</p>
+      </div>
+    );
+  }
+
+  const existing = translations?.items ?? [];
+  const existingLangs = new Set(existing.map((t) => t.language));
+  const available = (languages ?? []).filter((l) => !existingLangs.has(l.code) && l.code !== translations?.source_language);
+
+  return (
+    <div className="panel p-5">
+      <h2 className="mb-3 text-sm font-semibold text-ink-900">Translations</h2>
+      {existing.length > 0 && (
+        <ul className="mb-3 space-y-2">
+          {existing.map((t) => (
+            <li key={t.language} className="flex items-start justify-between gap-2 text-xs">
+              <div className="min-w-0">
+                <span className="block font-medium text-ink-900">{t.name}</span>
+                <span className="block text-ink-400">
+                  {t.stale ? "Stale" : titleize(t.status)}
+                  {t.quality_issues.length > 0 && ` · ${t.quality_issues.length} issue${t.quality_issues.length !== 1 ? "s" : ""}`}
+                </span>
+              </div>
+              <button className="btn-quiet shrink-0 text-bad" onClick={() => remove(t.language)}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {existing.length === 0 && (
+        <p className="mb-3 text-xs text-ink-400">No translations yet.</p>
+      )}
+      {available.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {available.map((l) => (
+            <button
+              key={l.code}
+              className="rounded border border-line bg-surface px-2 py-1 text-[11px] font-medium text-ink-600 hover:bg-ink-50 disabled:opacity-50"
+              onClick={() => translate(l.code)}
+              disabled={translating !== null}
+            >
+              {translating === l.code ? "Translating…" : l.endonym}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
