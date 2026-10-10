@@ -73,6 +73,12 @@ _TRANSIENT_STATUSES = frozenset({429, 500, 502, 503, 504})
 #: before Pulse stops following. Matches ``link_check``'s budget.
 _MAX_REDIRECTS = 10
 
+#: Platform API responses are parsed for a status code and at most a few hundred
+#: characters of text (see :func:`_short`).  A 1 MB cap is generous for any real
+#: API payload while stopping an error page or a misbehaving proxy from putting
+#: megabytes into the worker's heap.
+_MAX_RESPONSE_BYTES = 1_048_576
+
 
 class PublishError(RuntimeError):
     """Publishing failed for a reason that might not recur.
@@ -590,7 +596,7 @@ class Adapter(ABC):
         checked a host that never received the request.
         """
         if not self.user_supplied_host:
-            return httpx.request(
+            return _capped(httpx.request(
                 method,
                 url,
                 headers=headers,
@@ -598,14 +604,14 @@ class Adapter(ABC):
                 params=params,
                 timeout=settings.publish_timeout_seconds,
                 follow_redirects=True,
-            )
+            ))
 
         current = url
         hop_method = method
         hop_body = json_body
         for _ in range(_MAX_REDIRECTS):
             self._require_public_url(current)
-            response = httpx.request(
+            response = _capped(httpx.request(
                 hop_method,
                 current,
                 headers=headers,
@@ -613,7 +619,7 @@ class Adapter(ABC):
                 params=params,
                 timeout=settings.publish_timeout_seconds,
                 follow_redirects=False,
-            )
+            ))
             if not response.is_redirect:
                 return response
             following = response.next_request
@@ -800,6 +806,16 @@ def _retry_after(resp: httpx.Response) -> float | None:
     if when.tzinfo is None:
         when = when.replace(tzinfo=UTC)
     return max(0.0, (when - datetime.now(UTC)).total_seconds())
+
+
+def _capped(resp: httpx.Response) -> httpx.Response:
+    """Truncate the body to :data:`_MAX_RESPONSE_BYTES` so a platform error page
+    cannot fill the worker's heap.  Success bodies are typically small JSON;
+    error bodies can be megabytes of HTML from a misbehaving proxy.
+    """
+    if len(resp.content) > _MAX_RESPONSE_BYTES:
+        resp._content = resp.content[:_MAX_RESPONSE_BYTES]
+    return resp
 
 
 def _sleep(seconds: float) -> None:

@@ -254,6 +254,9 @@ def _rate_limit(resp: httpx.Response) -> GitHubRateLimited | None:
     )
 
 
+_MAX_RESPONSE_BYTES = 1_048_576
+
+
 def _get(path: str, *, params: dict | None = None) -> httpx.Response:
     url = f"{settings.github_api_url.rstrip('/')}{path}"
     try:
@@ -266,6 +269,8 @@ def _get(path: str, *, params: dict | None = None) -> httpx.Response:
         )
     except httpx.HTTPError as exc:
         raise GitHubError(f"GitHub is not reachable: {friendly_network_error(exc)}") from exc
+    if len(resp.content) > _MAX_RESPONSE_BYTES:
+        resp._content = resp.content[:_MAX_RESPONSE_BYTES]
 
     # 403 and 429 are how GitHub says no, and it says no for two unrelated
     # reasons that have to be told apart — see :func:`_rate_limit`.

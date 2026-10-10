@@ -515,7 +515,10 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
         started = time.monotonic()
         try:
             with _http_client() as client:
-                response = client.post(url, content=body.encode("utf-8"), headers=headers)
+                with client.stream("POST", url, content=body.encode("utf-8"), headers=headers) as response:
+                    status_code = response.status_code
+                    is_redirect = response.is_redirect
+                    response_text = _read_capped(response)
         except httpx.HTTPError as exc:
             _record_failure(db, delivery, friendly_network_error(exc))
             return delivery
@@ -535,18 +538,18 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
                 duration_ms,
             )
 
-        delivery.response_status = response.status_code
-        if 200 <= response.status_code < 300:
+        delivery.response_status = status_code
+        if 200 <= status_code < 300:
             _record_success(db, delivery)
             return delivery
 
-        if response.is_redirect:
+        if is_redirect:
             # See the module docstring: a redirect could be a move or could be a way
             # back inside the network, and Pulse cannot tell which.
             _record_failure(
                 db,
                 delivery,
-                f"Returned {response.status_code} — Pulse does not follow webhook "
+                f"Returned {status_code} — Pulse does not follow webhook "
                 "redirects. Point the webhook at the final URL.",
                 terminal=True,
             )
@@ -555,13 +558,13 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
         _record_failure(
             db,
             delivery,
-            f"Returned {response.status_code}: {_excerpt(response.text)}",
+            f"Returned {status_code}: {_excerpt(response_text)}",
             # 4xx that is not a rate limit is the endpoint saying "not this, ever".
             # Retrying a 401 sixteen times is how a bad secret becomes a log full of
             # noise. 408 and 429 are the two that mean "later", not "no".
             terminal=(
-                400 <= response.status_code < 500
-                and response.status_code not in (408, 429)
+                400 <= status_code < 500
+                and status_code not in (408, 429)
             ),
         )
         return delivery
@@ -576,6 +579,9 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
                 delivery.id,
             )
         return delivery
+
+
+_MAX_WEBHOOK_RESPONSE_BYTES = 4096
 
 
 def _http_client() -> httpx.Client:
@@ -600,6 +606,25 @@ def _serialize(delivery: WebhookDelivery) -> str:
     body = dict(delivery.payload or {})
     body["id"] = delivery.id
     return json.dumps(body, separators=(",", ":"), sort_keys=True)
+
+
+def _read_capped(response: httpx.Response) -> str:
+    """Read at most :data:`_MAX_WEBHOOK_RESPONSE_BYTES` from a streaming response.
+
+    A webhook endpoint is user-supplied. Without a cap, a malicious endpoint
+    could return an unbounded body and exhaust worker memory before the timeout
+    fires.  Only the first few kilobytes matter — :func:`_excerpt` truncates to
+    200 characters anyway.
+    """
+    chunks: list[bytes] = []
+    total = 0
+    for chunk in response.iter_bytes():
+        chunks.append(chunk)
+        total += len(chunk)
+        if total >= _MAX_WEBHOOK_RESPONSE_BYTES:
+            break
+    raw = b"".join(chunks)[:_MAX_WEBHOOK_RESPONSE_BYTES]
+    return raw.decode("utf-8", "replace")
 
 
 def _excerpt(text: str, limit: int = 200) -> str:
