@@ -55,7 +55,7 @@ class User(Base, TimestampMixin):
         back_populates="user", cascade="all, delete-orphan"
     )
     connections: Mapped[list[PlatformConnection]] = relationship(
-        back_populates="user", cascade="all, delete-orphan", lazy="selectin"
+        back_populates="user", cascade="all, delete-orphan"
     )
     #: Reusable content shapes. Owned by the user rather than the project so one
     #: template can serve every project — see ``app.models.template``.
