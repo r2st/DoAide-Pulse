@@ -1,0 +1,58 @@
+# Version control
+.git
+.gitignore
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+keys/
+*.pem
+*.key
+client_secret*.json
+token*.json
+credentials*.json
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+backend/.venv/
+
+# Node / Frontend build artifacts
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Documentation and scratch
+docs/
+.benchmarks/
+marketing/
+README.md
+PROJECT_INFO.md
+
+# Deploy artifacts (not needed inside containers)
+deploy/
+mcp/
+
+# Runtime data
+uploads/
+*.db
+*.sqlite3

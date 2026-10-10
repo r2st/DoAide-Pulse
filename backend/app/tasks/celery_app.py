@@ -102,6 +102,13 @@ celery_app.conf.update(
     broker_connection_max_retries=1,
     broker_transport_options={"socket_connect_timeout": 2, "socket_timeout": 2},
     task_publish_retry=False,
+    # Recycle worker processes after this many tasks to bound memory leaks.
+    # The box has 7.5 GB shared with five other apps; a worker whose resident
+    # set grows without bound eventually triggers the OOM killer.
+    worker_max_tasks_per_child=200,
+    # Ceiling on stale results: tasks ignore results (task_ignore_result=True),
+    # but if that ever changes, uncollected results should not accumulate.
+    result_expires=3600,
 )
 
 # ``celery_app.task``, with a signature. Celery ships no ``py.typed``, so a type

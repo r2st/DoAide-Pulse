@@ -92,8 +92,33 @@ fi
 
 systemctl stop pulse-beat pulse-worker || true
 cd /opt/Pulse/backend
-sudo -u pulse env $(grep -E '^DATABASE_URL=' /opt/Pulse/.env | xargs) \
-  /opt/Pulse/.venv/bin/alembic upgrade head
+# Advisory lock prevents two overlapping deploys from running migrations
+# concurrently. The lock id (737868) is arbitrary but fixed; pg_try_advisory_lock
+# returns false (exit 1 from psql) when another session holds it.
+DB_URL=$(grep -E '^DATABASE_URL=' /opt/Pulse/.env | head -1 | cut -d= -f2-)
+if ! sudo -u pulse env DATABASE_URL="$DB_URL" \
+  /opt/Pulse/.venv/bin/python -c "
+import os, sys
+from sqlalchemy import create_engine, text
+e = create_engine(os.environ['DATABASE_URL'])
+with e.connect() as c:
+    if not c.execute(text('SELECT pg_try_advisory_lock(737868)')).scalar():
+        print('ERROR: another migration is running', file=sys.stderr)
+        sys.exit(1)
+    # Hold the lock while alembic runs
+    import subprocess
+    r = subprocess.run(
+        ['/opt/Pulse/.venv/bin/alembic', 'upgrade', 'head'],
+        cwd='/opt/Pulse/backend',
+        env={**os.environ},
+    )
+    c.execute(text('SELECT pg_advisory_unlock(737868)'))
+    sys.exit(r.returncode)
+"; then
+  echo "migration failed — not restarting services" >&2
+  systemctl start pulse-worker pulse-beat || true
+  exit 1
+fi
 systemctl restart pulse-api pulse-web
 systemctl start pulse-worker pulse-beat
 
