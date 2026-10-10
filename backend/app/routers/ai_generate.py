@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.ratelimit import account_key, limiter
 from app.schemas.errors import AUTHENTICATED, errors
 from app.services import ai
 
@@ -74,9 +76,17 @@ def _build_prompt(req: GenerateFieldsRequest) -> str:
     "/generate-fields",
     response_model=GenerateFieldsResponse,
     summary="AI-generate SEO and content fields",
-    responses=errors(status.HTTP_400_BAD_REQUEST, status.HTTP_503_SERVICE_UNAVAILABLE, *AUTHENTICATED),
+    responses=errors(
+        status.HTTP_400_BAD_REQUEST,
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        *AUTHENTICATED,
+    ),
 )
+@limiter.limit(settings.rate_limit_ai_assist, key_func=account_key)
 def generate_fields(
+    request: Request,
+    response: Response,
     req: GenerateFieldsRequest,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

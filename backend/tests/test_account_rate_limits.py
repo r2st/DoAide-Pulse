@@ -128,6 +128,7 @@ _COSTLY_CALLS = (
     "repurpose.generate",
     "inline_edit.edit(",
     "headlines.generate_variants",
+    "ai.json_completion(",
     "github_client.fetch_activity",
     "_check_content_links",
     # Mail goes out through the install's single SMTP identity: one budget and
@@ -222,6 +223,7 @@ def test_the_costly_endpoints_are_the_ones_expected():
         "/content/{content_id}/links",
         "/projects/{project_id}/scan",
         "/projects/{project_id}/ideas",
+        "/ai/generate-fields",
         # Found by the sweep above rather than by reading the routers: in
         # `prompt` mode this is `/content/generate` reached by another route,
         # and it was the one costly endpoint missed on the first pass.
