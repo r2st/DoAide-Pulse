@@ -6,19 +6,21 @@ import logging
 import uuid
 from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.config import settings
 from app.deps import get_current_user
 from app.models.user import User
-from app.ratelimit import limiter
+from app.ratelimit import account_key, limiter
 from app.schemas.errors import AUTHENTICATED, errors
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
+
+UPLOAD_LIMIT = "120/hour"
 
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 ALLOWED_CONTENT_TYPES = {
@@ -57,9 +59,16 @@ def _ext_from_content_type(ct: str) -> str:
     response_model=UploadOut,
     status_code=status.HTTP_201_CREATED,
     summary="Upload an image",
-    responses=errors(status.HTTP_400_BAD_REQUEST, *AUTHENTICATED),
+    responses=errors(
+        status.HTTP_400_BAD_REQUEST,
+        *AUTHENTICATED,
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
 )
+@limiter.limit(UPLOAD_LIMIT, key_func=account_key)
 async def upload_image(
+    request: Request,
+    response: Response,
     file: UploadFile,
     user: User = Depends(get_current_user),
 ) -> UploadOut:
@@ -74,7 +83,7 @@ async def upload_image(
     data = await file.read()
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"File too large (max {settings.max_upload_bytes // (1024 * 1024)} MB)",
         )
 
