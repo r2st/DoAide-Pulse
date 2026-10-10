@@ -260,6 +260,10 @@ def interval_hours(trigger: Trigger) -> float:
     try:
         value = float(trigger.setting("every_hours") or 0)
     except (TypeError, ValueError):
+        logger.warning(
+            "trigger %s: unparseable every_hours=%r, falling back to default",
+            trigger.id, trigger.setting("every_hours"),
+        )
         value = 0.0
     if value <= 0:
         value = float(settings.trigger_default_interval_hours)
@@ -296,8 +300,10 @@ def is_due(trigger: Trigger, *, moment: Any = None) -> bool:
             try:
                 pinned = int(hour)
             except (TypeError, ValueError):
-                # Junk pins nothing rather than pinning "never" — see
-                # ``test_an_uninterpretable_hour_utc_is_ignored_rather_than...``.
+                logger.warning(
+                    "trigger %s: unparseable hour_utc=%r, ignoring pin",
+                    trigger.id, hour,
+                )
                 pinned = None
         if pinned is not None and now.hour != pinned:
             return False

@@ -97,6 +97,7 @@ def subscribe(
         db.commit()
     except IntegrityError:
         db.rollback()
+        logger.debug("duplicate subscriber ignored: %s", payload.email.lower())
     return SubscribeOut(ok=True)
 
 
@@ -172,7 +173,10 @@ def generate_content_ideas(
             for item in ideas_raw[:payload.count]
         ]
     except (KeyError, json.JSONDecodeError, IndexError):
-        logger.exception("Failed to parse Gemini response for content ideas")
+        logger.exception(
+            "Failed to parse Gemini response for content ideas; body=%s",
+            resp.text[:500],
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not parse AI response. Please try again.",
