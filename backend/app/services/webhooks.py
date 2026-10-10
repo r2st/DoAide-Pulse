@@ -40,6 +40,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import refresh_all
 from app.logging_config import request_id_var
 from app.models.mixins import utcnow
 from app.models.webhook import (
@@ -315,8 +316,7 @@ def emit(
         ]
         db.add_all(deliveries)
         db.commit()
-        for delivery in deliveries:
-            db.refresh(delivery)
+        refresh_all(db, deliveries)
     except Exception:  # pragma: no cover - defensive
         logger.exception(
             "failed to queue webhook deliveries for %s (user_id=%s)",
