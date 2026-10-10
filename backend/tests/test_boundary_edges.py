@@ -1393,3 +1393,185 @@ class TestKeywordDensity:
 
         result = _keyword_density("test the test again test", "test")
         assert result > 0.0
+
+
+# ─── seo._keyword_occurrences ────────────────────────────────────────────── #
+
+class TestKeywordOccurrences:
+    """Boundaries for seo._keyword_occurrences."""
+
+    def test_empty_keyword(self):
+        from app.services.seo import _keyword_occurrences
+
+        assert _keyword_occurrences("some text", "") == 0
+
+    def test_empty_text(self):
+        from app.services.seo import _keyword_occurrences
+
+        assert _keyword_occurrences("", "test") == 0
+
+    def test_substring_not_counted(self):
+        from app.services.seo import _keyword_occurrences
+
+        assert _keyword_occurrences("rapid capital apis", "api") == 0
+
+    def test_multiword_keyword(self):
+        from app.services.seo import _keyword_occurrences
+
+        assert _keyword_occurrences("content marketing is great content marketing", "content marketing") == 2
+
+
+# ─── seo.strip_markdown ─────────────────────────────────────────────────── #
+
+class TestStripMarkdown:
+    """Boundaries for seo.strip_markdown."""
+
+    def test_empty_string(self):
+        from app.services.seo import strip_markdown
+
+        assert strip_markdown("") == ""
+
+    def test_just_code_fence(self):
+        from app.services.seo import strip_markdown
+
+        assert strip_markdown("```python\nprint(42)\n```").strip() == ""
+
+    def test_link_replaced_by_label(self):
+        from app.services.seo import strip_markdown
+
+        assert "click here" in strip_markdown("[click here](https://example.com)")
+
+    def test_image_removed(self):
+        from app.services.seo import strip_markdown
+
+        assert strip_markdown("![alt text](image.jpg)").strip() == ""
+
+    def test_inline_markup_stripped(self):
+        from app.services.seo import strip_markdown
+
+        result = strip_markdown("**bold** and *italic*")
+        assert "bold" in result
+        assert "*" not in result
+
+
+# ─── formatting.truncate_with_link ───────────────────────────────────────── #
+
+class TestTruncateWithLink:
+    """Boundaries for formatting.truncate_with_link."""
+
+    def test_no_url(self):
+        from app.services.publishers.formatting import truncate_with_link
+
+        result = truncate_with_link("Hello world", url=None, limit=5)
+        assert len(result) <= 5
+
+    def test_url_longer_than_limit(self):
+        from app.services.publishers.formatting import truncate_with_link
+
+        url = "https://example.com/very-long-path-here"
+        result = truncate_with_link("Some text", url=url, limit=10)
+        assert result == url
+
+    def test_url_exactly_fills_limit(self):
+        from app.services.publishers.formatting import truncate_with_link
+
+        url = "https://x.co"
+        result = truncate_with_link("Some text", url=url, limit=len(url))
+        assert result == url
+
+    def test_url_cost_override(self):
+        from app.services.publishers.formatting import truncate_with_link
+
+        url = "https://example.com/path"
+        result = truncate_with_link("Hello world test", url=url, limit=30, url_cost=23)
+        assert url in result
+
+
+# ─── formatting.billed_length ────────────────────────────────────────────── #
+
+class TestBilledLength:
+    """Boundaries for formatting.billed_length."""
+
+    def test_no_url(self):
+        from app.services.publishers.formatting import billed_length
+
+        assert billed_length("hello world") == 11
+
+    def test_url_not_in_text(self):
+        from app.services.publishers.formatting import billed_length
+
+        assert billed_length("hello", url="https://x.co", url_cost=23) == 5
+
+    def test_url_in_text_with_cost(self):
+        from app.services.publishers.formatting import billed_length
+
+        text = "Read more https://example.com/longpath"
+        result = billed_length(text, url="https://example.com/longpath", url_cost=23)
+        assert result == len(text) - len("https://example.com/longpath") + 23
+
+    def test_none_url(self):
+        from app.services.publishers.formatting import billed_length
+
+        assert billed_length("hello", url=None, url_cost=23) == 5
+
+
+# ─── scheduling.in_zone DST ─────────────────────────────────────────────── #
+
+class TestInZone:
+    """Boundaries for scheduling.in_zone — DST gap and overlap."""
+
+    def test_normal_time(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from app.services.scheduling import in_zone
+
+        result = in_zone(datetime(2026, 7, 15, 12, 0), ZoneInfo("Europe/Berlin"))
+        assert result.tzinfo is not None
+
+    def test_aware_datetime_rejected(self):
+        from datetime import UTC, datetime
+        from zoneinfo import ZoneInfo
+
+        from app.services.scheduling import ScheduleError, in_zone
+
+        with pytest.raises(ScheduleError):
+            in_zone(datetime(2026, 7, 15, 12, 0, tzinfo=UTC), ZoneInfo("Europe/Berlin"))
+
+    def test_dst_gap_rejected(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from app.services.scheduling import ScheduleError, in_zone
+
+        with pytest.raises(ScheduleError, match="does not exist"):
+            in_zone(datetime(2026, 3, 29, 2, 30), ZoneInfo("Europe/Berlin"))
+
+    def test_dst_overlap_takes_earlier(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        from app.services.scheduling import in_zone
+
+        result = in_zone(datetime(2026, 10, 25, 2, 30), ZoneInfo("Europe/Berlin"))
+        assert result.tzinfo is not None
+
+
+# ─── dedup.is_restatement — near-threshold ───────────────────────────────── #
+
+class TestIsRestatementThresholds:
+    """Near-threshold similarity checks."""
+
+    def test_exactly_at_threshold(self):
+        from app.services.dedup import SIMILARITY_THRESHOLD, is_restatement
+
+        existing = frozenset({"a", "b", "c", "d", "e"})
+        candidate_tokens = frozenset({"a", "b", "c", "d", "f"})
+        overlap = len(candidate_tokens & existing) / len(candidate_tokens | existing)
+        assert overlap < SIMILARITY_THRESHOLD
+
+    def test_identical_multiword(self):
+        from app.services.dedup import is_restatement, tokens
+
+        existing = tokens("Pulse deployment pipeline improvements")
+        assert is_restatement("Pulse deployment pipeline improvements", existing) is True
