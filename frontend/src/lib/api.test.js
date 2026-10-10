@@ -478,6 +478,10 @@ describe("every endpoint's path and verb", () => {
     ["bulkRetry", [[1, 2]], "/content/bulk/retry", "POST"],
     ["publicationQueue", [], "/content/queue/publications", "GET"],
 
+    ["tagTree", [], "/tags", "GET"],
+    ["suggestTags", [3], "/tags/suggest/3", "POST"],
+    ["renameTags", [{ old: "a", new: "b" }], "/tags/rename", "POST"],
+
     ["listLanguages", [], "/languages", "GET"],
     ["listTranslations", [3], "/content/3/translations", "GET"],
     ["translateContent", [3, "hi"], "/content/3/translations", "POST"],

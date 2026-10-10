@@ -22,6 +22,7 @@ vi.mock("../lib/api", () => ({
     revokePreviewLink: vi.fn(),
     listRevisions: vi.fn(),
     restoreRevision: vi.fn(),
+    suggestTags: vi.fn(),
     listLanguages: vi.fn(),
     listTranslations: vi.fn(),
     translateContent: vi.fn(),
@@ -1468,5 +1469,34 @@ describe("translations", () => {
       expect(api.translateContent).toHaveBeenCalledWith(3, "hi");
     });
     expect(toast.success).toHaveBeenCalledWith("Translated to hi");
+  });
+});
+
+describe("tag suggestions", () => {
+  it("shows the suggest button for an unlocked piece", async () => {
+    draw();
+    expect(await screen.findByRole("button", { name: "Suggest" })).toBeInTheDocument();
+  });
+
+  it("does not show suggest for a published piece", async () => {
+    api.getContent.mockResolvedValue(content({ status: "published" }));
+    draw();
+    await screen.findByDisplayValue("Saved title");
+    expect(screen.queryByRole("button", { name: "Suggest" })).not.toBeInTheDocument();
+  });
+
+  it("appends suggested tags and toasts the count", async () => {
+    api.suggestTags.mockResolvedValue([
+      { tag: "fastapi", reason: "stack" },
+      { tag: "deployment", reason: "topic" },
+    ]);
+    draw();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Suggest" }));
+
+    await waitFor(() => {
+      expect(api.suggestTags).toHaveBeenCalledWith(3);
+    });
+    expect(toast.success).toHaveBeenCalledWith("Added 2 suggested tags");
   });
 });

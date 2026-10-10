@@ -636,6 +636,7 @@ export default function ContentEditor() {
         <aside className="space-y-4">
           <SectionBoundary name="editor:seo">
             <SeoPanel
+              contentId={data.id}
               issues={data.seo_issues}
               draft={draft}
               onChange={set}
@@ -789,12 +790,13 @@ function PassageTools({ selection, dirty, busy, undoable, disabled, onRun, onUnd
   );
 }
 
-function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
+function SeoPanel({ contentId, issues, draft, onChange, setDraft, locked }) {
   const [coverBroken, setCoverBroken] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [aiRanFor, setAiRanFor] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
   const cover = draft.cover_image_url.trim();
   const fileInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -873,6 +875,30 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
     } finally {
       setGalleryUploading(false);
       if (galleryInputRef.current) galleryInputRef.current.value = "";
+    }
+  }
+
+  async function handleSuggestTags() {
+    setSuggesting(true);
+    try {
+      const suggestions = await api.suggestTags(contentId);
+      if (suggestions.length > 0) {
+        const existing = draft.tags ? draft.tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
+        const newTags = suggestions.map((s) => s.tag).filter((t) => !existing.includes(t));
+        if (newTags.length > 0) {
+          const merged = [...existing, ...newTags].join(", ");
+          setDraft((d) => ({ ...d, tags: merged }));
+          toast.success(`Added ${newTags.length} suggested tag${newTags.length !== 1 ? "s" : ""}`);
+        } else {
+          toast.info("No new tags to suggest");
+        }
+      } else {
+        toast.info("No tag suggestions available");
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setSuggesting(false);
     }
   }
 
@@ -982,9 +1008,20 @@ function SeoPanel({ issues, draft, onChange, setDraft, locked }) {
       </div>
 
       <div>
-        <label className="label" htmlFor="c-tags">
-          Platform tags
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="label" htmlFor="c-tags">
+            Platform tags
+          </label>
+          {!locked && (
+            <button
+              className="btn-quiet text-[11px]"
+              onClick={handleSuggestTags}
+              disabled={suggesting}
+            >
+              {suggesting ? "Suggesting…" : "Suggest"}
+            </button>
+          )}
+        </div>
         <input
           id="c-tags"
           className={`input text-[13px] ${aiLoading && !draft.tags ? "animate-pulse bg-ink-50" : ""}`}

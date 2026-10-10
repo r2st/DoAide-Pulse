@@ -163,6 +163,12 @@ export const api = {
     }),
   publicationQueue: () => request("/content/queue/publications"),
 
+  // ---- tags ----
+  tagTree: (params = {}) => request(`/tags${qs(params)}`),
+  suggestTags: (contentId, limit) =>
+    request(`/tags/suggest/${contentId}${qs({ limit })}`, { method: "POST" }),
+  renameTags: (payload) => request("/tags/rename", { method: "POST", body: payload }),
+
   // ---- translations ----
   listLanguages: () => request("/languages"),
   listTranslations: (contentId) => request(`/content/${contentId}/translations`),

@@ -41,6 +41,7 @@ vi.mock("../lib/api", () => ({
     publishContent: vi.fn(),
     listRevisions: vi.fn(),
     restoreRevision: vi.fn(),
+    suggestTags: vi.fn(),
     listLanguages: vi.fn(),
     listTranslations: vi.fn(),
     translateContent: vi.fn(),
