@@ -140,6 +140,13 @@ def to_plain_text(body_markdown: str) -> str:
         tag.replace_with("\n")
 
     text = soup.get_text()
+    # Entity decoding can resurrect angle-bracket sequences that look like
+    # tags: markdown entity-encodes `<iframe` to `&lt;iframe`, nh3 leaves
+    # the entity alone because it is not a tag, and get_text() decodes it
+    # back to `<iframe`.  The result is text, not markup — but a social
+    # platform that renders HTML would treat it as one.  Strip anything
+    # that survived the round trip.
+    text = re.sub(r"<[^>]*>", "", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()

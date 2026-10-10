@@ -101,7 +101,7 @@ async def upload_image(
 @router.get(
     "/{filename}",
     summary="Serve an uploaded image",
-    responses=errors(status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND),
+    responses=errors(status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND, status.HTTP_429_TOO_MANY_REQUESTS),
 )
 @limiter.limit(settings.rate_limit_public_read)
 async def serve_image(

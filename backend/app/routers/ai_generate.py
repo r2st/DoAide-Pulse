@@ -13,6 +13,7 @@ from app.deps import get_current_user
 from app.models.user import User
 from app.ratelimit import account_key, limiter
 from app.schemas.errors import AUTHENTICATED, errors
+from app.schemas.limits import FieldName
 from app.services import ai
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ class GenerateFieldsRequest(BaseModel):
     title: str = Field(default="", max_length=500)
     body_markdown: str = Field(default="", max_length=200_000)
     excerpt: str = Field(default="", max_length=1000)
-    fields: list[str] = Field(
+    fields: list[FieldName] = Field(
         min_length=1,
         max_length=10,
         description="Which fields to generate: meta_description, keywords, tags, excerpt, cover_image_prompt",

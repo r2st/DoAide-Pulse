@@ -15,7 +15,7 @@ from app.models.content import (
 )
 from app.models.project import Tone
 from app.models.publication import Platform, PublicationStatus
-from app.schemas.limits import Keyword, Tag, Timezone
+from app.schemas.limits import Keyword, MarketingImageUrl, Tag, Timezone
 from app.services import inline_edit
 
 #: The description every ``timezone`` field on a scheduling request carries.
@@ -159,7 +159,7 @@ class ContentCreate(BaseModel):
     tags: list[Tag] = Field(default=[], max_length=30)
     canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
-    marketing_images: list[str] = Field(default=[], max_length=20)
+    marketing_images: list[MarketingImageUrl] = Field(default=[], max_length=20)
     #: The primary SEO keyword. Defaults to the first keyword when omitted.
     focus_keyword: str = Field(default="", max_length=100)
     #: A caller's own stable identifier for this piece, stored on ``source``.
@@ -189,7 +189,7 @@ class ContentUpdate(BaseModel):
     tags: list[Tag] | None = Field(default=None, max_length=30)
     canonical_url: str | None = Field(default=None, max_length=CANONICAL_URL_MAX_LENGTH)
     cover_image_url: str | None = Field(default=None, max_length=700)
-    marketing_images: list[str] | None = Field(default=None, max_length=20)
+    marketing_images: list[MarketingImageUrl] | None = Field(default=None, max_length=20)
     focus_keyword: str | None = Field(default=None, max_length=100)
     content_type: ContentType | None = None
     status: ContentStatus | None = None

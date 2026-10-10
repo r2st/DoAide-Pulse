@@ -69,7 +69,7 @@ def _history(db, publication, *, days_back: int) -> None:
             ContentMetric(
                 publication_id=publication.id,
                 captured_at=_now() - timedelta(days=day),
-                views=1000 - day * 10,
+                views=max(1000 - day * 10, 0),
                 clicks=0,
                 reactions=0,
             )

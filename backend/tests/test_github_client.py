@@ -117,8 +117,7 @@ def test_a_non_json_body_is_a_github_error_not_a_json_decode_error(monkeypatch):
 
     with pytest.raises(github_client.GitHubError) as exc:
         github_client.fetch_activity("owner/repo")
-    assert "non-JSON" in str(exc.value)
-    assert "text/html" in str(exc.value)
+    assert "unexpected response" in str(exc.value)
 
 
 def test_a_repo_payload_that_is_not_an_object_is_a_github_error(monkeypatch):

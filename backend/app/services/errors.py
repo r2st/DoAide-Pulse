@@ -101,6 +101,7 @@ _HTTPX_FRIENDLY: dict[type, str] = {
     httpx.ReadError: "The connection was lost while reading the response",
     httpx.WriteError: "The connection was lost while sending the request",
     httpx.CloseError: "Error closing the connection",
+    httpx.TooManyRedirects: "Too many redirects",
 }
 
 

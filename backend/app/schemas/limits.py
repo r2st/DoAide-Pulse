@@ -98,10 +98,18 @@ CredentialValue = Annotated[
     str, StringConstraints(max_length=CREDENTIAL_VALUE_MAX_LENGTH)
 ]
 
+#: One entry in a ``marketing_images`` list — a URL.
+MarketingImageUrl = Annotated[str, StringConstraints(max_length=2000)]
+
+#: One entry in a ``fields`` list on the AI generate endpoint — a field name.
+FieldName = Annotated[str, StringConstraints(max_length=50)]
+
 __all__ = [
     "CREDENTIAL_KEY_MAX_LENGTH",
     "CREDENTIAL_VALUE_MAX_LENGTH",
+    "FieldName",
     "MAX_CREDENTIAL_FIELDS",
+    "MarketingImageUrl",
     "CredentialKey",
     "CredentialValue",
     "Keyword",

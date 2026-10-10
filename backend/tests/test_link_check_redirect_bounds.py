@@ -64,7 +64,7 @@ def test_a_redirect_loop_is_unknown_rather_than_an_endless_walk(monkeypatch):
         verdict = link_check.check_url("https://example.com/start", client=client)
 
     assert verdict.status == link_check.UNKNOWN
-    assert "TooManyRedirects" in verdict.detail
+    assert "redirect" in verdict.detail.lower()
     # Bounded, and bounded where the constant says.
     assert hops == link_check._MAX_REDIRECTS
 
