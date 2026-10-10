@@ -118,9 +118,10 @@ def generate_fields(
             purpose="field_generation",
         )
     except ai.AIError as exc:
+        logger.warning("AI field generation failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"AI generation unavailable: {exc}",
+            detail="AI generation is temporarily unavailable. Try again in a moment.",
         ) from exc
 
     fields: dict = {"provider": completion.provider, "model": completion.model}

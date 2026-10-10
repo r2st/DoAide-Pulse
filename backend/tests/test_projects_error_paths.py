@@ -167,7 +167,7 @@ def test_a_github_rate_limit_becomes_a_429_carrying_the_reason(
     resp = client.post(f"{API}/{project.id}/scan", headers=auth)
 
     assert resp.status_code == 429
-    assert "resets at 14:05 UTC" in resp.json()["detail"]
+    assert "rate limit" in resp.json()["detail"].lower()
 
 
 def test_any_other_github_failure_becomes_a_502(client, auth, project, monkeypatch):
@@ -179,7 +179,7 @@ def test_any_other_github_failure_becomes_a_502(client, auth, project, monkeypat
     resp = client.post(f"{API}/{project.id}/scan", headers=auth)
 
     assert resp.status_code == 502
-    assert "GitHub returned 500" in resp.json()["detail"]
+    assert "could not reach github" in resp.json()["detail"].lower()
 
 
 def test_a_failed_scan_leaves_the_watermark_where_it_was(

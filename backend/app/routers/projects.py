@@ -380,9 +380,7 @@ def scan_repo(
             since_tag=project.last_seen_release_tag,
         )
     except github_client.GitHubRateLimited as exc:
-        # GitHub's own backoff, passed straight through. A 429 whose body says
-        # "wait 47 seconds" in prose and whose headers say nothing is a 429 a
-        # client has to guess at, and the guess is what got us throttled.
+        logger.warning("GitHub rate limit hit scanning %s: %s", full_name, exc)
         headers = (
             {"Retry-After": str(exc.retry_after)}
             if exc.retry_after is not None
@@ -390,11 +388,16 @@ def scan_repo(
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=str(exc),
+            detail="GitHub's rate limit has been reached. Try again later.",
             headers=headers,
         ) from exc
     except github_client.GitHubError as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        logger.warning("GitHub error scanning %s: %s", full_name, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not reach GitHub to scan this repository. "
+            "Check the repo URL and try again.",
+        ) from exc
 
     project.last_seen_commit_sha = activity.head_sha
     project.last_seen_release_tag = activity.latest_tag

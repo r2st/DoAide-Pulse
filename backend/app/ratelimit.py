@@ -169,7 +169,8 @@ def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded) -> Res
     rate-limited login would otherwise surface as a blank toast.
     """
     response = JSONResponse(
-        {"detail": f"Too many requests. Limit: {exc.detail}."}, status_code=429
+        {"detail": "Too many requests — slow down and try again shortly."},
+        status_code=429,
     )
     # Adds Retry-After / X-RateLimit-* so a client can back off sensibly.
     return request.app.state.limiter._inject_headers(
