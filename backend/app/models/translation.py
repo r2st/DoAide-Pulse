@@ -49,6 +49,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -119,6 +120,7 @@ class ContentTranslation(Base, TimestampMixin):
         # so "the French version" always names exactly one thing.
         UniqueConstraint("content_id", "language", name="uq_translation_per_language"),
         Index("ix_translation_content_language", "content_id", "language"),
+        CheckConstraint("source_version >= 0", name="ck_translation_source_version_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

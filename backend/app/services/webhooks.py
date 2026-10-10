@@ -691,7 +691,9 @@ def _record_failure(
         # Only a spent delivery counts against the endpoint. Counting every
         # attempt would disable a webhook after two flaky events rather than
         # after a run of genuinely undelivered ones.
-        webhook.consecutive_failures += 1
+        webhook.consecutive_failures = Webhook.consecutive_failures + 1
+        db.flush()
+        db.refresh(webhook)
         if webhook.consecutive_failures >= settings.webhook_disable_after_failures:
             webhook.is_active = False
             logger.warning(

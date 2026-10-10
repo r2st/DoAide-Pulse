@@ -433,7 +433,7 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
             return None
 
         trigger.last_fired_at = utcnow()
-        trigger.fire_count += 1
+        trigger.fire_count = Trigger.fire_count + 1
         db.commit()
 
         project = db.get(Project, trigger.project_id)
@@ -698,7 +698,9 @@ def _mark_checked(db: Session, trigger: Trigger, error: str | None = None) -> No
     # rewritten on every poll.
     trigger.last_error = clip_error(error) if error else None
     if error:
-        trigger.consecutive_failures += 1
+        trigger.consecutive_failures = Trigger.consecutive_failures + 1
+        db.flush()
+        db.refresh(trigger)
         if trigger.consecutive_failures >= settings.trigger_disable_after_failures:
             trigger.is_active = False
             logger.warning(

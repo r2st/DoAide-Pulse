@@ -550,7 +550,7 @@ def use_template(
             source=source,
         )
 
-    template.use_count += 1
+    template.use_count = ContentTemplate.use_count + 1
     _commit_content(db, content)
     db.commit()
     return _to_detail(content)

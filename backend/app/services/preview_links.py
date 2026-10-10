@@ -148,7 +148,7 @@ def resolve(db: Session, raw_token: str) -> Content | None:
     if as_aware(row.expires_at) <= utcnow():
         return None
 
-    row.view_count += 1
+    row.view_count = PreviewLink.view_count + 1
     row.last_viewed_at = utcnow()
     db.commit()
 

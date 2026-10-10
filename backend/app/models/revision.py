@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -116,6 +117,8 @@ class ContentRevision(Base, TimestampMixin):
         # the same millisecond by a bulk edit tie on the timestamp, and the
         # counter never ties.
         Index("ix_revision_content_newest", "content_id", "revision"),
+        CheckConstraint("revision > 0", name="ck_revision_positive"),
+        CheckConstraint("word_count >= 0", name="ck_revision_word_count_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
