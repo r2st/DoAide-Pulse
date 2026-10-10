@@ -1105,3 +1105,291 @@ class TestRssClean:
         from app.services.rss import _clean
 
         assert "\x00" not in _clean("Title\x00Here")
+
+
+# ─── project.slugify ────────────────────────────────────────────────────── #
+
+class TestSlugify:
+    """Boundaries for project.slugify."""
+
+    def test_empty_string(self):
+        from app.models.project import slugify
+
+        assert slugify("") == "untitled"
+
+    def test_whitespace_only(self):
+        from app.models.project import slugify
+
+        assert slugify("   ") == "untitled"
+
+    def test_all_special_chars(self):
+        from app.models.project import slugify
+
+        assert slugify("!!!@@@###") == "untitled"
+
+    def test_unicode_title(self):
+        from app.models.project import slugify
+
+        result = slugify("日本語タイトル")
+        assert result == "untitled"
+
+    def test_mixed_content(self):
+        from app.models.project import slugify
+
+        assert slugify("Hello World!") == "hello-world"
+
+    def test_leading_trailing_hyphens(self):
+        from app.models.project import slugify
+
+        assert slugify("---hello---") == "hello"
+
+    def test_consecutive_special_chars(self):
+        from app.models.project import slugify
+
+        assert slugify("a!!!b") == "a-b"
+
+
+# ─── project.scan_due ───────────────────────────────────────────────────── #
+
+class TestScanDue:
+    """Boundaries for project.scan_due."""
+
+    def test_never_scanned(self):
+        from app.models.project import scan_due
+
+        assert scan_due(None, 24) is True
+
+    def test_no_interval(self):
+        from app.models.project import scan_due
+
+        from datetime import UTC, datetime
+        assert scan_due(datetime.now(UTC), None) is True
+
+    def test_zero_interval(self):
+        from app.models.project import scan_due
+
+        from datetime import UTC, datetime
+        assert scan_due(datetime.now(UTC), 0) is True
+
+    def test_negative_interval(self):
+        from app.models.project import scan_due
+
+        from datetime import UTC, datetime
+        assert scan_due(datetime.now(UTC), -5) is True
+
+    def test_recently_scanned(self):
+        from app.models.project import scan_due
+
+        from datetime import UTC, datetime
+        assert scan_due(datetime.now(UTC), 24) is False
+
+
+# ─── feeds._parse_date ──────────────────────────────────────────────────── #
+
+class TestParseDate:
+    """Boundaries for feeds._parse_date."""
+
+    def test_empty_string(self):
+        from app.services.feeds import _parse_date
+
+        assert _parse_date("") is None
+
+    def test_none(self):
+        from app.services.feeds import _parse_date
+
+        assert _parse_date(None) is None
+
+    def test_whitespace_only(self):
+        from app.services.feeds import _parse_date
+
+        assert _parse_date("   ") is None
+
+    def test_garbage(self):
+        from app.services.feeds import _parse_date
+
+        assert _parse_date("not-a-date") is None
+
+    def test_rfc822(self):
+        from app.services.feeds import _parse_date
+
+        result = _parse_date("Mon, 01 Jan 2024 00:00:00 GMT")
+        assert result is not None
+
+    def test_iso8601_with_z(self):
+        from app.services.feeds import _parse_date
+
+        result = _parse_date("2024-01-01T00:00:00Z")
+        assert result is not None
+
+    def test_iso8601_with_offset(self):
+        from app.services.feeds import _parse_date
+
+        result = _parse_date("2024-01-01T00:00:00+05:30")
+        assert result is not None
+
+
+# ─── dedup.commit_shas ──────────────────────────────────────────────────── #
+
+class TestCommitShas:
+    """Boundaries for dedup.commit_shas."""
+
+    def test_none_activity(self):
+        from app.services.dedup import commit_shas
+
+        assert commit_shas(None) == []
+
+    def test_no_commits_attr(self):
+        from app.services.dedup import commit_shas
+
+        assert commit_shas(object()) == []
+
+    def test_empty_commits(self):
+        from app.services.dedup import commit_shas
+
+        class FakeActivity:
+            new_commits = []
+
+        assert commit_shas(FakeActivity()) == []
+
+    def test_sha_truncated_to_seven(self):
+        from app.services.dedup import commit_shas
+
+        class FakeCommit:
+            sha = "abcdef1234567890"
+
+        class FakeActivity:
+            new_commits = [FakeCommit()]
+
+        result = commit_shas(FakeActivity())
+        assert result == ["abcdef1"]
+
+    def test_empty_sha_skipped(self):
+        from app.services.dedup import commit_shas
+
+        class FakeCommit:
+            sha = ""
+
+        class FakeActivity:
+            new_commits = [FakeCommit()]
+
+        assert commit_shas(FakeActivity()) == []
+
+
+# ─── ai.stray_script_runs ───────────────────────────────────────────────── #
+
+class TestStrayScriptRuns:
+    """Boundaries for ai.stray_script_runs."""
+
+    def test_empty_text(self):
+        from app.services.ai import stray_script_runs
+
+        assert stray_script_runs("") == []
+
+    def test_none_text(self):
+        from app.services.ai import stray_script_runs
+
+        assert stray_script_runs(None) == []
+
+    def test_ascii_only(self):
+        from app.services.ai import stray_script_runs
+
+        assert stray_script_runs("Hello world, this is a test.") == []
+
+    def test_single_cjk_char_in_english(self):
+        from app.services.ai import stray_script_runs
+
+        result = stray_script_runs("The test 漢 framework runs nightly.")
+        assert len(result) >= 1
+
+    def test_limit_respected(self):
+        from app.services.ai import stray_script_runs
+
+        text = "word 漢 word 字 word 語 word 文 word 句"
+        result = stray_script_runs(text, limit=2)
+        assert len(result) <= 2
+
+
+# ─── ai.stray_letter_splices ────────────────────────────────────────────── #
+
+class TestStrayLetterSplices:
+    """Boundaries for ai.stray_letter_splices."""
+
+    def test_empty_text(self):
+        from app.services.ai import stray_letter_splices
+
+        assert stray_letter_splices("") == []
+
+    def test_none_text(self):
+        from app.services.ai import stray_letter_splices
+
+        assert stray_letter_splices(None) == []
+
+    def test_clean_english(self):
+        from app.services.ai import stray_letter_splices
+
+        assert stray_letter_splices("The quick brown fox jumps.") == []
+
+
+# ─── utm.tag_markdown_links ─────────────────────────────────────────────── #
+
+class TestTagMarkdownLinks:
+    """Boundaries for utm.tag_markdown_links."""
+
+    def test_empty_body(self):
+        from app.services.utm import tag_markdown_links
+
+        assert tag_markdown_links("", host="example.com", source="s", campaign="c") == ""
+
+    def test_no_links(self):
+        from app.services.utm import tag_markdown_links
+
+        body = "Just plain text, no links here."
+        assert tag_markdown_links(body, host="example.com", source="s", campaign="c") == body
+
+    def test_link_inside_code_fence_untouched(self):
+        from app.services.utm import tag_markdown_links
+
+        body = "```\n[link](https://example.com/path)\n```"
+        result = tag_markdown_links(body, host="example.com", source="s", campaign="c")
+        assert "utm_source" not in result
+
+    def test_different_host_untouched(self):
+        from app.services.utm import tag_markdown_links
+
+        body = "[link](https://other.com/path)"
+        result = tag_markdown_links(body, host="example.com", source="s", campaign="c")
+        assert "utm_source" not in result
+
+    def test_matching_host_tagged(self):
+        from app.services.utm import tag_markdown_links
+
+        body = "[link](https://example.com/path)"
+        result = tag_markdown_links(body, host="example.com", source="s", campaign="c")
+        assert "utm_source=s" in result
+
+
+# ─── seo._keyword_density ───────────────────────────────────────────────── #
+
+class TestKeywordDensity:
+    """Boundaries for seo._keyword_density."""
+
+    def test_empty_text(self):
+        from app.services.seo import _keyword_density
+
+        assert _keyword_density("", "test") == 0.0
+
+    def test_empty_keyword(self):
+        from app.services.seo import _keyword_density
+
+        assert _keyword_density("Some text here.", "") == 0.0
+
+    def test_keyword_not_present(self):
+        from app.services.seo import _keyword_density
+
+        assert _keyword_density("The quick brown fox.", "zebra") == 0.0
+
+    def test_keyword_present(self):
+        from app.services.seo import _keyword_density
+
+        result = _keyword_density("test the test again test", "test")
+        assert result > 0.0
