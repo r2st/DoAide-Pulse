@@ -94,7 +94,7 @@ def generate_fields(
     """Use the LLM provider chain to generate SEO and content metadata."""
     if not req.title and not req.body_markdown:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="At least one of title or body_markdown is required",
         )
 
@@ -102,7 +102,7 @@ def generate_fields(
     invalid = set(req.fields) - valid_fields
     if invalid:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unknown fields: {', '.join(sorted(invalid))}. "
             f"Valid: {', '.join(sorted(valid_fields))}",
         )
@@ -118,21 +118,21 @@ def generate_fields(
         )
     except ai.AIError as exc:
         raise HTTPException(
-            status_code=503,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"AI generation unavailable: {exc}",
         ) from exc
 
-    response: dict = {"provider": completion.provider, "model": completion.model}
+    fields: dict = {"provider": completion.provider, "model": completion.model}
 
     if "meta_description" in req.fields:
-        response["meta_description"] = ai.as_str(result.get("meta_description"))[:155]
+        fields["meta_description"] = ai.as_str(result.get("meta_description"))[:155]
     if "keywords" in req.fields:
-        response["keywords"] = ai.as_str_list(result.get("keywords"), limit=8)
+        fields["keywords"] = ai.as_str_list(result.get("keywords"), limit=8)
     if "tags" in req.fields:
-        response["tags"] = ai.as_str_list(result.get("tags"), limit=5)
+        fields["tags"] = ai.as_str_list(result.get("tags"), limit=5)
     if "excerpt" in req.fields:
-        response["excerpt"] = ai.as_str(result.get("excerpt"))[:1000]
+        fields["excerpt"] = ai.as_str(result.get("excerpt"))[:1000]
     if "cover_image_prompt" in req.fields:
-        response["cover_image_prompt"] = ai.as_str(result.get("cover_image_prompt"))[:500]
+        fields["cover_image_prompt"] = ai.as_str(result.get("cover_image_prompt"))[:500]
 
-    return response
+    return GenerateFieldsResponse(**fields)

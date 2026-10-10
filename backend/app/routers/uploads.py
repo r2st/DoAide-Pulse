@@ -4,10 +4,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-from pathlib import Path
+from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.config import settings
 from app.deps import get_current_user
@@ -28,10 +29,16 @@ ALLOWED_CONTENT_TYPES = {
 }
 
 
-def _upload_dir() -> Path:
-    base = Path(settings.upload_dir)
+class UploadOut(BaseModel):
+    url: str
+    filename: str
+    size: int
+
+
+def _upload_dir() -> FilePath:
+    base = FilePath(settings.upload_dir)
     if not base.is_absolute():
-        base = Path(__file__).resolve().parent.parent.parent / base
+        base = FilePath(__file__).resolve().parent.parent.parent / base
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -47,6 +54,7 @@ def _ext_from_content_type(ct: str) -> str:
 
 @router.post(
     "",
+    response_model=UploadOut,
     status_code=status.HTTP_201_CREATED,
     summary="Upload an image",
     responses=errors(status.HTTP_400_BAD_REQUEST, *AUTHENTICATED),
@@ -54,11 +62,11 @@ def _ext_from_content_type(ct: str) -> str:
 async def upload_image(
     file: UploadFile,
     user: User = Depends(get_current_user),
-) -> dict[str, str | int]:
+) -> UploadOut:
     """Accept an image file and persist it to the upload directory."""
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file type: {file.content_type}. "
             f"Allowed: jpg, png, webp, gif",
         )
@@ -66,7 +74,7 @@ async def upload_image(
     data = await file.read()
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File too large (max {settings.max_upload_bytes // (1024 * 1024)} MB)",
         )
 
@@ -78,23 +86,30 @@ async def upload_image(
     dest.write_bytes(data)
 
     url = f"/api/v1/uploads/{filename}"
-    return {"url": url, "filename": filename, "size": len(data)}
+    return UploadOut(url=url, filename=filename, size=len(data))
 
 
 @router.get(
     "/{filename}",
     summary="Serve an uploaded image",
-    responses=errors(status.HTTP_404_NOT_FOUND),
+    responses=errors(status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND),
 )
 @limiter.limit(settings.rate_limit_public_read)
-async def serve_image(request: Request, filename: str) -> FileResponse:
+async def serve_image(
+    request: Request,
+    filename: str = Path(max_length=255),
+) -> FileResponse:
     """Return a previously uploaded image by filename."""
     if "/" in filename or "\\" in filename or ".." in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename"
+        )
 
     path = _upload_dir() / filename
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="Image not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"
+        )
 
     ext = path.suffix.lower()
     media_types = {

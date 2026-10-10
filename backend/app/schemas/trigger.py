@@ -275,15 +275,35 @@ class TriggerKindOut(BaseModel):
     optional_config: list[str]
 
 
+class TriggerCheckOut(BaseModel):
+    """Result of polling a trigger on demand."""
+
+    trigger_id: int
+    status: str
+    error: str | None = None
+    events_created: int | None = None
+    items_found: int | None = None
+
+
+class TriggerInboundOut(BaseModel):
+    """Acknowledgement of an inbound webhook firing."""
+
+    status: str
+    event_id: int | None = None
+    content_id: int | None = None
+
+
 __all__ = [
     "ALLOWED_CONFIG",
     "COMMON_CONFIG",
     "MAX_CONFIG_LENGTHS",
     "MAX_INTERVAL_HOURS",
     "REQUIRED_CONFIG",
+    "TriggerCheckOut",
     "TriggerCreate",
     "TriggerCreated",
     "TriggerEventOut",
+    "TriggerInboundOut",
     "TriggerKindOut",
     "TriggerOut",
     "TriggerUpdate",

@@ -73,7 +73,7 @@ def get_public_article(
         word_count=content.word_count,
         read_minutes=content.read_minutes,
         project_name=content.project.name if content.project else None,
-        published_at=content.published_at.isoformat() if content.published_at else None,
+        published_at=content.published_at,
     )
 
 

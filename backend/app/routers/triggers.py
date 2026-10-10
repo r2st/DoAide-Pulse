@@ -33,9 +33,11 @@ from app.schemas.errors import OWNED, ErrorOut, errors
 from app.schemas.trigger import (
     ALLOWED_CONFIG,
     REQUIRED_CONFIG,
+    TriggerCheckOut,
     TriggerCreate,
     TriggerCreated,
     TriggerEventOut,
+    TriggerInboundOut,
     TriggerKindOut,
     TriggerOut,
     TriggerUpdate,
@@ -377,6 +379,7 @@ def rotate_secret(
 
 @router.post(
     "/{trigger_id}/check",
+    response_model=TriggerCheckOut,
     summary="Poll this trigger now",
     responses=errors(
         *OWNED,
@@ -391,7 +394,7 @@ def check_now(
     response: Response,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> dict:
+) -> TriggerCheckOut:
     """Poll this trigger now, ignoring its schedule.
 
     Synchronous, like the outbound webhook's ping and for the same reason: the
@@ -407,7 +410,7 @@ def check_now(
             status_code=status.HTTP_409_CONFLICT,
             detail="An inbound webhook trigger fires when something POSTs to it.",
         )
-    return trigger_service.check(db, trigger)
+    return TriggerCheckOut(**trigger_service.check(db, trigger))
 
 
 def _event_out(event: TriggerEvent, *, payload: bool) -> TriggerEventOut:
@@ -525,6 +528,7 @@ def get_trigger_event(
 
 @router.post(
     "/inbound/{token}",
+    response_model=TriggerInboundOut,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Fire an inbound webhook trigger",
     responses={
@@ -540,10 +544,6 @@ def get_trigger_event(
                 "not be able to learn that it once worked."
             ),
         },
-        # The catalogue's 401 is about bearer tokens, and this is the one
-        # endpoint that has never seen one. Here it means the HMAC signature was
-        # missing or did not match — and only for a trigger configured to
-        # require one.
         status.HTTP_401_UNAUTHORIZED: {
             "model": ErrorOut,
             "description": (
@@ -560,7 +560,7 @@ async def inbound(
     response: Response,
     token: str = Path(max_length=64),
     db: Session = Depends(get_db),
-) -> dict:
+) -> TriggerInboundOut:
     """Fire an inbound webhook trigger. **Unauthenticated** — see the module docstring.
 
     Answers 202 for anything it accepts, including a duplicate, because the
@@ -604,7 +604,8 @@ async def inbound(
         github_signature=request.headers.get(webhooks.GITHUB_SIGNATURE_HEADER) or "",
         delivery_id=request.headers.get(webhooks.GITHUB_DELIVERY_HEADER) or "",
     )
-    return await run_in_threadpool(_ingest, db, token, raw, headers)
+    result = await run_in_threadpool(_ingest, db, token, raw, headers)
+    return TriggerInboundOut(**result)
 
 
 @dataclass(frozen=True)

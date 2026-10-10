@@ -860,11 +860,23 @@ class CalendarEntry(BaseModel):
     movable: bool = True
 
 
+class CadenceGuideOut(BaseModel):
+    platform: str
+    max_per_week: int
+    best_weekdays: list[str] = []
+    best_time_utc: str
+    rationale: str
+    source: str = "table"
+    weekdays_source: str = "table"
+    sample: int = 0
+    best_hour_sample: int = 0
+    best_hour_median_views: float | None = None
+    overall_median_views: float | None = None
+
+
 class CalendarOut(BaseModel):
     entries: list[CalendarEntry] = []
-    #: Cadence guidance for the platforms this user has connected.
-    cadence: list[dict] = []
-    #: Empty slots the calendar offers as "schedule something here".
+    cadence: list[CadenceGuideOut] = []
     suggested_slots: list[datetime] = []
 
 

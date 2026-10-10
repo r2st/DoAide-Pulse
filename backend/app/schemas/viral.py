@@ -1,6 +1,8 @@
 """Schemas for viral / public-facing features."""
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -17,7 +19,7 @@ class PublicArticleOut(BaseModel):
     word_count: int = 0
     read_minutes: int = 1
     project_name: str | None = None
-    published_at: str | None = None
+    published_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

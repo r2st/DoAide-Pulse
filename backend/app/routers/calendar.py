@@ -15,7 +15,7 @@ from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
-from app.schemas.content import CalendarEntry, CalendarOut, PublicationOut, ScheduleUpdate
+from app.schemas.content import CadenceGuideOut, CalendarEntry, CalendarOut, PublicationOut, ScheduleUpdate
 from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.services import cadence, learned_cadence, publishing_service, scheduling, velocity
 
@@ -197,11 +197,10 @@ def get_calendar(
 
     return CalendarOut(
         entries=entries,
-        # ``known=`` for the same reason it is passed to ``learn`` above: these
-        # are the curves built at the top of this function, and letting
-        # ``describe_all`` rebuild them read the entire metric series a second
-        # time on every calendar load.
-        cadence=learned_cadence.describe_all(db, user.id, list(connected), known=known),
+        cadence=[
+            CadenceGuideOut(**entry)
+            for entry in learned_cadence.describe_all(db, user.id, list(connected), known=known)
+        ],
         suggested_slots=sorted(set(suggested))[:6],
     )
 
@@ -322,7 +321,7 @@ def reschedule(
 
 @router.get(
     "/cadence",
-    response_model=list[dict],
+    response_model=list[CadenceGuideOut],
     summary="Suggested posting rhythm per platform",
     responses=errors(*AUTHENTICATED),
 )
@@ -330,7 +329,7 @@ def cadence_guide(
     platform: Platform | None = Query(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> list[dict]:
+) -> list[CadenceGuideOut]:
     """Suggested posting rhythm — for the connected platforms, or one named one.
 
     Each entry carries ``source``: ``learned`` when the hours came from this
@@ -341,4 +340,7 @@ def cadence_guide(
     targets = [platform] if platform is not None else (
         user.connected_platforms or [p.value for p in Platform]
     )
-    return learned_cadence.describe_all(db, user.id, list(targets))
+    return [
+        CadenceGuideOut(**entry)
+        for entry in learned_cadence.describe_all(db, user.id, list(targets))
+    ]
