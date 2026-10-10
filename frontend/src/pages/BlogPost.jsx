@@ -17,12 +17,10 @@ export default function BlogPost() {
 
   useEffect(() => {
     if (!post) return;
-    const script = document.createElement("script");
-    script.type = "application/ld+json";
-    script.textContent = JSON.stringify([
+    const schemas = [
       {
         "@context": "https://schema.org",
-        "@type": "Article",
+        "@type": "BlogPosting",
         headline: post.title,
         description: post.description,
         datePublished: post.published,
@@ -47,7 +45,24 @@ export default function BlogPost() {
           { "@type": "ListItem", position: 3, name: post.title, item: `https://pulse.doaide.com/blog/${post.slug}` },
         ],
       },
-    ]);
+    ];
+    if (post.faqs && post.faqs.length > 0) {
+      schemas.push({
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: post.faqs.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: faq.answer,
+          },
+        })),
+      });
+    }
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.textContent = JSON.stringify(schemas);
     document.head.appendChild(script);
     return () => {
       document.head.removeChild(script);
@@ -98,6 +113,20 @@ export default function BlogPost() {
             <p key={i} className="text-[15px] leading-[1.8] text-[#C4C4CC]">{para}</p>
           ))}
         </div>
+
+        {post.faqs && post.faqs.length > 0 && (
+          <section className="mt-10">
+            <h2 className="text-xl font-display text-white mb-4">Frequently Asked Questions</h2>
+            <dl className="space-y-4">
+              {post.faqs.map((faq, i) => (
+                <div key={i} className="rounded-lg border border-[#2A2A2D] bg-[#1A1A1D] p-4">
+                  <dt className="text-[15px] font-medium text-white mb-2">{faq.question}</dt>
+                  <dd className="text-[14px] leading-[1.7] text-[#C4C4CC]">{faq.answer}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
 
         <div className="mt-12 rounded-2xl border border-[#2A2A2D] bg-[#1A1A1D] p-6 text-center">
           <p className="mb-3 text-white font-medium">

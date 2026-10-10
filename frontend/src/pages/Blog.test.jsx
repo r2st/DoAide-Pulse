@@ -54,6 +54,6 @@ describe("Blog", () => {
     );
     const titles = links.map((el) => el.textContent);
     const firstTitle = titles[0];
-    expect(firstTitle).toMatch(/Subject Lines That Get 40%|Free AI GST|Best Free Newsletter Tools|Deliverability Guide/);
+    expect(firstTitle).toMatch(/Best AI Newsletter Platforms|Email Marketing in India|Content Curation Tools|Subject Lines That Get 40%|Free AI GST|Best Free Newsletter Tools|Deliverability Guide/);
   });
 });
