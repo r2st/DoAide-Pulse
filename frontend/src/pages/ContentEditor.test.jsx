@@ -20,6 +20,8 @@ vi.mock("../lib/api", () => ({
     listPreviewLinks: vi.fn(),
     createPreviewLink: vi.fn(),
     revokePreviewLink: vi.fn(),
+    listRevisions: vi.fn(),
+    restoreRevision: vi.fn(),
   },
 }));
 
@@ -99,6 +101,7 @@ beforeEach(() => {
   api.getContent.mockResolvedValue(content());
   api.platforms.mockResolvedValue([]);
   api.listPreviewLinks.mockResolvedValue([]);
+  api.listRevisions.mockResolvedValue({ items: [], total: 0, retained: 50 });
 });
 
 describe("recovering unsaved work", () => {
@@ -1343,5 +1346,66 @@ describe("sharing a preview link", () => {
     // out, so the reload does not grow a second row saying the same thing.
     expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
     expect(screen.queryByText(/never opened/)).not.toBeInTheDocument();
+  });
+});
+
+describe("revision history", () => {
+  it("shows empty state when there are no revisions", async () => {
+    draw();
+    expect(await screen.findByText("No earlier versions.")).toBeInTheDocument();
+  });
+
+  it("renders revision entries with version and restore button", async () => {
+    api.listRevisions.mockResolvedValue({
+      items: [
+        { revision: 3, source: "user", note: "title, body_markdown", word_count: 200, created_at: "2026-09-01T10:00:00Z" },
+        { revision: 2, source: "user", note: "body_markdown", word_count: 150, created_at: "2026-08-15T10:00:00Z" },
+      ],
+      total: 2,
+      retained: 50,
+    });
+    draw();
+
+    expect(await screen.findByText("v3")).toBeInTheDocument();
+    expect(screen.getByText("v2")).toBeInTheDocument();
+    expect(screen.getByText("2 versions")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Restore" })).toHaveLength(2);
+  });
+
+  it("restores a revision and reloads on success", async () => {
+    api.listRevisions.mockResolvedValue({
+      items: [
+        { revision: 3, source: "user", note: "title", word_count: 200, created_at: "2026-09-01T10:00:00Z" },
+      ],
+      total: 1,
+      retained: 50,
+    });
+    api.restoreRevision.mockResolvedValue({ restored_revision: 3, previous_revision: 4, version: 5 });
+    draw();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Restore" }));
+
+    await waitFor(() => {
+      expect(api.restoreRevision).toHaveBeenCalledWith(3, 3);
+    });
+    expect(toast.success).toHaveBeenCalledWith("Restored version 3");
+  });
+
+  it("toasts error when restore fails", async () => {
+    api.listRevisions.mockResolvedValue({
+      items: [
+        { revision: 3, source: "user", note: "title", word_count: 200, created_at: "2026-09-01T10:00:00Z" },
+      ],
+      total: 1,
+      retained: 50,
+    });
+    api.restoreRevision.mockRejectedValue(new Error("Published pieces cannot be restored"));
+    draw();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Restore" }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Published pieces cannot be restored");
+    });
   });
 });

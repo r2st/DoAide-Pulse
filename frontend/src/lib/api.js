@@ -163,6 +163,16 @@ export const api = {
     }),
   publicationQueue: () => request("/content/queue/publications"),
 
+  // ---- revisions ----
+  listRevisions: (contentId, params = {}) =>
+    request(`/content/${contentId}/revisions${qs(params)}`),
+  getRevision: (contentId, revision) =>
+    request(`/content/${contentId}/revisions/${revision}`),
+  diffRevision: (contentId, revision, against) =>
+    request(`/content/${contentId}/revisions/${revision}/diff${qs({ against })}`),
+  restoreRevision: (contentId, revision) =>
+    request(`/content/${contentId}/revisions/${revision}/restore`, { method: "POST" }),
+
   // ---- preview links ----
   // A shareable, unauthenticated, read-only URL for one draft. The URL only
   // ever appears in the response to `create` — a later `list` shows a link

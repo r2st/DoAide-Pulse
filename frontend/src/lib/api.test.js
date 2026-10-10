@@ -478,6 +478,11 @@ describe("every endpoint's path and verb", () => {
     ["bulkRetry", [[1, 2]], "/content/bulk/retry", "POST"],
     ["publicationQueue", [], "/content/queue/publications", "GET"],
 
+    ["listRevisions", [3], "/content/3/revisions", "GET"],
+    ["getRevision", [3, 2], "/content/3/revisions/2", "GET"],
+    ["diffRevision", [3, 2], "/content/3/revisions/2/diff", "GET"],
+    ["restoreRevision", [3, 2], "/content/3/revisions/2/restore", "POST"],
+
     ["listPreviewLinks", [3], "/content/3/preview-links", "GET"],
     ["createPreviewLink", [3], "/content/3/preview-links", "POST"],
     ["revokePreviewLink", [3, 9], "/content/3/preview-links/9", "DELETE"],

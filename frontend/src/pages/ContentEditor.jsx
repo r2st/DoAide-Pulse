@@ -661,6 +661,9 @@ export default function ContentEditor() {
           <SectionBoundary name="editor:publications">
             <PublicationsPanel content={data} onChanged={reload} />
           </SectionBoundary>
+          <SectionBoundary name="editor:history">
+            <HistoryPanel contentId={data.id} onRestored={reload} />
+          </SectionBoundary>
           {!locked && (
             <button className="btn-quiet w-full text-bad" onClick={remove}>
               Delete this piece
@@ -1355,6 +1358,85 @@ function PublicationsPanel({ content, onChanged }) {
                 Retry
               </button>
             )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function HistoryPanel({ contentId, onRestored }) {
+  const toast = useToast();
+  const [revisions, setRevisions] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [restoring, setRestoring] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api.listRevisions(contentId).then(
+      (data) => { if (!cancelled) { setRevisions(data); setLoading(false); } },
+      () => { if (!cancelled) setLoading(false); },
+    );
+    return () => { cancelled = true; };
+  }, [contentId]);
+
+  async function restore(revision) {
+    setRestoring(revision);
+    try {
+      const result = await api.restoreRevision(contentId, revision);
+      toast.success(`Restored version ${result.restored_revision}`);
+      onRestored();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setRestoring(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="panel p-5">
+        <h2 className="mb-1 text-sm font-semibold text-ink-900">History</h2>
+        <p className="text-xs text-ink-400">Loading…</p>
+      </div>
+    );
+  }
+
+  if (!revisions || revisions.items.length === 0) {
+    return (
+      <div className="panel p-5">
+        <h2 className="mb-1 text-sm font-semibold text-ink-900">History</h2>
+        <p className="text-xs text-ink-400">No earlier versions.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="panel p-5">
+      <h2 className="mb-3 text-sm font-semibold text-ink-900">
+        History
+        <span className="ml-1.5 font-normal text-ink-400">
+          {revisions.total} version{revisions.total !== 1 ? "s" : ""}
+        </span>
+      </h2>
+      <ul className="space-y-2">
+        {revisions.items.map((rev) => (
+          <li key={rev.revision} className="flex items-start justify-between gap-2 text-xs">
+            <div className="min-w-0">
+              <span className="block font-medium text-ink-900">v{rev.revision}</span>
+              <span className="block text-ink-400">{formatWhen(rev.created_at)}</span>
+              {rev.note && (
+                <span className="block truncate text-ink-500">{rev.note}</span>
+              )}
+            </div>
+            <button
+              className="btn-quiet shrink-0"
+              onClick={() => restore(rev.revision)}
+              disabled={restoring !== null}
+            >
+              {restoring === rev.revision ? "Restoring…" : "Restore"}
+            </button>
           </li>
         ))}
       </ul>

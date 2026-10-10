@@ -39,6 +39,8 @@ vi.mock("../lib/api", () => ({
     revokePreviewLink: vi.fn(),
     retryPublication: vi.fn(),
     publishContent: vi.fn(),
+    listRevisions: vi.fn(),
+    restoreRevision: vi.fn(),
   },
 }));
 
@@ -120,6 +122,7 @@ beforeEach(() => {
   api.getContent.mockResolvedValue(content());
   api.platforms.mockResolvedValue([]);
   api.listPreviewLinks.mockResolvedValue([]);
+  api.listRevisions.mockResolvedValue({ items: [], total: 0, retained: 50 });
   // The auto-save is on a real 2-second timer in this file, and several tests
   // here type into a field — so on a machine slow enough for the typing itself
   // to outlast the debounce, the timer fires *during* the test rather than
