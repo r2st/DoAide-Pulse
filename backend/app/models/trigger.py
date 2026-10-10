@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -106,6 +107,10 @@ class Trigger(Base, TimestampMixin):
     """One standing reason to write about one project."""
 
     __tablename__ = "triggers"
+    __table_args__ = (
+        CheckConstraint("fire_count >= 0", name="ck_trigger_fire_count_nonneg"),
+        CheckConstraint("consecutive_failures >= 0", name="ck_trigger_failures_nonneg"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(

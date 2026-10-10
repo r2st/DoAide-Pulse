@@ -12,26 +12,27 @@ from __future__ import annotations
 from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.mixins import utcnow
+from app.models.mixins import TimestampMixin, utcnow
 
 if TYPE_CHECKING:
     from app.models.publication import Publication
 
 
-class ContentMetric(Base):
+class ContentMetric(Base, TimestampMixin):
     __tablename__ = "content_metrics"
     __table_args__ = (
-        # The metrics dashboard queries "all snapshots for publication X, ordered
-        # by time". This composite index covers it without a filesort.
         Index("ix_content_metrics_pub_captured", "publication_id", "captured_at"),
-        # _latest_metric_subquery() does MAX(id) GROUP BY publication_id on every
-        # analytics page load. (publication_id, id DESC) lets PostgreSQL satisfy
-        # that with a backwards index-only scan instead of a full-table grouping.
         Index("ix_content_metrics_pub_latest", "publication_id", "id", postgresql_using="btree"),
+        CheckConstraint("views IS NULL OR views >= 0", name="ck_metric_views_nonneg"),
+        CheckConstraint("reads IS NULL OR reads >= 0", name="ck_metric_reads_nonneg"),
+        CheckConstraint("clicks IS NULL OR clicks >= 0", name="ck_metric_clicks_nonneg"),
+        CheckConstraint("reactions IS NULL OR reactions >= 0", name="ck_metric_reactions_nonneg"),
+        CheckConstraint("comments IS NULL OR comments >= 0", name="ck_metric_comments_nonneg"),
+        CheckConstraint("shares IS NULL OR shares >= 0", name="ck_metric_shares_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

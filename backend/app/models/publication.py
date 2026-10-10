@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -117,6 +118,11 @@ class Publication(Base, TimestampMixin):
         # The beat sweep queries "status IN (pending, scheduled) WHERE
         # scheduled_for <= now()". This covers it.
         Index("ix_publication_status_scheduled", "status", "scheduled_for"),
+        CheckConstraint("attempts >= 0", name="ck_publication_attempts_nonneg"),
+        CheckConstraint(
+            "duration_ms IS NULL OR duration_ms >= 0",
+            name="ck_publication_duration_nonneg",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

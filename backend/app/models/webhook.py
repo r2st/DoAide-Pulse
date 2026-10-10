@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -103,6 +104,9 @@ class Webhook(Base, TimestampMixin):
     """One endpoint, subscribed to some events."""
 
     __tablename__ = "webhooks"
+    __table_args__ = (
+        CheckConstraint("consecutive_failures >= 0", name="ck_webhook_failures_nonneg"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(
@@ -165,6 +169,7 @@ class WebhookDelivery(Base, TimestampMixin):
     __table_args__ = (
         # The sweep asks "pending, and due". This covers it.
         Index("ix_webhook_delivery_status_due", "status", "next_attempt_at"),
+        CheckConstraint("attempts >= 0", name="ck_delivery_attempts_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

@@ -43,7 +43,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.content import Content, ContentStatus
@@ -179,20 +179,21 @@ def evaluate(
 
         # Only now is the whole row worth reading: this piece is being
         # announced, and the webhook body is the piece.
-        content = db.get(Content, content_id)
-        if content is None:  # pragma: no cover - deleted mid-sweep
-            continue
-
         try:
-            # The latch is written and committed *before* the webhook is
-            # queued. The other order looks more careful and is worse: emit
-            # commits its own delivery rows, so a failure between the two would
-            # leave a notification sent and a piece still unlatched — which
-            # sends it again on the next sweep, and the next. A latch written
-            # for a webhook that then fails to queue loses one notification;
-            # the reverse loses the guarantee that there is only ever one.
-            content.engagement_notified_at = moment
+            # Atomic conditional UPDATE: set the latch only if it is still
+            # NULL, so two concurrent sweeps cannot both succeed. The
+            # rowcount is the verdict — exactly one caller observes 1.
+            result = db.execute(
+                update(Content)
+                .where(
+                    Content.id == content_id,
+                    Content.engagement_notified_at.is_(None),
+                )
+                .values(engagement_notified_at=moment)
+            )
             db.commit()
+            if result.rowcount == 0:
+                continue
         except Exception:
             logger.exception(
                 "failed to latch engagement notification for content %s "
@@ -200,6 +201,10 @@ def evaluate(
                 content_id, engagement, threshold,
             )
             db.rollback()
+            continue
+
+        content = db.get(Content, content_id)
+        if content is None:  # pragma: no cover - deleted mid-sweep
             continue
 
         webhooks.emit(

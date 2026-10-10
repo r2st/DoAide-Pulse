@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime  # noqa: TC003
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -25,6 +25,9 @@ if TYPE_CHECKING:
 
 class PreviewLink(Base, TimestampMixin):
     __tablename__ = "preview_links"
+    __table_args__ = (
+        CheckConstraint("view_count >= 0", name="ck_preview_link_view_count_nonneg"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     content_id: Mapped[int] = mapped_column(

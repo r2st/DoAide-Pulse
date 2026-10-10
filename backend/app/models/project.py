@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
@@ -171,6 +172,16 @@ class Project(Base, TimestampMixin):
     __tablename__ = "projects"
     __table_args__ = (
         UniqueConstraint("user_id", "slug", name="uq_project_user_slug"),
+        CheckConstraint("engagement_threshold >= 0", name="ck_project_engagement_threshold_nonneg"),
+        CheckConstraint("scan_count >= 0", name="ck_project_scan_count_nonneg"),
+        CheckConstraint(
+            "last_scan_duration_ms IS NULL OR last_scan_duration_ms >= 0",
+            name="ck_project_scan_duration_nonneg",
+        ),
+        CheckConstraint(
+            "autopilot_min_interval_hours >= 0",
+            name="ck_project_min_interval_nonneg",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

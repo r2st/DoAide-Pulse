@@ -41,7 +41,7 @@ from __future__ import annotations
 # `Mapped[...]` annotations at class-definition time and needs the real name.
 from datetime import datetime  # noqa: TC003
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, String
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -79,6 +79,19 @@ class LLMUsage(Base):
         # see `app.services.llm_usage.summary`. Leading with the timestamp is
         # what makes the window a range scan instead of a scan of the table.
         Index("ix_llm_usage_created_provider", "created_at", "provider"),
+        CheckConstraint("duration_ms >= 0", name="ck_llm_usage_duration_nonneg"),
+        CheckConstraint(
+            "prompt_tokens IS NULL OR prompt_tokens >= 0",
+            name="ck_llm_usage_prompt_tokens_nonneg",
+        ),
+        CheckConstraint(
+            "completion_tokens IS NULL OR completion_tokens >= 0",
+            name="ck_llm_usage_completion_tokens_nonneg",
+        ),
+        CheckConstraint(
+            "total_tokens IS NULL OR total_tokens >= 0",
+            name="ck_llm_usage_total_tokens_nonneg",
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

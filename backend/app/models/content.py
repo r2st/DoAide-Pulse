@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -267,6 +268,11 @@ class Content(Base, TimestampMixin):
             "status",
             "published_at",
             "id",
+        ),
+        CheckConstraint("word_count >= 0", name="ck_content_word_count_nonneg"),
+        CheckConstraint(
+            "confidence IS NULL OR (confidence >= 0 AND confidence <= 1)",
+            name="ck_content_confidence_range",
         ),
     )
 

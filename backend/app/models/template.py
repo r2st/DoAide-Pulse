@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     ForeignKey,
     Index,
     Integer,
@@ -86,6 +87,7 @@ class ContentTemplate(Base, TimestampMixin):
         # the database can simply prevent.
         UniqueConstraint("user_id", "name", name="uq_template_user_name"),
         Index("ix_template_user_updated", "user_id", "updated_at"),
+        CheckConstraint("use_count >= 0", name="ck_template_use_count_nonneg"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
