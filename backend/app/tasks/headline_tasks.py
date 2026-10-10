@@ -18,7 +18,7 @@ import logging
 from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session, lazyload
+from sqlalchemy.orm import Session, defer, lazyload
 
 from app.database import SessionLocal
 from app.models.content import Content, ContentStatus
@@ -53,7 +53,7 @@ def _candidates(db: Session) -> list[Content]:
         # fetching every publication on the install once per beat. Nothing here
         # reads them: ``headlines.auto_select`` reaches metrics through its own
         # join on ``Publication`` and otherwise only writes a title.
-        .options(lazyload(Content.publications))
+        .options(lazyload(Content.publications), defer(Content.body_markdown))
         .where(
             Project.auto_headline_winner.is_(True),
             Project.is_active.is_(True),

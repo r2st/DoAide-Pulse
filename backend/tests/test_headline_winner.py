@@ -556,8 +556,12 @@ def test_the_sweep_does_not_re_read_every_candidate_after_the_first_swap(
     assert result == {"considered": 3, "swapped": 3}
     # Read before asserting on behaviour: ``db.refresh`` below reads a body per
     # piece itself, and would be counted as the sweep's.
+    # With ``defer(Content.body_markdown)`` the initial load skips the body
+    # entirely (0 statements), and ``expire_on_commit=False`` prevents
+    # re-reads on subsequent candidates (so still 0, not N).  Previously the
+    # initial load carried the body (1 statement); either is acceptable.
     bodies = [s for s in sql_log if "body_markdown" in s]
-    assert len(bodies) == 1, (
+    assert len(bodies) <= 1, (
         f"{len(bodies)} statements carried an article body for 3 candidates:\n"
         + "\n".join(s[:200] for s in bodies)
     )
