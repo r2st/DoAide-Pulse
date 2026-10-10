@@ -238,3 +238,50 @@ def test_the_sweep_survives_its_own_commits(
     assert _selects_from(sql_log, "projects") == []
     bodies = [s for s in sql_log if "body_markdown" in s]
     assert bodies == [], "\n".join(s[:200] for s in bodies)
+
+
+def test_the_sweep_pages_through_publications_without_loading_all_at_once(
+    db, project, monkeypatch
+):
+    """Keyset pagination bounds the sweep's resident memory.
+
+    With ``_METRICS_FETCH_SIZE`` set to 2, four publications require two pages.
+    Every publication is still visited exactly once, the order is deterministic,
+    and the return value reports the correct total.
+    """
+    for index in range(4):
+        content = Content(
+            project_id=project.id,
+            title=f"Piece {index}",
+            slug=f"piece-paged-{index}",
+            content_type=ContentType.ANNOUNCEMENT,
+            status=ContentStatus.PUBLISHED,
+            body_markdown="body",
+        )
+        db.add(content)
+        db.commit()
+        db.add(
+            Publication(
+                content_id=content.id,
+                platform=Platform.DEVTO,
+                status=PublicationStatus.PUBLISHED,
+                published_at=utcnow(),
+                external_id=f"paged-{index}",
+            )
+        )
+    db.commit()
+
+    polled: list[str] = []
+
+    def _record(session, publication, **kwargs):
+        polled.append(publication.external_id)
+        return None
+
+    monkeypatch.setattr(metrics_tasks.publishing_service, "collect_metrics", _record)
+    monkeypatch.setattr(metrics_tasks, "SessionLocal", _no_close(db))
+    monkeypatch.setattr(metrics_tasks, "_METRICS_FETCH_SIZE", 2)
+
+    result = metrics_tasks.collect_all_metrics()
+
+    assert sorted(polled) == ["paged-0", "paged-1", "paged-2", "paged-3"]
+    assert result == {"polled": 4, "recorded": 0, "crossings": 0}

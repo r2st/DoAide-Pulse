@@ -143,7 +143,7 @@ def test_a_sweep_that_runs_out_of_time_returns_what_it_managed(
     result = metrics_tasks.collect_all_metrics()
 
     assert len(seen) == 3, "the sweep must stop at the timeout, not carry on"
-    assert result == {"polled": 4, "recorded": 2, "crossings": 0}
+    assert result == {"polled": 3, "recorded": 2, "crossings": 0}
 
 
 def test_one_broken_platform_does_not_stop_the_sweep(db, project, monkeypatch):

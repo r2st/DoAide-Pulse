@@ -18,6 +18,7 @@ from app.tasks.celery_app import task
 logger = logging.getLogger(__name__)
 
 _METRICS_BATCH_SIZE = 50
+_METRICS_FETCH_SIZE = 200
 
 
 @task(
@@ -36,6 +37,12 @@ def collect_all_metrics() -> dict:
     Only platforms whose adapter reports metrics are polled — see
     ``Adapter.supports_metrics``. Skipping the rest keeps this from making a
     round trip per post to a platform that has no stats API at all.
+
+    Publications are loaded in pages of ``_METRICS_FETCH_SIZE`` via keyset
+    pagination on ``Publication.id``. The previous version loaded everything
+    with ``.all()``, which meant every ``Publication`` entity the install had
+    ever created sat in the ORM identity map at once — resident memory that
+    grew without bound on a box whose RAM is shared with five other services.
     """
     metric_platforms = [
         adapter.platform
@@ -47,12 +54,10 @@ def collect_all_metrics() -> dict:
 
     db = SessionLocal()
     try:
-        # Commits no longer expire loaded objects. The sweep loads every
-        # publication in one query and then iterates them, committing batches
-        # of metrics along the way. Without this flag each commit expired the
-        # *next* iteration's publication, forcing a re-read of the row — one
-        # narrow SELECT per publication on the task whose row count grows with
-        # everything the install has ever published. Same reasoning as
+        # Commits no longer expire loaded objects. The sweep iterates
+        # publications in pages, committing batches of metrics along the way.
+        # Without this flag each commit expired the *next* iteration's
+        # publication, forcing a re-read of the row. Same reasoning as
         # ``release_approved_content`` in ``publish_tasks``.
         db.expire_on_commit = False
         # The owner comes back as a column off the join, and is handed to
@@ -67,61 +72,77 @@ def collect_all_metrics() -> dict:
         # The *project*'s flag is deliberately not here, though the sweeps that
         # write do check it. Pausing a project says "write nothing new for
         # this"; it does not say "stop counting what already went out".
-        rows = db.execute(
-            select(Publication, Project.user_id)
-            .join(Content, Content.id == Publication.content_id)
-            .join(Project, Project.id == Content.project_id)
-            .join(User, User.id == Project.user_id)
-            .where(
-                Publication.status == PublicationStatus.PUBLISHED,
-                Publication.platform.in_(metric_platforms),
-                Publication.external_id.is_not(None),
-                User.is_active.is_(True),
-            )
-        ).all()
+        polled = 0
         recorded = 0
         _pending = 0
         touched_content: set[int] = set()
         rate_limited: set[publishing_service.RateLimitKey] = set()
-        for publication, user_id in rows:
-            publication_id = publication.id
-            content_id = publication.content_id
-            try:
-                if (
-                    publishing_service.collect_metrics(
-                        db, publication, user_id=user_id, rate_limited=rate_limited,
-                        commit=False,
-                    )
-                    is not None
-                ):
-                    recorded += 1
-                    touched_content.add(content_id)
-                    _pending += 1
-                    if _pending >= _METRICS_BATCH_SIZE:
-                        db.commit()
-                        _pending = 0
-            except SoftTimeLimitExceeded:
-                logger.warning(
-                    "metrics collection timed out after %d of %d publications",
-                    recorded, len(rows),
+        timed_out = False
+        last_id = 0
+
+        while not timed_out:
+            page = db.execute(
+                select(Publication, Project.user_id)
+                .join(Content, Content.id == Publication.content_id)
+                .join(Project, Project.id == Content.project_id)
+                .join(User, User.id == Project.user_id)
+                .where(
+                    Publication.status == PublicationStatus.PUBLISHED,
+                    Publication.platform.in_(metric_platforms),
+                    Publication.external_id.is_not(None),
+                    User.is_active.is_(True),
+                    Publication.id > last_id,
                 )
+                .order_by(Publication.id)
+                .limit(_METRICS_FETCH_SIZE)
+            ).all()
+
+            if not page:
                 break
-            except Exception:
-                # Isolate failures: a broken response from one platform must not
-                # prevent polling the rest. Commit any pending batch first — the
-                # exception comes from the platform API, before ``db.add()``, so
-                # the pending rows are safe to keep.
-                if _pending:
-                    try:
-                        db.commit()
-                    except Exception:
+
+            for publication, user_id in page:
+                last_id = publication.id
+                polled += 1
+                publication_id = publication.id
+                content_id = publication.content_id
+                try:
+                    if (
+                        publishing_service.collect_metrics(
+                            db, publication, user_id=user_id, rate_limited=rate_limited,
+                            commit=False,
+                        )
+                        is not None
+                    ):
+                        recorded += 1
+                        touched_content.add(content_id)
+                        _pending += 1
+                        if _pending >= _METRICS_BATCH_SIZE:
+                            db.commit()
+                            _pending = 0
+                except SoftTimeLimitExceeded:
+                    logger.warning(
+                        "metrics collection timed out after %d publications "
+                        "(recorded %d)",
+                        polled, recorded,
+                    )
+                    timed_out = True
+                    break
+                except Exception:
+                    # Isolate failures: a broken response from one platform must not
+                    # prevent polling the rest. Commit any pending batch first — the
+                    # exception comes from the platform API, before ``db.add()``, so
+                    # the pending rows are safe to keep.
+                    if _pending:
+                        try:
+                            db.commit()
+                        except Exception:
+                            db.rollback()
+                        _pending = 0
+                    else:
                         db.rollback()
-                    _pending = 0
-                else:
-                    db.rollback()
-                logger.exception(
-                    "metrics collection failed for publication %s", publication_id
-                )
+                    logger.exception(
+                        "metrics collection failed for publication %s", publication_id
+                    )
 
         if _pending:
             db.commit()
@@ -138,9 +159,9 @@ def collect_all_metrics() -> dict:
 
     logger.info(
         "metrics: polled %d, recorded %d, thresholds crossed %d",
-        len(rows), recorded, len(crossings),
+        polled, recorded, len(crossings),
     )
-    return {"polled": len(rows), "recorded": recorded, "crossings": len(crossings)}
+    return {"polled": polled, "recorded": recorded, "crossings": len(crossings)}
 
 
 @task(

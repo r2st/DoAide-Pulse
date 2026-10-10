@@ -101,6 +101,12 @@ def rewrap_all(db: Session) -> RewrapResult:
     setting too early, and the fix is to put the old key back — which only works
     if the ciphertext is still there. Blanking it would turn a recoverable
     mistake into a permanent one.
+
+    The scan is two passes per table: the first reads only the primary key and
+    the encrypted column to identify stale rows without loading the full entity;
+    the second loads and updates only the rows that need re-encrypting. On a box
+    that has never rotated — the common case — the first pass touches every row
+    and the second touches none.
     """
     result = RewrapResult()
     if not crypto.encryption_enabled():
@@ -109,11 +115,19 @@ def rewrap_all(db: Session) -> RewrapResult:
 
     for table, model, attribute in _ENCRYPTED_COLUMNS:
         moved = 0
-        rows = db.scalars(select(model)).all()
-        for row in rows:
+        column = getattr(model, attribute)
+        stale_ids = [
+            row_id
+            for row_id, stored in db.execute(select(model.id, column))
+            if not crypto.is_current(stored or "")
+        ]
+
+        if not stale_ids:
+            db.rollback()
+            continue
+
+        for row in db.scalars(select(model).where(model.id.in_(stale_ids))):
             stored = getattr(row, attribute) or ""
-            if crypto.is_current(stored):
-                continue
             try:
                 setattr(row, attribute, crypto.rewrap(stored))
             except crypto.CredentialEncryptionError as exc:
