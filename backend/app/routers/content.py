@@ -733,6 +733,19 @@ def bulk_approve_content(
                 )
             )
             continue
+        if (
+            settings.content_quality_gate_enabled
+            and content.status in (ContentStatus.DRAFT, ContentStatus.REVIEW)
+        ):
+            issues = _seo_preflight(content)
+            if issues:
+                failed.append(
+                    BulkFailureOut(
+                        content_id=content_id,
+                        reason="SEO preflight: " + "; ".join(issues),
+                    )
+                )
+                continue
         succeeded.append(content_id)
         if payload.dry_run:
             continue
@@ -2857,6 +2870,7 @@ def set_content_status(
     # that one are two doors to the same column, and a transition refused
     # through one and accepted through the other is not a rule.
     _assert_review_ready(db, content, previous_status)
+    _assert_seo_ready(db, content, previous_status)
     _settle_status(db, content, previous_status)
     db.commit()
     # After the commit, as in the PATCH and the bulk approve: a release that
