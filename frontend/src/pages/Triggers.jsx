@@ -159,7 +159,7 @@ function TriggerCard({ trigger, project, showProject, onEdit, onChanged, onSecre
       else toast.success(message);
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Trigger check failed: ${err.message}`);
     } finally {
       setBusy("");
     }
@@ -171,7 +171,9 @@ function TriggerCard({ trigger, project, showProject, onEdit, onChanged, onSecre
       await api.updateTrigger(trigger.id, { is_active: !trigger.is_active });
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(
+        `Could not ${trigger.is_active ? "pause" : "resume"} trigger: ${err.message}`,
+      );
     } finally {
       setBusy("");
     }
@@ -191,7 +193,7 @@ function TriggerCard({ trigger, project, showProject, onEdit, onChanged, onSecre
       onSecret(await api.rotateTriggerSecret(trigger.id));
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not rotate secret: ${err.message}`);
     } finally {
       setBusy("");
     }
@@ -211,7 +213,7 @@ function TriggerCard({ trigger, project, showProject, onEdit, onChanged, onSecre
       toast.success("Trigger deleted");
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not delete trigger: ${err.message}`);
     }
   }
 
