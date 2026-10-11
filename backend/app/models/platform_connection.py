@@ -11,7 +11,7 @@ from __future__ import annotations
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
-class ConnectionStatus(str, Enum):
+class ConnectionStatus(StrEnum):
     CONNECTED = "connected"
     #: Credentials were rejected on last use. Kept rather than deleted so the
     #: settings page can say "reconnect" instead of silently forgetting.

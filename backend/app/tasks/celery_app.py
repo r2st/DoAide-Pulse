@@ -226,4 +226,4 @@ celery_app.conf.beat_schedule = {
 # Present in all three processes on purpose. The worker and beat need the timing
 # and failure lines; the API needs ``before_task_publish``, which is the half
 # that puts a request's id into the message before it crosses the broker.
-from app.tasks import observability
+from app.tasks import observability  # noqa: F401

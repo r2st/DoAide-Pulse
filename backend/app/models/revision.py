@@ -37,7 +37,7 @@ this trades a real operational hazard for a saving nobody would notice.
 """
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from app.models.content import Content
 
 
-class RevisionSource(str, Enum):
+class RevisionSource(StrEnum):
     """What produced the write that this revision was taken ahead of.
 
     A history is worth much more when each entry says who moved it, because the

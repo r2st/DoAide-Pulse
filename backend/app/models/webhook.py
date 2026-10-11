@@ -22,7 +22,7 @@ from __future__ import annotations
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
-class WebhookEvent(str, Enum):
+class WebhookEvent(StrEnum):
     """What Pulse will call you about.
 
     Deliberately few. Every event here is one a person would act on — something
@@ -91,7 +91,7 @@ SUBSCRIBABLE_EVENTS: tuple[WebhookEvent, ...] = (
 )
 
 
-class DeliveryStatus(str, Enum):
+class DeliveryStatus(StrEnum):
     #: Queued, or waiting out a backoff before the next attempt.
     PENDING = "pending"
     #: The far end answered 2xx.

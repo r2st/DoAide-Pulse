@@ -19,6 +19,7 @@ from app.models.preview_link import PreviewLink
 from app.models.project import AutopilotMode, Project, Tone, slugify
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.revision import ContentRevision, RevisionSource
+from app.models.subscriber import Subscriber
 from app.models.template import ContentTemplate, TemplateMode
 from app.models.translation import ContentTranslation, TranslationStatus
 from app.models.trigger import Trigger, TriggerEvent, TriggerEventStatus, TriggerKind
@@ -57,6 +58,7 @@ __all__ = [
     "Publication",
     "PublicationStatus",
     "RevisionSource",
+    "Subscriber",
     "TemplateMode",
     "Tone",
     "TranslationStatus",

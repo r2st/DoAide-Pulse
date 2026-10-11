@@ -9,7 +9,7 @@ from __future__ import annotations
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from app.models.metrics import ContentMetric
 
 
-class Platform(str, Enum):
+class Platform(StrEnum):
     """Every destination Pulse knows how to format for.
 
     Membership here is not the same as being implemented — see
@@ -80,7 +80,7 @@ class Platform(str, Enum):
     BUTTONDOWN = "buttondown"
 
 
-class PublicationStatus(str, Enum):
+class PublicationStatus(StrEnum):
     #: Created but not handed to a worker yet.
     PENDING = "pending"
     #: Waiting for ``scheduled_for`` to arrive.

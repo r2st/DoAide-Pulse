@@ -36,7 +36,7 @@ from __future__ import annotations
 
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
@@ -62,7 +62,7 @@ if TYPE_CHECKING:
     from app.models.user import User
 
 
-class TemplateMode(str, Enum):
+class TemplateMode(StrEnum):
     """Whether the rendered text is the piece or the brief. See the docstring."""
 
     LITERAL = "literal"

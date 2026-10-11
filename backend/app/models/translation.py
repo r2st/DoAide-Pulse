@@ -44,7 +44,7 @@ from __future__ import annotations
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -78,7 +78,7 @@ if TYPE_CHECKING:
 LANGUAGE_MAX_LENGTH = 16
 
 
-class TranslationStatus(str, Enum):
+class TranslationStatus(StrEnum):
     """Where a translation is in its short life.
 
     Four states rather than a boolean because "there is no French yet" and

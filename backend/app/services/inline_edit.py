@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from app.models.project import Project, Tone
 from app.services import ai
@@ -43,7 +43,7 @@ from app.services import ai
 logger = logging.getLogger(__name__)
 
 
-class EditOperation(str, Enum):
+class EditOperation(StrEnum):
     """What to do to the selected passage.
 
     Each is a *local* transformation with a recognisable result, chosen so the

@@ -38,7 +38,7 @@ from __future__ import annotations
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
@@ -65,7 +65,7 @@ if TYPE_CHECKING:
     from app.models.project import Project
 
 
-class TriggerKind(str, Enum):
+class TriggerKind(StrEnum):
     """Where the signal comes from. See the module docstring."""
 
     GITHUB = "github"
@@ -90,7 +90,7 @@ class TriggerKind(str, Enum):
         return self in (TriggerKind.GITHUB, TriggerKind.RSS, TriggerKind.SCHEDULE)
 
 
-class TriggerEventStatus(str, Enum):
+class TriggerEventStatus(StrEnum):
     """What became of one firing."""
 
     #: Accepted and queued, nothing decided yet.

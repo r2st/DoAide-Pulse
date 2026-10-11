@@ -32,12 +32,12 @@ to the static template costs the user everything they were about to publish.
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 from app.models.content import ContentType
 
 
-class ContentFormat(str, Enum):
+class ContentFormat(StrEnum):
     """The shape of a piece, as opposed to its subject."""
 
     ARTICLE = "article"

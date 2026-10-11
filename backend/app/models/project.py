@@ -12,7 +12,7 @@ import re
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
@@ -67,7 +67,7 @@ RELEASE_TAG_MAX_LENGTH = 120
 COMMIT_SHA_MAX_LENGTH = 40
 
 
-class Tone(str, Enum):
+class Tone(StrEnum):
     """How a project's content should read.
 
     Set per project rather than per piece: a project has a voice, and a
@@ -80,7 +80,7 @@ class Tone(str, Enum):
     MARKETING = "marketing"
 
 
-class AutopilotMode(str, Enum):
+class AutopilotMode(StrEnum):
     """What the repo monitor is allowed to do when it spots a change."""
 
     #: Notice changes, write nothing. The default for a new project.
