@@ -6,6 +6,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ToastProvider } from "./components/ui/Toast";
 import { AuthProvider } from "./hooks/useAuth";
 import { ROUTER_FUTURE } from "./lib/routerFuture";
+import reportWebVitals from "./lib/webVitals";
 import "./index.css";
 
 // The outermost boundary, above the router and the two providers, catching what
@@ -26,3 +27,5 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </ErrorBoundary>
   </React.StrictMode>,
 );
+
+reportWebVitals();
