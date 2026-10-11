@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.deps import ROW_ID_MAX
 from app.models.content import (
     BODY_MARKDOWN_MAX_LENGTH,
     CANONICAL_URL_MAX_LENGTH,
@@ -17,6 +19,8 @@ from app.models.project import Tone
 from app.models.publication import Platform, PublicationStatus
 from app.schemas.limits import Keyword, MarketingImageUrl, Tag, Timezone
 from app.services import inline_edit
+
+BoundedId = Annotated[int, Field(le=ROW_ID_MAX)]
 
 #: The description every ``timezone`` field on a scheduling request carries.
 #:
@@ -137,7 +141,7 @@ def _settable_status(value: ContentStatus | None) -> ContentStatus | None:
 class GenerateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    project_id: int
+    project_id: BoundedId
     content_type: ContentType = ContentType.FEATURE_SPOTLIGHT
     #: Free text steering the piece — "focus on the Celery retry logic".
     instructions: str = Field(default="", max_length=2000)
@@ -149,7 +153,7 @@ class GenerateRequest(BaseModel):
 class ContentCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    project_id: int
+    project_id: BoundedId
     content_type: ContentType = ContentType.FEATURE_SPOTLIGHT
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
     body_markdown: str = Field(default="", max_length=BODY_MARKDOWN_MAX_LENGTH)
@@ -674,7 +678,7 @@ class HeadlineWinnerOut(BaseModel):
 class BulkContentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    content_ids: list[int] = Field(min_length=1, max_length=100)
+    content_ids: list[BoundedId] = Field(min_length=1, max_length=100)
     dry_run: bool = Field(
         default=False,
         description=(
@@ -799,7 +803,7 @@ class ArchiveOldIn(BaseModel):
             "on the platforms."
         ),
     )
-    project_id: int | None = Field(
+    project_id: BoundedId | None = Field(
         default=None, description="Limit the sweep to one project."
     )
     dry_run: bool = Field(
