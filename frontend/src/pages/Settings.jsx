@@ -155,10 +155,14 @@ function PlatformRow({ platform, onConnect, onChanged }) {
     try {
       const result = await api.verifyConnection(platform.platform);
       if (result.status === "connected") toast.success(`${platform.display_name} is fine`);
-      else toast.error(result.last_error || "Credentials were rejected");
+      else
+        toast.error(
+          result.last_error ||
+            `${platform.display_name} credentials were rejected — double-check the key and try again`,
+        );
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not verify ${platform.display_name}: ${err.message}`);
     } finally {
       setBusy(false);
     }
@@ -172,7 +176,7 @@ function PlatformRow({ platform, onConnect, onChanged }) {
       toast.success("Disconnected");
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not disconnect ${platform.display_name}: ${err.message}`);
     } finally {
       setBusy(false);
     }
@@ -258,7 +262,7 @@ function WebhooksSection() {
       toast.success("Webhook deleted");
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not delete webhook: ${err.message}`);
     }
   }
 
@@ -268,7 +272,7 @@ function WebhooksSection() {
       toast.success(webhook.is_active ? "Paused" : "Resumed");
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not ${webhook.is_active ? "pause" : "resume"} webhook: ${err.message}`);
     }
   }
 
@@ -276,9 +280,13 @@ function WebhooksSection() {
     try {
       const delivery = await api.pingWebhook(webhook.id);
       if (delivery.status === "delivered") toast.success("Ping delivered");
-      else toast.error(delivery.error || "Ping failed");
+      else
+        toast.error(
+          delivery.error ||
+            "Ping was not delivered — check the endpoint URL is reachable",
+        );
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not send ping: ${err.message}`);
     }
   }
 
@@ -428,7 +436,7 @@ function CreateWebhookDialog({ onClose, onDone }) {
       });
       onDone(result);
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not create webhook: ${err.message}`);
       setBusy(false);
     }
   }
@@ -526,7 +534,7 @@ function EditWebhookDialog({ webhook, onClose, onDone }) {
       toast.success("Webhook updated");
       onDone();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not update webhook: ${err.message}`);
       setBusy(false);
     }
   }
@@ -611,7 +619,7 @@ function ApiKeysSection() {
       toast.success("Key revoked");
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not revoke API key "${key.name}": ${err.message}`);
     }
   }
 
@@ -733,7 +741,7 @@ function CreateApiKeyDialog({ onClose, onDone }) {
       });
       onDone(result);
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not create API key: ${err.message}`);
       setBusy(false);
     }
   }
@@ -847,7 +855,7 @@ function ConnectDialog({ platform, onClose, onDone }) {
       toast.success(`${platform.display_name} connected`);
       onDone();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not connect ${platform.display_name}: ${err.message}`);
       setBusy(false);
     }
   }
