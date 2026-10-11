@@ -348,7 +348,7 @@ export default function ContentEditor() {
       toast.success("Saved");
     } catch (err) {
       setAutoSave((current) => ({ ...current, status: "error", error: err.message }));
-      toast.error(err.message);
+      toast.error(`Save failed: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -444,7 +444,7 @@ export default function ContentEditor() {
       setSelection(next.selection);
       restoreRange.current = next.selection;
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Passage edit failed: ${err.message}`);
     } finally {
       setAiBusy(null);
     }
@@ -474,7 +474,7 @@ export default function ContentEditor() {
           : "Approved — ready to publish",
       );
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not approve: ${err.message}`);
     }
   }
 
@@ -494,7 +494,7 @@ export default function ContentEditor() {
       toast.success("Deleted");
       navigate("/content");
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not delete: ${err.message}`);
     }
   }
 
@@ -866,7 +866,10 @@ function SeoPanel({ contentId, issues, draft, onChange, setDraft, locked }) {
       setDraft((d) => ({ ...d, cover_image_url: result.url }));
       setCoverBroken(false);
     } catch (err) {
-      toast.error(`Upload failed: ${err.message}`);
+      toast.error(
+        `Cover image upload failed: ${err.message}. ` +
+          "Check the file is a JPEG, PNG, WebP, or GIF under 10 MB.",
+      );
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -888,7 +891,10 @@ function SeoPanel({ contentId, issues, draft, onChange, setDraft, locked }) {
         marketing_images: [...(d.marketing_images || []), ...urls],
       }));
     } catch (err) {
-      toast.error(`Upload failed: ${err.message}`);
+      toast.error(
+        `Image upload failed: ${err.message}. ` +
+          "Check the file is a JPEG, PNG, WebP, or GIF under 10 MB.",
+      );
     } finally {
       setGalleryUploading(false);
       if (galleryInputRef.current) galleryInputRef.current.value = "";
@@ -910,10 +916,10 @@ function SeoPanel({ contentId, issues, draft, onChange, setDraft, locked }) {
           toast.info("No new tags to suggest");
         }
       } else {
-        toast.info("No tag suggestions available");
+        toast.info("No tag suggestions available — try adding more content first");
       }
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Tag suggestion failed: ${err.message}`);
     } finally {
       setSuggesting(false);
     }
@@ -1156,7 +1162,7 @@ function LinksPanel({ contentId }) {
     try {
       setResult(await api.checkLinks(contentId));
     } catch (err) {
-      setError(err.message);
+      setError(`Link check failed: ${err.message}`);
     } finally {
       setBusy(false);
     }
@@ -1251,7 +1257,7 @@ function PreviewLinksPanel({ contentId }) {
       setJustCreated(link);
       await reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not create preview link: ${err.message}`);
     } finally {
       setCreating(false);
     }
@@ -1273,7 +1279,7 @@ function PreviewLinksPanel({ contentId }) {
       if (justCreated?.id === linkId) setJustCreated(null);
       await reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not revoke preview link: ${err.message}`);
     } finally {
       setBusyId(null);
     }
@@ -1363,9 +1369,9 @@ function PublicationsPanel({ content, onChanged }) {
     try {
       await api.retryPublication(content.id, publicationId);
       onChanged();
-      toast.success("Retrying");
+      toast.success("Retrying — check the publish queue for updates");
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Publication retry failed: ${err.message}`);
     }
   }
 
@@ -1447,7 +1453,7 @@ function TranslationsPanel({ contentId }) {
       setTranslations(t);
       toast.success(`Translated to ${language}`);
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Translation to ${language} failed: ${err.message}`);
     } finally {
       setTranslating(null);
     }
@@ -1460,7 +1466,7 @@ function TranslationsPanel({ contentId }) {
       setTranslations(t);
       toast.success(`Removed ${language} translation`);
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not remove ${language} translation: ${err.message}`);
     }
   }
 
@@ -1542,7 +1548,7 @@ function HistoryPanel({ contentId, onRestored }) {
       toast.success(`Restored version ${result.restored_revision}`);
       onRestored();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not restore version: ${err.message}`);
     } finally {
       setRestoring(null);
     }
