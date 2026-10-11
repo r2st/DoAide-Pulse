@@ -72,26 +72,26 @@ const FAQS = [
 
 function NewsletterPreview({ newsletter, colors }) {
   return (
-    <div className="rounded-lg overflow-hidden border border-[#2A2A2D]" style={{ background: "#0A0A0B" }}>
-      <div className="h-16 flex items-center justify-center px-4" style={{ background: `linear-gradient(135deg, ${colors.bg} 0%, #0A0A0B 100%)` }}>
+    <div className="rounded-lg overflow-hidden border border-line bg-canvas">
+      <div className="h-16 flex items-center justify-center px-4" style={{ background: `linear-gradient(135deg, ${colors.bg} 0%, transparent 100%)` }}>
         <div className="text-center">
           <div className="text-[11px] font-bold tracking-wider" style={{ color: colors.primary }}>{newsletter.name.toUpperCase()}</div>
-          <div className="text-[8px] text-[#6B7280] mt-0.5">Issue #47 · Oct 2026</div>
+          <div className="text-[8px] text-ink-400 mt-0.5">Issue #47 · Oct 2026</div>
         </div>
       </div>
       <div className="p-3 space-y-2">
         <div className="rounded h-2.5 w-3/4" style={{ background: `${colors.primary}20` }} />
-        <div className="rounded h-2 w-full bg-[#1A1A1D]" />
-        <div className="rounded h-2 w-5/6 bg-[#1A1A1D]" />
-        <div className="rounded h-2 w-2/3 bg-[#1A1A1D]" />
+        <div className="rounded h-2 w-full bg-paper" />
+        <div className="rounded h-2 w-5/6 bg-paper" />
+        <div className="rounded h-2 w-2/3 bg-paper" />
         <div className="mt-3 flex gap-2">
           <div className="rounded h-8 flex-1" style={{ background: `${colors.primary}15` }} />
-          <div className="rounded h-8 flex-1 bg-[#1A1A1D]" />
+          <div className="rounded h-8 flex-1 bg-paper" />
         </div>
-        <div className="rounded h-2 w-full bg-[#1A1A1D]" />
-        <div className="rounded h-2 w-4/5 bg-[#1A1A1D]" />
+        <div className="rounded h-2 w-full bg-paper" />
+        <div className="rounded h-2 w-4/5 bg-paper" />
         <div className="mt-2 mx-auto rounded h-6 w-24 flex items-center justify-center" style={{ background: colors.primary }}>
-          <span className="text-[7px] font-bold text-[#0A0A0B]">READ MORE</span>
+          <span className="text-[7px] font-bold text-white">READ MORE</span>
         </div>
       </div>
     </div>
@@ -101,34 +101,35 @@ function NewsletterPreview({ newsletter, colors }) {
 function NewsletterCard({ newsletter, isExpanded, onToggle }) {
   const { colors } = newsletter;
   return (
-    <div className="group rounded-2xl border border-[#2A2A2D] bg-[#1A1A1D] overflow-hidden transition-all duration-300 hover:border-[#F0B429]/20 hover:shadow-[0_0_20px_rgba(240,180,41,0.06)]">
+    <div className="group panel overflow-hidden transition-all duration-300 hover:border-brand-500/20 hover:shadow-lift">
       <div className="p-4">
         <NewsletterPreview newsletter={newsletter} colors={colors} />
       </div>
 
       <div className="px-5 pb-5">
         <div className="flex items-center gap-2 mb-2">
-          <span className="inline-block w-2 h-2 rounded-full" style={{ background: colors.primary }} />
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-[#6B7280]">{newsletter.category}</span>
+          <span className="inline-block w-2 h-2 rounded-full" style={{ background: colors.primary }} aria-hidden="true" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-400">{newsletter.category}</span>
         </div>
-        <h3 className="font-display text-lg text-white mb-1">{newsletter.name}</h3>
-        <p className="text-sm text-[#9CA3AF] mb-3 leading-relaxed">{newsletter.description}</p>
+        <h3 className="font-display text-lg text-ink-900 mb-1">{newsletter.name}</h3>
+        <p className="text-sm text-ink-500 mb-3 leading-relaxed">{newsletter.description}</p>
 
-        <div className="flex items-center gap-4 mb-4 font-mono text-[11px] text-[#6B7280]">
-          <span>Generated in <span className="text-[#F0B429]">{newsletter.stats.generatedIn}</span></span>
-          <span>Open rate <span className="text-[#F0B429]">{newsletter.stats.openRate}</span></span>
+        <div className="flex items-center gap-4 mb-4 font-mono text-[11px] text-ink-400">
+          <span>Generated in <span className="text-brand-500">{newsletter.stats.generatedIn}</span></span>
+          <span>Open rate <span className="text-brand-500">{newsletter.stats.openRate}</span></span>
         </div>
 
         <div className="flex gap-2">
           <button
             onClick={onToggle}
-            className="flex-1 rounded-lg border border-[#2A2A2D] bg-[#111113] px-4 py-2 text-sm text-[#E5E7EB] transition hover:border-[#F0B429]/40 hover:text-[#F0B429]"
+            aria-expanded={isExpanded}
+            className="flex-1 rounded-lg border border-line bg-paper px-4 py-2 text-sm text-ink-700 transition hover:border-brand-500/40 hover:text-brand-500"
           >
             {isExpanded ? "Close" : "Expand"}
           </button>
           <Link
             to="/"
-            className="flex-1 rounded-lg bg-[#F0B429] px-4 py-2 text-center text-sm font-medium text-[#0A0A0B] transition hover:bg-[#D4A017]"
+            className="flex-1 rounded-lg btn-primary text-center"
           >
             Create Similar
           </Link>
@@ -136,31 +137,31 @@ function NewsletterCard({ newsletter, isExpanded, onToggle }) {
       </div>
 
       {isExpanded && (
-        <div className="border-t border-[#2A2A2D] bg-[#111113] p-5">
-          <div className="rounded-xl border border-[#2A2A2D] overflow-hidden" style={{ background: "#0A0A0B" }}>
+        <div className="border-t border-line bg-paper/50 p-5">
+          <div className="rounded-xl border border-line overflow-hidden bg-canvas">
             <div className="h-24 flex flex-col items-center justify-center" style={{ background: `linear-gradient(135deg, ${colors.bg} 0%, ${colors.primary}22 100%)` }}>
               <div className="text-lg font-bold tracking-wider" style={{ color: colors.primary }}>{newsletter.name}</div>
-              <div className="text-xs text-[#9CA3AF] mt-1">Issue #47 · October 8, 2026</div>
+              <div className="text-xs text-ink-500 mt-1">Issue #47 · October 8, 2026</div>
             </div>
             <div className="p-6 space-y-5">
               <div>
-                <div className="text-sm font-semibold text-[#E5E7EB] mb-2">Featured Story</div>
+                <div className="text-sm font-semibold text-ink-700 mb-2">Featured Story</div>
                 <div className="space-y-1.5">
-                  <div className="h-2.5 rounded bg-[#1A1A1D] w-full" />
-                  <div className="h-2.5 rounded bg-[#1A1A1D] w-11/12" />
-                  <div className="h-2.5 rounded bg-[#1A1A1D] w-4/5" />
+                  <div className="h-2.5 rounded bg-paper w-full" />
+                  <div className="h-2.5 rounded bg-paper w-11/12" />
+                  <div className="h-2.5 rounded bg-paper w-4/5" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg p-3 border border-[#2A2A2D]" style={{ background: `${colors.primary}08` }}>
+                <div className="rounded-lg p-3 border border-line" style={{ background: `${colors.primary}08` }}>
                   <div className="h-2 rounded w-3/4 mb-2" style={{ background: `${colors.primary}30` }} />
-                  <div className="h-2 rounded w-full bg-[#1A1A1D]" />
-                  <div className="h-2 rounded w-2/3 bg-[#1A1A1D] mt-1" />
+                  <div className="h-2 rounded w-full bg-paper" />
+                  <div className="h-2 rounded w-2/3 bg-paper mt-1" />
                 </div>
-                <div className="rounded-lg p-3 border border-[#2A2A2D]" style={{ background: `${colors.primary}08` }}>
+                <div className="rounded-lg p-3 border border-line" style={{ background: `${colors.primary}08` }}>
                   <div className="h-2 rounded w-3/4 mb-2" style={{ background: `${colors.primary}30` }} />
-                  <div className="h-2 rounded w-full bg-[#1A1A1D]" />
-                  <div className="h-2 rounded w-2/3 bg-[#1A1A1D] mt-1" />
+                  <div className="h-2 rounded w-full bg-paper" />
+                  <div className="h-2 rounded w-2/3 bg-paper mt-1" />
                 </div>
               </div>
               <div className="text-center pt-2">
@@ -217,14 +218,14 @@ export default function NewsletterGallery() {
   }, []);
 
   return (
-    <div className="min-h-screen" style={{ background: "#0A0A0B", color: "#E5E7EB" }}>
+    <div className="min-h-screen bg-canvas text-ink-700">
       <PublicNav />
 
       <div className="mx-auto max-w-6xl px-4 py-12">
         <div className="text-center mb-12">
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#F0B429] mb-3 block">Gallery</span>
-          <h1 className="font-display text-4xl md:text-5xl text-white mb-4">Newsletters built with AI</h1>
-          <p className="text-lg text-[#9CA3AF] max-w-2xl mx-auto">
+          <span className="eyebrow mb-3 block text-brand-500">Gallery</span>
+          <h1 className="font-display text-4xl md:text-5xl text-ink-900 mb-4">Newsletters built with AI</h1>
+          <p className="text-lg text-ink-500 max-w-2xl mx-auto">
             See what DoAide Pulse creates. Each newsletter was researched, written, and optimized by AI — then reviewed by a human editor in minutes.
           </p>
         </div>
@@ -240,26 +241,26 @@ export default function NewsletterGallery() {
           ))}
         </div>
 
-        <div className="rounded-2xl border border-[#2A2A2D] bg-[#1A1A1D] p-8 md:p-12 text-center mb-16">
-          <h2 className="font-display text-2xl md:text-3xl text-white mb-4">Create your own AI newsletter</h2>
-          <p className="text-[#9CA3AF] mb-6 max-w-lg mx-auto">
+        <div className="panel p-8 md:p-12 text-center mb-16">
+          <h2 className="font-display text-2xl md:text-3xl text-ink-900 mb-4">Create your own AI newsletter</h2>
+          <p className="text-ink-500 mb-6 max-w-lg mx-auto">
             Tell us your topic and audience. The AI researches, writes, and optimizes — you review and publish. First newsletter in under 5 minutes.
           </p>
-          <Link to="/" className="inline-block rounded-lg bg-[#F0B429] px-8 py-3 text-sm font-medium text-[#0A0A0B] transition hover:bg-[#D4A017]">
+          <Link to="/" className="btn-primary">
             Start creating free
           </Link>
         </div>
 
         <div className="mb-16">
-          <h2 className="font-display text-2xl text-white mb-6 text-center">Frequently asked questions</h2>
+          <h2 className="font-display text-2xl text-ink-900 mb-6 text-center">Frequently asked questions</h2>
           <div className="max-w-2xl mx-auto space-y-4">
             {FAQS.map((faq, i) => (
-              <details key={i} className="group rounded-xl border border-[#2A2A2D] bg-[#1A1A1D]">
-                <summary className="cursor-pointer px-6 py-4 text-[#E5E7EB] font-medium list-none flex items-center justify-between">
+              <details key={i} className="group panel">
+                <summary className="cursor-pointer px-6 py-4 text-ink-700 font-medium list-none flex items-center justify-between">
                   {faq.q}
-                  <span className="text-[#F0B429] transition-transform group-open:rotate-45 text-lg">+</span>
+                  <span className="text-brand-500 transition-transform group-open:rotate-45 text-lg" aria-hidden="true">+</span>
                 </summary>
-                <div className="px-6 pb-4 text-sm text-[#9CA3AF] leading-relaxed">{faq.a}</div>
+                <div className="px-6 pb-4 text-sm text-ink-500 leading-relaxed">{faq.a}</div>
               </details>
             ))}
           </div>

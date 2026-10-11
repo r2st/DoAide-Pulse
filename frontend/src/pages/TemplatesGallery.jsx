@@ -156,18 +156,18 @@ const FAQS = [
 
 function TemplateCard({ template, isExpanded, onToggle }) {
   return (
-    <div className="group rounded-2xl border border-[#2A2A2D] bg-[#1A1A1D] overflow-hidden transition-all duration-300 hover:border-[#F0B429]/30 hover:shadow-[0_0_30px_rgba(240,180,41,0.08)]">
-      <div className="relative h-48 overflow-hidden" style={{ background: "#111113" }}>
-        <div className="absolute inset-3 rounded-lg overflow-hidden border border-[#2A2A2D]" style={{ background: "#0A0A0B" }}>
-          <div className="h-12 flex items-center justify-center text-xs font-bold tracking-wider text-[#0A0A0B]" style={{ background: template.preview.headerBg }}>
+    <div className="group panel overflow-hidden transition-all duration-300 hover:border-brand-500/30 hover:shadow-lift">
+      <div className="relative h-48 overflow-hidden bg-paper/50">
+        <div className="absolute inset-3 rounded-lg overflow-hidden border border-line bg-canvas">
+          <div className="h-12 flex items-center justify-center text-xs font-bold tracking-wider" style={{ background: template.preview.headerBg, color: "#0A0A0B" }}>
             {template.preview.headerText}
           </div>
           <div className="px-3 pt-2">
-            <div className="text-[9px] text-[#9CA3AF] mb-2">{template.preview.subhead}</div>
+            <div className="text-[9px] text-ink-400 mb-2">{template.preview.subhead}</div>
             {template.preview.sections.map((s, i) => (
               <div key={i} className="flex items-center gap-1.5 mb-1.5">
-                <div className="w-1 h-1 rounded-full bg-[#F0B429] shrink-0" />
-                <div className="text-[8px] text-[#6B7280] truncate">{s}</div>
+                <div className="w-1 h-1 rounded-full bg-brand-500 shrink-0" aria-hidden="true" />
+                <div className="text-[8px] text-ink-400 truncate">{s}</div>
               </div>
             ))}
           </div>
@@ -176,23 +176,24 @@ function TemplateCard({ template, isExpanded, onToggle }) {
 
       <div className="p-5">
         <div className="flex items-center gap-2 mb-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#F0B429] bg-[#F0B429]/10 px-2 py-0.5 rounded">
+          <span className="chip text-brand-500">
             {template.category}
           </span>
         </div>
-        <h3 className="font-display text-lg text-white mb-1">{template.name}</h3>
-        <p className="text-sm text-[#9CA3AF] mb-4 leading-relaxed">{template.description}</p>
+        <h3 className="font-display text-lg text-ink-900 mb-1">{template.name}</h3>
+        <p className="text-sm text-ink-500 mb-4 leading-relaxed">{template.description}</p>
 
         <div className="flex gap-2">
           <button
             onClick={onToggle}
-            className="flex-1 rounded-lg border border-[#2A2A2D] bg-[#111113] px-4 py-2 text-sm text-[#E5E7EB] transition hover:border-[#F0B429]/40 hover:text-[#F0B429]"
+            aria-expanded={isExpanded}
+            className="flex-1 rounded-lg border border-line bg-paper px-4 py-2 text-sm text-ink-700 transition hover:border-brand-500/40 hover:text-brand-500"
           >
             {isExpanded ? "Close Preview" : "Preview"}
           </button>
           <Link
             to="/"
-            className="flex-1 rounded-lg bg-[#F0B429] px-4 py-2 text-center text-sm font-medium text-[#0A0A0B] transition hover:bg-[#D4A017]"
+            className="flex-1 rounded-lg btn-primary text-center"
           >
             Use Template
           </Link>
@@ -200,27 +201,27 @@ function TemplateCard({ template, isExpanded, onToggle }) {
       </div>
 
       {isExpanded && (
-        <div className="border-t border-[#2A2A2D] bg-[#111113] p-5">
-          <div className="rounded-xl border border-[#2A2A2D] overflow-hidden bg-[#0A0A0B]">
-            <div className="h-20 flex flex-col items-center justify-center" style={{ background: template.preview.headerBg }}>
-              <div className="text-xl font-bold text-[#0A0A0B] tracking-wide">{template.preview.headerText}</div>
-              <div className="text-xs text-[#0A0A0B]/70 mt-1">{template.preview.subhead}</div>
+        <div className="border-t border-line bg-paper/50 p-5">
+          <div className="rounded-xl border border-line overflow-hidden bg-canvas">
+            <div className="h-20 flex flex-col items-center justify-center" style={{ background: template.preview.headerBg, color: "#0A0A0B" }}>
+              <div className="text-xl font-bold tracking-wide">{template.preview.headerText}</div>
+              <div className="text-xs opacity-70 mt-1">{template.preview.subhead}</div>
             </div>
             <div className="p-6 space-y-4">
               {template.preview.sections.map((section, i) => (
                 <div key={i} className="flex items-start gap-3">
-                  <div className="mt-1.5 w-6 h-6 rounded-full bg-[#F0B429]/10 flex items-center justify-center shrink-0">
-                    <span className="text-[10px] font-bold text-[#F0B429]">{i + 1}</span>
+                  <div className="mt-1.5 w-6 h-6 rounded-full bg-brand-500/10 flex items-center justify-center shrink-0">
+                    <span className="text-[10px] font-bold text-brand-500">{i + 1}</span>
                   </div>
                   <div>
-                    <div className="text-sm text-[#E5E7EB] font-medium mb-1">{section}</div>
-                    <div className="h-2 w-48 rounded bg-[#1A1A1D]" />
-                    <div className="h-2 w-36 rounded bg-[#1A1A1D] mt-1.5" />
+                    <div className="text-sm text-ink-700 font-medium mb-1">{section}</div>
+                    <div className="h-2 w-48 rounded bg-paper" />
+                    <div className="h-2 w-36 rounded bg-paper mt-1.5" />
                   </div>
                 </div>
               ))}
               <div className="pt-4 text-center">
-                <div className="inline-block rounded-lg bg-[#F0B429] px-8 py-2 text-sm font-medium text-[#0A0A0B]">
+                <div className="inline-block btn-primary px-8 py-2 text-sm">
                   Call to Action
                 </div>
               </div>
@@ -273,14 +274,14 @@ export default function TemplatesGallery() {
   }, []);
 
   return (
-    <div className="min-h-screen" style={{ background: "#0A0A0B", color: "#E5E7EB" }}>
+    <div className="min-h-screen bg-canvas text-ink-700">
       <PublicNav />
 
       <div className="mx-auto max-w-6xl px-4 py-12">
         <div className="text-center mb-12">
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#F0B429] mb-3 block">Free Templates</span>
-          <h1 className="font-display text-4xl md:text-5xl text-white mb-4">Newsletter templates that convert</h1>
-          <p className="text-lg text-[#9CA3AF] max-w-2xl mx-auto">
+          <span className="eyebrow mb-3 block text-brand-500">Free Templates</span>
+          <h1 className="font-display text-4xl md:text-5xl text-ink-900 mb-4">Newsletter templates that convert</h1>
+          <p className="text-lg text-ink-500 max-w-2xl mx-auto">
             Start with a professionally designed template. Customize colors, content, and layout to match your brand — then publish with AI-powered optimization.
           </p>
         </div>
@@ -296,26 +297,26 @@ export default function TemplatesGallery() {
           ))}
         </div>
 
-        <div className="rounded-2xl border border-[#2A2A2D] bg-[#1A1A1D] p-8 md:p-12 text-center mb-16">
-          <h2 className="font-display text-2xl md:text-3xl text-white mb-4">Ready to build your newsletter?</h2>
-          <p className="text-[#9CA3AF] mb-6 max-w-lg mx-auto">
+        <div className="panel p-8 md:p-12 text-center mb-16">
+          <h2 className="font-display text-2xl md:text-3xl text-ink-900 mb-4">Ready to build your newsletter?</h2>
+          <p className="text-ink-500 mb-6 max-w-lg mx-auto">
             Pick a template, customize it with your brand, and let AI handle the content. Your first newsletter goes out in minutes.
           </p>
-          <Link to="/" className="inline-block rounded-lg bg-[#F0B429] px-8 py-3 text-sm font-medium text-[#0A0A0B] transition hover:bg-[#D4A017]">
+          <Link to="/" className="btn-primary">
             Get started free
           </Link>
         </div>
 
         <div className="mb-16">
-          <h2 className="font-display text-2xl text-white mb-6 text-center">Frequently asked questions</h2>
+          <h2 className="font-display text-2xl text-ink-900 mb-6 text-center">Frequently asked questions</h2>
           <div className="max-w-2xl mx-auto space-y-4">
             {FAQS.map((faq, i) => (
-              <details key={i} className="group rounded-xl border border-[#2A2A2D] bg-[#1A1A1D]">
-                <summary className="cursor-pointer px-6 py-4 text-[#E5E7EB] font-medium list-none flex items-center justify-between">
+              <details key={i} className="group panel">
+                <summary className="cursor-pointer px-6 py-4 text-ink-700 font-medium list-none flex items-center justify-between">
                   {faq.q}
-                  <span className="text-[#F0B429] transition-transform group-open:rotate-45 text-lg">+</span>
+                  <span className="text-brand-500 transition-transform group-open:rotate-45 text-lg" aria-hidden="true">+</span>
                 </summary>
-                <div className="px-6 pb-4 text-sm text-[#9CA3AF] leading-relaxed">{faq.a}</div>
+                <div className="px-6 pb-4 text-sm text-ink-500 leading-relaxed">{faq.a}</div>
               </details>
             ))}
           </div>
