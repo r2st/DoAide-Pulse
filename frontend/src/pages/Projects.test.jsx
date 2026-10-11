@@ -19,6 +19,8 @@ vi.mock("../lib/api", () => ({
     deleteProject: vi.fn(),
     scanProject: vi.fn(),
     platforms: vi.fn(),
+    listIdeas: vi.fn(),
+    writeFromIdea: vi.fn(),
   },
 }));
 
@@ -61,6 +63,7 @@ function project(overrides = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   api.listProjects.mockResolvedValue([]);
+  api.listIdeas.mockResolvedValue([]);
   api.platforms.mockResolvedValue([
     { platform: "devto", display_name: "Dev.to", implemented: true },
     { platform: "twitter", display_name: "Twitter / X", implemented: false },

@@ -248,6 +248,7 @@ function WebhooksSection() {
   const toast = useToast();
   const { data, loading, reload } = useApi(() => api.listWebhooks(), []);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [secret, setSecret] = useState(null);
 
   async function remove(webhook) {
@@ -338,6 +339,9 @@ function WebhooksSection() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <button className="btn-quiet" onClick={() => setEditing(webhook)}>
+                    Edit
+                  </button>
                   <button className="btn-quiet" onClick={() => ping(webhook)}>
                     Ping
                   </button>
@@ -360,6 +364,17 @@ function WebhooksSection() {
           onDone={(created) => {
             setCreating(false);
             setSecret(created.secret);
+            reload();
+          }}
+        />
+      )}
+
+      {editing && (
+        <EditWebhookDialog
+          webhook={editing}
+          onClose={() => setEditing(null)}
+          onDone={() => {
+            setEditing(null);
             reload();
           }}
         />
@@ -483,6 +498,98 @@ function CreateWebhookDialog({ onClose, onDone }) {
           disabled={busy || !url || selected.length === 0}
         >
           {busy ? "Creating…" : "Create"}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function EditWebhookDialog({ webhook, onClose, onDone }) {
+  const toast = useToast();
+  const { data: events } = useApi(() => api.webhookEvents(), []);
+  const [url, setUrl] = useState(webhook.url);
+  const [description, setDescription] = useState(webhook.description || "");
+  const [selected, setSelected] = useState(webhook.events);
+  const [busy, setBusy] = useState(false);
+
+  function toggleEvent(event) {
+    setSelected((prev) =>
+      prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event],
+    );
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api.updateWebhook(webhook.id, { url, events: selected, description });
+      toast.success("Webhook updated");
+      onDone();
+    } catch (err) {
+      toast.error(err.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog label="Edit webhook" onClose={onClose} closable={!busy} onSubmit={submit}>
+      <h2 className="font-display text-2xl text-ink-900">Edit webhook</h2>
+
+      <div>
+        <label className="label" htmlFor="wh-edit-url">Endpoint URL</label>
+        <input
+          id="wh-edit-url"
+          className="input font-mono text-xs"
+          type="url"
+          required
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+      </div>
+
+      <div>
+        <label className="label" htmlFor="wh-edit-desc">
+          Description <span className="normal-case tracking-normal">(optional)</span>
+        </label>
+        <input
+          id="wh-edit-desc"
+          className="input"
+          maxLength={200}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </div>
+
+      <fieldset>
+        <legend className="label mb-2">Events</legend>
+        <div className="space-y-2">
+          {(events ?? []).map((ev) => (
+            <label key={ev.event} className="flex items-start gap-2.5 text-sm text-ink-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={selected.includes(ev.event)}
+                onChange={() => toggleEvent(ev.event)}
+              />
+              <span>
+                <span className="font-medium">{titleize(ev.event)}</span>
+                <span className="mt-0.5 block text-xs text-ink-400">{ev.description}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="btn-ghost" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="btn-primary"
+          disabled={busy || !url || selected.length === 0}
+        >
+          {busy ? "Saving…" : "Save"}
         </button>
       </div>
     </Dialog>

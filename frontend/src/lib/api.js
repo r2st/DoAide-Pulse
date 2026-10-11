@@ -168,7 +168,8 @@ export const api = {
     request("/content/bulk/archive-old", { method: "POST", body: payload }),
 
   // ---- projects ----
-  listIdeas: (projectId) => request(`/projects/${projectId}/ideas`),
+  listIdeas: (projectId, refresh) =>
+    request(`/projects/${projectId}/ideas${qs({ refresh: refresh || undefined })}`),
   writeFromIdea: (ideaId) =>
     request(`/content/ideas/${ideaId}/write`, { method: "POST" }),
 

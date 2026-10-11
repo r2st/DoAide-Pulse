@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Empty, ErrorBanner, Skeleton, Tag } from "../components/ui/Bits";
 import Dialog from "../components/ui/Dialog";
 import { useToast } from "../components/ui/Toast";
@@ -197,6 +197,8 @@ function ProjectCard({ project, onEdit, onChanged }) {
           <span title="Last repo scan">scanned {formatWhen(project.last_scanned_at)}</span>
         )}
       </dl>
+
+      <IdeasPanel projectId={project.id} />
 
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         <Link to={`/content?project=${project.id}`} className="btn-ghost">
@@ -607,5 +609,76 @@ function QuickProjectDialog({ onClose, onSaved, onAdvanced, onError }) {
         </div>
       </div>
     </Dialog>
+  );
+}
+
+function IdeasPanel({ projectId }) {
+  const toast = useToast();
+  const navigate = useNavigate();
+  const { data: ideas, reload } = useApi(() => api.listIdeas(projectId), [projectId]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [writing, setWriting] = useState(null);
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await api.listIdeas(projectId, true);
+      reload();
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function write(idea) {
+    setWriting(idea.id);
+    try {
+      const content = await api.writeFromIdea(idea.id);
+      toast.success("Draft created");
+      navigate(`/content/${content.id}`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setWriting(null);
+    }
+  }
+
+  if (!ideas || ideas.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-ink-400">
+        <span>No ideas yet</span>
+        <button className="btn-quiet text-xs" onClick={refresh} disabled={refreshing}>
+          {refreshing ? "Generating…" : "Generate ideas"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-ink-500">Ideas</span>
+        <button className="btn-quiet text-xs" onClick={refresh} disabled={refreshing}>
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
+      {ideas.slice(0, 3).map((idea) => (
+        <div key={idea.id} className="flex items-center justify-between gap-2 rounded-lg bg-canvas px-3 py-2 text-sm">
+          <div className="min-w-0">
+            <span className="truncate text-ink-800">{idea.headline}</span>
+            <span className="ml-2 text-xs text-ink-400">{idea.content_type}</span>
+          </div>
+          <button
+            className="btn-quiet shrink-0 text-xs"
+            onClick={() => write(idea)}
+            disabled={writing === idea.id}
+            title="Create a draft from this idea"
+          >
+            {writing === idea.id ? "Writing…" : "Write"}
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
