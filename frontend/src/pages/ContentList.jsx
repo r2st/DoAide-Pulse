@@ -12,6 +12,7 @@ import { useToast } from "../components/ui/Toast";
 import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
 import { formatWhen, titleize } from "../lib/format";
+import trackEvent from "../lib/trackEvent";
 
 const STATUSES = ["draft", "review", "approved", "published", "failed", "archived"];
 const TYPES = [
@@ -311,6 +312,7 @@ function GenerateDialog({ projects, defaultProjectId, onClose, onDone, onError }
         instructions,
         include_repo_activity: includeActivity,
       });
+      trackEvent("content-generate", { content_type: contentType });
       onDone();
     } catch (err) {
       onError(err.message);

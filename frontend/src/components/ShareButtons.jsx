@@ -1,4 +1,5 @@
 import { useState } from "react";
+import trackEvent from "../lib/trackEvent";
 
 export default function ShareButtons({ url, title = "", text = "Check this out!", variant = "default" }) {
   const [copied, setCopied] = useState(false);
@@ -20,6 +21,7 @@ export default function ShareButtons({ url, title = "", text = "Check this out!"
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      trackEvent("share", { platform: "copy-link" });
     });
   }
 
@@ -35,6 +37,7 @@ export default function ShareButtons({ url, title = "", text = "Check this out!"
         rel="noopener noreferrer"
         className={btnClass}
         data-testid="share-whatsapp"
+        onClick={() => trackEvent("share", { platform: "whatsapp" })}
       >
         WhatsApp
       </a>
@@ -44,6 +47,7 @@ export default function ShareButtons({ url, title = "", text = "Check this out!"
         rel="noopener noreferrer"
         className={btnClass}
         data-testid="share-twitter"
+        onClick={() => trackEvent("share", { platform: "twitter" })}
       >
         Twitter / X
       </a>
@@ -53,6 +57,7 @@ export default function ShareButtons({ url, title = "", text = "Check this out!"
         rel="noopener noreferrer"
         className={btnClass}
         data-testid="share-linkedin"
+        onClick={() => trackEvent("share", { platform: "linkedin" })}
       >
         LinkedIn
       </a>

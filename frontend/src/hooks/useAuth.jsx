@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { api, getToken, setToken } from "../lib/api";
+import trackEvent from "../lib/trackEvent";
 
 const AuthContext = createContext(null);
 
@@ -22,16 +23,19 @@ export function AuthProvider({ children }) {
   async function login(email, password) {
     await api.login(email, password);
     setUser(await api.me());
+    trackEvent("login");
   }
 
   async function register(email, password, fullName) {
     await api.register(email, password, fullName);
     await login(email, password);
+    trackEvent("signup");
   }
 
   function logout() {
     api.logout();
     setUser(null);
+    trackEvent("logout");
   }
 
   /** Re-read the user — connecting a platform changes connected_platforms. */

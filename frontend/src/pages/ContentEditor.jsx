@@ -18,6 +18,7 @@ import {
   titleize,
 } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
+import trackEvent from "../lib/trackEvent";
 import {
   OPERATIONS,
   TONES,
@@ -1629,12 +1630,11 @@ function PublishDialog({ content, platforms, onClose, onDone, onError }) {
     try {
       await api.publishContent(content.id, {
         platforms: selected,
-        // datetime-local has no timezone; the browser's own offset is the
-        // right interpretation of what the user typed.
         scheduled_for: when ? new Date(when).toISOString() : null,
         as_draft: asDraft,
         allow_broken_links: allowBroken,
       });
+      trackEvent("publish", { platforms: selected.join(","), scheduled: !!when });
       onDone();
     } catch (err) {
       if (err.message.includes("allow_broken_links")) {
