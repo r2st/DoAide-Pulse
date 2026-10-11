@@ -9,21 +9,37 @@ export default function PublicNav() {
         <Link to="/" className="flex items-center gap-2 text-lg font-bold text-ink-900">
           DoAide <span className="text-brand-500">Pulse</span>
         </Link>
-        <nav className="flex items-center gap-5 text-sm">
+        <nav aria-label="Public" className="flex items-center gap-5 text-sm">
           <div className="relative">
             <button
               onClick={() => setToolsOpen(!toolsOpen)}
               onBlur={() => setTimeout(() => setToolsOpen(false), 150)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape" && toolsOpen) {
+                  setToolsOpen(false);
+                  e.currentTarget.focus();
+                }
+              }}
+              aria-expanded={toolsOpen}
+              aria-haspopup="true"
               className="text-ink-500 hover:text-brand-500"
             >
               Free Tools ▾
             </button>
             {toolsOpen && (
-              <div className="absolute right-0 top-full z-10 mt-2 w-56 rounded-lg border border-line bg-paper py-1 shadow-lift">
-                <Link to="/tools/subject-line-tester" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Subject Line Tester</Link>
-                <Link to="/tools/send-time-optimizer" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Send Time Optimizer</Link>
-                <Link to="/tools/newsletter-roi-calculator" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">ROI Calculator</Link>
-                <Link to="/tools/content-idea-generator" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Content Idea Generator</Link>
+              <div
+                className="absolute right-0 top-full z-10 mt-2 w-56 rounded-lg border border-line bg-paper py-1 shadow-lift"
+                role="menu"
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setToolsOpen(false);
+                  }
+                }}
+              >
+                <Link to="/tools/subject-line-tester" role="menuitem" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Subject Line Tester</Link>
+                <Link to="/tools/send-time-optimizer" role="menuitem" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Send Time Optimizer</Link>
+                <Link to="/tools/newsletter-roi-calculator" role="menuitem" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">ROI Calculator</Link>
+                <Link to="/tools/content-idea-generator" role="menuitem" className="block px-4 py-2 text-sm text-ink-700 hover:bg-canvas hover:text-brand-500">Content Idea Generator</Link>
               </div>
             )}
           </div>

@@ -343,16 +343,22 @@ const COMPARISON_FEATURES = [
 function ComparisonCheck({ value }) {
   if (value === true) {
     return (
-      <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#10B981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="3 8 7 12 13 4" />
-      </svg>
+      <>
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#10B981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="3 8 7 12 13 4" />
+        </svg>
+        <span className="sr-only">Yes</span>
+      </>
     );
   }
   if (value === false) {
     return (
-      <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round">
-        <line x1="4" y1="8" x2="12" y2="8" />
-      </svg>
+      <>
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+          <line x1="4" y1="8" x2="12" y2="8" />
+        </svg>
+        <span className="sr-only">No</span>
+      </>
     );
   }
   return <span className="landing-comparison-text">{value}</span>;
@@ -730,7 +736,7 @@ export default function LandingPage() {
                 />
               </div>
 
-              {error && <p className="landing-error">{error}</p>}
+              {error && <p className="landing-error" role="alert">{error}</p>}
 
               <button type="submit" className="landing-submit" disabled={busy}>
                 {busy ? "One moment…" : isSignUp ? "Create account" : "Sign in"}

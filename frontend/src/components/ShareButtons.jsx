@@ -28,7 +28,7 @@ export default function ShareButtons({ url, title = "", text = "Check this out!"
     : "btn-ghost !py-1.5 !px-3 !text-xs";
 
   return (
-    <div className="flex flex-wrap gap-3" aria-label="Share this article">
+    <div className="flex flex-wrap gap-3" role="group" aria-label="Share this article">
       <a
         href={`https://wa.me/?text=${whatsappText}`}
         target="_blank"

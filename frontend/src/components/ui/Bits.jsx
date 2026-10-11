@@ -88,10 +88,11 @@ export function Tag({ children }) {
 export function Confidence({ value }) {
   if (value === null || value === undefined) return null;
   const percent = Math.round(value * 100);
+  const level = value >= 0.8 ? "high" : value >= 0.5 ? "medium" : "low";
   const tone =
     value >= 0.8 ? "text-good" : value >= 0.5 ? "text-warn" : "text-ink-400";
   return (
-    <span className={`font-mono text-[11px] ${tone}`} title="Model's own confidence">
+    <span className={`font-mono text-[11px] ${tone}`} title={`Model's own confidence: ${level}`}>
       {percent}% confident
     </span>
   );

@@ -138,6 +138,7 @@ function HealthRow({ label, value, ok, hint }) {
       <dd
         className={`shrink-0 font-mono text-xs ${ok ? "text-good" : "text-warn"}`}
       >
+        <span className="sr-only">{ok ? "OK:" : "Warning:"} </span>
         {value}
       </dd>
     </div>

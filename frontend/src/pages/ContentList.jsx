@@ -496,7 +496,14 @@ function ReviewContentCard({ item, selected, onToggle, onApproved }) {
 
       {confidence !== null && (
         <div className="flex items-center gap-2 px-1">
-          <div className="h-1.5 flex-1 rounded-full bg-ink-400/15">
+          <div
+            className="h-1.5 flex-1 rounded-full bg-ink-400/15"
+            role="progressbar"
+            aria-valuenow={confidence}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Confidence: ${confidence}%`}
+          >
             <div
               className={`h-full rounded-full ${
                 confidence >= 80 ? "bg-good" : confidence >= 50 ? "bg-warn" : "bg-ink-400"
@@ -504,7 +511,7 @@ function ReviewContentCard({ item, selected, onToggle, onApproved }) {
               style={{ width: `${confidence}%` }}
             />
           </div>
-          <span className={`font-mono text-[11px] ${confidenceTone}`}>
+          <span className={`font-mono text-[11px] ${confidenceTone}`} aria-hidden="true">
             {confidence}%
           </span>
         </div>

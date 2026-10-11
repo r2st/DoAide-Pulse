@@ -13,39 +13,32 @@ const TOOLS = [
 export default function DoAideFooter() {
   return (
     <footer
-      style={{
-        background: "#f8f9fa", borderTop: "1px solid #e9ecef",
-        padding: "2rem 1rem", marginTop: "3rem",
-      }}
+      className="mt-12 border-t border-line bg-canvas px-4 py-8"
       aria-label="More free tools from DoAide"
     >
-      <div style={{ maxWidth: 900, margin: "0 auto" }}>
-        <p style={{ fontSize: "0.8rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "#6c757d", margin: "0 0 1rem" }}>
+      <div className="mx-auto max-w-[900px]">
+        <p className="eyebrow mb-4">
           More free tools from DoAide
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0.75rem" }}>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}>
           {TOOLS.map((t) => (
             <a
               key={t.url}
               href={t.url}
               target="_blank"
               rel="noopener noreferrer"
-              style={{
-                display: "flex", alignItems: "flex-start", gap: "0.5rem",
-                padding: "0.75rem", background: "#fff", border: "1px solid #e9ecef",
-                borderRadius: "0.5rem", textDecoration: "none", color: "#212529",
-              }}
+              className="flex items-start gap-2 rounded-lg border border-line bg-paper p-3 text-ink-900 no-underline transition-colors hover:border-brand-500"
             >
-              <span style={{ fontSize: "1.25rem", lineHeight: 1, flexShrink: 0 }}>{t.icon}</span>
+              <span className="shrink-0 text-xl leading-none" aria-hidden="true">{t.icon}</span>
               <span>
-                <strong style={{ display: "block", fontSize: "0.85rem" }}>{t.name}</strong>
-                <span style={{ fontSize: "0.75rem", color: "#6c757d" }}>{t.desc}</span>
+                <strong className="block text-sm">{t.name}</strong>
+                <span className="text-xs text-ink-500">{t.desc}</span>
               </span>
             </a>
           ))}
         </div>
-        <p style={{ marginTop: "1rem", fontSize: "0.8rem" }}>
-          <a href="https://doaide.com" target="_blank" rel="noopener noreferrer" style={{ color: "#0d6efd", textDecoration: "none" }}>
+        <p className="mt-4 text-sm">
+          <a href="https://doaide.com" target="_blank" rel="noopener noreferrer" className="text-brand-500 no-underline hover:text-brand-600">
             View all 40+ tools &rarr;
           </a>
         </p>
