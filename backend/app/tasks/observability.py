@@ -51,6 +51,7 @@ from celery.signals import (
     task_prerun,
     task_retry,
     task_success,
+    worker_shutting_down,
 )
 
 from app.logging_config import request_id_var
@@ -231,6 +232,16 @@ def _task_finished(task_id: str | None = None, **_kwargs: object) -> None:
             # The token belongs to a context this call cannot reset from. The
             # id is wrong from here on rather than absent, so say so explicitly.
             request_id_var.set("-")
+
+
+@worker_shutting_down.connect
+def _worker_shutting_down(sig: int | None = None, **_kwargs: object) -> None:
+    in_flight = len(_RUNS)
+    logger.info(
+        "worker shutting down (signal=%s, in_flight_tasks=%d)",
+        sig,
+        in_flight,
+    )
 
 
 def _elapsed(task_id: str | None) -> float | None:
