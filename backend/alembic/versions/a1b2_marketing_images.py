@@ -18,7 +18,10 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column('content', sa.Column('marketing_images', sa.JSON(), nullable=False, server_default='[]'))
+    conn = op.get_bind()
+    columns = [c["name"] for c in sa.inspect(conn).get_columns("content")]
+    if "marketing_images" not in columns:
+        op.add_column('content', sa.Column('marketing_images', sa.JSON(), nullable=False, server_default='[]'))
 
 
 def downgrade() -> None:

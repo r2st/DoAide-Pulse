@@ -31,10 +31,13 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table('users', schema=None) as batch_op:
-        batch_op.add_column(
-            sa.Column('tokens_valid_from', sa.DateTime(timezone=True), nullable=True)
-        )
+    conn = op.get_bind()
+    columns = [c["name"] for c in sa.inspect(conn).get_columns("users")]
+    if "tokens_valid_from" not in columns:
+        with op.batch_alter_table('users', schema=None) as batch_op:
+            batch_op.add_column(
+                sa.Column('tokens_valid_from', sa.DateTime(timezone=True), nullable=True)
+            )
 
 
 def downgrade() -> None:

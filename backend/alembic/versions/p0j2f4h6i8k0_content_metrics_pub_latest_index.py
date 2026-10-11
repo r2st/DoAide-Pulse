@@ -21,6 +21,7 @@ def upgrade() -> None:
         "content_metrics",
         ["publication_id", "id"],
         unique=False,
+        if_not_exists=True,
     )
 
 
