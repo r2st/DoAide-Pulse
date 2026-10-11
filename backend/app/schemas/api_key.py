@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.api_key import ALL_SCOPES, ApiKeyScope
 from app.models.content import ContentType
+from app.schemas.limits import BoundedId
 from app.services.api_keys import MAX_EXPIRY_DAYS, MAX_GRACE_HOURS
 
 
@@ -34,7 +35,7 @@ def _validate_scopes(scopes: list[ApiKeyScope]) -> list[ApiKeyScope]:
 class ApiKeyCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    project_id: int
+    project_id: BoundedId
     name: str = Field(min_length=1, max_length=120)
     scopes: list[ApiKeyScope]
     #: ``None`` means "until revoked". See ``api_keys.expiry_from_days``.

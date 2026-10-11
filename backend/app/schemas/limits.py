@@ -24,8 +24,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import StringConstraints
+from pydantic import Field, StringConstraints
 
+from app.deps import ROW_ID_MAX
 from app.models.content import TAG_MAX_LENGTH
 from app.services.scheduling import TIMEZONE_MAX_LENGTH
 from app.services.seo import KEYWORD_MAX_LENGTH
@@ -104,15 +105,23 @@ MarketingImageUrl = Annotated[str, StringConstraints(max_length=2000)]
 #: One entry in a ``fields`` list on the AI generate endpoint — a field name.
 FieldName = Annotated[str, StringConstraints(max_length=50)]
 
+#: A user-supplied row id (project, content, trigger, …). PostgreSQL ``int4``
+#: tops out at 2^31-1; anything higher lands as a ``NumericValueOutOfRange``
+#: inside the driver, which surfaces as a 500 instead of the 422 a caller can
+#: act on. The same constant lives in :data:`app.deps.ROW_ID_MAX` for path and
+#: query parameters; this annotation covers request-body fields.
+BoundedId = Annotated[int, Field(le=ROW_ID_MAX)]
+
 __all__ = [
+    "BoundedId",
     "CREDENTIAL_KEY_MAX_LENGTH",
     "CREDENTIAL_VALUE_MAX_LENGTH",
-    "FieldName",
-    "MAX_CREDENTIAL_FIELDS",
-    "MarketingImageUrl",
     "CredentialKey",
     "CredentialValue",
+    "FieldName",
     "Keyword",
+    "MAX_CREDENTIAL_FIELDS",
+    "MarketingImageUrl",
     "Tag",
     "TechStackEntry",
     "Timezone",

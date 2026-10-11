@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.limits import Tag as TagValue
+from app.schemas.limits import BoundedId, Tag as TagValue
 from app.services import tags as tag_service
 
 
@@ -78,7 +78,7 @@ class TagRenameIn(BaseModel):
             "a piece that carried both ends up carrying it once."
         )
     )
-    project_id: int | None = Field(
+    project_id: BoundedId | None = Field(
         default=None, description="Limit the rename to one project's content."
     )
     dry_run: bool = Field(

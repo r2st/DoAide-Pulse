@@ -2,11 +2,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.deps import ROW_ID_MAX
 from app.models.content import (
     BODY_MARKDOWN_MAX_LENGTH,
     CANONICAL_URL_MAX_LENGTH,
@@ -17,10 +14,8 @@ from app.models.content import (
 )
 from app.models.project import Tone
 from app.models.publication import Platform, PublicationStatus
-from app.schemas.limits import Keyword, MarketingImageUrl, Tag, Timezone
+from app.schemas.limits import BoundedId, Keyword, MarketingImageUrl, Tag, Timezone
 from app.services import inline_edit
-
-BoundedId = Annotated[int, Field(le=ROW_ID_MAX)]
 
 #: The description every ``timezone`` field on a scheduling request carries.
 #:

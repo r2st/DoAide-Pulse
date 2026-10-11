@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.content import ContentType
 from app.models.trigger import TriggerEventStatus, TriggerKind
+from app.schemas.limits import BoundedId
 
 #: Keys each kind understands, and which of them it cannot work without.
 #: Unknown keys are refused rather than ignored — a typo'd ``feed_uri`` that is
@@ -188,7 +189,7 @@ def validate_config(kind: TriggerKind, config: dict[str, Any] | None) -> dict[st
 class TriggerCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    project_id: int
+    project_id: BoundedId
     kind: TriggerKind
     name: str = Field(default="", max_length=120)
     config: dict[str, Any] = Field(default_factory=dict)

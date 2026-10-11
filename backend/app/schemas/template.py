@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.models.content import ContentType
 from app.models.template import TemplateMode
+from app.schemas.limits import BoundedId
 from app.services.templates import (
     BUILTINS,
     reserved_names,
@@ -83,7 +84,7 @@ class TemplateBase(BaseModel):
     title_template: str = Field(default="", max_length=300)
     body_template: str = Field(default="", max_length=50_000)
     variables: list[TemplateVariable] = Field(default_factory=list)
-    default_project_id: int | None = None
+    default_project_id: BoundedId | None = None
 
     @field_validator("name")
     @classmethod
@@ -142,7 +143,7 @@ class TemplateUpdate(BaseModel):
     title_template: str | None = Field(default=None, max_length=300)
     body_template: str | None = Field(default=None, max_length=50_000)
     variables: list[TemplateVariable] | None = None
-    default_project_id: int | None = None
+    default_project_id: BoundedId | None = None
 
 
 class TemplateOut(BaseModel):
@@ -185,7 +186,7 @@ class RenderRequest(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
     #: Which project's facts fill ``{{project.*}}``. Falls back to the
     #: template's default project, then to blanks.
-    project_id: int | None = None
+    project_id: BoundedId | None = None
 
 
 class RenderOut(BaseModel):
