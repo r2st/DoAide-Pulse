@@ -51,6 +51,7 @@ def get_public_article(
     db: Session = Depends(get_db),
 ) -> PublicArticleOut:
     """Fetch a published article by slug. Unauthenticated."""
+    logger.debug("article view: slug=%s", slug)
     content = db.scalar(
         select(Content).where(
             Content.slug == slug,
@@ -96,6 +97,7 @@ def subscribe(
     db.add(sub)
     try:
         db.commit()
+        logger.info("new subscriber: source=%s", payload.source or "direct")
     except IntegrityError:
         db.rollback()
         logger.debug("duplicate subscriber ignored: %s", payload.email.lower())
