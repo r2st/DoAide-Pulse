@@ -162,6 +162,15 @@ export const api = {
       body: { content_ids: contentIds },
     }),
   publicationQueue: () => request("/content/queue/publications"),
+  setContentStatus: (id, status) =>
+    request(`/content/${id}/status`, { method: "POST", body: { status } }),
+  archiveOld: (payload) =>
+    request("/content/bulk/archive-old", { method: "POST", body: payload }),
+
+  // ---- projects ----
+  listIdeas: (projectId) => request(`/projects/${projectId}/ideas`),
+  writeFromIdea: (ideaId) =>
+    request(`/content/ideas/${ideaId}/write`, { method: "POST" }),
 
   // ---- tags ----
   tagTree: (params = {}) => request(`/tags${qs(params)}`),

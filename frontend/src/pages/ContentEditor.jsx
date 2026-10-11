@@ -477,6 +477,15 @@ export default function ContentEditor() {
     }
   }
 
+  async function copyMarkdown() {
+    try {
+      await navigator.clipboard.writeText(draft.body_markdown);
+      toast.success("Markdown copied");
+    } catch {
+      toast.error("Could not copy — select the body and copy it manually.");
+    }
+  }
+
   async function remove() {
     if (!window.confirm(`Delete "${data.title}"? This cannot be undone.`)) return;
     try {
@@ -546,6 +555,13 @@ export default function ContentEditor() {
               Approve
             </button>
           )}
+          <button
+            className="btn-quiet"
+            onClick={copyMarkdown}
+            title="Copy the Markdown body to the clipboard"
+          >
+            Copy MD
+          </button>
           <button
             className="btn-primary"
             onClick={() => setPublishing(true)}

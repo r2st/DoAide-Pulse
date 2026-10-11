@@ -266,35 +266,7 @@ export default function ContentList() {
       ) : (
         <ul className="panel divide-y divide-line">
           {data?.map((item) => (
-            <li key={item.id}>
-              <Link
-                to={`/content/${item.id}`}
-                className="flex items-start justify-between gap-4 px-5 py-4 transition-colors hover:bg-canvas"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-ink-900">{item.title}</p>
-                  <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-ink-400">
-                    <span>{item.project_name}</span>
-                    <span>{titleize(item.content_type)}</span>
-                    <span>{item.word_count} words</span>
-                    <span>{item.read_minutes} min read</span>
-                    <span>{formatWhen(item.created_at)}</span>
-                    {item.seo_score != null && <SeoScoreBadge score={item.seo_score} />}
-                    {item.confidence !== null && <Confidence value={item.confidence} />}
-                  </p>
-                  {item.publications.length > 0 && (
-                    <p className="mt-2 flex flex-wrap gap-1.5">
-                      {item.publications.map((publication) => (
-                        <span key={publication.id} className="chip">
-                          {titleize(publication.platform)} · {publication.status}
-                        </span>
-                      ))}
-                    </p>
-                  )}
-                </div>
-                <StatusBadge status={item.status} />
-              </Link>
-            </li>
+            <ContentRow key={item.id} item={item} onChanged={reload} />
           ))}
         </ul>
       )}
@@ -540,6 +512,71 @@ function ReviewContentCard({ item, selected, onToggle, onApproved }) {
         </Link>
       </div>
     </div>
+  );
+}
+
+function ContentRow({ item, onChanged }) {
+  const toast = useToast();
+  const canArchive = item.status !== "archived" && item.status !== "published";
+  const canUnarchive = item.status === "archived";
+
+  async function archive() {
+    try {
+      await api.setContentStatus(item.id, "archived");
+      toast.success("Archived");
+      onChanged();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  async function unarchive() {
+    try {
+      await api.setContentStatus(item.id, "draft");
+      toast.success("Moved to drafts");
+      onChanged();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
+
+  return (
+    <li className="flex items-start justify-between gap-4 px-5 py-4 transition-colors hover:bg-canvas">
+      <Link to={`/content/${item.id}`} className="min-w-0 flex-1">
+        <p className="truncate font-medium text-ink-900">{item.title}</p>
+        <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-ink-400">
+          <span>{item.project_name}</span>
+          <span>{titleize(item.content_type)}</span>
+          <span>{item.word_count} words</span>
+          <span>{item.read_minutes} min read</span>
+          <span>{formatWhen(item.created_at)}</span>
+          {item.seo_score != null && <SeoScoreBadge score={item.seo_score} />}
+          {item.confidence !== null && <Confidence value={item.confidence} />}
+        </p>
+        {item.publications.length > 0 && (
+          <p className="mt-2 flex flex-wrap gap-1.5">
+            {item.publications.map((publication) => (
+              <span key={publication.id} className="chip">
+                {titleize(publication.platform)} · {publication.status}
+              </span>
+            ))}
+          </p>
+        )}
+      </Link>
+      <div className="flex shrink-0 items-center gap-2">
+        {canArchive && (
+          <button className="btn-quiet text-ink-400" onClick={archive} title="Archive this piece">
+            Archive
+          </button>
+        )}
+        {canUnarchive && (
+          <button className="btn-quiet" onClick={unarchive} title="Move back to drafts">
+            Unarchive
+          </button>
+        )}
+        <StatusBadge status={item.status} />
+      </div>
+    </li>
   );
 }
 
