@@ -89,7 +89,10 @@ def truncate_at_sentence(text: str, limit: int) -> str:
         return " ".join(kept).strip()
 
     clipped = text[: limit - 1]
-    return clipped[: clipped.rfind(" ")].rstrip(",;:") + "…"
+    space = clipped.rfind(" ")
+    if space > 0:
+        return clipped[:space].rstrip(",;:") + "…"
+    return clipped.rstrip(",;:") + "…"
 
 
 def build_meta_description(candidate: str, *, fallback_body: str) -> str:

@@ -159,6 +159,9 @@ def apply_headline(content: Content, new_title: str, *, now: datetime | None = N
     the slug is left untouched, since changing it there would break the URL
     the piece is already live at.
     """
+    stripped = new_title.strip()
+    if not stripped:
+        raise ValueError("Headline title must not be blank.")
     moment = (now or utcnow()).isoformat()
     history = list(content.headline_history or [])
     window_start = history[-1]["ended_at"] if history else content.created_at.isoformat()
@@ -167,7 +170,7 @@ def apply_headline(content: Content, new_title: str, *, now: datetime | None = N
     # tracking for in-place list mutation, so an .append() here would be
     # silently lost on commit.
     content.headline_history = history
-    content.title = new_title.strip()
+    content.title = stripped
 
 
 @dataclass

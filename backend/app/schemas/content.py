@@ -172,6 +172,14 @@ class ContentCreate(BaseModel):
     #: caller that sets this can match on it with no extra endpoint.
     campaign_key: str | None = Field(default=None, max_length=200)
 
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Title must contain non-whitespace characters.")
+        return title
+
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
     _check_canonical = field_validator("canonical_url")(_absolute_canonical_url)
 
@@ -195,6 +203,16 @@ class ContentUpdate(BaseModel):
     status: ContentStatus | None = None
     scheduled_for: datetime | None = None
     timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        title = value.strip()
+        if not title:
+            raise ValueError("Title must contain non-whitespace characters.")
+        return title
 
     _check_cover = field_validator("cover_image_url")(_absolute_image_url)
     _check_canonical = field_validator("canonical_url")(_absolute_canonical_url)
@@ -573,6 +591,14 @@ class HeadlineApplyIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
+
+    @field_validator("title")
+    @classmethod
+    def _strip_title(cls, value: str) -> str:
+        title = value.strip()
+        if not title:
+            raise ValueError("Title must contain non-whitespace characters.")
+        return title
 
 
 class HeadlineWindowOut(BaseModel):
