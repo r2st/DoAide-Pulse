@@ -142,6 +142,16 @@ class ProjectUpdate(BaseModel):
     utm_enabled: bool | None = None
     utm_campaign: str | None = Field(default=None, max_length=120)
 
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        name = value.strip()
+        if not name:
+            raise ValueError("A project needs a name.")
+        return name
+
     @field_validator("autopilot_platforms")
     @classmethod
     def _publishable_platforms(
