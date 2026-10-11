@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ShareButtons from "../../components/ShareButtons";
+import trackEvent from "../../lib/trackEvent";
 
 const fmt = (n) =>
   n.toLocaleString("en-US", {
@@ -103,7 +104,7 @@ export default function NewsletterRoiCalculator() {
 
       <div className="panel mt-10 p-5 text-center">
         <p className="mb-3 text-ink-900">Maximize your newsletter ROI with AI-powered optimization.</p>
-        <Link to="/" className="btn-primary">Try DoAide Pulse</Link>
+        <Link to="/" className="btn-primary" onClick={() => trackEvent("cta-click", { source: "tool-roi" })}>Try DoAide Pulse</Link>
       </div>
 
       <div className="mt-6">

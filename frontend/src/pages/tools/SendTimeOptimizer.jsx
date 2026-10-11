@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ShareButtons from "../../components/ShareButtons";
+import trackEvent from "../../lib/trackEvent";
 
 const INDUSTRIES = {
   Tech: [
@@ -164,7 +165,7 @@ export default function SendTimeOptimizer() {
         <p className="mb-3 text-ink-900">
           Let AI pick the perfect send time for each subscriber.
         </p>
-        <Link to="/" className="btn-primary">
+        <Link to="/" className="btn-primary" onClick={() => trackEvent("cta-click", { source: "tool-sendtime" })}>
           Try DoAide Pulse
         </Link>
       </div>

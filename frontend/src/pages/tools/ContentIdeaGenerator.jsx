@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import ShareButtons from "../../components/ShareButtons";
 import PublicNav from "../../components/PublicNav";
 import DoAideFooter from "../../components/DoAideFooter";
+import trackEvent from "../../lib/trackEvent";
 import { api } from "../../lib/api";
 
 const EXAMPLE_NICHES = [
@@ -170,6 +171,7 @@ export default function ContentIdeaGenerator() {
           <Link
             to="/"
             className="btn-primary"
+            onClick={() => trackEvent("cta-click", { source: "tool-ideas" })}
           >
             Try DoAide Pulse for free
           </Link>

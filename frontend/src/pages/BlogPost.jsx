@@ -5,6 +5,7 @@ import CrossProductLinks from "../components/CrossProductLinks";
 import PublicNav from "../components/PublicNav";
 import DoAideFooter from "../components/DoAideFooter";
 import ShareButtons from "../components/ShareButtons";
+import trackEvent from "../lib/trackEvent";
 
 export default function BlogPost() {
   const { slug } = useParams();
@@ -132,7 +133,7 @@ export default function BlogPost() {
           <p className="mb-3 text-ink-900 font-medium">
             Build newsletters that convert — powered by AI.
           </p>
-          <Link to="/" className="btn-primary">
+          <Link to="/" className="btn-primary" onClick={() => trackEvent("cta-click", { source: "blog-post", slug })}>
             Try DoAide Pulse
           </Link>
         </div>

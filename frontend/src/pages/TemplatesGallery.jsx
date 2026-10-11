@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import PublicNav from "../components/PublicNav";
 import DoAideFooter from "../components/DoAideFooter";
 import CrossProductLinks from "../components/CrossProductLinks";
+import trackEvent from "../lib/trackEvent";
 
 const TEMPLATES = [
   {
@@ -302,7 +303,7 @@ export default function TemplatesGallery() {
           <p className="text-ink-500 mb-6 max-w-lg mx-auto">
             Pick a template, customize it with your brand, and let AI handle the content. Your first newsletter goes out in minutes.
           </p>
-          <Link to="/" className="btn-primary">
+          <Link to="/" className="btn-primary" onClick={() => trackEvent("cta-click", { source: "templates" })}>
             Get started free
           </Link>
         </div>

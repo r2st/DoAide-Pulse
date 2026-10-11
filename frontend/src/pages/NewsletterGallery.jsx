@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import PublicNav from "../components/PublicNav";
 import DoAideFooter from "../components/DoAideFooter";
 import CrossProductLinks from "../components/CrossProductLinks";
+import trackEvent from "../lib/trackEvent";
 
 const NEWSLETTERS = [
   {
@@ -246,7 +247,7 @@ export default function NewsletterGallery() {
           <p className="text-ink-500 mb-6 max-w-lg mx-auto">
             Tell us your topic and audience. The AI researches, writes, and optimizes — you review and publish. First newsletter in under 5 minutes.
           </p>
-          <Link to="/" className="btn-primary">
+          <Link to="/" className="btn-primary" onClick={() => trackEvent("cta-click", { source: "gallery" })}>
             Start creating free
           </Link>
         </div>

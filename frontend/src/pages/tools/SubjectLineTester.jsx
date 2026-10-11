@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import ShareButtons from "../../components/ShareButtons";
+import trackEvent from "../../lib/trackEvent";
 
 const POWER_WORDS = [
   "exclusive",
@@ -155,7 +156,7 @@ export default function SubjectLineTester() {
         <p className="mb-3 text-ink-900">
           Ready to build newsletters with AI-powered subject lines?
         </p>
-        <Link to="/" className="btn-primary">
+        <Link to="/" className="btn-primary" onClick={() => trackEvent("cta-click", { source: "tool-subject" })}>
           Try DoAide Pulse
         </Link>
       </div>
