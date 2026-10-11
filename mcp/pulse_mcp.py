@@ -34,8 +34,9 @@ from __future__ import annotations
 import functools
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
