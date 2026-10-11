@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 MAX_BODY_BYTES = 1 * 1024 * 1024
 
 #: Paths that accept file uploads and need a higher body size limit.
-_UPLOAD_PATHS = frozenset({"/api/v1/uploads"})
+_UPLOAD_PATHS = frozenset({f"{settings.api_v1_prefix}/uploads"})
 MAX_UPLOAD_BODY_BYTES = 10 * 1024 * 1024
 
 #: How deeply a request body may nest arrays and objects.

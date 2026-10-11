@@ -94,7 +94,7 @@ async def upload_image(
     dest = _upload_dir() / filename
     dest.write_bytes(data)
 
-    url = f"/api/v1/uploads/{filename}"
+    url = f"{settings.api_v1_prefix}/uploads/{filename}"
     return UploadOut(url=url, filename=filename, size=len(data))
 
 
