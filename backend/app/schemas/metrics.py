@@ -154,7 +154,13 @@ class LLMUsageOut(BaseModel):
     total_tokens: int
     prompt_tokens: int
     completion_tokens: int
-    avg_duration_ms: int
+    avg_duration_ms: int | None = Field(
+        default=None,
+        description=(
+            "Mean wall-clock over every attempt. Null when no calls were "
+            "recorded in the window — not the same as zero."
+        ),
+    )
     by_provider: list[ProviderUsageOut]
     by_purpose: list[PurposeUsageOut]
     avg_generation_ms: int | None = Field(
