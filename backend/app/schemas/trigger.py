@@ -192,7 +192,7 @@ class TriggerCreate(BaseModel):
     project_id: BoundedId
     kind: TriggerKind
     name: str = Field(default="", max_length=120)
-    config: dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any] = Field(default_factory=dict, max_length=20)
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -205,7 +205,7 @@ class TriggerUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(default=None, max_length=120)
-    config: dict[str, Any] | None = None
+    config: dict[str, Any] | None = Field(default=None, max_length=20)
     is_active: bool | None = None
 
 

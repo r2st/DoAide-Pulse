@@ -654,3 +654,30 @@ class TestSchemaListBounds:
         values = {f"var_{i}": f"val_{i}" for i in range(5)}
         req = RenderRequest(values=values)
         assert len(req.values) == 5
+
+    def test_oversized_trigger_config_rejected(self):
+        from app.schemas.trigger import TriggerCreate
+        from pydantic import ValidationError
+
+        config = {f"key_{i}": f"val_{i}" for i in range(21)}
+        with pytest.raises(ValidationError):
+            TriggerCreate(project_id=1, kind="rss", config=config)
+
+    def test_oversized_trigger_update_config_rejected(self):
+        from app.schemas.trigger import TriggerUpdate
+        from pydantic import ValidationError
+
+        config = {f"key_{i}": f"val_{i}" for i in range(21)}
+        with pytest.raises(ValidationError):
+            TriggerUpdate(config=config)
+
+    def test_oversized_api_key_scopes_rejected(self):
+        from app.schemas.api_key import ApiKeyCreate
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            ApiKeyCreate(
+                project_id=1,
+                name="Test",
+                scopes=["content:read"] * 21,
+            )

@@ -37,7 +37,7 @@ class ApiKeyCreate(BaseModel):
 
     project_id: BoundedId
     name: str = Field(min_length=1, max_length=120)
-    scopes: list[ApiKeyScope]
+    scopes: list[ApiKeyScope] = Field(max_length=20)
     #: ``None`` means "until revoked". See ``api_keys.expiry_from_days``.
     expires_in_days: int | None = Field(default=None, ge=1, le=MAX_EXPIRY_DAYS)
 
