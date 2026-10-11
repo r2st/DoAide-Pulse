@@ -121,7 +121,7 @@ function MetaTags({ contentId }) {
       const result = await api.socialCards(contentId);
       setTags(result.meta_html);
     } catch (err) {
-      setError(err.message);
+      setError(`Could not load social tags: ${err.message}`);
     } finally {
       setBusy(false);
     }

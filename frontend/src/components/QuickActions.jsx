@@ -22,10 +22,14 @@ export default function QuickActions({ reviewCount, onApproved }) {
       const ok = result.succeeded?.length ?? 0;
       const fail = result.failed?.length ?? 0;
       if (ok > 0) toast.success(`Approved ${ok} item${ok === 1 ? "" : "s"}`);
-      if (fail > 0) toast.error(`${fail} item${fail === 1 ? "" : "s"} could not be approved`);
+      if (fail > 0)
+        toast.error(
+          `${fail} item${fail === 1 ? "" : "s"} could not be approved — ` +
+            "they may have been modified or are no longer in review",
+        );
       onApproved?.();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Bulk approve failed: ${err.message}`);
     } finally {
       setApproving(false);
     }

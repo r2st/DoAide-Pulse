@@ -62,7 +62,7 @@ export default function Templates() {
     try {
       setEditing(await api.getTemplate(template.id));
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not open template: ${err.message}`);
     } finally {
       setOpening(null);
     }
@@ -158,7 +158,7 @@ function TemplateCard({ template, project, opening, onEdit, onUse, onChanged }) 
       toast.success("Template deleted");
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not delete template: ${err.message}`);
     } finally {
       setBusy(false);
     }
@@ -679,7 +679,7 @@ function UseDialog({ template, projects, onClose, onDone }) {
       onDone();
       navigate(`/content/${content.id}`);
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not create draft from template: ${err.message}`);
       setBusy(false);
     }
   }

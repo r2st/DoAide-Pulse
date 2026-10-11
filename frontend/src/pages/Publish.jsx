@@ -244,10 +244,10 @@ function QueueRow({ item, onChanged }) {
     setBusy(true);
     try {
       await api.retryPublication(item.content_id, item.id);
-      toast.success("Retrying");
+      toast.success("Retrying — check back shortly for updates");
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Publication retry failed: ${err.message}`);
     } finally {
       setBusy(false);
     }

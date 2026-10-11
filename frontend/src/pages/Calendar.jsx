@@ -132,7 +132,7 @@ export default function Calendar() {
       toast.success(`Moved to ${formatDateTime(target)}`);
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not reschedule: ${err.message}`);
       refocus.current = null;
     }
   }
