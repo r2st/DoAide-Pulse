@@ -128,7 +128,7 @@ function ProjectCard({ project, onEdit, onChanged }) {
       toast.success(`${result.full_name}: ${bits.join(", ")}`);
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Repo scan failed: ${err.message}`);
     } finally {
       setScanning(false);
     }
@@ -148,7 +148,7 @@ function ProjectCard({ project, onEdit, onChanged }) {
       toast.success("Project deleted");
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not delete project: ${err.message}`);
     }
   }
 
@@ -625,7 +625,7 @@ function IdeasPanel({ projectId }) {
       await api.listIdeas(projectId, true);
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not generate ideas: ${err.message}`);
     } finally {
       setRefreshing(false);
     }
@@ -638,7 +638,7 @@ function IdeasPanel({ projectId }) {
       toast.success("Draft created");
       navigate(`/content/${content.id}`);
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not write draft from idea: ${err.message}`);
     } finally {
       setWriting(null);
     }
