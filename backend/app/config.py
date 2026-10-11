@@ -260,6 +260,10 @@ class Settings(BaseSettings):
     # See `app.database.install_slow_query_logging`, which explains why the
     # parameters are never logged with it. Set to 0 to disable.
     db_slow_query_ms: int = 500
+    # Log any API request that takes at least this long, with method, path, and
+    # status code. Complements db_slow_query_ms: that one finds the query, this
+    # one finds the endpoint. Set to 0 to disable.
+    api_slow_request_ms: int = 1000
 
     # ---- Uploads ----
     upload_dir: str = "uploads"
@@ -791,9 +795,10 @@ class Settings(BaseSettings):
         "publish_breaker_cooldown_seconds",
         "publish_breaker_max_cooldown_seconds",
         "schedule_past_grace_seconds",
-        # Zero disables the slow-query log, which is the spelling every other
-        # threshold here uses for "off".
+        # Zero disables the slow-query/slow-request log, which is the spelling
+        # every other threshold here uses for "off".
         "db_slow_query_ms",
+        "api_slow_request_ms",
     )
     @classmethod
     def _non_negative(cls, v: int) -> int:

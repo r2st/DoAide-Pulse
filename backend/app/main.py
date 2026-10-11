@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -442,18 +443,33 @@ def create_app() -> FastAPI:
             else:
                 request_id = uuid.uuid4().hex[:12]
             request.state.request_id = request_id
-            # Also on the logging context, so the id reaches log lines written
-            # by code that has no idea a request exists — which is most of the
-            # code that logs anything worth correlating. Reset on the way out:
-            # BaseHTTPMiddleware runs each request in its own task and the
-            # context is copied per task, but the token makes that a property of
-            # this middleware rather than of Starlette's internals.
             token = request_id_var.set(request_id)
+            started = time.monotonic()
             try:
                 response = await call_next(request)
             finally:
                 request_id_var.reset(token)
+            elapsed_ms = (time.monotonic() - started) * 1000.0
             response.headers["X-Request-ID"] = request_id
+            response.headers["X-Response-Time"] = f"{elapsed_ms:.0f}ms"
+            method = request.method
+            path = request.url.path
+            status_code = response.status_code
+            if settings.api_slow_request_ms and elapsed_ms >= settings.api_slow_request_ms:
+                logger.warning(
+                    "slow request: %s %s %d in %dms",
+                    method, path, status_code, round(elapsed_ms),
+                )
+            elif status_code >= 500:
+                logger.warning(
+                    "server error: %s %s %d in %dms",
+                    method, path, status_code, round(elapsed_ms),
+                )
+            else:
+                logger.debug(
+                    "%s %s %d in %dms",
+                    method, path, status_code, round(elapsed_ms),
+                )
             return response
 
     # Body-size first (innermost), then request-id outside it: a 413 from
