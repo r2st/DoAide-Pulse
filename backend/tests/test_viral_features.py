@@ -84,7 +84,7 @@ class TestSubscriber:
             "/api/v1/subscribers",
             json={"email": "reader@example.com"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         assert resp.json()["ok"] is True
         sub = db.query(Subscriber).filter_by(email="reader@example.com").first()
         assert sub is not None
@@ -95,14 +95,14 @@ class TestSubscriber:
             "/api/v1/subscribers",
             json={"email": "reader2@example.com", "source": "article-cta"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 201
         sub = db.query(Subscriber).filter_by(email="reader2@example.com").first()
         assert sub.source == "article-cta"
 
     def test_duplicate_email_does_not_error(self, client, db):
         client.post("/api/v1/subscribers", json={"email": "dup@example.com"})
         resp = client.post("/api/v1/subscribers", json={"email": "dup@example.com"})
-        assert resp.status_code == 200
+        assert resp.status_code == 201
 
     def test_invalid_email_rejected(self, client, db):
         resp = client.post(
