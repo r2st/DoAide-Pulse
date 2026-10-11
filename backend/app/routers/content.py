@@ -2871,7 +2871,7 @@ def set_content_status(
 @router.post(
     "/ideas/{idea_id}/write",
     response_model=ContentDetail,
-    status_code=201,
+    status_code=status.HTTP_201_CREATED,
     summary="Turn an idea into a draft",
     responses={
         # The only endpoint with two success codes, so both are spelled out.

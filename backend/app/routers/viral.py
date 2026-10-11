@@ -80,6 +80,7 @@ def get_public_article(
 @router.post(
     "/subscribers",
     response_model=SubscribeOut,
+    status_code=status.HTTP_201_CREATED,
     summary="Collect a newsletter subscriber email",
     responses=errors(status.HTTP_429_TOO_MANY_REQUESTS),
 )
