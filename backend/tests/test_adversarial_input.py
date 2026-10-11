@@ -593,3 +593,64 @@ class TestCredentialAdversarialInput:
             headers=auth,
         )
         assert resp.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Schema list-field bounds (max_length on list/dict fields)                    #
+# --------------------------------------------------------------------------- #
+
+
+class TestSchemaListBounds:
+    """Unbounded list/dict fields must be capped to prevent abuse."""
+
+    def test_oversized_publish_platforms_rejected(self):
+        from app.schemas.content import PublishRequestIn
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            PublishRequestIn(platforms=["devto"] * 21)
+
+    def test_valid_publish_platforms_accepted(self):
+        from app.schemas.content import PublishRequestIn
+
+        req = PublishRequestIn(platforms=["devto"])
+        assert len(req.platforms) == 1
+
+    def test_oversized_autopilot_platforms_rejected(self):
+        from app.schemas.project import ProjectBase
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            ProjectBase(name="Test", autopilot_platforms=["devto"] * 21)
+
+    def test_oversized_webhook_events_create_rejected(self):
+        from app.schemas.webhook import WebhookCreate
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            WebhookCreate(
+                url="https://example.com/hook",
+                events=["content.published"] * 21,
+            )
+
+    def test_oversized_webhook_events_update_rejected(self):
+        from app.schemas.webhook import WebhookUpdate
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            WebhookUpdate(events=["content.published"] * 21)
+
+    def test_oversized_template_values_rejected(self):
+        from app.schemas.template import RenderRequest
+        from pydantic import ValidationError
+
+        values = {f"var_{i}": f"val_{i}" for i in range(26)}
+        with pytest.raises(ValidationError):
+            RenderRequest(values=values)
+
+    def test_valid_template_values_accepted(self):
+        from app.schemas.template import RenderRequest
+
+        values = {f"var_{i}": f"val_{i}" for i in range(5)}
+        req = RenderRequest(values=values)
+        assert len(req.values) == 5

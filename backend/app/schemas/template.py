@@ -183,7 +183,7 @@ class BuiltinOut(BaseModel):
 class RenderRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    values: dict[str, Any] = Field(default_factory=dict)
+    values: dict[str, Any] = Field(default_factory=dict, max_length=MAX_VARIABLES)
     #: Which project's facts fill ``{{project.*}}``. Falls back to the
     #: template's default project, then to blanks.
     project_id: BoundedId | None = None

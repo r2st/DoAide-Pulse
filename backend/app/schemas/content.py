@@ -377,7 +377,7 @@ class ContentDetail(ContentOut):
 class PublishRequestIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    platforms: list[Platform] = Field(min_length=1)
+    platforms: list[Platform] = Field(min_length=1, max_length=20)
     #: ``None`` publishes as soon as a worker picks it up.
     scheduled_for: datetime | None = None
     timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
@@ -689,7 +689,7 @@ class BulkContentIn(BaseModel):
 
 
 class BulkPublishIn(BulkContentIn):
-    platforms: list[Platform] = Field(min_length=1)
+    platforms: list[Platform] = Field(min_length=1, max_length=20)
     scheduled_for: datetime | None = None
     timezone: Timezone | None = Field(default=None, description=TIMEZONE_HELP)
     as_draft: bool = False

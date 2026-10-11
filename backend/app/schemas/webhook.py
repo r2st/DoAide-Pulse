@@ -35,7 +35,7 @@ class WebhookCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     url: str = Field(min_length=8, max_length=700)
-    events: list[WebhookEvent]
+    events: list[WebhookEvent] = Field(max_length=20)
     description: str = Field(default="", max_length=200)
 
     _events = field_validator("events")(_validate_events)
@@ -45,7 +45,7 @@ class WebhookUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     url: str | None = Field(default=None, min_length=8, max_length=700)
-    events: list[WebhookEvent] | None = None
+    events: list[WebhookEvent] | None = Field(default=None, max_length=20)
     description: str | None = Field(default=None, max_length=200)
     is_active: bool | None = None
 
