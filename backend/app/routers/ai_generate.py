@@ -30,7 +30,10 @@ class GenerateFieldsRequest(BaseModel):
     fields: list[FieldName] = Field(
         min_length=1,
         max_length=10,
-        description="Which fields to generate: meta_description, keywords, tags, excerpt, cover_image_prompt",
+        description=(
+            "Which fields to generate: meta_description, "
+            "keywords, tags, excerpt, cover_image_prompt"
+        ),
     )
 
 
@@ -59,17 +62,37 @@ def _build_prompt(req: GenerateFieldsRequest) -> str:
 
     parts.append("Generate the following fields as a JSON object:\n")
     field_instructions = {
-        "meta_description": "- meta_description: A compelling SEO meta description, 120-155 characters. Summarize the article's value proposition.",
-        "keywords": "- keywords: A list of 3-8 SEO keywords/phrases relevant to the article content.",
-        "tags": "- tags: A list of 3-5 platform tags suitable for Dev.to, Medium, and Hashnode. Use lowercase, no spaces (use hyphens).",
-        "excerpt": "- excerpt: A 1-2 sentence summary that hooks the reader. Different from meta_description — this is for social sharing.",
-        "cover_image_prompt": "- cover_image_prompt: A detailed prompt for generating a cover image with AI image tools. Describe the visual concept, style, colors, and mood.",
+        "meta_description": (
+            "- meta_description: A compelling SEO meta description, "
+            "120-155 characters. Summarize the article's value proposition."
+        ),
+        "keywords": (
+            "- keywords: A list of 3-8 SEO keywords/phrases "
+            "relevant to the article content."
+        ),
+        "tags": (
+            "- tags: A list of 3-5 platform tags suitable for "
+            "Dev.to, Medium, and Hashnode. Use lowercase, "
+            "no spaces (use hyphens)."
+        ),
+        "excerpt": (
+            "- excerpt: A 1-2 sentence summary that hooks the reader. "
+            "Different from meta_description — this is for social sharing."
+        ),
+        "cover_image_prompt": (
+            "- cover_image_prompt: A detailed prompt for generating a "
+            "cover image with AI image tools. Describe the visual "
+            "concept, style, colors, and mood."
+        ),
     }
     for field in req.fields:
         if field in field_instructions:
             parts.append(field_instructions[field] + "\n")
 
-    parts.append("\nRespond with ONLY a JSON object containing these fields. No markdown, no explanation.")
+    parts.append(
+        "\nRespond with ONLY a JSON object containing "
+        "these fields. No markdown, no explanation."
+    )
     return "".join(parts)
 
 

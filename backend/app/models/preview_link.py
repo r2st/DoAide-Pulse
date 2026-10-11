@@ -10,7 +10,7 @@ back early; ``expires_at`` is it lapsing on its own.
 from __future__ import annotations
 
 # Imported at runtime: SQLAlchemy resolves Mapped[...] at class-definition time.
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String

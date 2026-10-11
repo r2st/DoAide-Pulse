@@ -321,7 +321,9 @@ class Settings(BaseSettings):
     # comma-separated. Worth setting on the free tiers, where the quota is per
     # model rather than per key: a second model on a key that has exhausted its
     # first is a request that succeeds, and moving providers is not.
-    openrouter_fallback_models: str = "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-lightning:free"
+    openrouter_fallback_models: str = (
+        "google/gemma-4-31b-it:free,nvidia/nemotron-3.5-lightning:free"
+    )
     gemini_fallback_models: str = ""
     groq_fallback_models: str = ""
     cerebras_fallback_models: str = ""

@@ -15,7 +15,13 @@ from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.models.user import User
-from app.schemas.content import CadenceGuideOut, CalendarEntry, CalendarOut, PublicationOut, ScheduleUpdate
+from app.schemas.content import (
+    CadenceGuideOut,
+    CalendarEntry,
+    CalendarOut,
+    PublicationOut,
+    ScheduleUpdate,
+)
 from app.schemas.errors import AUTHENTICATED, OWNED, errors
 from app.services import cadence, learned_cadence, publishing_service, scheduling, velocity
 

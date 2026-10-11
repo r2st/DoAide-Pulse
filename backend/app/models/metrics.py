@@ -9,7 +9,7 @@ from __future__ import annotations
 
 # Imported at runtime, not under TYPE_CHECKING: SQLAlchemy 2.0 resolves the
 # `Mapped[...]` annotations at class-definition time and needs the real name.
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer

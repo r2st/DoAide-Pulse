@@ -49,7 +49,8 @@ def check_trigger(trigger_id: int) -> dict:
         return {"trigger_id": trigger_id, "status": "timeout"}
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("trigger %s crashed: %s", trigger_id, exc)
-        return {"trigger_id": trigger_id, "status": "error", "error": sanitize_unexpected_error(exc)}
+        err = sanitize_unexpected_error(exc)
+        return {"trigger_id": trigger_id, "status": "error", "error": err}
     finally:
         db.close()
 

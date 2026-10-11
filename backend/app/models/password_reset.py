@@ -13,7 +13,7 @@ reset. :func:`app.services.password_reset.purge_expired` clears them out.
 from __future__ import annotations
 
 # Imported at runtime: SQLAlchemy resolves Mapped[...] at class-definition time.
-from datetime import datetime  # noqa: TC003
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, String

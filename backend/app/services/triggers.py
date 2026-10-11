@@ -464,7 +464,8 @@ def fire(db: Session, trigger: Trigger, signal: TriggerSignal) -> TriggerEvent |
                 "The project's autopilot is off, so the trigger was logged but "
                 "nothing was written.",
             )
-        if _daily_count(db, project.id, exclude_event_id=event.id) >= settings.trigger_daily_content_limit:
+        daily = _daily_count(db, project.id, exclude_event_id=event.id)
+        if daily >= settings.trigger_daily_content_limit:
             return _skip(
                 db,
                 event,
@@ -746,15 +747,21 @@ def check(db: Session, trigger: Trigger) -> dict[str, Any]:
             # threshold that deactivates it, and the sweep saw the raise instead.
             db.rollback()
             logger.exception("trigger %s crashed: %s", trigger.id, exc)
-            _mark_checked(db, trigger, sanitize_unexpected_error(exc))
-            return {"trigger_id": trigger.id, "status": "error", "error": sanitize_unexpected_error(exc)}
+            err = sanitize_unexpected_error(exc)
+            _mark_checked(db, trigger, err)
+            return {"trigger_id": trigger.id, "status": "error", "error": err}
 
         _mark_checked(db, trigger)
         return {"trigger_id": trigger.id, **result}
     except Exception:
         db.rollback()
         logger.exception("trigger %s: post-check bookkeeping failed", trigger.id)
-        return {"trigger_id": trigger.id, "status": "error", "error": "Trigger check completed but results could not be saved. Try again shortly."}
+        return {
+            "trigger_id": trigger.id,
+            "status": "error",
+            "error": "Trigger check completed but results could not "
+            "be saved. Try again shortly.",
+        }
 
 
 def _check_rss(db: Session, trigger: Trigger) -> dict[str, Any]:

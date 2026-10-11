@@ -43,7 +43,7 @@ from app.services.publishers.base import PublishError
 # three here would give a retitle its own opinion about which translation a
 # destination gets, which is exactly the disagreement `build_request` exists to
 # make impossible.
-from app.services.publishing_service import (  # noqa: PLC2701
+from app.services.publishing_service import (
     _credentials_for,
     _redact_credentials,
     _translation_for,

@@ -181,7 +181,8 @@ def scan_project(project_id: int) -> dict:
         return {"project_id": project_id, "status": "timeout"}
     except Exception as exc:  # pragma: no cover - defensive
         logger.exception("autopilot crashed on project %s: %s", project_id, exc)
-        return {"project_id": project_id, "status": "error", "error": sanitize_unexpected_error(exc)}
+        err = sanitize_unexpected_error(exc)
+        return {"project_id": project_id, "status": "error", "error": err}
     finally:
         db.close()
 

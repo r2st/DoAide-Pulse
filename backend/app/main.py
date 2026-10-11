@@ -112,7 +112,8 @@ class BodySizeLimitMiddleware:
             return
 
         req_path = scope.get("path", "")
-        limit = MAX_UPLOAD_BODY_BYTES if any(req_path.startswith(p) for p in _UPLOAD_PATHS) else MAX_BODY_BYTES
+        is_upload = any(req_path.startswith(p) for p in _UPLOAD_PATHS)
+        limit = MAX_UPLOAD_BODY_BYTES if is_upload else MAX_BODY_BYTES
 
         declared = Headers(scope=scope).get("content-length")
         if declared:
