@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import AnalyticsMockup from "../components/AnalyticsMockup";
 import CrossProductLinks from "../components/CrossProductLinks";
 import DoAideFooter from "../components/DoAideFooter";
+import trackEvent from "../lib/trackEvent";
 import "./LandingPage.css";
 
 const ACCENT = "#F0B429";
@@ -486,6 +487,7 @@ function PricingSection() {
             <Link
               to="/login"
               className={tier.highlight ? "landing-pricing-cta-primary" : "landing-pricing-cta-secondary"}
+              onClick={() => trackEvent("cta-click", { source: "pricing", tier: tier.name })}
             >
               {tier.cta}
             </Link>
@@ -504,8 +506,8 @@ function CtaSection() {
         Free to start. No credit card required. Your first newsletter goes out in minutes.
       </p>
       <div className="landing-cta-actions">
-        <Link to="/login" className="landing-cta-primary">Create free account</Link>
-        <Link to="/gallery" className="landing-cta-secondary">See examples</Link>
+        <Link to="/login" className="landing-cta-primary" onClick={() => trackEvent("cta-click", { source: "landing-bottom" })}>Create free account</Link>
+        <Link to="/gallery" className="landing-cta-secondary" onClick={() => trackEvent("cta-click", { source: "landing-examples" })}>See examples</Link>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Skeleton } from "../components/ui/Bits";
 import Logo from "../components/ui/Logo";
@@ -9,10 +9,13 @@ import { useApi } from "../hooks/useApi";
 import { api } from "../lib/api";
 import { formatCount, formatReadLength } from "../lib/format";
 import { renderMarkdown } from "../lib/markdown";
+import trackEvent from "../lib/trackEvent";
 
 export default function PublicArticle() {
   const { slug } = useParams();
   const { data, error, loading } = useApi(() => api.publicArticle(slug), [slug]);
+
+  const firedRef = useRef(false);
 
   useEffect(() => {
     if (data) {
@@ -21,6 +24,21 @@ export default function PublicArticle() {
       if (meta) meta.setAttribute("content", data.meta_description || data.excerpt);
     }
   }, [data]);
+
+  useEffect(() => {
+    if (!data) return;
+    function onScroll() {
+      if (firedRef.current) return;
+      const scrolled = window.scrollY + window.innerHeight;
+      const threshold = document.body.scrollHeight * 0.75;
+      if (scrolled >= threshold) {
+        firedRef.current = true;
+        trackEvent("read-complete", { slug });
+      }
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [data, slug]);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "https://pulse.doaide.com";
   const articleUrl = `${origin}/article/${slug}`;
@@ -106,6 +124,7 @@ export default function PublicArticle() {
               <Link
                 to="/"
                 className="btn-primary"
+                onClick={() => trackEvent("cta-click", { source: "article", slug })}
               >
                 Try DoAide Pulse for free
               </Link>
