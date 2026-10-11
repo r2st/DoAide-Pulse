@@ -141,7 +141,7 @@ def generate_content_ideas(
             f"{settings.gemini_base_url}chat/completions",
             headers={"Authorization": f"Bearer {api_key}"},
             json={
-                "model": "gemini-2.0-flash",
+                "model": settings.gemini_model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.8,
                 "max_tokens": 2000,

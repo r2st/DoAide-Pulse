@@ -106,6 +106,7 @@ async def upload_image(
 @limiter.limit(settings.rate_limit_public_read)
 async def serve_image(
     request: Request,
+    response: Response,
     filename: str = Path(max_length=255),
 ) -> FileResponse:
     """Return a previously uploaded image by filename."""

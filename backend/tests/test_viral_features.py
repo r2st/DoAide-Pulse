@@ -174,6 +174,28 @@ class TestContentIdeaGenerator:
         )
         assert resp.status_code == 422
 
+    @patch("app.routers.viral.settings")
+    @patch("app.routers.viral.httpx.post")
+    def test_uses_configured_model_not_hardcoded(self, mock_post, mock_settings, client):
+        mock_settings.gemini_api_key = "test-key"
+        mock_settings.gemini_base_url = "https://test.example.com/v1beta/openai/"
+        mock_settings.gemini_model = "gemini-flash-latest"
+        mock_settings.rate_limit_public_read = "100/minute"
+        mock_post.return_value = self._mock_gemini_response(
+            [{"title": "X", "hook": "Y", "content_type": "tutorial"}],
+        )
+
+        client.post(
+            "/api/v1/tools/content-ideas",
+            json={"niche": "testing", "count": 1},
+        )
+
+        call_kwargs = mock_post.call_args
+        sent_model = call_kwargs.kwargs.get("json", call_kwargs[1].get("json", {}))["model"]
+        assert sent_model == "gemini-flash-latest", (
+            f"Expected configured model 'gemini-flash-latest', got '{sent_model}'"
+        )
+
     def test_rejects_too_many_ideas(self, client):
         resp = client.post(
             "/api/v1/tools/content-ideas",
