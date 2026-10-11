@@ -114,13 +114,19 @@ async def serve_image(
     filename: str = Path(max_length=255),
 ) -> FileResponse:
     """Return a previously uploaded image by filename."""
-    if "/" in filename or "\\" in filename or ".." in filename:
+    if "/" in filename or "\\" in filename or ".." in filename or "\x00" in filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename must not contain path separators, '..', or null bytes.",
+        )
+
+    base = _upload_dir()
+    path = base / filename
+    if not path.resolve().parent == base.resolve():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Filename must not contain path separators or '..'.",
         )
-
-    path = _upload_dir() / filename
     if not path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Image not found."
