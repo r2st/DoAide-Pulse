@@ -119,7 +119,7 @@ def generate_fields(
     if not req.title and not req.body_markdown:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one of title or body_markdown is required",
+            detail="At least one of title or body_markdown is required.",
         )
 
     valid_fields = {"meta_description", "keywords", "tags", "excerpt", "cover_image_prompt"}

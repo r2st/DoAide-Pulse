@@ -139,7 +139,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 _api_key_exc = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
-    detail="Invalid or expired API key",
+    detail="Invalid or expired API key.",
 )
 
 

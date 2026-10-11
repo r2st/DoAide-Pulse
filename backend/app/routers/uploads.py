@@ -77,14 +77,14 @@ async def upload_image(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file type: {file.content_type}. "
-            f"Allowed: jpg, png, webp, gif",
+            f"Allowed: jpg, png, webp, gif.",
         )
 
     data = await file.read()
     if len(data) > settings.max_upload_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"File too large (max {settings.max_upload_bytes // (1024 * 1024)} MB)",
+            detail=f"File too large (max {settings.max_upload_bytes // (1024 * 1024)} MB).",
         )
 
     ext = _ext_from_content_type(file.content_type)
@@ -116,13 +116,14 @@ async def serve_image(
     """Return a previously uploaded image by filename."""
     if "/" in filename or "\\" in filename or ".." in filename:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename must not contain path separators or '..'.",
         )
 
     path = _upload_dir() / filename
     if not path.is_file():
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Image not found."
         )
 
     ext = path.suffix.lower()

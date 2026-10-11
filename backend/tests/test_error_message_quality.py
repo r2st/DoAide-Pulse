@@ -199,3 +199,55 @@ class TestPlatformEnumError:
                 assert "is not a valid" in raw
         except ImportError:
             pytest.skip("Platform model not importable without DB")
+
+
+# ---------------------------------------------------------------------------
+# M19 H071 — error detail strings are user-quality sentences
+# ---------------------------------------------------------------------------
+
+
+class TestErrorDetailPunctuation:
+    """Every ``detail`` string the API returns must end with a period."""
+
+    def test_traversal_filename_says_what_is_wrong(self, client):
+        resp = client.get("/api/v1/uploads/foo..bar")
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail.endswith(".")
+        assert "path" in detail.lower() or "separator" in detail.lower() or ".." in detail
+
+    def test_missing_image_ends_with_period(self, client):
+        resp = client.get("/api/v1/uploads/does-not-exist.png")
+        assert resp.status_code == 404
+        assert resp.json()["detail"].endswith(".")
+
+    def test_unsupported_upload_type_ends_with_period(self, client, auth):
+        import io
+
+        fake = io.BytesIO(b"not-an-image")
+        resp = client.post(
+            "/api/v1/uploads",
+            files={"file": ("test.txt", fake, "text/plain")},
+            headers=auth,
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail.endswith(".")
+        assert "text/plain" in detail
+
+    def test_invalid_api_key_ends_with_period(self, client):
+        resp = client.get(
+            "/api/v1/machine/whoami",
+            headers={"X-API-Key": "bogus_key_value"},
+        )
+        assert resp.status_code == 401
+        assert resp.json()["detail"].endswith(".")
+
+    def test_empty_ai_generate_ends_with_period(self, client, auth):
+        resp = client.post(
+            "/api/v1/ai/generate-fields",
+            json={"fields": ["tags"]},
+            headers=auth,
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"].endswith(".")
