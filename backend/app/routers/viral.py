@@ -124,7 +124,7 @@ def generate_content_ideas(
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Content idea generation is temporarily unavailable.",
+            detail="Content idea generation is temporarily unavailable. The AI service is not configured.",
         )
 
     prompt = (
@@ -156,7 +156,7 @@ def generate_content_ideas(
         logger.exception("Gemini API call failed for content ideas")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Content idea generation is temporarily unavailable.",
+            detail="Content idea generation is temporarily unavailable. Try again in a moment.",
         ) from exc
 
     try:
