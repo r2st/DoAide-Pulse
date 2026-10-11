@@ -514,15 +514,17 @@ def deliver(db: Session, delivery: WebhookDelivery) -> WebhookDelivery:
 
         started = time.monotonic()
         try:
-            with _http_client() as client:
-                with client.stream(
+            with (
+                _http_client() as client,
+                client.stream(
                     "POST", url,
                     content=body.encode("utf-8"),
                     headers=headers,
-                ) as response:
-                    status_code = response.status_code
-                    is_redirect = response.is_redirect
-                    response_text = _read_capped(response)
+                ) as response,
+            ):
+                status_code = response.status_code
+                is_redirect = response.is_redirect
+                response_text = _read_capped(response)
         except httpx.HTTPError as exc:
             _record_failure(db, delivery, friendly_network_error(exc))
             return delivery

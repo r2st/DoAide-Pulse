@@ -63,8 +63,8 @@ from app.schemas.content import (
     PreviewLinkCreate,
     PreviewLinkOut,
     PublicationOut,
-    PublicPreviewOut,
     PublicationSkipOut,
+    PublicPreviewOut,
     PublishRequestIn,
     QualityOut,
     RepurposeOut,
@@ -1227,7 +1227,7 @@ def platform_checks(
                 for name in platforms.split(",")
                 if name.strip()
             ]
-        except ValueError:
+        except ValueError as exc:
             valid = ", ".join(p.value for p in Platform)
             bad = [
                 n.strip()
@@ -1238,7 +1238,7 @@ def platform_checks(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown platform: {', '.join(bad)}. "
                 f"Valid platforms are: {valid}",
-            )
+            ) from exc
     else:
         wanted = platform_check.destinations_for(content)
 

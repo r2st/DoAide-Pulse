@@ -149,12 +149,12 @@ def generate_content_ideas(
             timeout=30.0,
         )
         resp.raise_for_status()
-    except httpx.HTTPError:
+    except httpx.HTTPError as exc:
         logger.exception("Gemini API call failed for content ideas")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Content idea generation is temporarily unavailable.",
-        )
+        ) from exc
 
     try:
         data = resp.json()
@@ -172,7 +172,7 @@ def generate_content_ideas(
             )
             for item in ideas_raw[:payload.count]
         ]
-    except (KeyError, json.JSONDecodeError, IndexError):
+    except (KeyError, json.JSONDecodeError, IndexError) as exc:
         logger.exception(
             "Failed to parse Gemini response for content ideas; body=%s",
             resp.text[:500],
@@ -180,6 +180,6 @@ def generate_content_ideas(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Could not parse AI response. Please try again.",
-        )
+        ) from exc
 
     return ContentIdeasOut(ideas=ideas, niche=payload.niche)

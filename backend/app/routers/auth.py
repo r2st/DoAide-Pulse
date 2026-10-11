@@ -35,8 +35,8 @@ from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
-from app.routers._patch import reject_nulls
 from app.ratelimit import client_key, limiter
+from app.routers._patch import reject_nulls
 from app.schemas.auth import (
     MessageOut,
     PasswordResetConfirm,

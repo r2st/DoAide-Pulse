@@ -23,8 +23,8 @@ from datetime import UTC, datetime
 import httpx
 
 from app.config import settings
-from app.services.errors import friendly_network_error
 from app.models.project import COMMIT_SHA_MAX_LENGTH, RELEASE_TAG_MAX_LENGTH
+from app.services.errors import friendly_network_error
 
 logger = logging.getLogger(__name__)
 

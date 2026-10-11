@@ -86,8 +86,4 @@ ignore = [
     # `x: Type = Depends(...)` is the FastAPI idiom for dependency injection —
     # the whole API surface would need noqa without this.
     "B008",
-    # `class X(str, Enum)` is deliberate: members must compare equal to their
-    # stored string for SQLAlchemy's non-native Enum columns and for Pydantic
-    # serialization. StrEnum is not a drop-in replacement here.
-    "UP042",
 ]

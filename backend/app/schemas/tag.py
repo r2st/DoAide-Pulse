@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.schemas.limits import BoundedId, Tag as TagValue
+from app.schemas.limits import BoundedId
+from app.schemas.limits import Tag as TagValue
 from app.services import tags as tag_service
 
 

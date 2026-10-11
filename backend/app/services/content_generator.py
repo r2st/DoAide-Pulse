@@ -276,9 +276,9 @@ def content_from_generated(
     :func:`app.models.content.clamp_tags` for what each was costing.
     """
     from app.models.content import (  # avoid circular
-        Content,
         META_DESCRIPTION_MAX_LENGTH,
         TITLE_MAX_LENGTH,
+        Content,
         clamp_body,
         clamp_tags,
         unique_content_slug,

@@ -33,8 +33,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-logger = logging.getLogger(__name__)
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -44,6 +42,8 @@ from app.models.mixins import as_aware, utcnow
 from app.models.project import Project
 from app.models.publication import Platform, Publication, PublicationStatus
 from app.services import cadence, learned_cadence, velocity
+
+logger = logging.getLogger(__name__)
 
 
 class ScheduleError(ValueError):
