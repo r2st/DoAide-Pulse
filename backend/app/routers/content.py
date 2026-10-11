@@ -159,8 +159,8 @@ def _assert_if_match(content: Content, if_match: str | None) -> None:
     """
     if if_match is None:
         return
-    candidates = [tag.strip() for tag in if_match.split(",")]
-    if not any(candidates):
+    candidates = [tag.strip() for tag in if_match.split(",") if tag.strip()]
+    if not candidates:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="If-Match was sent empty. Send the piece's version as an "

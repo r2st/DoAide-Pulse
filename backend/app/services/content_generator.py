@@ -277,6 +277,8 @@ def content_from_generated(
     """
     from app.models.content import (  # avoid circular
         Content,
+        META_DESCRIPTION_MAX_LENGTH,
+        TITLE_MAX_LENGTH,
         clamp_body,
         clamp_tags,
         unique_content_slug,
@@ -292,18 +294,22 @@ def content_from_generated(
             len(body_markdown),
         )
 
+    title = generated.title[:TITLE_MAX_LENGTH]
+    meta_description = generated.meta_description[:META_DESCRIPTION_MAX_LENGTH]
+    focus_keyword = generated.focus_keyword[:100]
+
     return Content(
         project_id=project_id,
         content_type=content_type,
         status=status,
-        title=generated.title,
-        slug=unique_content_slug(db, project_id, generated.title),
+        title=title,
+        slug=unique_content_slug(db, project_id, title),
         body_markdown=body_markdown,
         excerpt=generated.excerpt,
-        meta_description=generated.meta_description,
+        meta_description=meta_description,
         keywords=generated.keywords,
         tags=clamp_tags(generated.tags),
-        focus_keyword=generated.focus_keyword,
+        focus_keyword=focus_keyword,
         confidence=generated.confidence,
         generated_by_provider=generated.provider,
         generated_by_model=generated.model,
