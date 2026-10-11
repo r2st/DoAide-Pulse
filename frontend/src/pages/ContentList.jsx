@@ -85,11 +85,15 @@ export default function ContentList() {
       const ok = result.succeeded?.length ?? 0;
       if (ok > 0) toast.success(`Approved ${ok} item${ok === 1 ? "" : "s"}`);
       const fail = result.failed?.length ?? 0;
-      if (fail > 0) toast.error(`${fail} could not be approved`);
+      if (fail > 0)
+        toast.error(
+          `${fail} item${fail === 1 ? "" : "s"} could not be approved — ` +
+            "they may have been modified or are no longer in review",
+        );
       setSelected(new Set());
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Bulk approve failed: ${err.message}`);
     } finally {
       setApprovingBulk(false);
     }
@@ -107,7 +111,7 @@ export default function ContentList() {
       setSelected(new Set());
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Bulk approve failed: ${err.message}`);
     } finally {
       setApprovingBulk(false);
     }
@@ -122,11 +126,15 @@ export default function ContentList() {
       const ok = result.archived?.length ?? 0;
       if (ok > 0) toast.success(`Rejected ${ok} item${ok === 1 ? "" : "s"}`);
       const fail = result.failed?.length ?? 0;
-      if (fail > 0) toast.error(`${fail} could not be rejected`);
+      if (fail > 0)
+        toast.error(
+          `${fail} item${fail === 1 ? "" : "s"} could not be rejected — ` +
+            "they may have been modified or are no longer in review",
+        );
       setSelected(new Set());
       reload();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Bulk reject failed: ${err.message}`);
     } finally {
       setRejectingBulk(false);
     }
@@ -426,7 +434,7 @@ function ReviewContentCard({ item, selected, onToggle, onApproved }) {
       toast.success("Approved");
       onApproved?.();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not approve this piece: ${err.message}`);
       setBusy(false);
     }
   }
@@ -438,7 +446,7 @@ function ReviewContentCard({ item, selected, onToggle, onApproved }) {
       toast.info("Moved to draft");
       onApproved?.();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not move to draft: ${err.message}`);
       setBusy(false);
     }
   }
@@ -528,7 +536,7 @@ function ContentRow({ item, onChanged }) {
       toast.success("Archived");
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not archive: ${err.message}`);
     }
   }
 
@@ -538,7 +546,7 @@ function ContentRow({ item, onChanged }) {
       toast.success("Moved to drafts");
       onChanged();
     } catch (err) {
-      toast.error(err.message);
+      toast.error(`Could not unarchive: ${err.message}`);
     }
   }
 

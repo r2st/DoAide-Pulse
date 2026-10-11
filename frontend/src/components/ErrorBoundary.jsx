@@ -83,7 +83,7 @@ export default class ErrorBoundary extends Component {
  * same error again. It is there for the transient half: a render that raced a
  * state update, a chart handed a list that was briefly empty.
  */
-export function ErrorFallback({ error, reset, title = "Something went wrong" }) {
+export function ErrorFallback({ error, reset, title = "This section could not load" }) {
   return (
     <div
       role="alert"
@@ -91,7 +91,8 @@ export function ErrorFallback({ error, reset, title = "Something went wrong" }) 
     >
       <p className="text-sm font-medium text-ink-900">{title}</p>
       <p className="max-w-sm text-sm text-ink-500">
-        This section stopped rendering. The rest of the page is unaffected.
+        This section stopped rendering. The rest of the page is unaffected —
+        try again, or reload if it keeps happening.
       </p>
       {/* The raw message, because the person hitting this is usually the person
           who can act on it, and "an error occurred" is not a bug report. */}

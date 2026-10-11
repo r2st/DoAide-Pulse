@@ -42,7 +42,7 @@ export default function ContentIdeaGenerator() {
       setIdeas(data);
       trackEvent("tool-use", { tool: "idea-generator", count });
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      setError(err.message || "Could not generate ideas — check your connection and try again.");
     } finally {
       setLoading(false);
     }
