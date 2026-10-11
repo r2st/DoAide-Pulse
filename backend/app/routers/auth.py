@@ -76,7 +76,7 @@ def _assert_registration_allowed(invite_token: str | None) -> None:
     if not settings.registration_enabled:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Registration is closed.",
+            detail="Registration is currently closed. Contact the administrator to request access.",
         )
 
     required = settings.registration_invite_token
@@ -91,7 +91,8 @@ def _assert_registration_allowed(invite_token: str | None) -> None:
         invite_token.encode("utf-8"), required.encode("utf-8")
     ):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid invite token."
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid invite token. Check the token and try again, or ask the administrator for a new one.",
         )
 
 
