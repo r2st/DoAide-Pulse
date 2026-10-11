@@ -529,7 +529,13 @@ def create_app() -> FastAPI:
             )
             # Prevent caches (shared proxies, browsers) from storing
             # authenticated responses that may carry tokens or user data.
-            response.headers["Cache-Control"] = "no-store"
+            #
+            # Skipped when the route has already set its own Cache-Control —
+            # the upload endpoint serves images with an immutable yearlong max-age,
+            # and overwriting that with no-store would defeat caching for the one
+            # response type that benefits from it and carries no user data.
+            if "cache-control" not in response.headers:
+                response.headers["Cache-Control"] = "no-store"
             response.headers["Content-Security-Policy"] = csp
             # HSTS, but only on a request that actually arrived over TLS.
             #
