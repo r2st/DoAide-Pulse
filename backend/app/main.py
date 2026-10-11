@@ -574,7 +574,7 @@ def create_app() -> FastAPI:
         # the content version the editor echoes back as If-Match; without it the
         # header would be present on the wire and invisible to the code that
         # needs it. If-Match joins allow_headers for the same reason in reverse.
-        expose_headers=["X-Total-Count", "X-Request-ID", "ETag"],
+        expose_headers=["X-Total-Count", "X-Request-ID", "X-Response-Time", "ETag"],
     )
 
     prefix = settings.api_v1_prefix
