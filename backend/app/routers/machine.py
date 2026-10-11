@@ -289,42 +289,50 @@ def machine_analytics(
         or 0
     )
 
-    pub_rows = db.execute(
-        select(Publication.id, Publication.platform)
+    pub_sub = (
+        select(Publication.id)
         .join(Content, Content.id == Publication.content_id)
         .where(
             Content.project_id == key.project_id,
             Publication.status == PublicationStatus.PUBLISHED,
         )
-    ).all()
-    publication_ids = [row[0] for row in pub_rows]
-    platforms = sorted({row[1].value for row in pub_rows})
+        .subquery()
+    )
+
+    platforms = sorted(
+        {
+            row[0].value
+            for row in db.execute(
+                select(Publication.platform)
+                .where(Publication.id.in_(select(pub_sub.c.id)))
+                .group_by(Publication.platform)
+            ).all()
+        }
+    )
+
+    # The newest snapshot per publication, entirely in SQL: group to find each
+    # one's latest capture, then join back for that row's counters.
+    latest = (
+        select(
+            ContentMetric.publication_id.label("pub_id"),
+            func.max(ContentMetric.captured_at).label("captured"),
+        )
+        .where(ContentMetric.publication_id.in_(select(pub_sub.c.id)))
+        .group_by(ContentMetric.publication_id)
+        .subquery()
+    )
 
     views = 0
     engagement = 0
-    if publication_ids:
-        # The newest snapshot per publication, without a query per publication:
-        # group to find each one's latest capture, then join back for that
-        # row's counters. Two passes over an indexed column beats N round trips
-        # on a project that has published a hundred times.
-        latest = (
-            select(
-                ContentMetric.publication_id.label("pub_id"),
-                func.max(ContentMetric.captured_at).label("captured"),
-            )
-            .where(ContentMetric.publication_id.in_(publication_ids))
-            .group_by(ContentMetric.publication_id)
-            .subquery()
+    for metric in db.scalars(
+        select(ContentMetric).join(
+            latest,
+            (ContentMetric.publication_id == latest.c.pub_id)
+            & (ContentMetric.captured_at == latest.c.captured),
         )
-        for metric in db.scalars(
-            select(ContentMetric).join(
-                latest,
-                (ContentMetric.publication_id == latest.c.pub_id)
-                & (ContentMetric.captured_at == latest.c.captured),
-            )
-        ):
-            views += metric.views or 0
-            engagement += metric.engagement
+    ):
+        views += metric.views or 0
+        engagement += metric.engagement
 
     return MachineAnalyticsOut(
         project_id=key.project_id,

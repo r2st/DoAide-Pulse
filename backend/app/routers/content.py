@@ -1129,6 +1129,8 @@ def internal_link_suggestions(
             Content.id != content.id,
             Content.status == ContentStatus.PUBLISHED,
         )
+        .order_by(Content.created_at.desc())
+        .limit(500)
     ).all()
     suggestions = seo.suggest_internal_links(
         keywords=content.keywords,
