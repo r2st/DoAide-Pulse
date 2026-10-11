@@ -40,6 +40,7 @@ export default function ContentIdeaGenerator() {
     try {
       const data = await api.generateContentIdeas(niche.trim(), count);
       setIdeas(data);
+      trackEvent("tool-use", { tool: "idea-generator", count });
     } catch (err) {
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
